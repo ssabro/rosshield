@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-23 (Phase 0 설계서 세트 작성 완료, 코드 0줄)_
+_마지막 업데이트: 2026-04-23 (D1~D6 결정 확정, 구현 미착수)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 0 — 설계 완료, 구현 미착수.** `docs/design/`에 13개 설계서가 있고, 코드는 없다. 스택·제품명·라이선스 미확정.
+**Phase 0 — 스택·라이선스 결정 완료, 리포 부트스트랩 직전.** 설계서 13개 + D1~D6 결정 로그. 다음 단계는 Go 모듈/CI 스켈레톤/OpenAPI 1.0 초안.
 
 ## 이 리포의 기원
 
@@ -64,35 +64,38 @@ fleetguard/
 
 ## 결정 필요 항목 (Phase 0 Exit 조건)
 
-번호를 따서 추후 결정 로그에 `D1 결정됨: ...`식으로 기록.
-
-| # | 항목 | 기본 방향 | 참조 | 상태 |
+| # | 항목 | 결정 | 참조 | 상태 |
 |---|---|---|---|---|
-| D1 | 제품명·도메인·상표 | FleetGuard (가칭, placeholder) | `docs/design/00-*` | ⏳ |
-| D2 | 백엔드 언어 | **Go 권장** (TS 유지도 허용) | `docs/design/11-*` §11.2 | ⏳ |
-| D3 | 데스크톱 셸 | **Tauri 2 권장** (Electron fallback) | `docs/design/11-*` §11.8 | ⏳ |
-| D4 | 어플라이언스 OS | **Ubuntu Core** | `docs/design/11-*` §11.9 | ⏳ |
-| D5 | 라이선스 | OSS vs closed vs open-core | `docs/design/12-*` | ⏳ |
-| D6 | 리포 호스팅 | GitHub 공개 vs 사내 | — | ⏳ |
+| D1 | 제품명·도메인·상표 | placeholder `FleetGuard` 유지, Phase 1 후반 최종 확정 | `docs/design/00-*` | 🟡 연기 |
+| D2 | 백엔드 언어 | **Go** (백엔드) + **TypeScript** (프론트) | `docs/design/11-*` §11.2 | ✅ |
+| D3 | 데스크톱 셸 | **Tauri 2.x** (Electron fallback 보류) | `docs/design/11-*` §11.8 | ✅ |
+| D4 | 어플라이언스 OS | 보류, 기본 가정 Ubuntu Core 24, Phase 3 exit 재확정 | `docs/design/11-*` §11.9 | 🟡 연기 |
+| D5 | 라이선스 | **Open-core** (코어 Apache-2.0 + 엔터프라이즈 closed) | `docs/design/12-*` | ✅ |
+| D6 | 리포 호스팅 | **GitHub private** → Phase 1 exit 후 public 전환 | — | ✅ |
 | D7 | 초기 타깃 벤치마크 | CIS Ubuntu 24.04 + ROS2 Jazzy | `docs/design/07-*` | 🟢 (기본값으로) |
 
 ## 진행 중 선택지
 
-다음 세션이 시작되면, 아래 항목 중 사용자에게 **번호로 선택 요청**:
+D1~D6 결정 확정됨(2026-04-23). 다음 세션은 **리포 부트스트랩(Step 0.2)**으로 시작:
 
-1. **D1~D6 결정 미팅** — 문서 §11.16 결정 로그를 채우는 대화. 가장 큰 leverage.
-2. **스택 스파이크 (Phase 0, D2 결정 지원)** — Go와 TS 각각으로 2주짜리 최소 기능 프로토타입(POST /scans + SSH exec + SQLite 저장) 만들어 비교. 자세한 스펙은 `docs/design/11-*` §11.2 체크포인트.
-3. **OpenAPI 1.0 스켈레톤 작성** — 설계서 `05-api-and-auth.md` §5.5 기반으로 YAML 골격 생성. 스택과 무관하게 가능.
-4. **벤치마크 팩 변환 도구(`pack-tools`) 설계** — `docs/design/07-*` §7.13, `12-*` §12.4 기반으로 기존 `nrobotcheck`의 CSV/JSON을 새 팩 포맷으로 변환하는 도구 스펙 작성.
-5. **Phase 1 백로그 정리** — `docs/design/11-*` §Phase 1 체크리스트를 실행 가능한 태스크로 분해.
-6. **설계서 보강** — 위 문서 중 특정 섹션이 얕다고 판단되는 부분 추가 심화.
+1. **리포 부트스트랩** — `go.mod`, `.gitignore` 보강, `LICENSE`(Apache-2.0 코어), `.github/workflows/ci.yml`, `Makefile`, `depguard` 도메인 경계 린트.
+2. **OpenAPI 1.0 스켈레톤** — `05-*` §5.5 기반 `openapi/openapi.yaml`. 엔벨로프·에러 구조·버저닝 규약, `oapi-codegen` 파이프라인.
+3. **Phase 1 백로그 분해** — `11-*` Phase 1 체크리스트를 TDD 단위로 나누어 `docs/design/phase1-backlog.md`에 기록.
+4. **벤치마크 팩 변환 도구(`pack-tools`) 설계** — `07-*` §7.13, `12-*` §12.4 기반. 기존 `nrobotcheck` CSV/JSON을 새 팩 포맷으로.
+5. **스택 스파이크 (옵션)** — D2 확정 전이라면 필요했을 과정. 이미 Go 확정했으니 생략 권장.
 
-**권장 순서**: 1 → (그 결과에 따라) 2 또는 3.
+**권장 순서**: 1 → 2 → 3.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-23 · D6 결정됨**: 리포 호스팅 `GitHub private`. Phase 1 exit 시점에 public 전환(open-core 코어 공개 연동).
+- **2026-04-23 · D5 결정됨**: 라이선스 `Open-core`. 코어(감사 엔진·CLI·팩 포맷)는 Apache-2.0 공개, 엔터프라이즈 계층(SSO·멀티테넌트 관리·클라우드 대시보드)은 closed. 근거: 감사 도구 신뢰성 확보 + 팩 포맷의 외부 검증 가능성(P1) 유지.
+- **2026-04-23 · D4 연기됨**: 어플라이언스 OS는 Phase 3 exit 시점에 최종 확정. 그때까지 기본 가정은 **Ubuntu Core 24**.
+- **2026-04-23 · D3 결정됨**: 데스크톱 셸 `Tauri 2.x`. Go 백엔드는 자식 프로세스로, Tauri는 얇은 WebView 껍질. Electron은 긴급 출시 fallback으로만 보류.
+- **2026-04-23 · D2 결정됨**: 백엔드 `Go`, 프론트 `TypeScript`. 근거: 단일 정적 바이너리, `crypto/ssh`·`ed25519` 성숙, 3종 배포 natural fit, P3/P7 원칙 부합. `nrobotcheck`의 Electron·native 모듈 운영 부담 회피.
+- **2026-04-23 · D1 연기됨**: 제품명 확정은 Phase 1 후반으로 연기. 코드 네임스페이스는 `fleetguard`/`fg` 사용. 법무·도메인·상표 조사는 유료 고객 접촉 직전 병행.
 - **2026-04-23**: 리포를 `D:\robot\dev\fleetguard`로 신설. 전신 `nrobotcheck`에서 설계·개념 승계, 코드는 새로 작성.
 - **2026-04-23**: 13개 설계서 초안 완성(Draft v0.1).
 - **2026-04-23**: 상업화 방향 — 어플라이언스 단독 진화 X, 헤드리스 코어 + 배포 3종(데스크톱·온프렘·어플라이언스 이미지). 근거는 전신 리포 `docs/COMMERCIALIZATION_STRATEGY.md`.
@@ -123,6 +126,10 @@ fleetguard/
 
 - 승계 대상 자산 Tier 분류: `docs/design/12-migration-and-non-goals.md` §12.2
 - 벤치마크 마이그레이션 도구: `docs/design/12-*` §12.4 — Phase 1 실행 항목
+- **원본 벤치마크 자료 참조 포인터**: [`contrib/source-benchmarks/README.md`](./contrib/source-benchmarks/README.md) —
+  `nrobotcheck/resources/baselines/` 아래의 CIS·ROS2 베이스라인 JSON·SCAP XML의 정확한
+  경로·크기·SHA-256·라이선스·타깃 팩을 정리한 포인터 문서. **파일 자체는 복사하지 않았고**,
+  Phase 1 `pack-tools` 착수 시 여기부터 확인.
 - 전신 리포 위치: `D:\robot\dev\nrobotcheck`
 - 전신의 DDD 도메인 설계 참조 경로:
   - `nrobotcheck/docs/design/` — v2.0 DDD 설계
