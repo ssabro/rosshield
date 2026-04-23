@@ -125,7 +125,7 @@ type Scheduler interface {
 | E1.T2 ✅ | `TestClockInjectableFake` — test에서 고정 시간 주입 | `Clock` 인터페이스 + `FakeClock` (commit `d9ee1c1`) |
 | E1.T3 ✅ | `TestIDGenPrefixAndLength` — `ro_`·`ss_`·`au_` 접두사 + Crockford base32 26자 | `idgen.ULID` (commit `81ded88`) |
 | E1.T4 ✅ | `TestStorageTxCommitAndRollback` — commit 후 조회·rollback 후 미존재 | `storage/sqlite`: `modernc.org/sqlite` + `database/sql` Tx wrapper (commit `b1af50d`+`d8f3034`) |
-| E1.T5 | `TestStorageMigrateIdempotent` — 같은 마이그레이션 2번 적용해도 OK | 간단 schema_migrations 테이블 |
+| E1.T5 ✅ | `TestStorageMigrateIdempotent` — 같은 마이그레이션 2번 적용해도 OK | goose v3 + embed.FS + flock OS lock (commit `980d6f9`) |
 | E1.T6 | `TestEventBusInProcPublishAndSubscribe` — publish→subscriber 수신, causationId 보존 | `eventbus/inproc`: topic별 channel 풀, goroutine 안전 |
 | E1.T7 | `TestEventBusHandlerErrorIsolated` — 한 구독자 패닉이 다른 구독자·publish에 영향 없음 | `defer recover()` + error log |
 | E1.T8 | `TestSignerEd25519SignVerifyRoundtrip` + `TestSignerRejectsTamperedPayload` | `signer/soft`: `crypto/ed25519` + 메모리 키 (파일 저장은 E2에서) |

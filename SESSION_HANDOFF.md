@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-23 (E1.T4 Storage 완료)_
+_마지막 업데이트: 2026-04-23 (E1.T5 Migrate 완료)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 1 E1 진행 중 — T1·T2·T3·T4 완료, T5~T9 대기.** `internal/platform/storage/` Storage·Tx 인터페이스 + `sqlite/` modernc.org/sqlite 어댑터 (PRAGMA 7개 connection-level 적용, Tx tenant 강제·Bootstrap tenant-less 분리, panic-rollback-repanic). 7 tests pass. 원격 16개 커밋, CI green in 2m22s. 다음 세션 착수 후보: E1.T5 Migrate (goose + embed.FS) 또는 E1.T6 EventBus.
+**Phase 1 E1 진행 중 — T1~T5 완료, T6~T9 대기.** `internal/platform/storage/` Migrate() 실구현: goose v3 + embed.FS(`migrations/sqlite/0001_platform_init.sql`) + gofrs/flock OS file lock 5초 timeout. 첫 마이그레이션은 `platform_info` KV 테이블만 생성(도메인 테이블은 후속 에픽). 10 tests pass(이전 7 + 신규 3). 원격 18개 커밋, CI green in 2m32s. 다음 세션 착수 후보: E1.T6/T7 EventBus 또는 E1.T8 Signer.
 
 ## 원격 저장소
 
@@ -96,22 +96,22 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E1.T1~T4 완료 + R1·R2 14건 결정 합의 상태에서 재개 후보:
+E1.T1~T5 완료 + R1·R2 14건 결정 합의 상태에서 재개 후보:
 
-1. **E1.T5 Migrate 착수** (권장 — T4 자연 후속). `internal/platform/storage/sqlite/` Migrate() 구현: goose + embed.FS + 마이그레이션 디렉터리. T4의 stub 교체. R1-6에 따라 마이그레이션에 OS file lock(`flock`/`LockFileEx`) 추가. 약 60~90분 사이클.
-2. **E1.T6/T7 EventBus 착수** — `internal/platform/eventbus/inproc/`. R2 결정 7건이 노트에 반영됨. M2 모델(subscriber당 goroutine), bounded channel + DropOldest 기본, panic 격리. 1~2일 사이클.
-3. **E1.T8 Signer 착수** — `crypto/ed25519` 메모리 키 wrapper. 가장 작고 독립적.
-4. **E1.T9 Scheduler 착수** — `robfig/cron/v3`. T2 Clock 의존(완료).
-5. **depguard 도메인 경계 린트 설정** — `.golangci.yml`. R1-2 Bootstrap 강제(boot 경로에서만)에도 활용. E3 진입 전 권장.
-6. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`.
-7. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
+1. **E1.T6/T7 EventBus 착수** (권장). `internal/platform/eventbus/inproc/`. R2 결정 7건이 노트에 반영됨. M2 모델(subscriber당 goroutine), bounded channel + DropOldest 기본, panic 격리. 1~2일 사이클.
+2. **E1.T8 Signer 착수** — `crypto/ed25519` 메모리 키 wrapper. 가장 작고 독립적, T6 사이클 중간 인터럽트로 처리 가능.
+3. **E1.T9 Scheduler 착수** — `robfig/cron/v3`. T2 Clock 의존(완료). 결정론적 테스트가 필요하면 Clock 인터페이스 확장(현재 `Now()` 단일).
+4. **depguard 도메인 경계 린트 설정** — `.golangci.yml`. R1-2 `Storage.Bootstrap` 강제(boot 경로에서만)에도 활용. E3 진입 전 권장.
+5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`.
+6. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
 
-**권장 순서**: 1(E1.T5) → 2(E1.T6/T7) → 3(E1.T8) → 4(E1.T9) → E1 Exit (cmd/rosshield-server bootstrap 시퀀스로 모든 platform 서비스 초기화 + SQLite 파일 DB 생성·첫 마이그레이션 적용).
+**권장 순서**: 1(E1.T6/T7) → 2(E1.T8) → 3(E1.T9) → E1 Exit (cmd/rosshield-server bootstrap 시퀀스로 모든 platform 서비스 초기화 + SQLite 파일 DB 생성·Migrate 적용·`platform_info` 검증).
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-23 · E1.T5 Migrate 완료**: `internal/platform/storage/sqlite/migrate.go` + `internal/platform/storage/embed.go`(`//go:embed migrations`) + `migrations/sqlite/0001_platform_init.sql`. T4의 nil-stub Migrate를 실구현으로 교체. gofrs/flock OS file lock(`<dsn>.migration.lock`) 5초 timeout(R1-6) → goose v3 NewProvider(SQLite3) + Up. 첫 마이그레이션은 `platform_info` KV 테이블만 생성(도메인 테이블은 E2~E5에서 추가). 3 tests pass(스키마 적용·idempotent·외부 락 선점 시 ErrMigrationLocked). 신규 dep 2개(goose v3.27.0, flock v0.13.0) + transitive 3종. 커밋 `980d6f9`, CI green in 2m32s.
 - **2026-04-23 · E1.T4 Storage 완료**: `internal/platform/storage/` Storage·Tx 인터페이스 + `sqlite/` modernc.org/sqlite 어댑터. 매 connection 확립 직후 PRAGMA 7개(`foreign_keys=ON`·`journal_mode=WAL`·`synchronous=NORMAL`·`busy_timeout=5000`·`temp_store=MEMORY`·`cache_size=20MB`·`wal_autocheckpoint=1000`)를 커스텀 `driver.Connector`로 적용. Tx는 ctx에서 TenantID 추출, 없으면 `ErrTenantMissing`. Bootstrap은 tenant-less 진입점. panic 시 rollback 후 re-panic. 7 tests pass(context roundtrip·commit/rollback·tenant 강제·Bootstrap·tenant 전파·PRAGMA 검증·panic rollback). modernc.org/sqlite v1.49.1 + transitive 4종 추가. Migrate()는 nil 반환 stub(T5에서 goose 통합). 첫 push 후 CI Tidy check 실패(transitive 누락) → `go mod tidy` 후 재push 성공. 커밋 `b1af50d` + `d8f3034`, CI green in 2m22s.
 - **2026-04-23 · R1·R2 미해결 질문 14건 합의**: Storage 7건 + EventBus 7건 결정. 두 노트(`docs/design/notes/e1-storage-deepdive.md` §10, `e1-eventbus-deepdive.md` §12)에 결정 사항 마킹. R1 결정으로 본문 갱신: §5 Tx 인터페이스에서 `ReadOnly` 제거, `Bootstrap(ctx, fn)` 진입점 추가(tenant-less 마이그레이션·seed 전용), §6 PG audit는 `DO INSTEAD NOTHING` 폐기 후 `TRIGGER + RAISE EXCEPTION`로 교체, §9 Storage·Tx 인터페이스·`ErrMigrationLocked` 추가. R2는 본문이 이미 추천과 정합이라 §12 마킹만. E1.T4(Storage)·E1.T6(EventBus) 착수 차단 해제.
 - **2026-04-23 · E1.T3 IDGen 완료**: `internal/platform/idgen/` `IDGen` 인터페이스(`New(prefix string) string`) + `NewULID()` (oklog/ulid v2.1.1 + `crypto/rand` + `sync.Mutex`, monotonic ms-내 ordering). 5 tests pass(prefix·길이·Crockford 알파벳·empty prefix·1000건 유일성·50×100 동시성 5000건). 신규 dep 1개(oklog/ulid v2, Apache-2.0, stdlib만 사용). Clock 주입은 보류 — T9 Scheduler에서 결정론적 ID 검증이 필요해지면 그때 생성자 확장. 커밋 `81ded88`, CI green in 1m36s.
