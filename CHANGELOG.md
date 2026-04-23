@@ -27,6 +27,19 @@
 
 - 2026-04-23 — `contrib/source-benchmarks/README.md` 작성 — 전신 `nrobotcheck/resources/baselines/`의 원본 자료(CIS·ROS2 베이스라인 JSON·SCAP XML) 경로·크기·SHA-256·라이선스·타깃 팩 포인터. 파일 자체는 복사하지 않음.
 
+### Added (Step 0.2 — Go 부트스트랩)
+
+- 2026-04-23 — Apache License 2.0 본문 `LICENSE` 등록 (Copyright 2026 rosshield Contributors).
+- 2026-04-23 — Go 모듈 초기화: `go.mod` (module `github.com/ssabro/rosshield`, go 1.26).
+- 2026-04-23 — `Makefile` — `build`·`test`·`test-race`·`vet`·`fmt`·`tidy`·`lint`·`openapi`·`ci`·`clean` 타깃.
+- 2026-04-23 — `.golangci.yml` v2 — `errcheck`·`govet`·`staticcheck`·`ineffassign`·`unused` + `gofmt`/`goimports` 포매터.
+- 2026-04-23 — `.github/workflows/ci.yml` — Go 1.26 `ubuntu-latest` tidy → vet → build → test(-race) → golangci-lint 파이프라인.
+- 2026-04-23 — `cmd/rosshield-server/main.go`/`main_test.go` — `/healthz` GET 200 JSON 스텁 + TDD 단위 테스트 2건(200/JSON body, POST 거부).
+
+### Added (Step 0.3 — OpenAPI 스켈레톤)
+
+- 2026-04-23 — `openapi/openapi.yaml` v0.0.1 (OpenAPI 3.1) — 엔벨로프(`Envelope`/`ErrorEnvelope`) + 8-카테고리 `ErrorCategory` + `Meta`/`PageMeta` + 공통 파라미터(`Limit`/`Cursor`/`Sort`/`IdempotencyKey`) + 보안 스키마(`bearerAuth`/`apiKeyAuth`). 대표 경로 11종(`/healthz`, `/readyz`, `/api/v1/auth/{login,me}`, `/api/v1/tenants/current`, `/api/v1/robots{,/{id}}`, `/api/v1/scans`, `/api/v1/reports/{id}:verify`, `/api/v1/audit/{head,verify}`) 스텁. 미구현 경로는 `x-status: todo`로 표기. 설계서 §5.12의 split 구조는 파일 크기 400줄 근처 진입 시 분할 예정.
+
 ### Decisions
 
 - 2026-04-23 — 리포를 `D:\robot\dev\nrobotcheck` 전신과 분리해 `D:\robot\dev\fleetguard`로 신설

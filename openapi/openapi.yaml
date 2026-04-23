@@ -1,0 +1,415 @@
+openapi: 3.1.0
+
+info:
+  title: rosshield API
+  version: 0.0.1
+  summary: ROS2 Fleet Security Audit Platform API
+  description: |
+    Skeleton spec for Phase 0. Contract-first — server handlers, client SDKs,
+    and CLI command shapes are generated from this document. See
+    `docs/design/05-api-and-auth.md` for the full design.
+
+    Status: v1 under design. No operation here is considered stable.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local desktop / development
+  - url: https://{host}
+    description: On-prem or appliance
+    variables:
+      host:
+        default: rosshield.example.internal
+
+tags:
+  - { name: health,     description: Liveness / readiness probes }
+  - { name: auth,       description: Authentication and session }
+  - { name: tenant,     description: Tenant, user, role management }
+  - { name: fleet,      description: Fleet groupings and policies }
+  - { name: robot,      description: Robot inventory and credentials }
+  - { name: benchmark,  description: Signed benchmark packs }
+  - { name: scan,       description: Scan sessions and results }
+  - { name: evidence,   description: Raw evidence records }
+  - { name: insight,    description: Drift, anomaly, root cause }
+  - { name: advisor,    description: LLM-backed explanations (opt-in) }
+  - { name: compliance, description: Framework mappings and scores }
+  - { name: reporting,  description: Signed reports }
+  - { name: audit,      description: Hash-chained audit log }
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      operationId: getHealthz
+      security: []
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+              example:
+                status: ok
+
+  /readyz:
+    get:
+      tags: [health]
+      operationId: getReadyz
+      security: []
+      summary: Readiness probe
+      description: Returns 200 only after DB, event bus, and pack index are ready.
+      x-status: todo
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      summary: Local credential login
+      x-status: todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      value:
+                        type: object
+                        properties:
+                          accessToken:  { type: string }
+                          refreshToken: { type: string }
+                          expiresAt:    { type: string, format: date-time }
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentSession
+      summary: Current session info
+      x-status: todo
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/tenants/current:
+    get:
+      tags: [tenant]
+      operationId: getCurrentTenant
+      summary: Current tenant
+      x-status: todo
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/robots:
+    get:
+      tags: [robot]
+      operationId: listRobots
+      summary: List robots
+      x-status: todo
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Sort"
+        - { in: query, name: fleetId, schema: { type: string } }
+        - { in: query, name: tag,     schema: { type: string } }
+        - { in: query, name: q,       schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [robot]
+      operationId: createRobot
+      summary: Register a robot
+      x-status: todo
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/robots/{robotId}:
+    parameters:
+      - { in: path, name: robotId, required: true, schema: { type: string, pattern: "^ro_[A-Z0-9]+$" } }
+    get:
+      tags: [robot]
+      operationId: getRobot
+      summary: Get a robot
+      x-status: todo
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/scans:
+    get:
+      tags: [scan]
+      operationId: listScans
+      summary: List scan sessions
+      x-status: todo
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - { in: query, name: status,  schema: { type: string } }
+        - { in: query, name: fleetId, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [scan]
+      operationId: createScan
+      summary: Start a new scan session
+      x-status: todo
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/reports/{reportId}:verify:
+    post:
+      tags: [reporting]
+      operationId: verifyReport
+      summary: Verify the signature of a report
+      x-status: todo
+      parameters:
+        - { in: path, name: reportId, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/audit/head:
+    get:
+      tags: [audit]
+      operationId: getAuditHead
+      summary: Current hash-chain head
+      x-status: todo
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/audit/verify:
+    post:
+      tags: [audit]
+      operationId: verifyAuditChain
+      summary: Verify a range of the audit chain (external verifier)
+      x-status: todo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from: { type: string, format: date-time }
+                to:   { type: string, format: date-time }
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT issued by `/api/v1/auth/login` or OIDC/SAML callback
+    apiKeyAuth:
+      type: http
+      scheme: bearer
+      description: "API key in `Authorization: Bearer fg_live_...` form"
+
+  parameters:
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+    Cursor:
+      in: query
+      name: cursor
+      schema: { type: string }
+    Sort:
+      in: query
+      name: sort
+      description: "Field name; prefix with `-` for descending."
+      schema: { type: string }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      description: ULID or UUID. Same key within 24h returns the original response.
+      schema: { type: string, minLength: 16, maxLength: 64 }
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, degraded, unavailable] }
+
+    Meta:
+      type: object
+      required: [requestId]
+      properties:
+        requestId:     { type: string }
+        serverVersion: { type: string }
+        responseAt:    { type: string, format: date-time }
+
+    PageMeta:
+      type: object
+      properties:
+        nextCursor:  { type: string, nullable: true }
+        prevCursor:  { type: string, nullable: true }
+        approxTotal: { type: integer, minimum: 0 }
+
+    Envelope:
+      type: object
+      required: [ok]
+      properties:
+        ok:    { type: boolean, const: true }
+        value: {}
+        meta:  { $ref: "#/components/schemas/Meta" }
+
+    ErrorCategory:
+      type: string
+      enum:
+        - unauthenticated
+        - forbidden
+        - not_found
+        - conflict
+        - validation
+        - rate_limited
+        - upstream
+        - internal
+
+    Error:
+      type: object
+      required: [code, category, message]
+      properties:
+        code:     { type: string, description: "Dotted code (e.g. `robot.not_found`)" }
+        category: { $ref: "#/components/schemas/ErrorCategory" }
+        message:  { type: string }
+        target:
+          type: object
+          properties:
+            type: { type: string }
+            id:   { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+    ErrorEnvelope:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:    { type: boolean, const: false }
+        error: { $ref: "#/components/schemas/Error" }
+        meta:  { $ref: "#/components/schemas/Meta" }

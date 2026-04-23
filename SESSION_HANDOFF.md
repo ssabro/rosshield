@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-23 (D1~D6 결정 확정, 구현 미착수)_
+_마지막 업데이트: 2026-04-23 (Step 0.3 완료 — Go 부트스트랩 + OpenAPI v0.0.1 스켈레톤)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 0 — 스택·라이선스 결정 완료, 리포 부트스트랩 직전.** 설계서 13개 + D1~D6 결정 로그. 다음 단계는 Go 모듈/CI 스켈레톤/OpenAPI 1.0 초안.
+**Phase 0 — 구현 부트스트랩 완료.** 설계서 13개 + D1~D6 결정 + 코드네임 `rosshield` + Go 1.26 모듈 + `/healthz` 스텁(TDD 녹색) + OpenAPI 3.1 스켈레톤. 다음은 Phase 1 백로그 분해(Step 0.4) 또는 Phase 1 착수.
 
 ## 이 리포의 기원
 
@@ -76,15 +76,15 @@ fleetguard/
 
 ## 진행 중 선택지
 
-D1~D6 결정 확정됨(2026-04-23). 다음 세션은 **리포 부트스트랩(Step 0.2)**으로 시작:
+Step 0.1~0.3 완료(D1~D6 결정 / Go 부트스트랩 / OpenAPI 스켈레톤). 다음 후보:
 
-1. **리포 부트스트랩** — `go.mod`, `.gitignore` 보강, `LICENSE`(Apache-2.0 코어), `.github/workflows/ci.yml`, `Makefile`, `depguard` 도메인 경계 린트.
-2. **OpenAPI 1.0 스켈레톤** — `05-*` §5.5 기반 `openapi/openapi.yaml`. 엔벨로프·에러 구조·버저닝 규약, `oapi-codegen` 파이프라인.
-3. **Phase 1 백로그 분해** — `11-*` Phase 1 체크리스트를 TDD 단위로 나누어 `docs/design/phase1-backlog.md`에 기록.
-4. **벤치마크 팩 변환 도구(`pack-tools`) 설계** — `07-*` §7.13, `12-*` §12.4 기반. 기존 `nrobotcheck` CSV/JSON을 새 팩 포맷으로.
-5. **스택 스파이크 (옵션)** — D2 확정 전이라면 필요했을 과정. 이미 Go 확정했으니 생략 권장.
+1. **Step 0.4 — Phase 1 백로그 분해** — `11-*` Phase 1 체크리스트를 TDD 단위로 `docs/design/phase1-backlog.md`에 기록. 이후 Phase 1 착수의 백본.
+2. **Phase 1 바로 착수** — Platform L1부터 (Storage·EventBus·Logger 순) TDD로 쌓기. 백로그 없이 즉흥.
+3. **OpenAPI 코드 생성 파이프라인 (Step 0.3-β)** — `oapi-codegen` 설치·Makefile 연동·spectral 린트 CI 추가. Phase 1 개발 속도를 위한 선행 투자.
+4. **벤치마크 팩 변환 도구(`pack-tools`) 설계** — `07-*` §7.13, `12-*` §12.4 기반. `nrobotcheck` CSV/JSON → 새 팩 포맷.
+5. **리포 GitHub 호스팅 세팅** — D6 결정대로 GitHub private 리포 생성, `git remote add origin`, 첫 push. (Phase 1 exit 이후 public 전환.)
 
-**권장 순서**: 1 → 2 → 3.
+**권장 순서**: 1 → 3 → 2. 백로그 → 도구 체인 보강 → 실제 구현.
 
 ## 결정 로그
 
