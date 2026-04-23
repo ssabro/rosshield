@@ -40,6 +40,10 @@
 
 - 2026-04-23 — `openapi/openapi.yaml` v0.0.1 (OpenAPI 3.1) — 엔벨로프(`Envelope`/`ErrorEnvelope`) + 8-카테고리 `ErrorCategory` + `Meta`/`PageMeta` + 공통 파라미터(`Limit`/`Cursor`/`Sort`/`IdempotencyKey`) + 보안 스키마(`bearerAuth`/`apiKeyAuth`). 대표 경로 11종(`/healthz`, `/readyz`, `/api/v1/auth/{login,me}`, `/api/v1/tenants/current`, `/api/v1/robots{,/{id}}`, `/api/v1/scans`, `/api/v1/reports/{id}:verify`, `/api/v1/audit/{head,verify}`) 스텁. 미구현 경로는 `x-status: todo`로 표기. 설계서 §5.12의 split 구조는 파일 크기 400줄 근처 진입 시 분할 예정.
 
+### Added (Step 0.4 — Phase 1 백로그)
+
+- 2026-04-23 — `docs/design/phase1-backlog.md` Draft v0.1 — Phase 1(Core MVP) 체크리스트를 에픽 12개(E1 Platform L1 → E2 Audit → E3 Tenant/Auth → E4 Pack 시스템 → E5 Robot/Fleet → E6 SSH+Scan → E7 Evidence → E8 Reporting → E9 CLI → E10 Web UI → E11 Compose 번들 → E12 pack-tools) × TDD 단위 태스크로 분해. 의존 그래프, 에픽별 인터페이스·대표 테스트·Exit 기준·설계 참조·기간 추정(총 11.5주 + 0.5주 범퍼 = 12주) 포함. 설계 문서 인덱스 README에 Part VII 섹션으로 등록.
+
 ### Decisions
 
 - 2026-04-23 — 리포를 `D:\robot\dev\nrobotcheck` 전신과 분리해 `D:\robot\dev\fleetguard`로 신설

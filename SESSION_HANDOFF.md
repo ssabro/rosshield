@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-23 (Step 0.3 완료 — Go 부트스트랩 + OpenAPI v0.0.1 스켈레톤)_
+_마지막 업데이트: 2026-04-23 (Step 0.4 완료 — Phase 1 백로그 분해)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 0 — 구현 부트스트랩 완료.** 설계서 13개 + D1~D6 결정 + 코드네임 `rosshield` + Go 1.26 모듈 + `/healthz` 스텁(TDD 녹색) + OpenAPI 3.1 스켈레톤. 다음은 Phase 1 백로그 분해(Step 0.4) 또는 Phase 1 착수.
+**Phase 0 Exit 조건 충족.** 설계서 13개 + Phase 1 백로그 + D1~D6 결정 + 코드네임 `rosshield` + Go 1.26 모듈 + `/healthz` 스텁(TDD 녹색) + OpenAPI 3.1 스켈레톤. 다음은 Phase 1 착수(E1 Platform L1) 또는 GitHub 원격 세팅.
 
 ## 이 리포의 기원
 
@@ -76,15 +76,15 @@ fleetguard/
 
 ## 진행 중 선택지
 
-Step 0.1~0.3 완료(D1~D6 결정 / Go 부트스트랩 / OpenAPI 스켈레톤). 다음 후보:
+Step 0.1~0.4 완료. Phase 0 Exit 조건 충족. 다음 후보:
 
-1. **Step 0.4 — Phase 1 백로그 분해** — `11-*` Phase 1 체크리스트를 TDD 단위로 `docs/design/phase1-backlog.md`에 기록. 이후 Phase 1 착수의 백본.
-2. **Phase 1 바로 착수** — Platform L1부터 (Storage·EventBus·Logger 순) TDD로 쌓기. 백로그 없이 즉흥.
-3. **OpenAPI 코드 생성 파이프라인 (Step 0.3-β)** — `oapi-codegen` 설치·Makefile 연동·spectral 린트 CI 추가. Phase 1 개발 속도를 위한 선행 투자.
-4. **벤치마크 팩 변환 도구(`pack-tools`) 설계** — `07-*` §7.13, `12-*` §12.4 기반. `nrobotcheck` CSV/JSON → 새 팩 포맷.
-5. **리포 GitHub 호스팅 세팅** — D6 결정대로 GitHub private 리포 생성, `git remote add origin`, 첫 push. (Phase 1 exit 이후 public 전환.)
+1. **GitHub private 리포 세팅** (권장 선제) — D6대로 원격 생성 + `git remote add origin` + 첫 push. CI workflow 실제 동작 검증. Phase 1 첫 커밋 전에 해두면 모든 이후 커밋이 자동 검증됨.
+2. **Phase 1 E1 착수 — Platform L1** — `docs/design/phase1-backlog.md` E1 태스크(E1.T1~T9) TDD로 구현. Logger→Clock→IDGen→Storage→EventBus→Signer→Scheduler.
+3. **Step 0.3-β — OpenAPI 코드 생성 파이프라인** — `oapi-codegen` 설치·Makefile `openapi` 타깃 실구현·spectral 린트 CI. E9 API 핸들러 실장 전에 해두면 좋음. Phase 1 도중으로 미뤄도 무방.
+4. **depguard 도메인 경계 린트 설정** — `.golangci.yml`에 도메인 간 import 차단 규칙. Phase 1 E3 이후 도메인이 여럿 생기기 전에 세팅.
+5. **설계서 보강** — 특정 섹션(예: §08 intelligence 심화, §06 KEK/DEK 세부) 추가 확장.
 
-**권장 순서**: 1 → 3 → 2. 백로그 → 도구 체인 보강 → 실제 구현.
+**권장 순서**: 1 → 2. 원격 붙여 CI 녹색 확인 후 바로 Phase 1 E1 착수. 3·4는 E1 완료 후 E2 시작 전 간헐적으로.
 
 ## 결정 로그
 

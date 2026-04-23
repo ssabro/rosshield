@@ -68,6 +68,12 @@
 | 11 | [11-tech-stack-and-roadmap.md](./11-tech-stack-and-roadmap.md) | 언어·프레임워크 선택지, 권장안, Phase별 로드맵 |
 | 12 | [12-migration-and-non-goals.md](./12-migration-and-non-goals.md) | nrobotcheck 자산 재활용 전략, 비목표, 주요 리스크 |
 
+### Part VII · 실행 백로그 (살아있는 문서)
+
+| 문서 | 내용 |
+|---|---|
+| [phase1-backlog.md](./phase1-backlog.md) | Phase 1(Core MVP) 에픽 12개 × TDD 태스크 분해, 의존 그래프, Exit 기준 |
+
 ---
 
 ## 한 눈에 보는 설계 요약 (TL;DR)
