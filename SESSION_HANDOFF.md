@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-23 (Phase 0 전면 종료 — 원격 `ssabro/rosshield` PRIVATE + CI green)_
+_마지막 업데이트: 2026-04-23 (E1.T1 Logger 완료 + R1·R2 사전 설계 노트 확보)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 0 완료, Phase 1 착수 대기.** 설계서 13종 + Phase 1 백로그 + D1~D6 결정 + 코드네임 `rosshield` + Go 1.26 모듈 + `/healthz` TDD 스텁 + OpenAPI 3.1 스켈레톤 + **GitHub origin 연결 + CI workflow green(vet·build·test·golangci-lint v2)**. 다음은 Phase 1 E1(Platform L1) TDD 착수.
+**Phase 1 E1 진행 중 — T1 완료, T2~T9 대기.** `internal/platform/logger/` 구조화 로그(ctx 기반 tenantId·requestId·traceId 자동 첨부, 5 tests pass). 원격 9개 커밋, CI green. `docs/design/notes/`에 E1.T4/T5(Storage)·E1.T6/T7(EventBus) 사전 설계 노트 2건. 다음 세션 착수 후보: E1.T2 Clock 또는 노트 "미해결 질문" 합의 미팅.
 
 ## 원격 저장소
 
@@ -96,20 +96,24 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-Phase 0 완전 종료 + 원격 연결 + CI green. 다음 세션이 고를 경로:
+E1.T1 완료 + R1·R2 사전 설계 노트 확보 상태에서 재개 후보:
 
-1. **Phase 1 E1 착수 — Platform L1** (권장). `docs/design/phase1-backlog.md` E1.T1(Logger 구조화 필드)부터 TDD Red→Green. 이후 E1.T2~T9(Clock·IDGen·Storage·EventBus·Signer·Scheduler) 순차.
-2. **Step 0.3-β — OpenAPI 코드 생성 파이프라인** — `oapi-codegen` 설치, `Makefile openapi` 타깃 실구현(`oapi-codegen -package api -generate types,chi-server openapi/openapi.yaml`), spectral 린트 CI. E9 API 실장 전 한 번만 하면 반복 이득.
-3. **depguard 도메인 경계 린트 설정** — `.golangci.yml`에 L1→L2→L3→L4 계층·도메인 간 import 차단 규칙. Phase 1 E3 전에 깔아두면 경계 위반이 린트로 즉시 차단.
-4. **설계서 보강** — §08 intelligence 심화, §06 KEK/DEK 세부, §07 SCAP 변환 경로 등 특정 섹션 추가 확장.
-5. **휴식 / 세션 종료** — 자연스러운 break point.
+1. **E1.T2 Clock 착수** (권장). `internal/platform/clock/` Clock 인터페이스 + FakeClock. 노트 불필요, 약 30~60분 사이클. TDD Red→Green→커밋·push→CI 확인.
+2. **R1·R2 노트의 "미해결 질문" 결정 미팅** — 각각 7건씩 총 14건. E1.T4(Storage)·E1.T6(EventBus) 착수 전 합의 권장. 주요 항목:
+   - R1 Storage: `sqlc` 도입 타이밍, 부트스트랩 경로 TenantID 누락 허용, PG audit 정책(조용한 무시 vs 예외), `ReadOnly` Tx 필요성, 마이그레이션 실패 시 부팅 정책, DB 파일 멀티프로세스 락, SQLCipher 스코프.
+   - R2 EventBus: Outbox 시점, Publish 반환 의미, Topic 네이밍 컨벤션, Handler error 처리(재시도·DLQ), Event 영속 주체, Wildcard 지원, Correlation ID 생성 주체.
+3. **E1.T3 IDGen 착수** — ULID Crockford base32 + prefix 발행. 짧고 독립적.
+4. **depguard 도메인 경계 린트 설정** — `.golangci.yml`에 계층·도메인 간 import 차단. E3 진입 전 세팅 권장.
+5. **Step 0.3-β — OpenAPI 코드 생성 파이프라인** — `oapi-codegen` 도입. E9 API 실장 전 아무 때나 가능.
 
-**권장 순서**: 1을 전체 흐름의 중심에 두고, 3은 1의 중간(E1~E2 사이)에 삽입, 2는 1이 E8 근처 진행될 때 정식 도입.
+**권장 순서**: 1(Clock) → 3(IDGen) → 2(미해결 질문 결정) → E1.T4 Storage. E1.T2/T3는 독립적이고 작아서 빠르게 끝내고, 그 다음 미해결 질문을 합의한 뒤 Storage/EventBus로 진입.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-23 · E1 사전 설계 노트 2건**: 에이전트 병렬 리서치로 `docs/design/notes/e1-storage-deepdive.md` (502줄) + `docs/design/notes/e1-eventbus-deepdive.md` (444줄) 생성. 메인 단일 스레드로 E1.T1 Logger 구현하는 동안 백그라운드 확보. 파일 충돌 0, trunk 위배 0. 각 노트에 미해결 질문 7건 포함 — E1.T4/T6 착수 전 합의 필요. 커밋 `8517bcb`.
+- **2026-04-23 · E1.T1 Logger 완료**: `internal/platform/logger/` context-aware slog 래퍼. TDD 5건 pass, CI green in 30s. 커밋 `b67b2c1`.
 - **2026-04-23 · Phase 0 종료**: GitHub 원격 `ssabro/rosshield` (PRIVATE) 생성·연결·첫 push. CI workflow 2회 실행(첫 회 실패 → golangci-lint/Go 버전 충돌 수정 → 두 번째 회 green in 1m18s). 커밋 7개 공개.
 - **2026-04-23 · Step 0.4**: Phase 1 백로그 `docs/design/phase1-backlog.md` (에픽 12 × TDD 태스크, 12주 추정).
 - **2026-04-23 · Step 0.3**: OpenAPI 3.1 `openapi/openapi.yaml` v0.0.1 스켈레톤 — 엔벨로프·에러·공통 컴포넌트·대표 경로 11종.
