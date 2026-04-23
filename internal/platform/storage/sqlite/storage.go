@@ -9,7 +9,8 @@ import (
 )
 
 type sqliteStorage struct {
-	db *sql.DB
+	db       *sql.DB
+	lockPath string
 }
 
 // Open은 SQLite 백엔드 Storage를 엽니다. PRAGMA는 매 connection에 자동 적용됩니다.
@@ -33,7 +34,7 @@ func Open(cfg storage.Config) (storage.Storage, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("sqlite.Open: ping: %w", err)
 	}
-	return &sqliteStorage{db: db}, nil
+	return &sqliteStorage{db: db, lockPath: cfg.DSN + ".migration.lock"}, nil
 }
 
 func (s *sqliteStorage) Tx(ctx context.Context, fn func(ctx context.Context, tx storage.Tx) error) error {
@@ -74,9 +75,9 @@ func (s *sqliteStorage) runTx(ctx context.Context, tenantID storage.TenantID, fn
 	return fn(ctx, tx)
 }
 
-// Migrate는 T4에서는 stub. T5에서 goose 통합 예정.
+// Migrate는 embed된 SQLite 마이그레이션을 적용합니다. 실제 구현은 migrate.go.
 func (s *sqliteStorage) Migrate(ctx context.Context) error {
-	return nil
+	return s.migrate(ctx)
 }
 
 func (s *sqliteStorage) Close() error {
