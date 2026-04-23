@@ -128,7 +128,7 @@ type Scheduler interface {
 | E1.T5 ✅ | `TestStorageMigrateIdempotent` — 같은 마이그레이션 2번 적용해도 OK | goose v3 + embed.FS + flock OS lock (commit `980d6f9`) |
 | E1.T6 ✅ | `TestEventBusInProcPublishAndSubscribe` — publish→subscriber 수신, causationId 보존 | `eventbus/inproc`: per-sub channel + M2 worker (commit `d97ff1f`) |
 | E1.T7 ✅ | `TestEventBusHandlerErrorIsolated` — 한 구독자 패닉이 다른 구독자·publish에 영향 없음 | `defer recover()` + error log (commit `d97ff1f`) |
-| E1.T8 | `TestSignerEd25519SignVerifyRoundtrip` + `TestSignerRejectsTamperedPayload` | `signer/soft`: `crypto/ed25519` + 메모리 키 (파일 저장은 E2에서) |
+| E1.T8 ✅ | `TestSignerEd25519SignVerifyRoundtrip` + `TestSignerRejectsTamperedPayload` | `signer/soft`: `crypto/ed25519` + 메모리 키 (commit `950cd3a`) |
 | E1.T9 | `TestSchedulerFiresAtSpec` — `@every 1s` spec 2회 발화 확인 (Clock 모의) | `scheduler/robfig`: `robfig/cron/v3` |
 
 ### Exit 기준
