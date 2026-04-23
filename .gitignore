@@ -1,0 +1,131 @@
+# ─── OS ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# ─── IDE ────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.iml
+
+# ─── Node / TypeScript ──────────────────────────────────
+node_modules/
+dist/
+build/
+out/
+.next/
+.turbo/
+.nuxt/
+.vite/
+.parcel-cache/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp.*
+
+# ─── Go ─────────────────────────────────────────────────
+/bin/
+/pkg/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.prof
+*.out
+vendor/
+cover.out
+coverage.html
+
+# ─── Tauri ──────────────────────────────────────────────
+src-tauri/target/
+src-tauri/WixTools/
+src-tauri/Cargo.lock
+
+# ─── Rust (Tauri or others) ─────────────────────────────
+target/
+**/*.rs.bk
+Cargo.lock
+
+# ─── Environment ────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# ─── Secrets & Keys ─────────────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+!*.pub.pem
+!*.pub.key
+*.sealed
+secrets/
+private/
+*.gpg
+
+# ─── Database ───────────────────────────────────────────
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# ─── Build artifacts ────────────────────────────────────
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.whl
+
+# ─── OpenAPI generated ──────────────────────────────────
+openapi.bundle.json
+openapi.bundle.yaml
+
+# ─── Packs (local builds) ───────────────────────────────
+packs/*.pack
+packs/*.pack.tar.gz
+packs/**/SIGNATURE
+
+# ─── Logs ───────────────────────────────────────────────
+logs/
+*.log
+
+# ─── Temporary ──────────────────────────────────────────
+tmp/
+temp/
+.cache/
+
+# ─── Docker ─────────────────────────────────────────────
+docker-compose.override.yml
+
+# ─── Ansible/Terraform (향후) ───────────────────────────
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# ─── Documentation builds ───────────────────────────────
+docs/_build/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# ─── Local scratch ──────────────────────────────────────
+scratch/
+.local/
