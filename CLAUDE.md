@@ -145,16 +145,32 @@ docs/design/
 - 브랜치 생성 (trunk-based)
 - Co-Author 라인 추가
 
-## 명령어 (결정 후 채워질 자리)
+## 명령어
+
+Go가 PATH에 없을 수 있음 — 이 경우 PowerShell에서:
+`$env:Path = "C:\Program Files\Go\bin;$env:Path"`
+
+### Make 타깃
 
 ```bash
-# 스택 결정 후 이 섹션을 업데이트
-# 예시:
-#   make build       # 백엔드 빌드
-#   make test        # 전체 테스트
-#   make dev         # 개발 서버
-#   make lint        # 린트
-#   make openapi     # OpenAPI 번들 생성
+make build        # go build -o bin/rosshield-server ./cmd/rosshield-server
+make test         # go test -count=1 ./...           (Windows에서 -race 없이)
+make test-race    # go test -race -count=1 ./...     (Linux/CGO 필요)
+make vet          # go vet ./...
+make fmt          # gofmt -l -w .
+make tidy         # go mod tidy
+make lint         # golangci-lint run ./...           (설치 필요)
+make openapi      # (TODO: Step 0.3-β 또는 E9에서 실구현)
+make ci           # vet + test + build
+make clean        # rm -rf bin/
+```
+
+### 자주 쓰는 gh 명령
+
+```bash
+gh run list --repo ssabro/rosshield --limit 5
+gh run watch <id> --repo ssabro/rosshield --exit-status --compact
+gh repo view ssabro/rosshield --json url,visibility
 ```
 
 ## 참조 — 전신 프로젝트
