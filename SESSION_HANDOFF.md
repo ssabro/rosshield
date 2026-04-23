@@ -66,7 +66,7 @@ fleetguard/
 
 | # | 항목 | 결정 | 참조 | 상태 |
 |---|---|---|---|---|
-| D1 | 제품명·도메인·상표 | placeholder `FleetGuard` 유지, Phase 1 후반 최종 확정 | `docs/design/00-*` | 🟡 연기 |
+| D1 | 제품명·도메인·상표 | 코드네임 `rosshield` 확정, 제품 브랜드는 `<ProductName>` placeholder → Phase 1 후반 확정 | `docs/design/00-*` | 🟡 연기 (코드네임은 ✅) |
 | D2 | 백엔드 언어 | **Go** (백엔드) + **TypeScript** (프론트) | `docs/design/11-*` §11.2 | ✅ |
 | D3 | 데스크톱 셸 | **Tauri 2.x** (Electron fallback 보류) | `docs/design/11-*` §11.8 | ✅ |
 | D4 | 어플라이언스 OS | 보류, 기본 가정 Ubuntu Core 24, Phase 3 exit 재확정 | `docs/design/11-*` §11.9 | 🟡 연기 |
@@ -95,7 +95,7 @@ D1~D6 결정 확정됨(2026-04-23). 다음 세션은 **리포 부트스트랩(St
 - **2026-04-23 · D4 연기됨**: 어플라이언스 OS는 Phase 3 exit 시점에 최종 확정. 그때까지 기본 가정은 **Ubuntu Core 24**.
 - **2026-04-23 · D3 결정됨**: 데스크톱 셸 `Tauri 2.x`. Go 백엔드는 자식 프로세스로, Tauri는 얇은 WebView 껍질. Electron은 긴급 출시 fallback으로만 보류.
 - **2026-04-23 · D2 결정됨**: 백엔드 `Go`, 프론트 `TypeScript`. 근거: 단일 정적 바이너리, `crypto/ssh`·`ed25519` 성숙, 3종 배포 natural fit, P3/P7 원칙 부합. `nrobotcheck`의 Electron·native 모듈 운영 부담 회피.
-- **2026-04-23 · D1 연기됨**: 제품명 확정은 Phase 1 후반으로 연기. 코드 네임스페이스는 `fleetguard`/`fg` 사용. 법무·도메인·상표 조사는 유료 고객 접촉 직전 병행.
+- **2026-04-23 · D1 부분 확정**: 초기 가칭 "FleetGuard"는 Cummins(엔진 필터 1950~) 및 Attestor.ai·TrustArc 등 보안 감사 도메인과 상표 충돌로 폐기. Google 검색으로 후보 5개(robocheck·rosshield·scanroot·attestbot·attestor) 충돌 여부 검증 후 **코드 네임스페이스 `rosshield` 확정**(ROS2 도메인 연상 + 충돌 없음). 제품 브랜드는 `<ProductName>` placeholder로 유지 → Phase 1 후반 법무·도메인·상표 조사와 병행 확정.
 - **2026-04-23**: 리포를 `D:\robot\dev\fleetguard`로 신설. 전신 `nrobotcheck`에서 설계·개념 승계, 코드는 새로 작성.
 - **2026-04-23**: 13개 설계서 초안 완성(Draft v0.1).
 - **2026-04-23**: 상업화 방향 — 어플라이언스 단독 진화 X, 헤드리스 코어 + 배포 3종(데스크톱·온프렘·어플라이언스 이미지). 근거는 전신 리포 `docs/COMMERCIALIZATION_STRATEGY.md`.

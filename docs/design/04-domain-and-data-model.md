@@ -406,7 +406,7 @@ CREATE TRIGGER audit_entries_no_delete BEFORE DELETE ON audit_entries
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://fleetguard.dev/schemas/ScanResult.json",
+  "$id": "https://rosshield.dev/schemas/ScanResult.json",
   "type": "object",
   "required": ["id", "sessionId", "robotId", "checkId", "outcome",
                "evidenceRefs", "startedAt", "completedAt"],

@@ -231,7 +231,7 @@ FrameworkSnapshot (세션별 실행 결과)
 ## 8.12 매핑 포맷
 
 ```yaml
-apiVersion: fleetguard.dev/mapping/v1
+apiVersion: rosshield.dev/mapping/v1
 kind: ControlMapping
 metadata:
   framework: iso27001

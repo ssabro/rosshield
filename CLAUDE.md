@@ -8,7 +8,7 @@
 
 ## 프로젝트 개요
 
-**이름(가칭)**: FleetGuard — 확정 전 placeholder. 결정 후 이 문서와 설계서에서 `<ProductName>` 치환.
+**이름**: 제품 브랜드는 미확정(D1 연기). 문서·UI의 제품명 맥락은 `<ProductName>` placeholder 사용. **코드 네임스페이스는 `rosshield`로 확정**(2026-04-23) — Go 모듈 `github.com/ssabro/rosshield`, 내부 패키지·설정 경로·YAML apiVersion 네임스페이스. 초기 가칭 "FleetGuard"는 Cummins·Attestor.ai 등과 상표 충돌로 폐기.
 
 **요약**: ROS2 로봇 플릿 보안 감사 플랫폼. 감사인이 받아들이는 결정론적 증거와 서명된 리포트를 생성하는 상용 B2B 제품. 설계는 `nrobotcheck`(전신)의 개념·자산을 차용하되 **완전히 새로운 코드베이스**로 출발한다.
 
@@ -57,7 +57,7 @@ docs/design/
 
 | # | 항목 | 상태 | 결정 | 참조 |
 |---|---|---|---|---|
-| D1 | 제품명·도메인·상표 | 🟡 연기 | placeholder `FleetGuard`/`fg` 유지 → Phase 1 후반 확정 | `00-*` |
+| D1 | 제품명·도메인·상표 | 🟡 연기 | 코드네임 `rosshield` 확정, 제품 브랜드는 `<ProductName>` placeholder → Phase 1 후반 확정 | `00-*` |
 | D2 | 백엔드 언어 | ✅ 2026-04-23 | **Go** + TS 프론트 | `11-*` §11.2 |
 | D3 | 데스크톱 셸 | ✅ 2026-04-23 | **Tauri 2.x** (Electron은 fallback 보류) | `11-*` §11.8 |
 | D4 | 어플라이언스 OS | 🟡 연기 | 기본 가정 Ubuntu Core 24, Phase 3 exit 재확정 | `11-*` §11.9 |

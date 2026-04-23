@@ -70,7 +70,7 @@ cis-ubuntu-24.04-v1.2.3.pack/
 ### `pack.yaml`
 
 ```yaml
-apiVersion: fleetguard.dev/pack/v1
+apiVersion: rosshield.dev/pack/v1
 kind: BenchmarkPack
 metadata:
   id: cis-ubuntu-24.04
@@ -81,18 +81,18 @@ metadata:
     os: ["ubuntu-24.04"]
     rosDistro: ["jazzy", "any"]
   license: "CC-BY-NC-ND-4.0"
-  publisher: "Fleetguard, Inc."
+  publisher: "<ProductName>, Inc."
   publishedAt: "2026-03-01T00:00:00Z"
 signature:
   algorithm: "ed25519"
-  signerKeyId: "fleetguard-pack-2026"
+  signerKeyId: "rosshield-pack-2026"
   signature: "base64..."
 ```
 
 ### Check 정의 (`checks/1.1.1.1-fs-cramfs.yaml`)
 
 ```yaml
-apiVersion: fleetguard.dev/check/v1
+apiVersion: rosshield.dev/check/v1
 kind: CheckDefinition
 metadata:
   code: CIS-1.1.1.1
@@ -199,7 +199,7 @@ spec:
 ### Self-Test 케이스
 
 ```yaml
-apiVersion: fleetguard.dev/selftest/v1
+apiVersion: rosshield.dev/selftest/v1
 kind: CheckSelfTestCase
 metadata:
   checkCode: CIS-1.1.1.1
