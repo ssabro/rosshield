@@ -142,6 +142,10 @@ type Scheduler interface {
 
 §03.1, §03.4 시작 시퀀스, §03.12 동시성, §11.3 Go 라이브러리 선택.
 
+**사전 설계 노트** (E1.T4/T5, E1.T6/T7 착수 전 필독):
+- [`notes/e1-storage-deepdive.md`](./notes/e1-storage-deepdive.md) — 드라이버 선택, PRAGMA, 마이그레이션, Tx 추상, 테넌시 격리, 테스트 전략
+- [`notes/e1-eventbus-deepdive.md`](./notes/e1-eventbus-deepdive.md) — 채널 모델, backpressure, panic 격리, audit 통합, future NATS 호환
+
 ---
 
 ## E2. Audit 도메인 — 해시 체인 (3일)

@@ -44,6 +44,15 @@
 
 - 2026-04-23 — `docs/design/phase1-backlog.md` Draft v0.1 — Phase 1(Core MVP) 체크리스트를 에픽 12개(E1 Platform L1 → E2 Audit → E3 Tenant/Auth → E4 Pack 시스템 → E5 Robot/Fleet → E6 SSH+Scan → E7 Evidence → E8 Reporting → E9 CLI → E10 Web UI → E11 Compose 번들 → E12 pack-tools) × TDD 단위 태스크로 분해. 의존 그래프, 에픽별 인터페이스·대표 테스트·Exit 기준·설계 참조·기간 추정(총 11.5주 + 0.5주 범퍼 = 12주) 포함. 설계 문서 인덱스 README에 Part VII 섹션으로 등록.
 
+### Added (Phase 1 — 구현 착수)
+
+- 2026-04-23 — **E1.T1 Logger** (`internal/platform/logger/`) — `context.Context` 기반 구조화 로그. `slog.Handler` 래퍼가 `tenantId`/`requestId`/`traceId`를 자동 첨부. `WithTenantID`/`WithRequestID`/`WithTraceID` 주입 API + 동명 추출 API. TDD 5건(fields 실림, 미설정 필드 생략, 추출 헬퍼, 빈 ctx 추출, `With()` 후 ctx 필드 유지) 모두 pass. CI green.
+
+### Added (Phase 1 — 사전 설계 노트)
+
+- 2026-04-23 — `docs/design/notes/e1-storage-deepdive.md` (502줄) — E1.T4/T5 Storage 레이어 사전 설계. 드라이버 선택(`modernc.org/sqlite` 채택, 단일 정적 바이너리 원칙 정합), PRAGMA 고정값, SQLite↔PG 공존 전략(런타임 config + 분리 마이그레이션), 마이그레이션 툴(`pressly/goose`), Tx 함수형 API, Audit append-only 트리거, 테넌시 로우 레벨 격리, 테스트 전략, Go 인터페이스 스케치(`Storage`/`Tx`/`Repository[T,ID]`), E1.T4 착수 전 결정 필요 7건.
+- 2026-04-23 — `docs/design/notes/e1-eventbus-deepdive.md` (444줄) — E1.T6/T7 EventBus 사전 설계. 아키텍처(channel-per-subscriber fan-out), 구독 lifecycle, goroutine 모델, backpressure(기본 DropOldest+256, audit Block+1024 override), panic 격리, 이벤트 envelope(§3.6 정합), correlation/causation ctx 전파, **audit 통합 후보 B 추천**(명시 `audit.Append()` + 커밋-후-퍼블리시 + outbox), 테스트 synchronous drain, NATS/Redis future compat interface 경계, Go 인터페이스 스케치, E1.T6 착수 전 결정 필요 7건.
+
 ### Decisions
 
 - 2026-04-23 — 리포를 `D:\robot\dev\nrobotcheck` 전신과 분리해 `D:\robot\dev\fleetguard`로 신설

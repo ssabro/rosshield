@@ -73,6 +73,7 @@
 | 문서 | 내용 |
 |---|---|
 | [phase1-backlog.md](./phase1-backlog.md) | Phase 1(Core MVP) 에픽 12개 × TDD 태스크 분해, 의존 그래프, Exit 기준 |
+| [notes/](./notes/) | 에픽별 사전 설계 노트 — `e1-storage-deepdive.md`, `e1-eventbus-deepdive.md` (E1.T4~T7 구현 전 참고) |
 
 ---
 
