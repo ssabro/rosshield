@@ -121,8 +121,8 @@ type Scheduler interface {
 
 | ID | 테스트 (Red) | 최소 구현 (Green) |
 |---|---|---|
-| E1.T1 | `TestSlogJSONIncludesContextFields` — `tenantId`·`requestId`·`traceId`가 로그에 실림 | `internal/platform/logger`: `slog.JSONHandler` + `WithContext` wrapper |
-| E1.T2 | `TestClockInjectableFake` — test에서 고정 시간 주입 | `Clock` 인터페이스 + `FakeClock` |
+| E1.T1 ✅ | `TestSlogJSONIncludesContextFields` — `tenantId`·`requestId`·`traceId`가 로그에 실림 | `internal/platform/logger`: `slog.JSONHandler` + `WithContext` wrapper (commit `b67b2c1`) |
+| E1.T2 ✅ | `TestClockInjectableFake` — test에서 고정 시간 주입 | `Clock` 인터페이스 + `FakeClock` (commit `d9ee1c1`) |
 | E1.T3 | `TestIDGenPrefixAndLength` — `ro_`·`ss_`·`au_` 접두사 + Crockford base32 26자 | `idgen.ULID` |
 | E1.T4 | `TestStorageTxCommitAndRollback` — commit 후 조회·rollback 후 미존재 | `storage/sqlite`: `modernc.org/sqlite` + `database/sql` Tx wrapper |
 | E1.T5 | `TestStorageMigrateIdempotent` — 같은 마이그레이션 2번 적용해도 OK | 간단 schema_migrations 테이블 |
