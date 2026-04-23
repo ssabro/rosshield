@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-23 (E1.T8 Signer 완료)_
+_마지막 업데이트: 2026-04-23 (E1.T9 Scheduler 완료 — **E1 9/9 태스크 완료**)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 1 E1 진행 중 — T1~T8 완료, T9만 대기.** `internal/platform/signer/` 인터페이스 + `soft/` Ed25519 메모리 키 구현 (stdlib `crypto/ed25519`만 사용, 외부 dep 0건). KeyID = `key_<sha256(publicKey)[:8] hex>`. 7 tests pass(roundtrip·payload tamper·sig tamper·short sig·KeyID 안정성·외부 검증 일치·인스턴스 간 분리). 원격 21개 커밋, CI green in 37s. 다음 세션 착수 후보: E1.T9 Scheduler 또는 E1 Exit bootstrap.
+**Phase 1 E1 9/9 태스크 완료.** Logger·Clock·IDGen·Storage·Migrate·EventBus·Signer·Scheduler 8개 platform 패키지 완성. 누적 테스트 ~50건 pass. 원격 23개 커밋, CI green. **남은 E1 작업: E1 Exit — `cmd/rosshield-server` bootstrap 시퀀스 (모든 platform 초기화 + healthz 검증)**. 그 다음 E2 Audit 도메인 진입.
 
 ## 원격 저장소
 
@@ -96,23 +96,25 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E1.T1~T8 완료 + R1·R2 14건 결정 합의 상태에서 재개 후보:
+E1 9/9 태스크 완료 상태에서 재개 후보:
 
-1. **E1.T9 Scheduler 착수** (권장). `robfig/cron/v3`. T2 Clock 의존(완료). 결정론적 테스트를 위해 Clock 인터페이스 확장 필요 가능성(현재 `Now()` 단일). ~60~90분 사이클. E1 마지막 태스크.
-2. **E1 Exit — `cmd/rosshield-server` bootstrap 시퀀스** — Logger·Clock·IDGen·Storage·Migrate·EventBus·Signer·Scheduler 전부 초기화 + healthz 헬스체크. T9 완료 후 진입. ~30~60분.
+1. **E1 Exit — `cmd/rosshield-server` bootstrap 시퀀스** (권장). Logger·Clock·IDGen·Storage(open)·Migrate·EventBus·Signer·Scheduler 전부 초기화 + healthz 검증. SQLite 파일 DB(`~/.rosshield/data.db`) 생성·첫 마이그레이션 적용 + 구조화 로그 stdout JSON 출력. ~30~60분. E1 공식 완료.
+2. **E2 Audit 도메인 진입** — 다음 에픽. 해시 체인·append-only 트리거·외부 검증 API. E1 Exit 없이도 직접 진입 가능하지만 E1 Exit 먼저가 위생.
 3. **depguard 도메인 경계 린트 설정** — `.golangci.yml`. R1-2 `Storage.Bootstrap` 강제(boot 경로에서만)에도 활용. E3 진입 전 권장.
 4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`.
-5. **CI에 `-race` 활성화** — Linux 러너에서 `go test -race`. EventBus 동시성·Scheduler 검증에 유용. 로컬은 Windows CGO 미설치 환경이라 CI에서만 검증.
+5. **CI에 `-race` 활성화** — Linux 러너에서 `go test -race`. EventBus 동시성·Scheduler 검증에 유용.
 6. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백. E2 audit 진입 시점에 추가.
 7. **Signer 파일 영속** — Ed25519 키를 `~/.rosshield/keys/`에 저장·로드. E2 audit checkpoint 진입 시 추가.
-8. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
+8. **Scheduler Clock 확장 (노선 B)** — Clock에 Sleep/After 추가, FakeClock 타이머 큐. 결정론적 스케줄러 테스트 필요해질 때.
+9. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
 
-**권장 순서**: 1(E1.T9) → 2(E1 Exit) → E2 진입 전 5(`-race`) + 3(depguard) 한 번씩 → E2 시작.
+**권장 순서**: 1(E1 Exit) → 5(`-race`) + 3(depguard) 한 번씩 → 2(E2 Audit) 진입.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-23 · E1.T9 Scheduler 완료 — E1 9/9 태스크 완성**: `internal/platform/scheduler/`(인터페이스 + errors) + `cronsched/`(robfig/cron/v3 어댑터). New()는 즉시 cron.Start(), Schedule(id, spec, job)/Cancel(id)/Close(ctx) 표면. panic·error 모두 logger 기록 후 다음 발화 진행. 노선 A 채택 — robfig/cron 내부 `time.Now()` 그대로 사용, Clock 확장은 보류(필요 시 노선 B로 swap). robfig/cron의 ConstantDelaySchedule이 second-precision으로 truncate하므로 sub-second 스펙(@every 100ms)은 미지원, 모든 발화 테스트는 `@every 1s`. 7 tests pass(FiresAtSpec·CancelStopsJob·DuplicateID·InvalidSpec·HandlesJobError·CancelNonExistent·HandlesJobPanic). 신규 dep: `robfig/cron/v3 v3.0.1`. 커밋 `0ebe38f`, CI green in 2m40s. **E1 모든 platform 패키지 완성** — 다음은 cmd/rosshield-server bootstrap 시퀀스 (E1 Exit) 또는 E2 Audit 도메인.
 - **2026-04-23 · E1.T8 Signer 완료**: `internal/platform/signer/`(인터페이스 + errors) + `soft/`(Ed25519 메모리 키). stdlib `crypto/ed25519`만 사용(외부 dep 0). `New()`는 매 호출 새 키 생성(영속은 E2 audit checkpoint에서 파일 로드 추가 예정). KeyID 형식 `key_<sha256(publicKey)[:8] hex>` (총 20자, 안정적). 7 tests pass(roundtrip·payload·sig·short·KeyID 형식·외부 검증 일치·인스턴스 분리). 표면: Sign(payload) → (sig, keyID, err) / Verify(payload, sig) / PublicKey() / KeyID(). 커밋 `950cd3a`, CI green in 37s.
 - **2026-04-23 · E1.T6/T7 EventBus 완료**: `internal/platform/eventbus/`(공개 표면) + `inproc/`(어댑터). 채널 모델 B(per-subscriber fan-out) + 고루틴 모델 M2(subscriber당 worker) + bounded channel + 두 정책(Block·DropOldest) + panic 격리(defer recover) + Drain 헬퍼. envelope auto-fill: ID(`evt_<ULID>`)·OccurredAt(Clock.Now)·CorrelationID(ctx 또는 `cor_<ULID>` 자동 생성). handler ctx에 CorrelationID + CausationID 자동 주입(R2 §7 계보 전파). R2 §13 체크리스트 8건 + 추가 2건(auto-correlation·empty-Type) = 10 tests pass. 모든 R2 결정 7건 반영(R2-1 outbox 없음·R2-2 수용 보장·R2-3 미강제 lint 후속·R2-4 기본 로그·R2-5 영속은 audit·R2-6 wildcard 미지원·R2-7 자동 생성). 외부 의존 없음(stdlib만, 내부 platform 3개 의존). 커밋 `d97ff1f`, CI green in 30s. -race 검증은 Linux CI에서 별도 활성화 필요(후속).
 - **2026-04-23 · E1.T5 Migrate 완료**: `internal/platform/storage/sqlite/migrate.go` + `internal/platform/storage/embed.go`(`//go:embed migrations`) + `migrations/sqlite/0001_platform_init.sql`. T4의 nil-stub Migrate를 실구현으로 교체. gofrs/flock OS file lock(`<dsn>.migration.lock`) 5초 timeout(R1-6) → goose v3 NewProvider(SQLite3) + Up. 첫 마이그레이션은 `platform_info` KV 테이블만 생성(도메인 테이블은 E2~E5에서 추가). 3 tests pass(스키마 적용·idempotent·외부 락 선점 시 ErrMigrationLocked). 신규 dep 2개(goose v3.27.0, flock v0.13.0) + transitive 3종. 커밋 `980d6f9`, CI green in 2m32s.
