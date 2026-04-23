@@ -177,14 +177,15 @@ import (
 
 // Storage는 트랜잭션 진입점. 도메인은 이것만 주입받는다.
 type Storage interface {
-    // Tx는 함수형 트랜잭션. fn이 error를 반환하면 롤백, nil이면 커밋.
-    // panic 시 복구 후 롤백 + re-panic.
+    // Tx는 도메인 트랜잭션. ctx에서 TenantID를 추출, 없으면 ErrTenantMissing.
+    // fn이 error를 반환하면 롤백, nil이면 커밋. panic 시 복구 후 롤백 + re-panic.
     Tx(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
 
-    // ReadOnly는 읽기 전용 트랜잭션. SQLite DEFERRED·PG READ ONLY.
-    ReadOnly(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
+    // Bootstrap은 tenant-less 트랜잭션. 마이그레이션·system seed 전용 진입점.
+    // 일반 도메인 코드에서 호출 금지(린트 차단). 부트 경로(server bootstrap, CLI admin 명령)에서만.
+    Bootstrap(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
 
-    // 마이그레이션은 부팅 경로에서만 호출.
+    // 마이그레이션은 부팅 경로에서만 호출. 실패 시 caller는 fail-fast (exit non-zero).
     Migrate(ctx context.Context) error
 
     Close() error
@@ -198,7 +199,8 @@ type Tx interface {
     QueryRow(ctx context.Context, query string, args ...any) *sql.Row
 
     // TenantID는 `§7` 테넌시 격리용 컨텍스트.
-    // 모든 Repository 쿼리는 이 값으로 WHERE 절을 채운다.
+    // Tx() 진입점은 항상 채워짐 (없으면 ErrTenantMissing). Bootstrap() 진입점은 빈 값.
+    // tenant-aware Repository 메서드는 빈 TenantID 호출 시 panic해야 한다 (Bootstrap 경로 보호).
     TenantID() TenantID
 }
 
@@ -295,19 +297,28 @@ DROP TRIGGER IF EXISTS audit_entries_no_update;
 DROP TRIGGER IF EXISTS audit_entries_no_delete;
 ```
 
-### PostgreSQL 대응 (`pg/0002_audit_rules.sql`)
+### PostgreSQL 대응 (`pg/0002_audit_triggers.sql`) — R1-3 결정 반영
 
 ```sql
 -- +goose Up
 CREATE TABLE audit_entries (/* 동일 컬럼 */);
 
-CREATE RULE audit_entries_no_update AS
-  ON UPDATE TO audit_entries DO INSTEAD NOTHING;
-CREATE RULE audit_entries_no_delete AS
-  ON DELETE TO audit_entries DO INSTEAD NOTHING;
+CREATE OR REPLACE FUNCTION audit_entries_block_mutation() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'audit log is immutable (§10.8)';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER audit_entries_no_update
+  BEFORE UPDATE ON audit_entries
+  FOR EACH ROW EXECUTE FUNCTION audit_entries_block_mutation();
+
+CREATE TRIGGER audit_entries_no_delete
+  BEFORE DELETE ON audit_entries
+  FOR EACH ROW EXECUTE FUNCTION audit_entries_block_mutation();
 ```
 
-- PG에서 `DO INSTEAD NOTHING`은 사일런트하게 삼킵니다. Phase 3에서는 **trigger + RAISE EXCEPTION**으로 교체해 오류를 반환하도록 강화할 예정(§10.8 "백업 복원" 시나리오 추적성).
+- R1-3 결정으로 `DO INSTEAD NOTHING`(조용한 무시)는 폐기. SQLite RAISE(ABORT)와 동일 의미론(에러 발생) 유지 — 백업 복원·악의적 수정 시도가 모두 명시적 실패로 드러납니다.
 
 ### 테스트 (E2.T4에서 구현)
 
@@ -428,8 +439,10 @@ type Config struct {
 }
 
 type Storage interface {
+    // Tx는 tenant-scoped 트랜잭션. ctx에 TenantID 없으면 ErrTenantMissing.
     Tx(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
-    ReadOnly(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
+    // Bootstrap은 tenant-less 트랜잭션. 마이그레이션·system seed 전용.
+    Bootstrap(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
     Migrate(ctx context.Context) error
     Close() error
 }
@@ -438,16 +451,18 @@ type Tx interface {
     Exec(ctx context.Context, query string, args ...any) (sql.Result, error)
     Query(ctx context.Context, query string, args ...any) (*sql.Rows, error)
     QueryRow(ctx context.Context, query string, args ...any) *sql.Row
+    // Tx() 진입점은 항상 채워짐. Bootstrap() 진입점은 빈 값 ("").
     TenantID() TenantID
 }
 
 // 공통 에러 — 드라이버별 에러를 도메인이 알 필요 없도록.
 var (
-    ErrNotFound      = errors.New("storage: not found")
-    ErrConflict      = errors.New("storage: conflict")    // UNIQUE 위반
-    ErrForeignKey    = errors.New("storage: foreign key violation")
-    ErrImmutable     = errors.New("storage: target is immutable")  // audit 트리거
-    ErrTenantMissing = errors.New("storage: tenant context missing")
+    ErrNotFound        = errors.New("storage: not found")
+    ErrConflict        = errors.New("storage: conflict")    // UNIQUE 위반
+    ErrForeignKey      = errors.New("storage: foreign key violation")
+    ErrImmutable       = errors.New("storage: target is immutable")  // audit 트리거
+    ErrTenantMissing   = errors.New("storage: tenant context missing")
+    ErrMigrationLocked = errors.New("storage: migration already in progress (file lock held)")
 )
 
 // Open은 Config 기반으로 Storage를 생성. 드라이버 선택은 여기서.
@@ -485,18 +500,20 @@ type Repo interface {
 
 ---
 
-## 10. 미해결 질문 (E1.T4 착수 전 결정 필요)
+## 10. 결정 사항 (2026-04-23 합의)
 
-1. **`sqlc` 도입 여부와 타이밍** — `§11.5`는 "ORM 피함 + `sqlc`"를 권장합니다. 본 문서의 `Repository[T]` 패턴은 `sqlc` 생성 코드와 합치시키려면 추가 설계가 필요합니다. E1에서 수작업 쿼리로 시작하고 E5(Robot)부터 `sqlc` 도입할지, 처음부터 `sqlc`로 할지 결정 필요.
+> Phase 1 E1.T4/T5 착수 전 7건 미해결 질문에 대한 결정. 이 결정들이 본 노트의 §5·§6·§9 본문과 충돌하면 본문이 갱신되었습니다. 변경 이력은 commit log 참조.
 
-2. **TenantID 주입 강제 수준** — 본 문서는 `ctx`에서 꺼내 `Tx`에 심는 방안을 제시했으나, Phase 1 부트스트랩 경로(마이그레이션 실행, 초기 admin seed)처럼 **tenant 없는 작업**이 존재합니다. `Tx.TenantID()`가 빈 값일 때의 동작(패닉·에러·"system" 특수값)을 합의 필요.
+1. **R1-1 · `sqlc` 도입 타이밍 = E5(Robot)부터** — E1~E4(Storage·Audit·Tenant·Pack)는 쿼리가 단순하므로 수작업이 빠릅니다. E5에서 도메인 CRUD 본격화 시 sqlc 도입해 학습·세팅 비용 회수. `Repository[T]` 제네릭 패턴은 E1~E4 동안 검증 후 sqlc-generated 쿼리와 어떻게 합치할지 E5 진입 시 재설계.
 
-3. **Audit append-only 정책의 PG 쪽 기본값** — `DO INSTEAD NOTHING`(조용한 무시) vs `TRIGGER + RAISE EXCEPTION`(명시적 실패). `§10.8`은 "차단"을 요구하지만 SQLite RAISE와 의미가 다릅니다. Phase 1에서 PG를 쓰지 않더라도 스키마 호환을 위해 결정 필요.
+2. **R1-2 · tenant 누락 시 동작 = 두 진입점 분리** — `Storage.Bootstrap(ctx, fn)` (tenant-less, 마이그레이션·seed 전용) + `Storage.Tx(ctx, fn)` (ctx에 tenant 없으면 `ErrTenantMissing` 반환). "system" 특수값은 누설 위험 + 의미 모호로 회피. §5·§9 본문 인터페이스에 반영됨.
 
-4. **`ReadOnly` Tx가 정말 필요한가** — 읽기 최적화 이점은 SQLite에서 미미(WAL로 충분). 인터페이스에 두면 복잡도가 올라갑니다. "Phase 1은 `Tx(...)` 하나로만"이 더 단순할 수 있음. §5 설계 단순화 여지.
+3. **R1-3 · PG audit append-only 정책 = TRIGGER + RAISE EXCEPTION** — `DO INSTEAD NOTHING`(조용한 무시)는 디버깅 악몽 + 백업 복원 추적 불가로 폐기. SQLite RAISE(ABORT)와 동일 의미론(에러 발생) 유지. §6 본문 PG 마이그레이션 예시 갱신됨.
 
-5. **마이그레이션 실패 시 서버 부팅 정책** — 기동 실패로 exit vs 읽기 전용 모드 진입 vs 버전 다운그레이드 시도. 운영성 관점에서 중요(§03.10 failure/recovery). 기본은 "exit with non-zero"이나 어플라이언스 현장 대응 고려 필요.
+4. **R1-4 · `ReadOnly` Tx 불필요 = `Tx()` 하나만** — SQLite WAL이 RO 최적화 이점 미미. 인터페이스 단순화. Phase 3 PG 도입 시 재검토. §5·§9 본문에서 `ReadOnly` 시그니처 제거됨.
 
-6. **동일 DB 파일에 다중 프로세스 접근** — 현재 설계는 "한 프로세스만 연결"을 가정하지만, CLI(`rosshield` 로컬 명령)가 같은 `~/.rosshield/data.db`를 건드릴 가능성이 있습니다. WAL은 멀티프로세스 안전이지만 마이그레이션 동시 실행은 아님. 파일 락 정책 결정 필요.
+5. **R1-5 · 마이그레이션 실패 시 부팅 = fail-fast (exit non-zero)** — 불완전 상태로 켜진 게 더 위험. 어플라이언스는 systemd restart로 자연 회복. "rollback last migration + retry" 옵션은 Phase 4 어플라이언스 진입 시 검토.
 
-7. **암호화된 SQLite (SQLCipher) 필요 여부** — `§06` 비밀 관리와 `§04.8` 개인정보 원칙을 보면 "DB 파일 자체 암호화"가 고객 요구로 올 수 있습니다. `modernc.org/sqlite`는 SQLCipher 비호환 — 선택 시 드라이버 재결정 필요. Phase 1 스코프 밖이면 명시.
+6. **R1-6 · 멀티프로세스 락 = 마이그레이션에만 OS file lock** — 일반 쿼리는 WAL이 멀티프로세스 안전. 마이그레이션은 OS-level lock(`flock` / `LockFileEx`) 획득, 5초 대기 후 `ErrMigrationLocked`. Phase 1은 "단일 프로세스 가정" 명시 + CLI 직접 DB 접근은 비권장 (server HTTP 경유 권장).
+
+7. **R1-7 · SQLCipher = Phase 1 스코프 밖** — 컬럼 단위 암호화(Credential KEK/DEK §06)로 Phase 1 충분. FDE는 OS·어플라이언스 책임. 엔터프라이즈 SKU에서 DB 파일 자체 암호화 요구가 들어오면 Phase 3에서 드라이버 재결정 + SQLCipher 또는 SEE(SQLite Encryption Extension) 평가.

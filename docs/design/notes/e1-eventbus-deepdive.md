@@ -401,21 +401,23 @@ func (b *Bus) Subscribe(ctx context.Context, topic string, h Handler, opts ...ev
 
 ---
 
-## 12. 미해결 질문 (E1.T6 착수 전 해결 권장)
+## 12. 결정 사항 (2026-04-23 합의)
 
-1. **Q1. Outbox 패턴 적용 시점** — Phase 1에서 "커밋 후 publish" 보장을 위해 트랜잭션 안 메모리 outbox를 쓸지, 아니면 도메인이 `tx.Commit()` 뒤 단순 `bus.Publish`로 충분한지. 전자는 크래시 복구 시 이벤트 누락을 막음. 후자는 단순하지만 재시작 시 누락 가능. **기본 추천**: Phase 1은 후자(단순), Phase 2에서 DB outbox로 승격(§12 점진).
+> Phase 1 E1.T6/T7 착수 전 7건 미해결 질문에 대한 결정. 모두 본 노트의 "기본 추천" 채택. 본문(§4·§5·§6·§7·§8·§10·§11)은 추천과 정합이라 별도 수정 없음.
 
-2. **Q2. `Publish` 반환 의미** — "수용됨"을 보장할 것인가, 아니면 "구독자 전원에게 enqueue 완료"까지 보장할 것인가? 전자는 at-most-once, 후자는 per-subscriber 수용까지 기다려야 해서 publisher 레이턴시가 늘어남. **기본 추천**: "모든 구독자 channel에 enqueue까지 완료(정책 적용 후)" = **수용 보장**. Block 정책 구독자가 있으면 publisher도 block됨. 이는 감사 구독자가 Block을 쓰는 설계와 정합.
+1. **R2-1 · Outbox 시점 = Phase 1은 outbox 없이 `tx.Commit()` 후 단순 publish** — 점진성(P12). Phase 2에서 DB outbox 테이블로 승격. 재시작 시 이벤트 누락 가능성은 Phase 1 스케일에서 수용. (R1-2 Bootstrap/Tx 분리와 결합: 도메인 서비스는 `Storage.Tx` 안에서 audit append + outbox-less publish 패턴.)
 
-3. **Q3. Topic 네이밍 규격** — `<domain>.<EventName>` 고정인가, 아니면 `domain.aggregate.action` 3-segment까지 인정? 후자는 wildcard·라우팅에 유리하지만 Phase 1에서는 필요 없음. **기본 추천**: 2-segment 고정, Phase 3 분리 모드 도입 시 재검토.
+2. **R2-2 · `Publish` 반환 의미 = 모든 구독자 channel에 enqueue 완료까지 = 수용 보장** — Block 정책 구독자(audit)와 정합. at-most-once 회피. Block 구독자가 있으면 publisher도 ctx 만료까지 block.
 
-4. **Q4. Handler 반환 error 처리** — 기본은 "경고 로그 + 메트릭"이지만, 감사 서비스 같은 핵심 구독자의 실패는 **프로세스 단위 치명**으로 승격해야 하는가? **기본 추천**: 구독 옵션 `WithCriticalFailure(fn)`으로 도메인이 콜백 등록. 기본 동작은 로그만. 감사 구독자는 콜백으로 "alert + circuit break"를 구현.
+3. **R2-3 · Topic 네이밍 = 2-segment `<domain>.<EventName>` 고정** — Phase 1 wildcard 미지원이므로 단순 규격으로 충분. Phase 3 분리 모드(NATS subject) 도입 시 3-segment 또는 hierarchy 재검토.
 
-5. **Q5. Event 저장(영속) 주체** — §3.6은 "모든 이벤트는 영속(audit 도메인 또는 별도 테이블)"을 말합니다. EventBus가 영속을 책임지는가, 아니면 구독자(audit)가 자기 저장을 하는가? **기본 추천**: **EventBus는 전달만**. 영속은 audit 도메인이 자체 테이블에 책임짐. 이는 §8 후보 B 패턴과 정합.
+4. **R2-4 · Handler error 처리 = 기본은 로그+메트릭**, 옵션 `WithCriticalFailure(fn)`으로 도메인이 콜백 등록 — 핵심 구독자(audit)는 이 콜백으로 alert + circuit-break 구현. 기본 정책은 후속 이벤트 처리 계속.
 
-6. **Q6. Wildcard 구독 지원 여부** — Phase 1 E2 audit·E10 Observability에서 유용하지만, 구현 복잡도 증가. **기본 추천**: Phase 1은 **exact match만**. Observability는 도메인별 명시 구독으로 충분.
+5. **R2-5 · Event 영속 주체 = EventBus는 전달만, audit 도메인이 자체 테이블에 영속** — §3.6 "audit 도메인 또는 별도 테이블" 중 audit 채택. R2-1 outbox-less 결정과 정합 (audit 테이블 자체가 사실상 event log 역할).
 
-7. **Q7. Correlation ID 생성 주체** — API Gateway 미들웨어가 이미 requestId를 생성합니다(§10.13). EventBus가 missing일 때 새로 만들지, 아니면 경고만 남길지. **기본 추천**: 호출 ctx에 없으면 **자동 생성**(`cor_<ULID>`) + `debug` 레벨 로그. 이러면 테스트·내부 잡(Scheduler 발행)에서도 correlation이 끊기지 않습니다.
+6. **R2-6 · Wildcard 구독 = Phase 1 exact match만** — Observability는 도메인별 명시 구독으로 충분. Phase 3 분리 모드 NATS subject wildcard 도입 시 규격화 (`tenant.>` 등).
+
+7. **R2-7 · Correlation ID 생성 주체 = 호출 ctx에 없으면 EventBus가 자동 생성** (`cor_<ULID>`) + debug 로그 — 테스트·Scheduler 내부 잡에서도 correlation 유지. ID는 R1-3와 동일하게 `internal/platform/idgen`(E1.T3 완료) 사용.
 
 ---
 
