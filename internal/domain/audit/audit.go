@@ -109,6 +109,19 @@ type ChainHead struct {
 	UpdatedAt time.Time
 }
 
+// Checkpoint는 특정 시점의 head 상태에 대한 외부 서명입니다 (§10.5).
+//
+// 서명 payload: SerializeCheckpointPayload(tenantID, seq, hash).
+// 외부 검증 도구는 동일한 payload를 재구성하여 signer.Verify(publicKey, payload, signature)로 무결성 확인.
+type Checkpoint struct {
+	TenantID    storage.TenantID
+	Seq         int64
+	Hash        Hash
+	SignedAt    time.Time
+	SignerKeyID string
+	Signature   []byte // Ed25519 64B
+}
+
 // VerifyResult는 Verify의 출력입니다.
 //
 // OK=true면 fromSeq~toSeq 모든 엔트리가 무결성 검사를 통과했습니다.
@@ -145,13 +158,23 @@ type Service interface {
 	//
 	// 호출자는 반환된 ReadCloser에서 모두 읽은 후 Close해야 합니다.
 	Export(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64, sgn signer.Signer) (io.ReadCloser, error)
+
+	// WriteCheckpoint는 tenant의 현재 head를 Ed25519로 서명하여 audit_checkpoints에 INSERT합니다.
+	// head.Seq == 0 (빈 체인)이면 ErrNoEntries — 호출자(cron)는 no-op으로 처리.
+	// 동일 (tenant, seq)에 이미 checkpoint가 있으면 ErrCheckpointExists — 새 entry 추가 전에는 의미 없음.
+	WriteCheckpoint(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, sgn signer.Signer) (Checkpoint, error)
+
+	// LatestCheckpoint는 tenant의 가장 최근 checkpoint를 반환합니다. 없으면 storage.ErrNotFound.
+	LatestCheckpoint(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) (Checkpoint, error)
 }
 
 // 공통 에러.
 var (
-	ErrTenantMismatch = errors.New("audit: req.TenantID does not match tx.TenantID")
-	ErrEmptyAction    = errors.New("audit: Action is required")
-	ErrEmptyTarget    = errors.New("audit: Target.Type and Target.ID are required")
-	ErrInvalidActor   = errors.New("audit: Actor.Type is not a known value")
-	ErrInvalidOutcome = errors.New("audit: Outcome is not a known value")
+	ErrTenantMismatch   = errors.New("audit: req.TenantID does not match tx.TenantID")
+	ErrEmptyAction      = errors.New("audit: Action is required")
+	ErrEmptyTarget      = errors.New("audit: Target.Type and Target.ID are required")
+	ErrInvalidActor     = errors.New("audit: Actor.Type is not a known value")
+	ErrInvalidOutcome   = errors.New("audit: Outcome is not a known value")
+	ErrNoEntries        = errors.New("audit: chain has no entries to checkpoint")
+	ErrCheckpointExists = errors.New("audit: checkpoint already exists for this seq")
 )

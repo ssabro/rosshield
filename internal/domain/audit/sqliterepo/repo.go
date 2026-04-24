@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
@@ -313,6 +314,105 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 	}
 
 	return io.NopCloser(&gzBuf), nil
+}
+
+// WriteCheckpoint는 audit.Service.WriteCheckpoint 구현입니다.
+func (r *Repo) WriteCheckpoint(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, sgn signer.Signer) (audit.Checkpoint, error) {
+	if sgn == nil {
+		return audit.Checkpoint{}, fmt.Errorf("audit: WriteCheckpoint requires non-nil signer")
+	}
+	head, err := readHead(ctx, tx, tenantID)
+	if err != nil {
+		return audit.Checkpoint{}, err
+	}
+	if head.Seq == 0 {
+		return audit.Checkpoint{}, audit.ErrNoEntries
+	}
+
+	payload := audit.SerializeCheckpointPayload(head.TenantID, head.Seq, head.Hash)
+	sig, keyID, err := sgn.Sign(payload)
+	if err != nil {
+		return audit.Checkpoint{}, fmt.Errorf("audit: sign checkpoint: %w", err)
+	}
+
+	now := r.deps.Clock.Now().UTC()
+	cp := audit.Checkpoint{
+		TenantID:    head.TenantID,
+		Seq:         head.Seq,
+		Hash:        head.Hash,
+		SignedAt:    now,
+		SignerKeyID: keyID,
+		Signature:   sig,
+	}
+
+	_, err = tx.Exec(ctx, `
+INSERT INTO audit_checkpoints (tenant_id, seq, hash, signed_at, signer_key_id, signature)
+VALUES (?, ?, ?, ?, ?, ?)`,
+		string(cp.TenantID), cp.Seq, cp.Hash[:],
+		cp.SignedAt.Format(time.RFC3339Nano), cp.SignerKeyID, cp.Signature)
+	if err != nil {
+		// SQLite UNIQUE 위반 → ErrCheckpointExists. modernc.org/sqlite는 메시지에 "UNIQUE constraint" 포함.
+		if isUniqueViolation(err) {
+			return audit.Checkpoint{}, audit.ErrCheckpointExists
+		}
+		return audit.Checkpoint{}, fmt.Errorf("audit: insert checkpoint: %w", err)
+	}
+	return cp, nil
+}
+
+// LatestCheckpoint는 audit.Service.LatestCheckpoint 구현입니다.
+func (r *Repo) LatestCheckpoint(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) (audit.Checkpoint, error) {
+	row := tx.QueryRow(ctx, `
+SELECT seq, hash, signed_at, signer_key_id, signature
+  FROM audit_checkpoints
+ WHERE tenant_id = ?
+ ORDER BY seq DESC
+ LIMIT 1`,
+		string(tenantID))
+
+	var (
+		seq       int64
+		hashBytes []byte
+		signedStr string
+		keyID     string
+		signature []byte
+	)
+	err := row.Scan(&seq, &hashBytes, &signedStr, &keyID, &signature)
+	if errors.Is(err, sql.ErrNoRows) {
+		return audit.Checkpoint{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return audit.Checkpoint{}, fmt.Errorf("audit: read checkpoint: %w", err)
+	}
+
+	signedAt, err := time.Parse(time.RFC3339Nano, signedStr)
+	if err != nil {
+		return audit.Checkpoint{}, fmt.Errorf("audit: parse checkpoint signed_at: %w", err)
+	}
+	if len(hashBytes) != audit.HashSize {
+		return audit.Checkpoint{}, fmt.Errorf("audit: checkpoint hash size = %d, want %d", len(hashBytes), audit.HashSize)
+	}
+
+	cp := audit.Checkpoint{
+		TenantID:    tenantID,
+		Seq:         seq,
+		SignedAt:    signedAt,
+		SignerKeyID: keyID,
+		Signature:   signature,
+	}
+	copy(cp.Hash[:], hashBytes)
+	return cp, nil
+}
+
+// isUniqueViolation은 SQLite UNIQUE constraint 위반 여부를 메시지로 판정합니다.
+// modernc.org/sqlite는 "constraint failed: UNIQUE" 형식의 메시지를 wrap합니다.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "constraint failed: UNIQUE")
 }
 
 // scanEntry는 audit_entries 한 row를 Entry로 변환합니다.

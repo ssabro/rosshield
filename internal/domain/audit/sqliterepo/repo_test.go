@@ -587,6 +587,129 @@ func TestExportRequiresSigner(t *testing.T) {
 	}
 }
 
+// E2.T8 — checkpoint 서명·저장.
+func TestWriteCheckpointStoresVerifiableSignature(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	for i := 0; i < 3; i++ {
+		appendOne(t, store, repo, sampleReq("robot.create"))
+	}
+	sgn, err := soft.New()
+	if err != nil {
+		t.Fatalf("soft.New: %v", err)
+	}
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+
+	var written audit.Checkpoint
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		cp, err := repo.WriteCheckpoint(ctx, tx, testTenant, sgn)
+		written = cp
+		return err
+	}); err != nil {
+		t.Fatalf("WriteCheckpoint: %v", err)
+	}
+
+	if written.Seq != 3 {
+		t.Errorf("Seq = %d, want 3 (= head)", written.Seq)
+	}
+	if written.SignerKeyID != sgn.KeyID() {
+		t.Errorf("SignerKeyID = %q, want %q", written.SignerKeyID, sgn.KeyID())
+	}
+
+	// payload를 동일하게 재구성하여 signer.Verify 통과.
+	payload := audit.SerializeCheckpointPayload(written.TenantID, written.Seq, written.Hash)
+	if err := sgn.Verify(payload, written.Signature); err != nil {
+		t.Errorf("signer.Verify failed: %v", err)
+	}
+
+	// LatestCheckpoint도 같은 row 반환.
+	var latest audit.Checkpoint
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		c, e := repo.LatestCheckpoint(ctx, tx, testTenant)
+		latest = c
+		return e
+	}); err != nil {
+		t.Fatalf("LatestCheckpoint: %v", err)
+	}
+	if latest.Seq != written.Seq || latest.Hash != written.Hash || latest.SignerKeyID != written.SignerKeyID {
+		t.Errorf("LatestCheckpoint mismatch:\n got  %+v\n want %+v", latest, written)
+	}
+}
+
+// E2.T8 보조: 빈 체인 → ErrNoEntries.
+func TestWriteCheckpointEmptyChainNoEntries(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+	sgn, _ := soft.New()
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.WriteCheckpoint(ctx, tx, testTenant, sgn)
+		return e
+	})
+	if !errors.Is(err, audit.ErrNoEntries) {
+		t.Errorf("err = %v, want ErrNoEntries", err)
+	}
+}
+
+// E2.T8 보조: 같은 head로 두 번 → ErrCheckpointExists.
+func TestWriteCheckpointDuplicateAtSameHead(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+	appendOne(t, store, repo, sampleReq("robot.create"))
+	sgn, _ := soft.New()
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.WriteCheckpoint(ctx, tx, testTenant, sgn)
+		return e
+	}); err != nil {
+		t.Fatalf("first checkpoint: %v", err)
+	}
+
+	err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.WriteCheckpoint(ctx, tx, testTenant, sgn)
+		return e
+	})
+	if !errors.Is(err, audit.ErrCheckpointExists) {
+		t.Errorf("second checkpoint: err = %v, want ErrCheckpointExists", err)
+	}
+}
+
+// E2.T8 보조: checkpoint 테이블도 immutable trigger 보호.
+func TestWriteCheckpointIsImmutable(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+	appendOne(t, store, repo, sampleReq("robot.create"))
+	sgn, _ := soft.New()
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.WriteCheckpoint(ctx, tx, testTenant, sgn)
+		return e
+	}); err != nil {
+		t.Fatalf("WriteCheckpoint: %v", err)
+	}
+
+	err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := tx.Exec(ctx, `UPDATE audit_checkpoints SET signature = X'00' WHERE tenant_id = ?`, string(testTenant))
+		return e
+	})
+	if !errors.Is(err, storage.ErrImmutable) {
+		t.Errorf("UPDATE checkpoints: err = %v, want ErrImmutable", err)
+	}
+
+	err = store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := tx.Exec(ctx, `DELETE FROM audit_checkpoints WHERE tenant_id = ?`, string(testTenant))
+		return e
+	})
+	if !errors.Is(err, storage.ErrImmutable) {
+		t.Errorf("DELETE checkpoints: err = %v, want ErrImmutable", err)
+	}
+}
+
 // 보조: tx.TenantID()와 req.TenantID 불일치 → ErrTenantMismatch.
 func TestAppendTenantMismatch(t *testing.T) {
 	t.Parallel()
