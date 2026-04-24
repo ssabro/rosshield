@@ -107,6 +107,17 @@ type ChainHead struct {
 	UpdatedAt time.Time
 }
 
+// VerifyResult는 Verify의 출력입니다.
+//
+// OK=true면 fromSeq~toSeq 모든 엔트리가 무결성 검사를 통과했습니다.
+// OK=false면 BreakAt이 처음 깨진 seq를 표시하고 Reason이 사람 읽기용 설명입니다.
+type VerifyResult struct {
+	OK             bool   // true면 클린 체인.
+	BreakAt        int64  // OK=false일 때 첫 위반 seq. OK=true면 0.
+	Reason         string // 위반 종류·위치 설명. OK=true면 빈 문자열.
+	EntriesScanned int64  // 실제로 검증한 엔트리 수.
+}
+
 // Service는 감사 도메인의 진입점입니다.
 //
 // Append는 외부 트랜잭션을 받아서 도메인 변경과 같은 Tx에 묶입니다 (P5).
@@ -120,6 +131,11 @@ type Service interface {
 	// Head는 tenant의 현재 chain head를 반환합니다.
 	// head가 없으면 (TenantID만 채운, Seq=0, Hash=zero) genesis head 반환.
 	Head(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) (ChainHead, error)
+
+	// Verify는 fromSeq~toSeq 범위 엔트리의 해시 체인 무결성을 재계산하여 검증합니다.
+	// fromSeq <= 0이면 1로 보정. toSeq <= 0 또는 toSeq < fromSeq면 head.Seq까지 검증.
+	// 첫 위반 시점에 OK=false + BreakAt + Reason을 채우고 즉시 반환합니다 (early termination).
+	Verify(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64) (VerifyResult, error)
 }
 
 // 공통 에러.

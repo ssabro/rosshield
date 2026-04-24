@@ -242,6 +242,200 @@ func TestAppendValidationErrors(t *testing.T) {
 	}
 }
 
+// E2.T6
+func TestVerifyAcceptsCleanRange(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	for i := 0; i < 5; i++ {
+		appendOne(t, store, repo, sampleReq("robot.create"))
+	}
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	var result audit.VerifyResult
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Verify(ctx, tx, testTenant, 1, 5)
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if !result.OK {
+		t.Errorf("OK = false, want true; BreakAt=%d Reason=%q", result.BreakAt, result.Reason)
+	}
+	if result.EntriesScanned != 5 {
+		t.Errorf("EntriesScanned = %d, want 5", result.EntriesScanned)
+	}
+}
+
+// E2.T6 보조: toSeq 생략 시 head까지 검증.
+func TestVerifyDefaultsToHead(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	for i := 0; i < 3; i++ {
+		appendOne(t, store, repo, sampleReq("robot.create"))
+	}
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+
+	var result audit.VerifyResult
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Verify(ctx, tx, testTenant, 0, 0) // both default
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if !result.OK || result.EntriesScanned != 3 {
+		t.Errorf("got OK=%v scanned=%d, want OK=true scanned=3", result.OK, result.EntriesScanned)
+	}
+}
+
+// E2.T6 보조: 빈 체인 → OK=true, scanned=0.
+func TestVerifyEmptyChainOK(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	var result audit.VerifyResult
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Verify(ctx, tx, testTenant, 1, 0)
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if !result.OK || result.EntriesScanned != 0 {
+		t.Errorf("got OK=%v scanned=%d, want OK=true scanned=0", result.OK, result.EntriesScanned)
+	}
+}
+
+// E2.T5 — hash 위변조 감지.
+// 정상 append 1개 후, raw INSERT로 잘못된 hash entry 추가 → Verify가 위치를 정확히 가리킨다.
+func TestVerifyDetectsHashTampering(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	first := appendOne(t, store, repo, sampleReq("robot.create"))
+
+	// raw INSERT — hash를 0xFF...로 채워 일부러 깨뜨림.
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	tamperedHash := make([]byte, audit.HashSize)
+	for i := range tamperedHash {
+		tamperedHash[i] = 0xFF
+	}
+	occurredAt := first.OccurredAt.Add(time.Millisecond).UTC().Format(time.RFC3339Nano)
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, err := tx.Exec(ctx, `
+INSERT INTO audit_entries (
+    tenant_id, seq, occurred_at,
+    actor_type, actor_id, actor_ip, actor_ua,
+    action, target_type, target_id,
+    payload_digest, outcome, error_code, error_message,
+    prev_hash, hash
+) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+			string(testTenant), int64(2), occurredAt,
+			"user", "us_attacker",
+			"robot.delete", "robot", "ro_test",
+			make([]byte, audit.HashSize), "success",
+			first.Hash[:], tamperedHash) // 정확한 prev_hash, 깨진 hash
+		return err
+	}); err != nil {
+		t.Fatalf("raw INSERT: %v", err)
+	}
+
+	// Verify가 seq=2에서 위반 감지해야 함.
+	var result audit.VerifyResult
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Verify(ctx, tx, testTenant, 1, 2)
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if result.OK {
+		t.Error("OK = true, want false (tampered hash)")
+	}
+	if result.BreakAt != 2 {
+		t.Errorf("BreakAt = %d, want 2", result.BreakAt)
+	}
+	if result.Reason == "" {
+		t.Error("Reason should describe the failure")
+	}
+	t.Logf("verify reason: %s", result.Reason)
+}
+
+// E2.T5 보조: prev_hash 단절 감지.
+// raw INSERT로 prev_hash가 첫 entry.hash와 다른 entry 삽입 → Verify가 chain break 감지.
+func TestVerifyDetectsPrevHashBreak(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	first := appendOne(t, store, repo, sampleReq("robot.create"))
+
+	// raw INSERT: prev_hash=zeros (잘못된 값) + hash 임의 값.
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	occurredAt := first.OccurredAt.Add(time.Millisecond).UTC().Format(time.RFC3339Nano)
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, err := tx.Exec(ctx, `
+INSERT INTO audit_entries (
+    tenant_id, seq, occurred_at,
+    actor_type, actor_id, actor_ip, actor_ua,
+    action, target_type, target_id,
+    payload_digest, outcome, error_code, error_message,
+    prev_hash, hash
+) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+			string(testTenant), int64(2), occurredAt,
+			"user", "us_attacker",
+			"robot.update", "robot", "ro_test",
+			make([]byte, audit.HashSize), "success",
+			make([]byte, audit.HashSize), make([]byte, audit.HashSize)) // 둘 다 zero
+		return err
+	}); err != nil {
+		t.Fatalf("raw INSERT: %v", err)
+	}
+
+	var result audit.VerifyResult
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Verify(ctx, tx, testTenant, 1, 2)
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if result.OK {
+		t.Error("OK = true, want false (prev_hash break)")
+	}
+	if result.BreakAt != 2 {
+		t.Errorf("BreakAt = %d, want 2", result.BreakAt)
+	}
+}
+
+// E2.T5 보조: 누락된 seq 감지 (gap).
+func TestVerifyDetectsMissingSeq(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	appendOne(t, store, repo, sampleReq("robot.create")) // seq 1
+
+	// 사용자가 seq=3을 명시적으로 요청 — head가 1이지만 3까지 검증 요청 → 누락.
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	var result audit.VerifyResult
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Verify(ctx, tx, testTenant, 1, 3)
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if result.OK {
+		t.Error("OK = true, want false (missing seqs)")
+	}
+	if result.BreakAt != 2 {
+		t.Errorf("BreakAt = %d, want 2", result.BreakAt)
+	}
+}
+
 // 보조: tx.TenantID()와 req.TenantID 불일치 → ErrTenantMismatch.
 func TestAppendTenantMismatch(t *testing.T) {
 	t.Parallel()
