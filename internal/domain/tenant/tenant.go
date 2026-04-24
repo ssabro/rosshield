@@ -73,6 +73,84 @@ type User struct {
 	UpdatedAt       time.Time
 }
 
+// Permission은 RBAC 권한 토큰입니다 (§5.8). 단순 문자열.
+//
+// 형식: "<resource>.<action>" (예: "robot.read", "scan.execute"). 와일드카드 "*" = 전체.
+// Phase 1은 와일드카드는 "*" 단일 토큰만 지원 (sub-domain wildcard는 후속).
+type Permission string
+
+const (
+	PermissionAll Permission = "*"
+
+	PermAuditRead      Permission = "audit.read"
+	PermAuditExport    Permission = "audit.export"
+	PermAuditVerify    Permission = "audit.verify"
+	PermRobotRead      Permission = "robot.read"
+	PermRobotWrite     Permission = "robot.write"
+	PermScanRead       Permission = "scan.read"
+	PermScanExecute    Permission = "scan.execute"
+	PermReportRead     Permission = "report.read"
+	PermReportSign     Permission = "report.sign"
+	PermReportDownload Permission = "report.download"
+)
+
+// Role은 권한 묶음입니다 (§4.2). tenant 단위.
+//
+// IsSystem=true는 부팅 시 시드된 admin·auditor·operator 역할.
+// 사용자 정의 역할은 IsSystem=false (Phase 2 기능).
+type Role struct {
+	ID          string // "rl_<ULID>"
+	TenantID    storage.TenantID
+	Name        string // "admin" | "auditor" | "operator" | custom
+	Permissions []Permission
+	IsSystem    bool
+	CreatedAt   time.Time
+}
+
+// 시스템 역할 이름.
+const (
+	RoleAdmin    = "admin"
+	RoleAuditor  = "auditor"
+	RoleOperator = "operator"
+)
+
+// SystemRolePermissions는 부팅 시 시드되는 3개 시스템 역할의 기본 permission 셋입니다.
+//
+// admin은 와일드카드("*")로 모든 권한 — Phase 1 단순화.
+var SystemRolePermissions = map[string][]Permission{
+	RoleAdmin: {PermissionAll},
+	RoleAuditor: {
+		PermAuditRead, PermAuditExport, PermAuditVerify,
+		PermScanRead, PermReportRead, PermReportDownload,
+	},
+	RoleOperator: {
+		PermRobotRead, PermRobotWrite,
+		PermScanRead, PermScanExecute,
+		PermReportRead,
+	},
+}
+
+// HasPermission은 단일 role이 perm을 갖는지 반환합니다.
+// "*" 와일드카드는 모든 perm에 대해 true.
+func (r Role) HasPermission(perm Permission) bool {
+	for _, p := range r.Permissions {
+		if p == PermissionAll || p == perm {
+			return true
+		}
+	}
+	return false
+}
+
+// AnyHasPermission은 roles 중 하나라도 perm을 갖는지 반환합니다 (RBAC 체크).
+func AnyHasPermission(roles []Role, perm Permission) bool {
+	for _, r := range roles {
+		if r.HasPermission(perm) {
+			return true
+		}
+	}
+	return false
+}
+
 // CreateRequest는 Service.Create 입력입니다.
 //
 // 첫 admin 사용자는 tenant 생성과 같은 Tx에 묶입니다 (B8 결정 — 빈 tenant는 의미 없음).
@@ -103,7 +181,8 @@ type AuditEmitter interface {
 
 // Service는 tenant 도메인 진입점입니다.
 type Service interface {
-	// Create는 새 tenant + 첫 admin user를 한 Tx에 생성하고 audit를 emit합니다.
+	// Create는 새 tenant + 첫 admin user + 시스템 역할 3개(admin·auditor·operator) + admin 역할 할당을
+	// 한 Tx에 생성하고 audit를 emit합니다.
 	// Bootstrap Tx로 진입(tenant 생성은 tenant 외 진입점이므로 Storage.Bootstrap 사용).
 	Create(ctx context.Context, tx storage.Tx, req CreateRequest) (CreateResult, error)
 
@@ -112,6 +191,15 @@ type Service interface {
 
 	// GetUserByEmail은 (tenantID, email)로 사용자를 조회합니다. 없으면 storage.ErrNotFound.
 	GetUserByEmail(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, email string) (User, error)
+
+	// GetRole은 (tenantID, name)으로 role을 조회합니다. 없으면 storage.ErrNotFound.
+	GetRole(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, name string) (Role, error)
+
+	// AssignRole은 user에게 role을 할당합니다 (멱등 — 이미 할당돼 있어도 에러 없음).
+	AssignRole(ctx context.Context, tx storage.Tx, userID, roleID string) error
+
+	// GetUserRoles는 user에게 할당된 모든 role을 반환합니다.
+	GetUserRoles(ctx context.Context, tx storage.Tx, userID string) ([]Role, error)
 }
 
 // 공통 에러.

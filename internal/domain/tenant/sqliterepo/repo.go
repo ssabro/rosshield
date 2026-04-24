@@ -90,6 +90,15 @@ func (r *Repo) Create(ctx context.Context, tx storage.Tx, req tenant.CreateReque
 		return tenant.CreateResult{}, err
 	}
 
+	// 시스템 역할 3개 시드 (admin, auditor, operator) — tenant마다 자체 역할 row.
+	adminRole, err := r.seedSystemRoles(ctx, tx, tn.ID, now)
+	if err != nil {
+		return tenant.CreateResult{}, err
+	}
+	if err := assignRole(ctx, tx, admin.ID, adminRole.ID); err != nil {
+		return tenant.CreateResult{}, err
+	}
+
 	if r.deps.Audit != nil {
 		if err := r.deps.Audit.EmitTenantCreated(ctx, tx, tn, admin); err != nil {
 			return tenant.CreateResult{}, fmt.Errorf("tenant: emit audit: %w", err)
@@ -97,6 +106,70 @@ func (r *Repo) Create(ctx context.Context, tx storage.Tx, req tenant.CreateReque
 	}
 
 	return tenant.CreateResult{Tenant: tn, Admin: admin}, nil
+}
+
+// seedSystemRoles는 admin/auditor/operator 3개 역할을 생성하고 admin role을 반환합니다.
+func (r *Repo) seedSystemRoles(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, now time.Time) (tenant.Role, error) {
+	var adminRole tenant.Role
+	for _, name := range []string{tenant.RoleAdmin, tenant.RoleAuditor, tenant.RoleOperator} {
+		role := tenant.Role{
+			ID:          r.deps.IDGen.New("rl"),
+			TenantID:    tenantID,
+			Name:        name,
+			Permissions: tenant.SystemRolePermissions[name],
+			IsSystem:    true,
+			CreatedAt:   now,
+		}
+		if err := insertRole(ctx, tx, role); err != nil {
+			return tenant.Role{}, err
+		}
+		if name == tenant.RoleAdmin {
+			adminRole = role
+		}
+	}
+	return adminRole, nil
+}
+
+// GetRole은 tenant.Service.GetRole 구현입니다.
+func (r *Repo) GetRole(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, name string) (tenant.Role, error) {
+	row := tx.QueryRow(ctx, `
+SELECT id, tenant_id, name, permissions, is_system, created_at
+  FROM roles
+ WHERE tenant_id = ? AND name = ?`,
+		string(tenantID), name)
+	return scanRoleRow(row)
+}
+
+// AssignRole은 tenant.Service.AssignRole 구현입니다 (멱등).
+func (r *Repo) AssignRole(ctx context.Context, tx storage.Tx, userID, roleID string) error {
+	return assignRole(ctx, tx, userID, roleID)
+}
+
+// GetUserRoles는 tenant.Service.GetUserRoles 구현입니다.
+func (r *Repo) GetUserRoles(ctx context.Context, tx storage.Tx, userID string) ([]tenant.Role, error) {
+	rows, err := tx.Query(ctx, `
+SELECT r.id, r.tenant_id, r.name, r.permissions, r.is_system, r.created_at
+  FROM roles r
+  JOIN user_roles ur ON ur.role_id = r.id
+ WHERE ur.user_id = ?`,
+		userID)
+	if err != nil {
+		return nil, fmt.Errorf("tenant: query user roles: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []tenant.Role
+	for rows.Next() {
+		role, err := scanRoleRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, role)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("tenant: iter user roles: %w", err)
+	}
+	return out, nil
 }
 
 // GetTenant는 tenant.Service.GetTenant 구현입니다.
@@ -222,6 +295,85 @@ INSERT INTO users (
 		return fmt.Errorf("tenant: insert user: %w", err)
 	}
 	return nil
+}
+
+func insertRole(ctx context.Context, tx storage.Tx, role tenant.Role) error {
+	permsJSON, err := json.Marshal(role.Permissions)
+	if err != nil {
+		return fmt.Errorf("tenant: marshal permissions: %w", err)
+	}
+	isSystem := 0
+	if role.IsSystem {
+		isSystem = 1
+	}
+	_, err = tx.Exec(ctx, `
+INSERT INTO roles (id, tenant_id, name, permissions, is_system, created_at)
+VALUES (?, ?, ?, ?, ?, ?)`,
+		role.ID, string(role.TenantID), role.Name, string(permsJSON), isSystem,
+		role.CreatedAt.Format(time.RFC3339Nano))
+	if err != nil {
+		return fmt.Errorf("tenant: insert role %q: %w", role.Name, err)
+	}
+	return nil
+}
+
+// assignRole은 멱등 INSERT (동일 (user, role)이 있으면 무시).
+func assignRole(ctx context.Context, tx storage.Tx, userID, roleID string) error {
+	_, err := tx.Exec(ctx,
+		`INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)
+		 ON CONFLICT (user_id, role_id) DO NOTHING`,
+		userID, roleID)
+	if err != nil {
+		return fmt.Errorf("tenant: assign role: %w", err)
+	}
+	return nil
+}
+
+// scanRoleRow는 *sql.Row → Role.
+func scanRoleRow(row *sql.Row) (tenant.Role, error) {
+	var (
+		id, tid, name, permsJSON, createdStr string
+		isSystem                             int
+	)
+	err := row.Scan(&id, &tid, &name, &permsJSON, &isSystem, &createdStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return tenant.Role{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return tenant.Role{}, fmt.Errorf("tenant: scan role: %w", err)
+	}
+	return assembleRole(id, tid, name, permsJSON, isSystem, createdStr)
+}
+
+// scanRoleRows는 *sql.Rows → Role (반복 호출).
+func scanRoleRows(rows *sql.Rows) (tenant.Role, error) {
+	var (
+		id, tid, name, permsJSON, createdStr string
+		isSystem                             int
+	)
+	if err := rows.Scan(&id, &tid, &name, &permsJSON, &isSystem, &createdStr); err != nil {
+		return tenant.Role{}, fmt.Errorf("tenant: scan role row: %w", err)
+	}
+	return assembleRole(id, tid, name, permsJSON, isSystem, createdStr)
+}
+
+func assembleRole(id, tid, name, permsJSON string, isSystem int, createdStr string) (tenant.Role, error) {
+	var perms []tenant.Permission
+	if err := json.Unmarshal([]byte(permsJSON), &perms); err != nil {
+		return tenant.Role{}, fmt.Errorf("tenant: unmarshal permissions for role %q: %w", name, err)
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, createdStr)
+	if err != nil {
+		return tenant.Role{}, fmt.Errorf("tenant: parse role created_at: %w", err)
+	}
+	return tenant.Role{
+		ID:          id,
+		TenantID:    storage.TenantID(tid),
+		Name:        name,
+		Permissions: perms,
+		IsSystem:    isSystem == 1,
+		CreatedAt:   createdAt,
+	}, nil
 }
 
 func validateCreate(req tenant.CreateRequest) error {

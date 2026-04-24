@@ -232,3 +232,119 @@ func TestGetUserByEmailNotFound(t *testing.T) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
+
+// E3 Stage B — 시스템 역할 3개 시드 + admin user에게 admin role 자동 할당.
+func TestCreateTenantSeedsSystemRolesAndAssignsAdmin(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var result tenant.CreateResult
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Create(ctx, tx, sampleCreate())
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	tenantCtx := storage.WithTenantID(context.Background(), result.Tenant.ID)
+
+	// 시스템 역할 3개 모두 존재.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		for _, name := range []string{tenant.RoleAdmin, tenant.RoleAuditor, tenant.RoleOperator} {
+			role, err := repo.GetRole(ctx, tx, result.Tenant.ID, name)
+			if err != nil {
+				return err
+			}
+			if !role.IsSystem {
+				t.Errorf("role %q IsSystem=false, want true", name)
+			}
+			if !strings.HasPrefix(role.ID, "rl_") {
+				t.Errorf("role %q ID = %q, want rl_ prefix", name, role.ID)
+			}
+			if len(role.Permissions) == 0 {
+				t.Errorf("role %q has no permissions", name)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("GetRole: %v", err)
+	}
+
+	// admin user에게 admin role이 할당돼 있어야 함.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		roles, err := repo.GetUserRoles(ctx, tx, result.Admin.ID)
+		if err != nil {
+			return err
+		}
+		if len(roles) != 1 {
+			t.Errorf("admin has %d roles, want 1", len(roles))
+		}
+		if len(roles) > 0 && roles[0].Name != tenant.RoleAdmin {
+			t.Errorf("admin assigned %q, want admin", roles[0].Name)
+		}
+		// admin role은 wildcard로 모든 권한 통과.
+		if !tenant.AnyHasPermission(roles, tenant.PermRobotWrite) {
+			t.Error("admin should have robot.write via wildcard")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("GetUserRoles: %v", err)
+	}
+}
+
+// E3 Stage B — AssignRole 멱등성.
+func TestAssignRoleIsIdempotent(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var result tenant.CreateResult
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Create(ctx, tx, sampleCreate())
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	tenantCtx := storage.WithTenantID(context.Background(), result.Tenant.ID)
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		auditorRole, err := repo.GetRole(ctx, tx, result.Tenant.ID, tenant.RoleAuditor)
+		if err != nil {
+			return err
+		}
+		// 같은 (admin, auditor) 두 번 할당 — 두 번째는 no-op이어야 함 (ON CONFLICT DO NOTHING).
+		if err := repo.AssignRole(ctx, tx, result.Admin.ID, auditorRole.ID); err != nil {
+			return err
+		}
+		if err := repo.AssignRole(ctx, tx, result.Admin.ID, auditorRole.ID); err != nil {
+			t.Errorf("second AssignRole: %v", err)
+		}
+
+		// 결과: admin은 admin + auditor 2개 role 보유.
+		roles, err := repo.GetUserRoles(ctx, tx, result.Admin.ID)
+		if err != nil {
+			return err
+		}
+		if len(roles) != 2 {
+			t.Errorf("got %d roles, want 2 (admin + auditor)", len(roles))
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("Tx: %v", err)
+	}
+}
+
+// E3 Stage B — GetRole 미존재 → ErrNotFound.
+func TestGetRoleNotFound(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.GetRole(ctx, tx, "tn_x", "nonexistent")
+		return e
+	})
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
