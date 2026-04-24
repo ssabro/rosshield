@@ -62,6 +62,12 @@ func TestBootstrapInitsAllPlatformServices(t *testing.T) {
 	if p.Scheduler == nil {
 		t.Error("Scheduler is nil")
 	}
+	if p.Tenant == nil {
+		t.Error("Tenant is nil")
+	}
+	if p.Benchmark == nil {
+		t.Error("Benchmark is nil")
+	}
 }
 
 func TestBootstrapCreatesDataFileAndAppliesMigration(t *testing.T) {

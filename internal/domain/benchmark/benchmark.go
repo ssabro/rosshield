@@ -95,19 +95,31 @@ type AuditEmitter interface {
 }
 
 // Service는 벤치마크 도메인 진입점입니다.
-//
-// Phase 1: LoadFromTar(tar.gz 바이트, publicKey) → Pack을 만들고 DB INSERT하는 흐름 + 라이프사이클 전이.
 type Service interface {
-	// LoadFromTar는 tar.gz 바이트를 파싱·검증해 Pack을 반환합니다 (DB INSERT 미포함).
+	// InstallPack은 tar.gz 바이트를 LoadPackFromTar로 검증한 뒤 DB에 INSERT하고
+	// lifecycle 첫 row(installed) + audit emit까지 한 Tx에 처리합니다.
 	//
-	// 흐름:
-	//   1. tar.gz 안전 해체 (path traversal·size limit 차단)
-	//   2. SIGNATURE = Ed25519(MANIFEST.json) 검증 (publicKey 사용)
-	//   3. MANIFEST 각 파일 sha256 재계산 + 비교
-	//   4. pack.yaml 파싱·schema 검증
-	//   5. checks/*.yaml 모두 파싱·schema 검증
-	LoadFromTar(ctx context.Context, tarGzBytes []byte, publicKey []byte) (Pack, error)
+	// tenantID="system"이면 cross-tenant 공유 팩 (§4.2). 그 외에는 tenant scope.
+	// 동일 (tenant_id, pack_key)가 이미 있으면 ErrPackAlreadyInstalled.
+	InstallPack(ctx context.Context, tx storage.Tx, tenantID storage.TenantID,
+		tarGzBytes []byte, publicKey []byte, signerKeyID, actorID string) (Pack, error)
+
+	// GetPackByKey는 (tenant_id, pack_key)로 Pack 메타+체크를 조회합니다. 없으면 storage.ErrNotFound.
+	GetPackByKey(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, packKey string) (Pack, error)
+
+	// ListPacks는 tenant의 모든 Pack 메타(체크 미포함)를 반환합니다.
+	ListPacks(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) ([]Pack, error)
+
+	// CurrentState는 packID의 가장 최근 lifecycle 상태를 반환합니다.
+	CurrentState(ctx context.Context, tx storage.Tx, packID string) (State, error)
+
+	// TransitionPack은 from → to 검증 후 새 lifecycle row INSERT + audit emit.
+	// 불법 전이는 ErrIllegalTransition.
+	TransitionPack(ctx context.Context, tx storage.Tx, packID string, to State, actorID, reason string) error
 }
+
+// 추가 sentinel 에러.
+var ErrPackAlreadyInstalled = errors.New("benchmark: pack already installed for this tenant")
 
 // 공통 에러.
 var (

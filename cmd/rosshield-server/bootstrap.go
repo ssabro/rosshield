@@ -12,6 +12,8 @@ import (
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/benchmark"
+	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
@@ -52,6 +54,7 @@ type Platform struct {
 	Scheduler scheduler.Scheduler
 	Audit     audit.Service
 	Tenant    tenant.Service
+	Benchmark benchmark.Service
 
 	systemTenant storage.TenantID
 
@@ -76,6 +79,36 @@ func (a *auditEmitterAdapter) EmitTenantCreated(ctx context.Context, tx storage.
 		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
 		Action:   "tenant.created",
 		Target:   audit.Target{Type: "tenant", ID: string(t.ID)},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitPackInstalled는 benchmark.AuditEmitter 구현 (P5 격리 — benchmark가 audit 직접 import 안 함).
+func (a *auditEmitterAdapter) EmitPackInstalled(ctx context.Context, tx storage.Tx, p benchmark.Pack, actorID string) error {
+	payload := fmt.Sprintf(`{"packId":%q,"packKey":%q,"vendor":%q,"version":%q}`,
+		p.ID, p.PackKey, p.Vendor, p.Version)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: p.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: actorID},
+		Action:   "pack.installed",
+		Target:   audit.Target{Type: "pack", ID: p.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitPackLifecycleChanged는 pack.lifecycle.<state> 이벤트를 audit에 emit합니다.
+func (a *auditEmitterAdapter) EmitPackLifecycleChanged(ctx context.Context, tx storage.Tx, packID string, from, to benchmark.State, actorID, reason string) error {
+	payload := fmt.Sprintf(`{"packId":%q,"from":%q,"to":%q,"reason":%q}`,
+		packID, string(from), string(to), reason)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: tx.TenantID(),
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: actorID},
+		Action:   "pack.lifecycle." + string(to),
+		Target:   audit.Target{Type: "pack", ID: packID},
 		Payload:  []byte(payload),
 		Outcome:  audit.OutcomeSuccess,
 	})
@@ -144,13 +177,22 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clk})
 
+	emitter := &auditEmitterAdapter{svc: auditSvc}
+
 	tenantSvc := tenantrepo.New(tenantrepo.Deps{
 		Clock:         clk,
 		IDGen:         ids,
-		Audit:         &auditEmitterAdapter{svc: auditSvc},
+		Audit:         emitter,
 		JWTPrivateKey: jwtPrivateKey,
 		JWTPublicKey:  jwtPublicKey,
 		// AccessTTL/RefreshTTL는 0 → tenant.DefaultAccessTTL/DefaultRefreshTTL.
+	})
+
+	benchmarkSvc := benchmarkrepo.New(benchmarkrepo.Deps{
+		Clock:              clk,
+		IDGen:              ids,
+		Audit:              emitter,
+		DefaultSignerKeyID: sgn.KeyID(), // audit checkpoint와 같은 키로 pack 서명한다고 가정
 	})
 
 	systemTenant := cfg.SystemTenantID
@@ -186,6 +228,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Scheduler:    sch,
 		Audit:        auditSvc,
 		Tenant:       tenantSvc,
+		Benchmark:    benchmarkSvc,
 		systemTenant: systemTenant,
 	}, nil
 }
