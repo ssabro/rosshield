@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -139,6 +141,87 @@ func TestSignerPublicKeyMatchesSignaturePath(t *testing.T) {
 	}
 	if !ed25519.Verify(ed25519.PublicKey(pub), payload, sig) {
 		t.Error("ed25519.Verify with PublicKey() failed — signer 내부와 외부 검증이 불일치")
+	}
+}
+
+func TestLoadOrCreateGeneratesAndPersists(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "platform.ed25519")
+
+	s1, err := soft.LoadOrCreate(path)
+	if err != nil {
+		t.Fatalf("first LoadOrCreate: %v", err)
+	}
+	if s1.KeyID() == "" {
+		t.Error("KeyID empty after generate")
+	}
+
+	// 파일이 실제로 생성되었어야 함.
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat key file: %v", err)
+	}
+	if info.Size() != int64(ed25519.PrivateKeySize) {
+		t.Errorf("key file size = %d, want %d", info.Size(), ed25519.PrivateKeySize)
+	}
+
+	// 두 번째 호출은 같은 키.
+	s2, err := soft.LoadOrCreate(path)
+	if err != nil {
+		t.Fatalf("second LoadOrCreate: %v", err)
+	}
+	if s1.KeyID() != s2.KeyID() {
+		t.Errorf("KeyID changed across reload: %q → %q", s1.KeyID(), s2.KeyID())
+	}
+
+	// s1의 서명을 s2가 검증해야 함 (같은 키).
+	payload := []byte("persisted key roundtrip")
+	sig, _, err := s1.Sign(payload)
+	if err != nil {
+		t.Fatalf("s1.Sign: %v", err)
+	}
+	if err := s2.Verify(payload, sig); err != nil {
+		t.Errorf("s2.Verify(s1's sig) failed: %v — keys must be identical", err)
+	}
+}
+
+func TestLoadOrCreateAutoCreatesParentDir(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "deep", "nested", "key.ed25519")
+	s, err := soft.LoadOrCreate(path)
+	if err != nil {
+		t.Fatalf("LoadOrCreate: %v", err)
+	}
+	if s.KeyID() == "" {
+		t.Error("KeyID empty")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("key file not created: %v", err)
+	}
+}
+
+func TestLoadOrCreateRejectsCorruptFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "corrupt.ed25519")
+	if err := os.WriteFile(path, []byte("not a valid ed25519 key"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := soft.LoadOrCreate(path)
+	if err == nil {
+		t.Fatal("expected error for corrupt key file")
+	}
+}
+
+func TestLoadOrCreateRequiresPath(t *testing.T) {
+	t.Parallel()
+
+	_, err := soft.LoadOrCreate("")
+	if err == nil {
+		t.Error("expected error for empty path")
 	}
 }
 

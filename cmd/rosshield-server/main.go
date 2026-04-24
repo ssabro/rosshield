@@ -20,6 +20,7 @@ import (
 type healthResponse struct {
 	Status     string            `json:"status"`
 	Components componentStatuses `json:"components"`
+	Audit      auditHealth       `json:"audit"`
 }
 
 type componentStatuses struct {
@@ -27,6 +28,13 @@ type componentStatuses struct {
 	EventBus  string `json:"eventbus"`
 	Scheduler string `json:"scheduler"`
 	Signer    string `json:"signer"` // keyID 노출 (운영 식별용).
+}
+
+// auditHealth는 system tenant audit 체인 상태입니다.
+type auditHealth struct {
+	HeadSeq        int64  `json:"headSeq"`
+	LastCheckpoint int64  `json:"lastCheckpointSeq"` // 0이면 아직 없음
+	Status         string `json:"status"`            // "ok" | "no-entries" | "error: ..."
 }
 
 func healthHandler(p *Platform) http.HandlerFunc {
@@ -43,16 +51,35 @@ func healthHandler(p *Platform) http.HandlerFunc {
 					Scheduler: "down",
 					Signer:    p.Signer.KeyID(),
 				},
+				Audit: auditHealth{Status: "down"},
 			})
 			return
 		}
 
-		// Storage 살아있는지 가벼운 트랜잭션 한 번 (R1-2 Bootstrap 진입점, tenant-less).
+		// Storage 살아있는지 + audit head·checkpoint 조회를 같은 Bootstrap Tx에서.
 		storageOK := "ok"
+		auditState := auditHealth{Status: "ok"}
 		if err := p.Storage.Bootstrap(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+			head, err := p.Audit.Head(ctx, tx, p.systemTenantID())
+			if err != nil {
+				return err
+			}
+			auditState.HeadSeq = head.Seq
+			cp, err := p.Audit.LatestCheckpoint(ctx, tx, p.systemTenantID())
+			switch {
+			case err == nil:
+				auditState.LastCheckpoint = cp.Seq
+			case errors.Is(err, storage.ErrNotFound):
+				if head.Seq == 0 {
+					auditState.Status = "no-entries"
+				}
+			default:
+				return err
+			}
 			return nil
 		}); err != nil {
 			storageOK = "error: " + err.Error()
+			auditState.Status = "error"
 		}
 
 		status := http.StatusOK
@@ -64,6 +91,7 @@ func healthHandler(p *Platform) http.HandlerFunc {
 				Scheduler: "ok",
 				Signer:    p.Signer.KeyID(),
 			},
+			Audit: auditState,
 		}
 		if storageOK != "ok" {
 			body.Status = "degraded"

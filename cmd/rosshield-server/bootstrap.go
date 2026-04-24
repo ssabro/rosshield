@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/ssabro/rosshield/internal/domain/audit"
+	"github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
@@ -25,6 +27,14 @@ import (
 type Config struct {
 	DataDir string       // SQLite 파일·키·로그 저장 디렉토리 (예: ~/.rosshield).
 	Logger  *slog.Logger // nil이면 stdout JSON 핸들러로 자동 생성.
+
+	// SystemTenantID는 부팅 시 자동 등록되는 audit checkpoint 잡의 테넌트 식별자.
+	// 빈 값이면 "system" 사용. 도메인 진입(E3 Tenant) 후에도 시스템 자체 액션은 이 테넌트.
+	SystemTenantID storage.TenantID
+
+	// CheckpointSpec은 audit checkpoint 잡의 cron spec.
+	// 빈 값이면 "@every 1h" (§10.5 매시간 기본). 테스트에서 `@every 1s` 등으로 단축.
+	CheckpointSpec string
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -37,10 +47,18 @@ type Platform struct {
 	EventBus  eventbus.Bus
 	Signer    signer.Signer
 	Scheduler scheduler.Scheduler
+	Audit     audit.Service
+
+	systemTenant storage.TenantID
 
 	shutdownOnce sync.Once
 	shutdownErr  error
 	shutdown     bool
+}
+
+// systemTenantID는 부팅 시 결정된 시스템 테넌트를 반환합니다 (healthz·system audit job용).
+func (p *Platform) systemTenantID() storage.TenantID {
+	return p.systemTenant
 }
 
 // Bootstrap은 §03.4 시작 시퀀스에 따라 모든 platform 서비스를 초기화합니다.
@@ -78,7 +96,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	bus := inproc.New(inproc.Deps{Logger: logger, Clock: clk, IDGen: ids})
 
-	sgn, err := soft.New()
+	keyPath := filepath.Join(cfg.DataDir, "keys", "platform.ed25519")
+	sgn, err := soft.LoadOrCreate(keyPath)
 	if err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: signer: %w", err)
@@ -86,19 +105,41 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	sch := cronsched.New(cronsched.Deps{Logger: logger})
 
+	auditSvc := sqliterepo.New(sqliterepo.Deps{Clock: clk})
+
+	systemTenant := cfg.SystemTenantID
+	if systemTenant == "" {
+		systemTenant = "system"
+	}
+	checkpointSpec := cfg.CheckpointSpec
+	if checkpointSpec == "" {
+		checkpointSpec = "@every 1h"
+	}
+	if err := audit.RegisterCheckpointJob(sch, store, auditSvc, logger,
+		"audit-checkpoint-system", checkpointSpec, systemTenant, sgn); err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
+	}
+
 	logger.Info("platform bootstrap complete",
 		"dataDir", cfg.DataDir,
 		"dbPath", dbPath,
-		"signerKeyId", sgn.KeyID())
+		"keyPath", keyPath,
+		"signerKeyId", sgn.KeyID(),
+		"systemTenant", string(systemTenant),
+		"checkpointSpec", checkpointSpec)
 
 	return &Platform{
-		Logger:    logger,
-		Clock:     clk,
-		IDGen:     ids,
-		Storage:   store,
-		EventBus:  bus,
-		Signer:    sgn,
-		Scheduler: sch,
+		Logger:       logger,
+		Clock:        clk,
+		IDGen:        ids,
+		Storage:      store,
+		EventBus:     bus,
+		Signer:       sgn,
+		Scheduler:    sch,
+		Audit:        auditSvc,
+		systemTenant: systemTenant,
 	}, nil
 }
 
