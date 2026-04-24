@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
@@ -332,6 +333,218 @@ func TestAssignRoleIsIdempotent(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatalf("Tx: %v", err)
+	}
+}
+
+// E3 Stage C — T5: ApiKey 발급 시 prefix 표시·hashed 저장.
+func TestApiKeyHashIsArgon2idAndPrefixVisible(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return err
+	}); err != nil {
+		t.Fatalf("seed Create: %v", err)
+	}
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+
+	var issued tenant.IssueApiKeyResult
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.IssueApiKey(ctx, tx, tenant.IssueApiKeyRequest{
+			TenantID:  seed.Tenant.ID,
+			Name:      "ci-scanner",
+			CreatedBy: seed.Admin.ID,
+		})
+		issued = r
+		return err
+	}); err != nil {
+		t.Fatalf("IssueApiKey: %v", err)
+	}
+
+	if !strings.HasPrefix(issued.RawToken, "fg_live_") {
+		t.Errorf("RawToken does not start with fg_live_: %q", issued.RawToken)
+	}
+	if len(issued.RawToken) != 40 {
+		t.Errorf("RawToken length = %d, want 40", len(issued.RawToken))
+	}
+	if !strings.HasPrefix(issued.Key.Hashed, "$argon2id$v=19$m=65536,t=3,p=1$") {
+		t.Errorf("Hashed not argon2id: %q", issued.Key.Hashed)
+	}
+	if issued.Key.Prefix != issued.RawToken[:12] {
+		t.Errorf("Prefix = %q, want token[:12] = %q", issued.Key.Prefix, issued.RawToken[:12])
+	}
+	if !strings.HasPrefix(issued.Key.ID, "ak_") {
+		t.Errorf("Key.ID = %q, want ak_ prefix", issued.Key.ID)
+	}
+
+	// raw token으로 인증 (Bootstrap Tx — tenant 미상 진입점).
+	var authed tenant.ApiKey
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		k, err := repo.AuthenticateApiKey(ctx, tx, issued.RawToken)
+		authed = k
+		return err
+	}); err != nil {
+		t.Fatalf("AuthenticateApiKey: %v", err)
+	}
+	if authed.ID != issued.Key.ID {
+		t.Errorf("authed.ID = %q, want %q", authed.ID, issued.Key.ID)
+	}
+}
+
+// E3 Stage C — wrong token rejected.
+func TestAuthenticateApiKeyRejectsWrongHash(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+
+	var issued tenant.IssueApiKeyResult
+	_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.IssueApiKey(ctx, tx, tenant.IssueApiKeyRequest{
+			TenantID: seed.Tenant.ID, Name: "x", CreatedBy: seed.Admin.ID,
+		})
+		issued = r
+		return nil
+	})
+
+	// 같은 prefix를 유지하면서 body 1자만 변경 — Authenticate가 ErrApiKeyNotFound 반환해야 함.
+	tampered := issued.RawToken[:len(issued.RawToken)-1] + flipChar(issued.RawToken[len(issued.RawToken)-1])
+	err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.AuthenticateApiKey(ctx, tx, tampered)
+		return e
+	})
+	if !errors.Is(err, tenant.ErrApiKeyNotFound) {
+		t.Errorf("err = %v, want ErrApiKeyNotFound", err)
+	}
+}
+
+// flipChar는 base32 알파벳 내에서 한 글자를 바꿉니다 (대문자 A→B, B→A).
+func flipChar(b byte) string {
+	if b == 'A' {
+		return "B"
+	}
+	return "A"
+}
+
+// E3 Stage C — T6: revoke는 soft delete + 인증 거부.
+func TestApiKeyRevokeIsSoftDeleteAndDeniesAuth(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+
+	var issued tenant.IssueApiKeyResult
+	_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.IssueApiKey(ctx, tx, tenant.IssueApiKeyRequest{
+			TenantID: seed.Tenant.ID, Name: "to-revoke", CreatedBy: seed.Admin.ID,
+		})
+		issued = r
+		return nil
+	})
+
+	// Revoke.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		return repo.RevokeApiKey(ctx, tx, seed.Tenant.ID, issued.Key.ID)
+	}); err != nil {
+		t.Fatalf("RevokeApiKey: %v", err)
+	}
+
+	// 인증 시도 → ErrApiKeyRevoked.
+	err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.AuthenticateApiKey(ctx, tx, issued.RawToken)
+		return e
+	})
+	if !errors.Is(err, tenant.ErrApiKeyRevoked) {
+		t.Errorf("err = %v, want ErrApiKeyRevoked", err)
+	}
+
+	// soft delete 검증: row는 여전히 존재 (ListApiKeys에 포함).
+	var keys []tenant.ApiKey
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		ks, err := repo.ListApiKeys(ctx, tx, seed.Tenant.ID)
+		keys = ks
+		return err
+	}); err != nil {
+		t.Fatalf("ListApiKeys: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("ListApiKeys len = %d, want 1 (soft delete keeps row)", len(keys))
+	}
+	if keys[0].RevokedAt == nil {
+		t.Error("RevokedAt should be set after Revoke")
+	}
+	if keys[0].Hashed != "" {
+		t.Errorf("ListApiKeys leaked Hashed: %q", keys[0].Hashed)
+	}
+
+	// Revoke 두 번 호출 — 멱등.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		return repo.RevokeApiKey(ctx, tx, seed.Tenant.ID, issued.Key.ID)
+	}); err != nil {
+		t.Errorf("second Revoke should be no-op: %v", err)
+	}
+}
+
+// 보조: expires_at 지나면 ErrApiKeyExpired.
+func TestAuthenticateApiKeyRejectsExpired(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+
+	past := time.Now().UTC().Add(-1 * time.Hour)
+	var issued tenant.IssueApiKeyResult
+	_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.IssueApiKey(ctx, tx, tenant.IssueApiKeyRequest{
+			TenantID:  seed.Tenant.ID,
+			Name:      "expired-key",
+			ExpiresAt: &past,
+			CreatedBy: seed.Admin.ID,
+		})
+		issued = r
+		return nil
+	})
+
+	err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.AuthenticateApiKey(ctx, tx, issued.RawToken)
+		return e
+	})
+	if !errors.Is(err, tenant.ErrApiKeyExpired) {
+		t.Errorf("err = %v, want ErrApiKeyExpired", err)
+	}
+}
+
+// 보조: revoke 미존재 ID → ErrNotFound.
+func TestRevokeApiKeyNotFound(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		return repo.RevokeApiKey(ctx, tx, "tn_x", "ak_doesnotexist")
+	})
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
 

@@ -151,6 +151,42 @@ func AnyHasPermission(roles []Role, perm Permission) bool {
 	return false
 }
 
+// ApiKey는 프로그래매틱 접근용 키입니다 (§5.9).
+//
+// 발급 시 raw token은 한 번만 호출자에게 반환되고, DB는 argon2id 해시(`Hashed`)만 저장합니다.
+// `Prefix`(앞 12자, "fg_live_XXXX")는 사용자 식별·표시·DB lookup 용도.
+type ApiKey struct {
+	ID         string // "ak_<ULID>"
+	TenantID   storage.TenantID
+	Name       string
+	Prefix     string // "fg_live_XXXX" 12자
+	Hashed     string // argon2id encoded
+	Scopes     []Permission
+	ExpiresAt  *time.Time
+	LastUsedAt *time.Time
+	CreatedBy  string // user ID
+	CreatedAt  time.Time
+	RevokedAt  *time.Time // 설정되면 인증 거부 (soft delete)
+}
+
+// IssueApiKeyRequest는 Service.IssueApiKey 입력입니다.
+type IssueApiKeyRequest struct {
+	TenantID  storage.TenantID
+	Name      string
+	Scopes    []Permission // 빈 슬라이스 허용 — 발급 시 검증 안 함
+	ExpiresAt *time.Time   // nil = 무기한
+	CreatedBy string       // 발급한 user ID
+}
+
+// IssueApiKeyResult는 Service.IssueApiKey 출력입니다.
+//
+// RawToken은 발급 시점에만 반환됩니다 (§5.9). 호출자는 이 값을 안전하게 저장해야 하며,
+// 이후 어떤 API로도 다시 노출되지 않습니다.
+type IssueApiKeyResult struct {
+	Key      ApiKey // Hashed만 채워짐, Hashed는 검증 외 노출 금지
+	RawToken string // "fg_live_<32 random>", 사용자에게 한 번만 표시
+}
+
 // CreateRequest는 Service.Create 입력입니다.
 //
 // 첫 admin 사용자는 tenant 생성과 같은 Tx에 묶입니다 (B8 결정 — 빈 tenant는 의미 없음).
@@ -200,6 +236,25 @@ type Service interface {
 
 	// GetUserRoles는 user에게 할당된 모든 role을 반환합니다.
 	GetUserRoles(ctx context.Context, tx storage.Tx, userID string) ([]Role, error)
+
+	// IssueApiKey는 새 API key를 발급합니다.
+	// raw token은 결과의 RawToken에 한 번만 반환됩니다 — 호출자가 사용자에게 표시 후 즉시 폐기.
+	// DB에는 argon2id 해시만 저장 (§5.9).
+	IssueApiKey(ctx context.Context, tx storage.Tx, req IssueApiKeyRequest) (IssueApiKeyResult, error)
+
+	// AuthenticateApiKey는 raw token으로 ApiKey를 검증·반환합니다.
+	// raw token에서 prefix 추출 → DB lookup → argon2id verify → revoked·expires 체크.
+	// 호출자(인증 미들웨어)는 storage.Bootstrap Tx로 진입 — 토큰 검증 시점에 tenant 미상.
+	// 실패: ErrInvalidApiKeyFormat / ErrApiKeyNotFound / ErrApiKeyRevoked / ErrApiKeyExpired.
+	AuthenticateApiKey(ctx context.Context, tx storage.Tx, rawToken string) (ApiKey, error)
+
+	// RevokeApiKey는 (tenantID, apiKeyID) row의 revoked_at을 현재 시각으로 설정합니다 (soft delete).
+	// 이미 revoked면 no-op (멱등). row가 없으면 storage.ErrNotFound.
+	RevokeApiKey(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, apiKeyID string) error
+
+	// ListApiKeys는 tenant의 모든 ApiKey를 반환합니다 (revoked 포함).
+	// Hashed 필드는 빈 값으로 마스킹 — 외부 노출 방지.
+	ListApiKeys(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) ([]ApiKey, error)
 }
 
 // 공통 에러.

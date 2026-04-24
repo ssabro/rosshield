@@ -145,6 +145,155 @@ func (r *Repo) AssignRole(ctx context.Context, tx storage.Tx, userID, roleID str
 	return assignRole(ctx, tx, userID, roleID)
 }
 
+// IssueApiKey는 tenant.Service.IssueApiKey 구현입니다.
+func (r *Repo) IssueApiKey(ctx context.Context, tx storage.Tx, req tenant.IssueApiKeyRequest) (tenant.IssueApiKeyResult, error) {
+	if req.TenantID == "" {
+		return tenant.IssueApiKeyResult{}, storage.ErrTenantMissing
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return tenant.IssueApiKeyResult{}, fmt.Errorf("tenant: api key Name is required")
+	}
+	if req.CreatedBy == "" {
+		return tenant.IssueApiKeyResult{}, fmt.Errorf("tenant: api key CreatedBy is required")
+	}
+
+	rawToken, prefix, err := tenant.GenerateApiKeyToken()
+	if err != nil {
+		return tenant.IssueApiKeyResult{}, err
+	}
+	hash, err := tenant.HashPassword(rawToken)
+	if err != nil {
+		return tenant.IssueApiKeyResult{}, fmt.Errorf("tenant: hash api key: %w", err)
+	}
+
+	scopes := req.Scopes
+	if scopes == nil {
+		scopes = []tenant.Permission{}
+	}
+	scopesJSON, err := json.Marshal(scopes)
+	if err != nil {
+		return tenant.IssueApiKeyResult{}, fmt.Errorf("tenant: marshal scopes: %w", err)
+	}
+
+	now := r.deps.Clock.Now().UTC()
+	key := tenant.ApiKey{
+		ID:        r.deps.IDGen.New("ak"),
+		TenantID:  req.TenantID,
+		Name:      req.Name,
+		Prefix:    prefix,
+		Hashed:    hash,
+		Scopes:    scopes,
+		ExpiresAt: req.ExpiresAt,
+		CreatedBy: req.CreatedBy,
+		CreatedAt: now,
+	}
+
+	var expiresAt *string
+	if key.ExpiresAt != nil {
+		s := key.ExpiresAt.UTC().Format(time.RFC3339Nano)
+		expiresAt = &s
+	}
+
+	_, err = tx.Exec(ctx, `
+INSERT INTO api_keys (
+    id, tenant_id, name, prefix, hashed, scopes,
+    expires_at, last_used_at, created_by, created_at, revoked_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL)`,
+		key.ID, string(key.TenantID), key.Name, key.Prefix, key.Hashed, string(scopesJSON),
+		expiresAt, key.CreatedBy, key.CreatedAt.Format(time.RFC3339Nano))
+	if err != nil {
+		return tenant.IssueApiKeyResult{}, fmt.Errorf("tenant: insert api key: %w", err)
+	}
+	return tenant.IssueApiKeyResult{Key: key, RawToken: rawToken}, nil
+}
+
+// AuthenticateApiKey는 tenant.Service.AuthenticateApiKey 구현입니다.
+func (r *Repo) AuthenticateApiKey(ctx context.Context, tx storage.Tx, rawToken string) (tenant.ApiKey, error) {
+	prefix, err := tenant.ExtractApiKeyPrefix(rawToken)
+	if err != nil {
+		return tenant.ApiKey{}, err
+	}
+
+	row := tx.QueryRow(ctx, `
+SELECT id, tenant_id, name, prefix, hashed, scopes,
+       expires_at, last_used_at, created_by, created_at, revoked_at
+  FROM api_keys
+ WHERE prefix = ?`,
+		prefix)
+
+	key, err := scanApiKeyRow(row)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return tenant.ApiKey{}, tenant.ErrApiKeyNotFound
+		}
+		return tenant.ApiKey{}, err
+	}
+
+	// argon2id verify (constant time).
+	if err := tenant.VerifyPassword(rawToken, key.Hashed); err != nil {
+		// hash 불일치 — wrong key를 같은 prefix로 시도하는 거의 없는 충돌 가능성.
+		return tenant.ApiKey{}, tenant.ErrApiKeyNotFound
+	}
+
+	if key.RevokedAt != nil {
+		return tenant.ApiKey{}, tenant.ErrApiKeyRevoked
+	}
+	if key.ExpiresAt != nil && !key.ExpiresAt.After(r.deps.Clock.Now().UTC()) {
+		return tenant.ApiKey{}, tenant.ErrApiKeyExpired
+	}
+	return key, nil
+}
+
+// RevokeApiKey는 tenant.Service.RevokeApiKey 구현입니다 (멱등 soft delete).
+func (r *Repo) RevokeApiKey(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, apiKeyID string) error {
+	now := r.deps.Clock.Now().UTC().Format(time.RFC3339Nano)
+	res, err := tx.Exec(ctx, `
+UPDATE api_keys
+   SET revoked_at = COALESCE(revoked_at, ?)
+ WHERE tenant_id = ? AND id = ?`,
+		now, string(tenantID), apiKeyID)
+	if err != nil {
+		return fmt.Errorf("tenant: revoke api key: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("tenant: revoke api key rows affected: %w", err)
+	}
+	if affected == 0 {
+		return storage.ErrNotFound
+	}
+	return nil
+}
+
+// ListApiKeys는 tenant.Service.ListApiKeys 구현입니다 (Hashed 마스킹).
+func (r *Repo) ListApiKeys(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) ([]tenant.ApiKey, error) {
+	rows, err := tx.Query(ctx, `
+SELECT id, tenant_id, name, prefix, hashed, scopes,
+       expires_at, last_used_at, created_by, created_at, revoked_at
+  FROM api_keys
+ WHERE tenant_id = ?
+ ORDER BY created_at DESC`,
+		string(tenantID))
+	if err != nil {
+		return nil, fmt.Errorf("tenant: query api keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []tenant.ApiKey
+	for rows.Next() {
+		k, err := scanApiKeyRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		k.Hashed = "" // 외부 노출 방지
+		out = append(out, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("tenant: iter api keys: %w", err)
+	}
+	return out, nil
+}
+
 // GetUserRoles는 tenant.Service.GetUserRoles 구현입니다.
 func (r *Repo) GetUserRoles(ctx context.Context, tx storage.Tx, userID string) ([]tenant.Role, error) {
 	rows, err := tx.Query(ctx, `
@@ -374,6 +523,80 @@ func assembleRole(id, tid, name, permsJSON string, isSystem int, createdStr stri
 		IsSystem:    isSystem == 1,
 		CreatedAt:   createdAt,
 	}, nil
+}
+
+func scanApiKeyRow(row *sql.Row) (tenant.ApiKey, error) {
+	var s apiKeyScan
+	err := row.Scan(&s.id, &s.tenantID, &s.name, &s.prefix, &s.hashed, &s.scopesJSON,
+		&s.expiresAt, &s.lastUsedAt, &s.createdBy, &s.createdAt, &s.revokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return tenant.ApiKey{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return tenant.ApiKey{}, fmt.Errorf("tenant: scan api key: %w", err)
+	}
+	return assembleApiKey(s)
+}
+
+func scanApiKeyRows(rows *sql.Rows) (tenant.ApiKey, error) {
+	var s apiKeyScan
+	if err := rows.Scan(&s.id, &s.tenantID, &s.name, &s.prefix, &s.hashed, &s.scopesJSON,
+		&s.expiresAt, &s.lastUsedAt, &s.createdBy, &s.createdAt, &s.revokedAt); err != nil {
+		return tenant.ApiKey{}, fmt.Errorf("tenant: scan api key row: %w", err)
+	}
+	return assembleApiKey(s)
+}
+
+type apiKeyScan struct {
+	id, tenantID, name, prefix, hashed string
+	scopesJSON                         string
+	expiresAt, lastUsedAt              sql.NullString
+	createdBy, createdAt               string
+	revokedAt                          sql.NullString
+}
+
+func assembleApiKey(s apiKeyScan) (tenant.ApiKey, error) {
+	var scopes []tenant.Permission
+	if err := json.Unmarshal([]byte(s.scopesJSON), &scopes); err != nil {
+		return tenant.ApiKey{}, fmt.Errorf("tenant: unmarshal api key scopes: %w", err)
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, s.createdAt)
+	if err != nil {
+		return tenant.ApiKey{}, fmt.Errorf("tenant: parse api key created_at: %w", err)
+	}
+
+	out := tenant.ApiKey{
+		ID:        s.id,
+		TenantID:  storage.TenantID(s.tenantID),
+		Name:      s.name,
+		Prefix:    s.prefix,
+		Hashed:    s.hashed,
+		Scopes:    scopes,
+		CreatedBy: s.createdBy,
+		CreatedAt: createdAt,
+	}
+	if s.expiresAt.Valid {
+		t, err := time.Parse(time.RFC3339Nano, s.expiresAt.String)
+		if err != nil {
+			return tenant.ApiKey{}, fmt.Errorf("tenant: parse api key expires_at: %w", err)
+		}
+		out.ExpiresAt = &t
+	}
+	if s.lastUsedAt.Valid {
+		t, err := time.Parse(time.RFC3339Nano, s.lastUsedAt.String)
+		if err != nil {
+			return tenant.ApiKey{}, fmt.Errorf("tenant: parse api key last_used_at: %w", err)
+		}
+		out.LastUsedAt = &t
+	}
+	if s.revokedAt.Valid {
+		t, err := time.Parse(time.RFC3339Nano, s.revokedAt.String)
+		if err != nil {
+			return tenant.ApiKey{}, fmt.Errorf("tenant: parse api key revoked_at: %w", err)
+		}
+		out.RevokedAt = &t
+	}
+	return out, nil
 }
 
 func validateCreate(req tenant.CreateRequest) error {
