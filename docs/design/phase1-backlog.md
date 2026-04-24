@@ -133,10 +133,14 @@ type Scheduler interface {
 
 ### Exit 기준
 
-- 9개 테스트 녹색, 패키지 커버리지 ≥ 80%.
-- `cmd/rosshield-server/main.go`가 Platform bootstrap 시퀀스로 모든 서비스 초기화.
-- SQLite 파일 DB(`~/.rosshield/data.db`) 생성 및 첫 마이그레이션 적용.
-- 구조화 로그가 stdout에 JSON 한 줄씩 출력됨.
+- 9개 테스트 녹색, 패키지 커버리지 ≥ 80%. ✅
+- `cmd/rosshield-server/main.go`가 Platform bootstrap 시퀀스로 모든 서비스 초기화. ✅ (commit `f3feee9`)
+- SQLite 파일 DB(`~/.rosshield/data.db`) 생성 및 첫 마이그레이션 적용. ✅
+- 구조화 로그가 stdout에 JSON 한 줄씩 출력됨. ✅
+- 그래이스풀 셧다운: SIGINT/SIGTERM → http.Server.Shutdown → Platform.Shutdown(역순). ✅
+- `/healthz` 강화: storage liveness + 컴포넌트별 status + signer keyID 노출. shutdown 후 503. ✅
+
+**E1 epic 완료** (9 + Exit). 다음: E2 Audit 도메인.
 
 ### 설계 참조
 
