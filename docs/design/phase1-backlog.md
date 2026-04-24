@@ -186,20 +186,22 @@ type Service interface {
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E2.T1 | `TestAppendInitializesGenesis` — 첫 엔트리의 `prevHash == 0x00..00` | genesis 처리 |
-| E2.T2 | `TestAppendChainsHashes` — `hash_i = sha256(prevHash ‖ payloadDigest ‖ meta)` | SHA-256 계산 |
-| E2.T3 | `TestAppendRejectsDuplicateSeq` — `(tenantId, seq)` UNIQUE | DB 제약 + 오류 mapping |
-| E2.T4 | `TestAppendIsAppendOnly` — `UPDATE`·`DELETE` 시도 시 trigger가 막음 | SQLite trigger (또는 migration에 명시) |
-| E2.T5 | `TestVerifyDetectsChainBreak` — 중간 엔트리 payloadDigest 조작 시 실패 지점 감지 | 재계산 루프 |
-| E2.T6 | `TestVerifyAcceptsCleanRange` | 클린 경로 |
-| E2.T7 | `TestExportNDJSONIncludesSignature` — 내보내기에 공개키·서명 포함 | gzip NDJSON + SIGNATURE |
-| E2.T8 | `TestCheckpointSignedEveryHour` (Scheduler 연동) | Signer 호출 + CheckpointSignature 저장 |
+| E2.T1 ✅ | `TestAppendInitializesGenesis` — 첫 엔트리의 `prevHash == 0x00..00` | genesis 처리 (commit `0508d4d`) |
+| E2.T2 ✅ | `TestAppendChainsHashes` — `hash_i = sha256(prevHash ‖ payloadDigest ‖ meta)` | SHA-256 계산 (`0508d4d`) |
+| E2.T3 ✅ | `TestAppendRejectsDuplicateSeq` — `(tenantId, seq)` UNIQUE | DB 제약 + 오류 mapping (`0508d4d`) |
+| E2.T4 ✅ | `TestAppendIsAppendOnly` — `UPDATE`·`DELETE` 시도 시 trigger가 막음 | SQLite BEFORE trigger + `mapErr` (`0508d4d`) |
+| E2.T5 ✅ | `TestVerifyDetectsHashTampering`+`PrevHashBreak`+`MissingSeq` — 다양한 파손 감지 | 재계산 루프 (`76d41f8`) |
+| E2.T6 ✅ | `TestVerifyAcceptsCleanRange`+`DefaultsToHead`+`EmptyChainOK` | 클린 경로 (`76d41f8`) |
+| E2.T7 ✅ | `TestExportNDJSONIncludesSignature` — 공개키·서명 + 외부 도구 시뮬레이션 검증 | gzip NDJSON + Ed25519 (`c228937`) |
+| E2.T8 ✅ | `TestRegisterCheckpointJobFiresAndPersists` + `TestWriteCheckpointStoresVerifiableSignature` | `@every 1s` 잡 → audit_checkpoints row 검증 (`d7639b4`) |
 
 ### Exit 기준
 
-- 체인 무결성·append-only·seq 유일성이 테스트로 보장.
-- `POST /api/v1/audit/verify`가 구간 검증 결과 반환 (실제 라우트 등록은 E9 API Gateway에서).
-- 백그라운드 checkpoint 서명 잡이 Scheduler에 등록됨.
+- 체인 무결성·append-only·seq 유일성이 테스트로 보장. ✅
+- `POST /api/v1/audit/verify`가 구간 검증 결과 반환 (실제 라우트 등록은 E9 API Gateway에서). 🟡 (도메인 로직 ✅, 라우트 E9)
+- 백그라운드 checkpoint 서명 잡이 Scheduler에 등록됨. ✅
+
+**E2 epic 완료** (8/8). 다음: bootstrap 결선 또는 E3 Tenant/Auth 도메인.
 
 ### 설계 참조
 
