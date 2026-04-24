@@ -22,6 +22,7 @@ linters:
   settings:
     depguard:
       rules:
+        # 도메인 import 격리는 production 코드만 강제. 테스트는 결선 통합을 직접 검증해야 하므로 예외.
         audit-domain-isolation:
           list-mode: lax
           files:
@@ -29,6 +30,7 @@ linters:
             - "!**/cmd/**"
             - "!**/internal/api/**"
             - "!**/internal/domain/audit/**"
+            - "!**/*_test.go"
           deny:
             - pkg: github.com/ssabro/rosshield/internal/domain/audit
               desc: "다른 도메인·플랫폼은 audit 도메인을 직접 import 금지 (P5). EventBus 또는 cmd/* bootstrap에서 결선된 Service 경유."
