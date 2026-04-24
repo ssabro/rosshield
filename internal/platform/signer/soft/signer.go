@@ -49,28 +49,39 @@ func New() (signer.Signer, error) {
 //
 // 두 번째 호출부터는 같은 keyID를 반환합니다 (프로세스 재시작 후 checkpoint 검증을 위해 필수).
 func LoadOrCreate(path string) (signer.Signer, error) {
+	priv, err := LoadOrCreatePrivateKey(path)
+	if err != nil {
+		return nil, err
+	}
+	return wrapPrivateKey(priv), nil
+}
+
+// LoadOrCreatePrivateKey는 LoadOrCreate와 동일하지만 raw `ed25519.PrivateKey`를 직접 반환합니다.
+//
+// JWT·기타 표준 라이브러리가 raw key를 요구하는 경우 사용 (`golang-jwt/jwt/v5` 등).
+// signer 인터페이스 우회 — 일반 audit checkpoint 등에는 LoadOrCreate 사용.
+func LoadOrCreatePrivateKey(path string) (ed25519.PrivateKey, error) {
 	if path == "" {
-		return nil, fmt.Errorf("soft: LoadOrCreate requires non-empty path")
+		return nil, fmt.Errorf("soft: LoadOrCreatePrivateKey requires non-empty path")
 	}
 
 	if priv, err := loadKeyFromFile(path); err == nil {
-		return wrapPrivateKey(priv), nil
+		return priv, nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
 
-	// 새 키 생성 + 저장.
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("soft: mkdir keys dir %q: %w", filepath.Dir(path), err)
 	}
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("soft: ed25519.GenerateKey: %w", err)
 	}
 	if err := writeKeyToFile(path, priv); err != nil {
 		return nil, err
 	}
-	return &softSigner{private: priv, public: pub, keyID: makeKeyID(pub)}, nil
+	return priv, nil
 }
 
 func loadKeyFromFile(path string) (ed25519.PrivateKey, error) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -128,14 +129,28 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: signer: %w", err)
 	}
 
+	// JWT 별도 키 — audit checkpoint 키와 분리(B4 결정).
+	// 키 회전 주기·키 손실 영향이 다르므로 결선 단계에서 두 개 별도 키.
+	// jwt 라이브러리(`golang-jwt/jwt/v5`)는 raw ed25519.PrivateKey/PublicKey를 요구하므로 LoadOrCreatePrivateKey 사용.
+	jwtKeyPath := filepath.Join(cfg.DataDir, "keys", "jwt.ed25519")
+	jwtPrivateKey, err := soft.LoadOrCreatePrivateKey(jwtKeyPath)
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: jwt key: %w", err)
+	}
+	jwtPublicKey := jwtPrivateKey.Public().(ed25519.PublicKey)
+
 	sch := cronsched.New(cronsched.Deps{Logger: logger})
 
 	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clk})
 
 	tenantSvc := tenantrepo.New(tenantrepo.Deps{
-		Clock: clk,
-		IDGen: ids,
-		Audit: &auditEmitterAdapter{svc: auditSvc},
+		Clock:         clk,
+		IDGen:         ids,
+		Audit:         &auditEmitterAdapter{svc: auditSvc},
+		JWTPrivateKey: jwtPrivateKey,
+		JWTPublicKey:  jwtPublicKey,
+		// AccessTTL/RefreshTTL는 0 → tenant.DefaultAccessTTL/DefaultRefreshTTL.
 	})
 
 	systemTenant := cfg.SystemTenantID

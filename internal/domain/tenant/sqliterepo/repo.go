@@ -11,6 +11,7 @@ package sqliterepo
 
 import (
 	"context"
+	"crypto/ed25519"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -30,6 +31,16 @@ type Deps struct {
 	Clock clock.Clock
 	IDGen idgen.IDGen
 	Audit tenant.AuditEmitter // bootstrap이 audit.Service를 어댑팅한 구현체 주입.
+
+	// JWTPrivateKey/JWTPublicKey는 access·refresh 토큰 서명·검증용 (Stage D).
+	// 비어 있으면 Login/Refresh/VerifyAccessToken은 ErrInvalidToken 반환 (테스트 외 부팅 경로에선 필수).
+	JWTPrivateKey ed25519.PrivateKey
+	JWTPublicKey  ed25519.PublicKey
+
+	// AccessTTL은 access 토큰 수명. 0이면 tenant.DefaultAccessTTL.
+	AccessTTL time.Duration
+	// RefreshTTL은 refresh 토큰 수명. 0이면 tenant.DefaultRefreshTTL.
+	RefreshTTL time.Duration
 }
 
 // Repo는 tenant.Service의 SQLite 구현입니다.
@@ -292,6 +303,272 @@ SELECT id, tenant_id, name, prefix, hashed, scopes,
 		return nil, fmt.Errorf("tenant: iter api keys: %w", err)
 	}
 	return out, nil
+}
+
+// Login은 tenant.Service.Login 구현입니다 (Stage D).
+func (r *Repo) Login(ctx context.Context, tx storage.Tx, req tenant.LoginRequest) (tenant.LoginResult, error) {
+	if req.TenantID == "" {
+		return tenant.LoginResult{}, storage.ErrTenantMissing
+	}
+	if tx.TenantID() != "" && tx.TenantID() != req.TenantID {
+		return tenant.LoginResult{}, fmt.Errorf("tenant: tx.TenantID()=%q != req.TenantID=%q",
+			tx.TenantID(), req.TenantID)
+	}
+
+	user, err := r.GetUserByEmail(ctx, tx, req.TenantID, req.Email)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return tenant.LoginResult{}, tenant.ErrInvalidCredentials
+		}
+		return tenant.LoginResult{}, err
+	}
+	if user.Status != tenant.UserStatusActive {
+		return tenant.LoginResult{}, tenant.ErrUserDisabled
+	}
+	if err := tenant.VerifyPassword(req.Password, user.PasswordHash); err != nil {
+		return tenant.LoginResult{}, tenant.ErrInvalidCredentials
+	}
+
+	roles, err := r.GetUserRoles(ctx, tx, user.ID)
+	if err != nil {
+		return tenant.LoginResult{}, err
+	}
+
+	return r.issueTokens(ctx, tx, user, roles)
+}
+
+// issueTokens는 access + refresh 토큰을 발급하고 refresh를 DB에 INSERT합니다.
+func (r *Repo) issueTokens(ctx context.Context, tx storage.Tx, user tenant.User, roles []tenant.Role) (tenant.LoginResult, error) {
+	now := r.deps.Clock.Now().UTC()
+	accessTTL := r.deps.AccessTTL
+	if accessTTL <= 0 {
+		accessTTL = tenant.DefaultAccessTTL
+	}
+	refreshTTL := r.deps.RefreshTTL
+	if refreshTTL <= 0 {
+		refreshTTL = tenant.DefaultRefreshTTL
+	}
+
+	roleNames := make([]string, len(roles))
+	for i, role := range roles {
+		roleNames[i] = role.Name
+	}
+
+	accessJTI := r.deps.IDGen.New("at")
+	accessExp := now.Add(accessTTL)
+	accessTok, err := tenant.SignAccessToken(r.deps.JWTPrivateKey, tenant.AccessClaims{
+		Subject:   user.ID,
+		TenantID:  user.TenantID,
+		Roles:     roleNames,
+		IssuedAt:  now,
+		ExpiresAt: accessExp,
+		JTI:       accessJTI,
+	})
+	if err != nil {
+		return tenant.LoginResult{}, err
+	}
+
+	refreshJTI := r.deps.IDGen.New("rt")
+	refreshExp := now.Add(refreshTTL)
+	refreshTok, err := tenant.SignRefreshToken(r.deps.JWTPrivateKey, tenant.RefreshClaims{
+		Subject:   user.ID,
+		TenantID:  user.TenantID,
+		IssuedAt:  now,
+		ExpiresAt: refreshExp,
+		JTI:       refreshJTI,
+	})
+	if err != nil {
+		return tenant.LoginResult{}, err
+	}
+
+	if err := insertRefreshToken(ctx, tx, refreshJTI, user.ID, user.TenantID, refreshExp, now); err != nil {
+		return tenant.LoginResult{}, err
+	}
+
+	return tenant.LoginResult{
+		AccessToken:      accessTok,
+		RefreshToken:     refreshTok,
+		AccessExpiresAt:  accessExp,
+		RefreshExpiresAt: refreshExp,
+		User:             user,
+		Roles:            roles,
+	}, nil
+}
+
+// Refresh는 tenant.Service.Refresh 구현입니다.
+//
+// rotation: 기존 refresh의 revoked_at을 설정하고 새 access·refresh를 발급합니다.
+// 이미 revoked된 refresh가 다시 들어오면 ErrRefreshRevoked + 해당 user의 모든 refresh 일괄 revoke
+// (reuse detection — 탈취 신호).
+func (r *Repo) Refresh(ctx context.Context, tx storage.Tx, refreshToken string) (tenant.LoginResult, error) {
+	claims, err := tenant.ParseRefreshToken(r.deps.JWTPublicKey, refreshToken)
+	if err != nil {
+		return tenant.LoginResult{}, err
+	}
+	if tx.TenantID() != "" && tx.TenantID() != claims.TenantID {
+		return tenant.LoginResult{}, fmt.Errorf("tenant: tx.TenantID()=%q != refresh.tid=%q",
+			tx.TenantID(), claims.TenantID)
+	}
+
+	row, err := readRefreshToken(ctx, tx, claims.JTI)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return tenant.LoginResult{}, tenant.ErrRefreshNotFound
+		}
+		return tenant.LoginResult{}, err
+	}
+	if row.RevokedAt != nil {
+		// reuse 감지 시 호출자가 별도 Tx로 RevokeAllRefreshForUser를 호출해야 합니다.
+		// 같은 Tx에서 일괄 revoke하면 ErrRefreshRevoked 반환과 함께 rollback돼 의미 없음.
+		return tenant.LoginResult{}, tenant.ErrRefreshRevoked
+	}
+	if !row.ExpiresAt.After(r.deps.Clock.Now().UTC()) {
+		return tenant.LoginResult{}, tenant.ErrRefreshExpired
+	}
+
+	// 기존 refresh revoke (rotation) — 새 발급 전에 atomic.
+	if err := revokeRefresh(ctx, tx, claims.JTI, r.deps.Clock.Now().UTC()); err != nil {
+		return tenant.LoginResult{}, err
+	}
+
+	user, err := r.getUserByID(ctx, tx, row.UserID)
+	if err != nil {
+		return tenant.LoginResult{}, err
+	}
+	roles, err := r.GetUserRoles(ctx, tx, user.ID)
+	if err != nil {
+		return tenant.LoginResult{}, err
+	}
+	return r.issueTokens(ctx, tx, user, roles)
+}
+
+// Logout은 tenant.Service.Logout 구현입니다 (멱등 revoke).
+func (r *Repo) Logout(ctx context.Context, tx storage.Tx, refreshToken string) error {
+	claims, err := tenant.ParseRefreshToken(r.deps.JWTPublicKey, refreshToken)
+	if err != nil {
+		return err
+	}
+	if tx.TenantID() != "" && tx.TenantID() != claims.TenantID {
+		return fmt.Errorf("tenant: tx.TenantID()=%q != refresh.tid=%q",
+			tx.TenantID(), claims.TenantID)
+	}
+	return revokeRefresh(ctx, tx, claims.JTI, r.deps.Clock.Now().UTC())
+}
+
+// VerifyAccessToken은 tenant.Service.VerifyAccessToken 구현입니다 (stateless).
+func (r *Repo) VerifyAccessToken(ctx context.Context, accessToken string) (tenant.AccessClaims, error) {
+	return tenant.ParseAccessToken(r.deps.JWTPublicKey, accessToken)
+}
+
+// getUserByID는 user ID로 user를 조회합니다 (Refresh 흐름에서 사용).
+func (r *Repo) getUserByID(ctx context.Context, tx storage.Tx, userID string) (tenant.User, error) {
+	row := tx.QueryRow(ctx, `
+SELECT id, tenant_id, email, display_name, auth_provider, external_subject,
+       password_hash, status, created_at, updated_at
+  FROM users
+ WHERE id = ?`, userID)
+
+	var (
+		id, tid, em                   string
+		displayName                   sql.NullString
+		provider                      string
+		externalSubject, passwordHash sql.NullString
+		status                        string
+		createdStr, updatedStr        string
+	)
+	err := row.Scan(&id, &tid, &em, &displayName, &provider, &externalSubject,
+		&passwordHash, &status, &createdStr, &updatedStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return tenant.User{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return tenant.User{}, fmt.Errorf("tenant: get user by id: %w", err)
+	}
+	createdAt, _ := time.Parse(time.RFC3339Nano, createdStr)
+	updatedAt, _ := time.Parse(time.RFC3339Nano, updatedStr)
+	return tenant.User{
+		ID:              id,
+		TenantID:        storage.TenantID(tid),
+		Email:           em,
+		DisplayName:     displayName.String,
+		AuthProvider:    tenant.AuthProvider(provider),
+		ExternalSubject: externalSubject.String,
+		PasswordHash:    passwordHash.String,
+		Status:          tenant.UserStatus(status),
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
+	}, nil
+}
+
+// ----- refresh token DB 헬퍼 -----
+
+type refreshRow struct {
+	JTI       string
+	UserID    string
+	TenantID  storage.TenantID
+	ExpiresAt time.Time
+	RevokedAt *time.Time
+}
+
+func insertRefreshToken(ctx context.Context, tx storage.Tx, jti, userID string, tenantID storage.TenantID, expiresAt, now time.Time) error {
+	_, err := tx.Exec(ctx, `
+INSERT INTO auth_refresh_tokens (jti, user_id, tenant_id, expires_at, revoked_at, created_at)
+VALUES (?, ?, ?, ?, NULL, ?)`,
+		jti, userID, string(tenantID),
+		expiresAt.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano))
+	if err != nil {
+		return fmt.Errorf("tenant: insert refresh token: %w", err)
+	}
+	return nil
+}
+
+func readRefreshToken(ctx context.Context, tx storage.Tx, jti string) (refreshRow, error) {
+	row := tx.QueryRow(ctx, `
+SELECT jti, user_id, tenant_id, expires_at, revoked_at
+  FROM auth_refresh_tokens
+ WHERE jti = ?`, jti)
+
+	var (
+		j, uid, tid, expStr string
+		revoked             sql.NullString
+	)
+	err := row.Scan(&j, &uid, &tid, &expStr, &revoked)
+	if errors.Is(err, sql.ErrNoRows) {
+		return refreshRow{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return refreshRow{}, fmt.Errorf("tenant: read refresh token: %w", err)
+	}
+	exp, err := time.Parse(time.RFC3339Nano, expStr)
+	if err != nil {
+		return refreshRow{}, fmt.Errorf("tenant: parse refresh expires_at: %w", err)
+	}
+	out := refreshRow{
+		JTI:       j,
+		UserID:    uid,
+		TenantID:  storage.TenantID(tid),
+		ExpiresAt: exp,
+	}
+	if revoked.Valid {
+		t, err := time.Parse(time.RFC3339Nano, revoked.String)
+		if err != nil {
+			return refreshRow{}, fmt.Errorf("tenant: parse refresh revoked_at: %w", err)
+		}
+		out.RevokedAt = &t
+	}
+	return out, nil
+}
+
+func revokeRefresh(ctx context.Context, tx storage.Tx, jti string, now time.Time) error {
+	_, err := tx.Exec(ctx, `
+UPDATE auth_refresh_tokens
+   SET revoked_at = COALESCE(revoked_at, ?)
+ WHERE jti = ?`,
+		now.Format(time.RFC3339Nano), jti)
+	if err != nil {
+		return fmt.Errorf("tenant: revoke refresh: %w", err)
+	}
+	return nil
 }
 
 // GetUserRoles는 tenant.Service.GetUserRoles 구현입니다.

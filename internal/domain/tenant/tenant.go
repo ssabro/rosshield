@@ -187,6 +187,23 @@ type IssueApiKeyResult struct {
 	RawToken string // "fg_live_<32 random>", 사용자에게 한 번만 표시
 }
 
+// LoginRequest는 Service.Login 입력입니다.
+type LoginRequest struct {
+	TenantID storage.TenantID
+	Email    string
+	Password string
+}
+
+// LoginResult는 Service.Login·Refresh 출력입니다.
+type LoginResult struct {
+	AccessToken      string
+	RefreshToken     string
+	AccessExpiresAt  time.Time
+	RefreshExpiresAt time.Time
+	User             User
+	Roles            []Role
+}
+
 // CreateRequest는 Service.Create 입력입니다.
 //
 // 첫 admin 사용자는 tenant 생성과 같은 Tx에 묶입니다 (B8 결정 — 빈 tenant는 의미 없음).
@@ -255,6 +272,23 @@ type Service interface {
 	// ListApiKeys는 tenant의 모든 ApiKey를 반환합니다 (revoked 포함).
 	// Hashed 필드는 빈 값으로 마스킹 — 외부 노출 방지.
 	ListApiKeys(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) ([]ApiKey, error)
+
+	// Login은 (tenant, email, password)로 로그인하여 access·refresh 토큰을 발급합니다.
+	// 호출자는 ctx에 req.TenantID를 주입한 storage.Tx로 진입.
+	// 실패: ErrInvalidCredentials / ErrUserDisabled.
+	Login(ctx context.Context, tx storage.Tx, req LoginRequest) (LoginResult, error)
+
+	// Refresh는 refresh token을 검증하고 새 access·refresh를 발급합니다 (rotation).
+	// 기존 refresh의 revoked_at을 설정하고 새 jti를 INSERT — 같은 refresh 재사용 시 ErrRefreshRevoked.
+	// 호출자는 refresh token에서 추출한 tid를 ctx에 주입한 후 storage.Tx로 진입.
+	Refresh(ctx context.Context, tx storage.Tx, refreshToken string) (LoginResult, error)
+
+	// Logout은 refresh token을 revoke합니다 (멱등). 같은 jti로 다시 호출해도 OK.
+	Logout(ctx context.Context, tx storage.Tx, refreshToken string) error
+
+	// VerifyAccessToken은 access token을 stateless 검증하여 claims를 반환합니다.
+	// DB 접근 없음 — 미들웨어가 매 요청마다 호출 가능.
+	VerifyAccessToken(ctx context.Context, accessToken string) (AccessClaims, error)
 }
 
 // 공통 에러.

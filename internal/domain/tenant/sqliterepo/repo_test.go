@@ -2,6 +2,8 @@ package sqliterepo_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -49,11 +51,18 @@ func newTestRepo(t *testing.T) (*sqliterepo.Repo, audit.Service, storage.Storage
 		t.Fatalf("Migrate: %v", err)
 	}
 
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+
 	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clock.System()})
 	repo := sqliterepo.New(sqliterepo.Deps{
-		Clock: clock.System(),
-		IDGen: idgen.NewULID(),
-		Audit: &auditAdapter{svc: auditSvc},
+		Clock:         clock.System(),
+		IDGen:         idgen.NewULID(),
+		Audit:         &auditAdapter{svc: auditSvc},
+		JWTPrivateKey: priv,
+		JWTPublicKey:  pub,
 	})
 	return repo, auditSvc, store
 }
@@ -545,6 +554,238 @@ func TestRevokeApiKeyNotFound(t *testing.T) {
 	})
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+// E3 Stage D — T3: Login이 access·refresh 토큰을 발급하고 claims에 tid·roles 포함.
+func TestLoginIssuesJWTWithTenantAndRoles(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+	var login tenant.LoginResult
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Login(ctx, tx, tenant.LoginRequest{
+			TenantID: seed.Tenant.ID,
+			Email:    seed.Admin.Email,
+			Password: "long-enough-secret-pw",
+		})
+		login = r
+		return err
+	}); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+
+	if login.AccessToken == "" || login.RefreshToken == "" {
+		t.Fatal("AccessToken/RefreshToken empty")
+	}
+	// access 만료가 ~15분.
+	delta := time.Until(login.AccessExpiresAt)
+	if delta < 14*time.Minute || delta > 16*time.Minute {
+		t.Errorf("AccessExpiresAt delta = %v, want ~15m", delta)
+	}
+	// refresh 만료가 ~14일.
+	rdelta := time.Until(login.RefreshExpiresAt)
+	if rdelta < 13*24*time.Hour || rdelta > 15*24*time.Hour {
+		t.Errorf("RefreshExpiresAt delta = %v, want ~14d", rdelta)
+	}
+
+	// VerifyAccessToken으로 claims 복원.
+	claims, err := repo.VerifyAccessToken(context.Background(), login.AccessToken)
+	if err != nil {
+		t.Fatalf("VerifyAccessToken: %v", err)
+	}
+	if claims.Subject != seed.Admin.ID {
+		t.Errorf("sub = %q, want %q", claims.Subject, seed.Admin.ID)
+	}
+	if claims.TenantID != seed.Tenant.ID {
+		t.Errorf("tid = %q, want %q", claims.TenantID, seed.Tenant.ID)
+	}
+	if len(claims.Roles) != 1 || claims.Roles[0] != "admin" {
+		t.Errorf("Roles = %v, want [admin]", claims.Roles)
+	}
+}
+
+// Login: wrong password → ErrInvalidCredentials.
+func TestLoginRejectsWrongPassword(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+	err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Login(ctx, tx, tenant.LoginRequest{
+			TenantID: seed.Tenant.ID,
+			Email:    seed.Admin.Email,
+			Password: "wrong-password!!",
+		})
+		return e
+	})
+	if !errors.Is(err, tenant.ErrInvalidCredentials) {
+		t.Errorf("err = %v, want ErrInvalidCredentials", err)
+	}
+
+	// 미존재 user도 같은 에러 (존재 누설 방지).
+	err = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Login(ctx, tx, tenant.LoginRequest{
+			TenantID: seed.Tenant.ID,
+			Email:    "noone@nowhere.example",
+			Password: "long-enough-secret-pw",
+		})
+		return e
+	})
+	if !errors.Is(err, tenant.ErrInvalidCredentials) {
+		t.Errorf("missing user err = %v, want ErrInvalidCredentials", err)
+	}
+}
+
+// E3 Stage D — Refresh가 새 토큰 발급 + 기존 refresh revoke (rotation).
+func TestRefreshRotatesAndRevokesPrevious(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+	var first tenant.LoginResult
+	_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Login(ctx, tx, tenant.LoginRequest{
+			TenantID: seed.Tenant.ID,
+			Email:    seed.Admin.Email,
+			Password: "long-enough-secret-pw",
+		})
+		first = r
+		return nil
+	})
+
+	// 첫 refresh로 새 토큰 발급.
+	var rotated tenant.LoginResult
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Refresh(ctx, tx, first.RefreshToken)
+		rotated = r
+		return err
+	}); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if rotated.RefreshToken == first.RefreshToken {
+		t.Error("rotated refresh equals first — should be new")
+	}
+	if rotated.AccessToken == first.AccessToken {
+		t.Error("rotated access equals first — should be new")
+	}
+
+	// 첫 refresh를 다시 사용 → ErrRefreshRevoked.
+	err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Refresh(ctx, tx, first.RefreshToken)
+		return e
+	})
+	if !errors.Is(err, tenant.ErrRefreshRevoked) {
+		t.Errorf("reuse: err = %v, want ErrRefreshRevoked", err)
+	}
+
+	// rotated refresh는 여전히 valid (Phase 1은 자동 reuse detection 미구현 — 후속 보안 강화).
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Refresh(ctx, tx, rotated.RefreshToken)
+		return e
+	}); err != nil {
+		t.Errorf("rotated refresh should still work: %v", err)
+	}
+}
+
+// Logout이 refresh를 revoke + 멱등.
+func TestLogoutRevokesRefreshToken(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+	var login tenant.LoginResult
+	_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Login(ctx, tx, tenant.LoginRequest{
+			TenantID: seed.Tenant.ID,
+			Email:    seed.Admin.Email,
+			Password: "long-enough-secret-pw",
+		})
+		login = r
+		return nil
+	})
+
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		return repo.Logout(ctx, tx, login.RefreshToken)
+	}); err != nil {
+		t.Fatalf("Logout: %v", err)
+	}
+
+	// Logout 후 Refresh 시도 → ErrRefreshRevoked.
+	err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Refresh(ctx, tx, login.RefreshToken)
+		return e
+	})
+	if !errors.Is(err, tenant.ErrRefreshRevoked) {
+		t.Errorf("err = %v, want ErrRefreshRevoked", err)
+	}
+
+	// 두 번째 Logout — 멱등.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		return repo.Logout(ctx, tx, login.RefreshToken)
+	}); err != nil {
+		t.Errorf("second Logout: %v", err)
+	}
+}
+
+// disabled user는 로그인 차단.
+func TestLoginRejectsDisabledUser(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+
+	// 직접 UPDATE로 status=disabled.
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, e := tx.Exec(ctx, `UPDATE users SET status = 'disabled' WHERE id = ?`, seed.Admin.ID)
+		return e
+	})
+
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+	err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Login(ctx, tx, tenant.LoginRequest{
+			TenantID: seed.Tenant.ID,
+			Email:    seed.Admin.Email,
+			Password: "long-enough-secret-pw",
+		})
+		return e
+	})
+	if !errors.Is(err, tenant.ErrUserDisabled) {
+		t.Errorf("err = %v, want ErrUserDisabled", err)
 	}
 }
 
