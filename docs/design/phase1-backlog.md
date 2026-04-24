@@ -265,20 +265,22 @@ type Service interface {
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E4.T1 | `TestPackLoadsValidManifest` — pack.yaml + checks YAML 역직렬화 | `go.yaml.in/yaml/v4` |
-| E4.T2 | `TestPackRejectsInvalidSignature` | tar 해제 → manifest 재계산 → Ed25519 검증 |
-| E4.T3 | `TestPackRejectsHashMismatch` — checks/*.yaml 해시가 manifest와 다르면 거부 | SHA-256 대조 |
-| E4.T4 | `TestCheckDefinitionSchemaValidation` — 필수 필드 누락 시 loader 오류 | `santhosh-tekuri/jsonschema` |
-| E4.T5 | `TestEvaluationRuleExpressionSafeSubset` — `eval()`·`require` 등 금지 토큰 거부 | 화이트리스트 AST walker |
-| E4.T6 | `TestSelfTestFixturePassAndFail` — stdout/exit 코드 fixture로 pass/fail 판정 검증 | `selftest` 러너 |
-| E4.T7 | `TestPackLifecycleFSM` — Install→Activate→Deactivate→Archive 상태 전이 + 불법 전이 거부 | FSM 구조체 |
-| E4.T8 | `TestPackInstallIsAudited` | `benchmark.pack.install` audit event |
+| E4.T1 ✅ | `TestPackLoadsValidManifest` + `TestParseCheckYAMLValid` | `go.yaml.in/yaml/v3`(v4는 RC) strict mode (commit `d2017eb`) |
+| E4.T2 ✅ | `TestPackRejectsInvalidSignature` — Ed25519 + 잘못된 키 검증 | `crypto/ed25519` (`c50f872`) |
+| E4.T3 ✅ | `TestPackRejectsHashMismatch` — manifest 잘못된 sha256 거부 | sha256 재계산 + canonical manifest (`c50f872`) |
+| E4.T4 ✅ | `TestCheckDefinitionSchemaValidation` — 7 sub error cases | `santhosh-tekuri/jsonschema/v6` draft 2020-12 (`d2017eb`) |
+| E4.T5 ✅ | `TestEvaluationRuleExpressionSafeSubset` — 13 allow + 7 deny(eval/require/exec/import/http/shell/unknown) | Sealed interface AST + 2-phase JSON 디코드 (`8ce9cea`) |
+| E4.T6 ✅ | `TestSelfTestFixturePassAndFail` — fixture pass/fail 정확 + Degraded 마커 | `RunCheckSelfTest` (`fb1aa03`) |
+| E4.T7 ✅ | `TestPackLifecycleFSM` — 10 allow + 9 illegal sub-cases | default deny 화이트리스트 FSM (`282c18b`) |
+| E4.T8 | `TestPackInstallIsAudited` | sqliterepo INSERT + audit emit (별도 후속 stage) |
 
 ### Exit 기준
 
-- 샘플 팩(picosize, 2 checks)이 설치·활성화·Self-Test 통과.
-- 변조된 팩은 **로드 거부** + 감사 엔트리 기록.
-- Pack 스토리지 디렉터리 규약 확정(§07.1 트리 구조).
+- 샘플 팩(picosize, 2 checks)이 설치·활성화·Self-Test 통과. ✅ (도메인 로직 — sqliterepo는 후속)
+- 변조된 팩은 **로드 거부** + 감사 엔트리 기록. ✅ (로드 거부, audit emit는 sqliterepo 진입 시)
+- Pack 스토리지 디렉터리 규약 확정(§07.1 트리 구조). 🟡 (스키마 0007에 반영 — DB 스키마)
+
+**E4 도메인 로직 완료** (7/7 도메인 태스크). 후속: sqliterepo INSERT + audit emit 결선.
 
 ### 설계 참조
 

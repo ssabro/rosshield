@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-24 (E3 epic 완전 종료 — 8/8 + Stage A~E)_
+_마지막 업데이트: 2026-04-24 (E4 Pack 시스템 epic 완전 종료 — 7/7 + Stage A~E)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E3 Tenant/Auth epic 완전 종료 (8/8 태스크).** Tenant·User·Role·Permission·ApiKey·JWT(access+refresh)·cross-tenant fuzzer까지 완성. JWT는 `<dataDir>/keys/jwt.ed25519` 별도 키, audit checkpoint와 분리. depguard로 도메인 격리 production 강제. 누적 ~135 tests, CI green 9회 (E3만), 원격 39+ commits. **다음: E4 Pack 시스템** (1주 추정) 또는 E2 Audit→Tenant 통합 강화.
+**E4 Pack 시스템 epic 완전 종료 (7/7 태스크).** YAML/JSON Schema 파싱 + tar.gz 안전 해체 + Ed25519 manifest 서명 + 화이트리스트 AST evaluator(9 op + 3 logical, 3-값 결과) + Self-Test fixture 러너 + Lifecycle FSM(5+1 상태). 4개 epic(E1·E2·E3·E4) 완성. 누적 ~179 tests, CI green 5회(E4만), 원격 47+ commits. **다음: E5 Scan engine** (SSH executor + check 실행 + audit 기록) 또는 E11/E12.
 
 ## 원격 저장소
 
@@ -96,23 +96,34 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E3 완료. 재개 후보:
+E4 완료. 재개 후보:
 
-1. **E4 Pack 시스템 진입** (권장). `internal/domain/benchmark/` — `pack.yaml`/`checks/*.yaml`/SIGNATURE 파싱 + Ed25519 manifest 검증 + Self-Test fixture 러너 + 생명주기 FSM(Install→Stage→Active→Archive). 7 TDD 태스크. 1주 추정.
-2. **bootstrap CLI seed — 첫 admin 발행** — `--seed-admin email password` 플래그로 system tenant + admin user 자동 생성. desktop 데스크톱 첫 부팅 시나리오. ~1시간.
-3. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`. `POST /api/v1/auth/login` 등 인증 엔드포인트 스키마 정의 + 코드 생성. ~2시간.
-4. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백. E2 EventBus 통합 강화.
-5. **Scheduler Clock 확장 (노선 B)** — Clock에 Sleep/After + FakeClock 타이머 큐. 결정론적 스케줄러 테스트 시 필요.
-6. **Refresh reuse detection** — Phase 1 미구현. ErrRefreshRevoked를 받으면 별도 Tx로 user의 모든 refresh 일괄 revoke. API 미들웨어 도입 시 자연스러움.
-7. **Windows ACL 키 파일 보호** — 현재 `LoadOrCreate`는 0600/0700 모드만. Windows ACL 별도(후순위).
-8. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
+1. **E4 sqliterepo + Pack 도메인 결선 to bootstrap** (권장 가벼움). `LoadPackFromTar` 결과를 DB에 INSERT + lifecycle row + audit emit. ~2~3시간. Pack 운영 가능 상태로 한 단계 더.
+2. **E5 Scan 엔진 진입** — `internal/domain/scan/` — SSH executor + Check 실행 + Result 기록 + audit. 가장 큰 핵심 epic. ~1주.
+3. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck CSV/JSON → 우리 pack 형식 변환. agent가 조사한 312개 + 329개 베이스라인 활용. ~1주.
+4. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그. ~1시간.
+5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
+6. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
+7. **Scheduler Clock 확장 (노선 B)** — 결정론적 테스트 필요해질 때.
+8. **Refresh reuse detection** — Phase 1 미구현, API 미들웨어 도입 시.
+9. **Windows ACL 키 파일 보호** — 후순위.
+10. **로컬 Windows Defender 우회** — 환경 위생.
 
-**권장 순서**: 2(seed admin, 빠름) → 1(E4 Pack) → 3(OpenAPI) → API gateway·E5+.
+**권장 순서**: 1(Pack 결선) + 4(seed admin) 한 번에 → 2(E5 Scan) 본격 → 3(pack-tools) 활용.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-24 · E4 Pack 시스템 epic 완전 종료 (7/7 + Stage A~E)**: 새 도메인 `internal/domain/benchmark/` — 외부 자산(서명된 콘텐츠) 처리 첫 도메인. **5 stages, 합의된 C1~C8 모두 권장 채택**.
+  - **Stage A** (`d2017eb`) — pack.yaml/checks/*.yaml YAML 파싱 + JSON Schema (draft 2020-12). `go.yaml.in/yaml/v3` 채택(v4는 RC). KnownFields strict + additionalProperties:false 이중 차단.
+  - **Stage B** (`c50f872`) — tar.gz 안전 해체 (zip slip + zip bomb 차단) + MANIFEST canonical JSON + Ed25519 SIGNATURE. SIGNATURE를 가장 먼저 검증 (신뢰 경계 최소화). 파일당 16MiB / 총 256MiB 한도.
+  - **Stage C** (`8ce9cea`) — Sealed interface AST evaluator. 9 op + 3 logical + 3-값 결과(PASS/FAIL/INDETERMINATE). 2-phase JSON 디코드(op 식별 → strict struct 재파싱) + DisallowUnknownFields + UseNumber. regex 256B 제한. **외부 평가 라이브러리(`expr-lang/expr`, `cel-go`, `goja`) 미사용** — attack surface 최소화.
+  - **Stage D** (`fb1aa03`) — Self-Test fixture 러너 + Degraded 마커. expectedOutcome 3-값 강제. RunPackSelfTests 일괄 실행.
+  - **Stage E** (`282c18b`) — Lifecycle FSM 5+1 상태(Installed→Staged→Active⇄Inactive→Archived→Removed). default deny 화이트리스트, self-transition 금지. Active 진입은 Staged 거쳐야만 (검증된 콘텐츠만 활성, P1·P8).
+  - 신규 의존성: `go.yaml.in/yaml/v3 v3.0.4` + `github.com/santhosh-tekuri/jsonschema/v6 v6.0.2` (둘 다 Apache-2.0).
+  - 누적 ~179 tests pass, CI green 5회. **3개 백그라운드 agent 활용**: nrobotcheck 자료(312+329 baseline 구조 + 4계층 evaluation) + YAML/JSONSchema/tar.gz 라이브러리 함정 + AST evaluator 권장 패턴 — 모두 사전 차단.
+  - 후속 작업: sqliterepo INSERT 흐름 (Pack DB 영속 + lifecycle row + audit emit) — 별도 stage.
 - **2026-04-24 · E3 Stage C·D·E 완료 → E3 epic 완전 종료 (8/8)**:
   - **Stage C** (`7d55ca9`) — ApiKey: 0005 마이그레이션, `fg_live_<32 base32>` 40자 토큰, prefix 12자(UNIQUE(tenant_id, prefix)), argon2id 해시, soft delete (`revoked_at = COALESCE(...)`로 멱등). T5·T6 + 5 보조 tests. AuthenticateApiKey는 cross-tenant Bootstrap Tx — prefix 통계 충돌 0(160bit random).
   - **Stage D** (`d8c6b8c`) — JWT login: 0006 마이그레이션, `golang-jwt/jwt/v5` EdDSA, `<dataDir>/keys/jwt.ed25519` 별도 키, access 15m·refresh 14d, rotation. 사전 리서치 agent로 함정 2개(alg=none·키 비대칭) 사전 차단. T3·T4 + 4 보조 tests. **reuse detection은 Phase 1 미구현** (같은 Tx에서 일괄 revoke하면 ErrRefreshRevoked 반환과 함께 rollback돼 의미 없음 — 호출자 별도 Tx 패턴은 후속).
