@@ -127,13 +127,13 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 	if err != nil {
 		return audit.VerifyResult{}, fmt.Errorf("audit: verify query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var (
-		scanned    int64
-		expectSeq  = fromSeq
-		priorHash  audit.Hash // fromSeq=1이면 zero(genesis), 그 외엔 첫 row 받고 채움
-		havePrior  bool
+		scanned   int64
+		expectSeq = fromSeq
+		priorHash audit.Hash // fromSeq=1이면 zero(genesis), 그 외엔 첫 row 받고 채움
+		havePrior bool
 	)
 
 	for rows.Next() {
