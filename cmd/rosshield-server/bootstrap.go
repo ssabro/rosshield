@@ -10,7 +10,9 @@ import (
 	"sync"
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
-	"github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
+	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/tenant"
+	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
@@ -48,12 +50,35 @@ type Platform struct {
 	Signer    signer.Signer
 	Scheduler scheduler.Scheduler
 	Audit     audit.Service
+	Tenant    tenant.Service
 
 	systemTenant storage.TenantID
 
 	shutdownOnce sync.Once
 	shutdownErr  error
 	shutdown     bool
+}
+
+// auditEmitterAdapter는 audit.Service를 tenant.AuditEmitter로 감쌉니다.
+//
+// tenant 도메인이 audit 패키지를 직접 import하지 않도록 하기 위한 결선 글루(P5).
+// 새 도메인이 audit를 emit해야 하면 같은 패턴으로 어댑터 추가.
+type auditEmitterAdapter struct {
+	svc audit.Service
+}
+
+func (a *auditEmitterAdapter) EmitTenantCreated(ctx context.Context, tx storage.Tx, t tenant.Tenant, admin tenant.User) error {
+	payload := fmt.Sprintf(`{"tenantId":%q,"name":%q,"plan":%q,"adminEmail":%q}`,
+		string(t.ID), t.Name, string(t.Plan), admin.Email)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: t.ID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "tenant.created",
+		Target:   audit.Target{Type: "tenant", ID: string(t.ID)},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
 }
 
 // systemTenantID는 부팅 시 결정된 시스템 테넌트를 반환합니다 (healthz·system audit job용).
@@ -105,7 +130,13 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	sch := cronsched.New(cronsched.Deps{Logger: logger})
 
-	auditSvc := sqliterepo.New(sqliterepo.Deps{Clock: clk})
+	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clk})
+
+	tenantSvc := tenantrepo.New(tenantrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: &auditEmitterAdapter{svc: auditSvc},
+	})
 
 	systemTenant := cfg.SystemTenantID
 	if systemTenant == "" {
@@ -139,6 +170,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Signer:       sgn,
 		Scheduler:    sch,
 		Audit:        auditSvc,
+		Tenant:       tenantSvc,
 		systemTenant: systemTenant,
 	}, nil
 }
