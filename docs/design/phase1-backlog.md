@@ -272,7 +272,7 @@ type Service interface {
 | E4.T5 ✅ | `TestEvaluationRuleExpressionSafeSubset` — 13 allow + 7 deny(eval/require/exec/import/http/shell/unknown) | Sealed interface AST + 2-phase JSON 디코드 (`8ce9cea`) |
 | E4.T6 ✅ | `TestSelfTestFixturePassAndFail` — fixture pass/fail 정확 + Degraded 마커 | `RunCheckSelfTest` (`fb1aa03`) |
 | E4.T7 ✅ | `TestPackLifecycleFSM` — 10 allow + 9 illegal sub-cases | default deny 화이트리스트 FSM (`282c18b`) |
-| E4.T8 | `TestPackInstallIsAudited` | sqliterepo INSERT + audit emit (별도 후속 stage) |
+| E4.T8 ✅ | `TestPackInstallIsAudited` — InstallPack 후 audit head.Seq=1 + CurrentState=installed | sqliterepo + bootstrap 결선 (commit `f8acb30`) |
 
 ### Exit 기준
 
@@ -280,7 +280,7 @@ type Service interface {
 - 변조된 팩은 **로드 거부** + 감사 엔트리 기록. ✅ (로드 거부, audit emit는 sqliterepo 진입 시)
 - Pack 스토리지 디렉터리 규약 확정(§07.1 트리 구조). 🟡 (스키마 0007에 반영 — DB 스키마)
 
-**E4 도메인 로직 완료** (7/7 도메인 태스크). 후속: sqliterepo INSERT + audit emit 결선.
+**E4 epic 완전 종료** (8/8 + sqliterepo + bootstrap 결선).
 
 ### 설계 참조
 

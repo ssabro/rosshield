@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-24 (E4 Pack 시스템 epic 완전 종료 — 7/7 + Stage A~E)_
+_마지막 업데이트: 2026-04-24 (E4 운영 준비 완료 — sqliterepo + bootstrap 결선, T8)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E4 Pack 시스템 epic 완전 종료 (7/7 태스크).** YAML/JSON Schema 파싱 + tar.gz 안전 해체 + Ed25519 manifest 서명 + 화이트리스트 AST evaluator(9 op + 3 logical, 3-값 결과) + Self-Test fixture 러너 + Lifecycle FSM(5+1 상태). 4개 epic(E1·E2·E3·E4) 완성. 누적 ~179 tests, CI green 5회(E4만), 원격 47+ commits. **다음: E5 Scan engine** (SSH executor + check 실행 + audit 기록) 또는 E11/E12.
+**E4 Pack 시스템 epic 운영 준비 완료 (8/8 도메인 + sqliterepo + bootstrap 결선).** Pack DB INSERT/조회/lifecycle 전이 + audit emit까지 동작. `bootstrap.Platform.Benchmark` 결선으로 향후 API gateway·CLI에서 즉시 사용 가능. 4 epic(E1·E2·E3·E4) 완성. 누적 ~190 tests, CI green 6회(E4만), 원격 49+ commits. **다음: E5 Scan engine** (SSH executor + check 실행 + 결과 audit). E5 SSH 사전 리서치 완료.
 
 ## 원격 저장소
 
@@ -96,25 +96,25 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E4 완료. 재개 후보:
+E4 운영 결선 완료. 재개 후보:
 
-1. **E4 sqliterepo + Pack 도메인 결선 to bootstrap** (권장 가벼움). `LoadPackFromTar` 결과를 DB에 INSERT + lifecycle row + audit emit. ~2~3시간. Pack 운영 가능 상태로 한 단계 더.
-2. **E5 Scan 엔진 진입** — `internal/domain/scan/` — SSH executor + Check 실행 + Result 기록 + audit. 가장 큰 핵심 epic. ~1주.
-3. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck CSV/JSON → 우리 pack 형식 변환. agent가 조사한 312개 + 329개 베이스라인 활용. ~1주.
-4. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그. ~1시간.
-5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
-6. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
-7. **Scheduler Clock 확장 (노선 B)** — 결정론적 테스트 필요해질 때.
-8. **Refresh reuse detection** — Phase 1 미구현, API 미들웨어 도입 시.
-9. **Windows ACL 키 파일 보호** — 후순위.
-10. **로컬 Windows Defender 우회** — 환경 위생.
+1. **E5 Scan 엔진 진입** (권장). `internal/domain/scan/` — SSH executor + Check 실행 + Result 기록 + audit emit. 가장 큰 핵심 epic. **사전 리서치 완료**(SSH connection 재사용·session 1회용·knownhosts 검증·ctx 통합·세션 누수 방지). 추정 1주.
+2. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주.
+3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
+4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
+5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
+6. **Scheduler Clock 확장 (노선 B)** — 결정론적 테스트 필요해질 때.
+7. **Refresh reuse detection** — Phase 1 미구현, API 미들웨어 도입 시.
+8. **Windows ACL 키 파일 보호** — 후순위.
+9. **로컬 Windows Defender 우회** — 환경 위생.
 
-**권장 순서**: 1(Pack 결선) + 4(seed admin) 한 번에 → 2(E5 Scan) 본격 → 3(pack-tools) 활용.
+**권장 순서**: 1(E5 Scan) — 가장 큰 작업이자 핵심 가치(스캔 결과 → audit). 그 다음 2(pack-tools)로 자료 활용 + 4(OpenAPI)로 API 골격.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-24 · E4 sqliterepo + bootstrap 결선 — 운영 준비 완료 (T8)**: `internal/domain/benchmark/sqliterepo/` 패키지 신설. Service 인터페이스를 5 메서드로 재정의 (InstallPack/GetPackByKey/ListPacks/CurrentState/TransitionPack). InstallPack은 한 Tx에서 packs/checks/lifecycle INSERT + audit emit. UNIQUE 위반 → ErrPackAlreadyInstalled 매핑. bootstrap의 `auditEmitterAdapter`에 EmitPackInstalled + EmitPackLifecycleChanged 추가 (P5 격리 — benchmark가 audit 직접 import 안 함). Platform.Benchmark 결선 완료. 4 신규 sqliterepo tests + bootstrap 회귀, ~190 tests, CI green 1m2s. 커밋 `f8acb30`. **다음 epic E5 Scan 사전 리서치 완료** (SSH connection 재사용·knownhosts·ctx 취소·세션 누수 방지 패턴 — 진입 즉시 활용).
 - **2026-04-24 · E4 Pack 시스템 epic 완전 종료 (7/7 + Stage A~E)**: 새 도메인 `internal/domain/benchmark/` — 외부 자산(서명된 콘텐츠) 처리 첫 도메인. **5 stages, 합의된 C1~C8 모두 권장 채택**.
   - **Stage A** (`d2017eb`) — pack.yaml/checks/*.yaml YAML 파싱 + JSON Schema (draft 2020-12). `go.yaml.in/yaml/v3` 채택(v4는 RC). KnownFields strict + additionalProperties:false 이중 차단.
   - **Stage B** (`c50f872`) — tar.gz 안전 해체 (zip slip + zip bomb 차단) + MANIFEST canonical JSON + Ed25519 SIGNATURE. SIGNATURE를 가장 먼저 검증 (신뢰 경계 최소화). 파일당 16MiB / 총 256MiB 한도.
