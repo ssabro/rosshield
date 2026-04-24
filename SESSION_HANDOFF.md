@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-24 (E3 Stage A·B 완료 — Tenant·User·RBAC)_
+_마지막 업데이트: 2026-04-24 (E3 epic 완전 종료 — 8/8 + Stage A~E)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E3 Stage A·B 완료** — `internal/domain/tenant/` 첫 도메인이 audit 결선까지 동작. Tenant·User CRUD + argon2id + 시스템 역할 3개(admin·auditor·operator) 자동 시드. depguard로 도메인 격리 production 강제(테스트 예외). 누적 ~104 tests, CI green 6회. **남은 E3**: Stage C(ApiKey)·D(JWT login)·E(cross-tenant fuzzer).
+**E3 Tenant/Auth epic 완전 종료 (8/8 태스크).** Tenant·User·Role·Permission·ApiKey·JWT(access+refresh)·cross-tenant fuzzer까지 완성. JWT는 `<dataDir>/keys/jwt.ed25519` 별도 키, audit checkpoint와 분리. depguard로 도메인 격리 production 강제. 누적 ~135 tests, CI green 9회 (E3만), 원격 39+ commits. **다음: E4 Pack 시스템** (1주 추정) 또는 E2 Audit→Tenant 통합 강화.
 
 ## 원격 저장소
 
@@ -96,23 +96,29 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E3 Stage A·B 완료. 재개 후보:
+E3 완료. 재개 후보:
 
-1. **E3 Stage C — ApiKey** (권장). `apikeys` 테이블(0005) + 발급 시 `fg_live_<random>` raw 토큰 한 번만 반환·argon2id 해시 저장 + prefix 12자 표시 + `revokedAt` soft delete. T5·T6. ~1~2시간.
-2. **E3 Stage D — JWT login** (권장 다음). `auth_refresh_tokens` 테이블(0006) + `Login(email, password) → access(15m) + refresh(14d)` + EdDSA(Ed25519) 별도 키(`keys/jwt.ed25519`). T3·T4. ~2~3시간.
-3. **E3 Stage E — Cross-tenant fuzzer** — Stage C·D 완료 후. 모든 SELECT·UPDATE·DELETE에 tenant_id 필터 강제 회귀 테스트. T8. ~1시간.
-4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`. E9 진입 전 한 번. 인증 엔드포인트 스키마와 함께.
-5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백. E2 EventBus 통합 시점에.
-6. **Scheduler Clock 확장 (노선 B)** — Clock에 Sleep/After 추가, FakeClock 타이머 큐.
-7. **Windows ACL 키 파일 보호** — 현재 `LoadOrCreate`는 0600/0700 모드만 설정. Windows에서는 별도 ACL 필요(후순위).
+1. **E4 Pack 시스템 진입** (권장). `internal/domain/benchmark/` — `pack.yaml`/`checks/*.yaml`/SIGNATURE 파싱 + Ed25519 manifest 검증 + Self-Test fixture 러너 + 생명주기 FSM(Install→Stage→Active→Archive). 7 TDD 태스크. 1주 추정.
+2. **bootstrap CLI seed — 첫 admin 발행** — `--seed-admin email password` 플래그로 system tenant + admin user 자동 생성. desktop 데스크톱 첫 부팅 시나리오. ~1시간.
+3. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`. `POST /api/v1/auth/login` 등 인증 엔드포인트 스키마 정의 + 코드 생성. ~2시간.
+4. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백. E2 EventBus 통합 강화.
+5. **Scheduler Clock 확장 (노선 B)** — Clock에 Sleep/After + FakeClock 타이머 큐. 결정론적 스케줄러 테스트 시 필요.
+6. **Refresh reuse detection** — Phase 1 미구현. ErrRefreshRevoked를 받으면 별도 Tx로 user의 모든 refresh 일괄 revoke. API 미들웨어 도입 시 자연스러움.
+7. **Windows ACL 키 파일 보호** — 현재 `LoadOrCreate`는 0600/0700 모드만. Windows ACL 별도(후순위).
 8. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
 
-**권장 순서**: 1(Stage C) → 2(Stage D) → 3(Stage E) → 4(OpenAPI) → E4 Pack 시스템 진입.
+**권장 순서**: 2(seed admin, 빠름) → 1(E4 Pack) → 3(OpenAPI) → API gateway·E5+.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-24 · E3 Stage C·D·E 완료 → E3 epic 완전 종료 (8/8)**:
+  - **Stage C** (`7d55ca9`) — ApiKey: 0005 마이그레이션, `fg_live_<32 base32>` 40자 토큰, prefix 12자(UNIQUE(tenant_id, prefix)), argon2id 해시, soft delete (`revoked_at = COALESCE(...)`로 멱등). T5·T6 + 5 보조 tests. AuthenticateApiKey는 cross-tenant Bootstrap Tx — prefix 통계 충돌 0(160bit random).
+  - **Stage D** (`d8c6b8c`) — JWT login: 0006 마이그레이션, `golang-jwt/jwt/v5` EdDSA, `<dataDir>/keys/jwt.ed25519` 별도 키, access 15m·refresh 14d, rotation. 사전 리서치 agent로 함정 2개(alg=none·키 비대칭) 사전 차단. T3·T4 + 4 보조 tests. **reuse detection은 Phase 1 미구현** (같은 Tx에서 일괄 revoke하면 ErrRefreshRevoked 반환과 함께 rollback돼 의미 없음 — 호출자 별도 Tx 패턴은 후속).
+  - **Stage E** (`031fa05`) — Cross-tenant fuzzer: 두 tenant 시나리오 + 7 cross-tenant 메서드 회귀 (GetUserByEmail·GetRole·RevokeApiKey·ListApiKeys·Login·GetUserRoles·AuthenticateApiKey).
+  - 합의된 R-B3·B4·B5 권장 그대로 채택. `LoadOrCreatePrivateKey` 신설(jwt 라이브러리는 raw `ed25519.PrivateKey` 요구). 누적 ~135 tests, CI green.
+  - **병렬 작업 활용**: 2026-04-24 사용자 지시 후 첫 적용 — Stage C 본 작업 중 Stage D JWT 사전 리서치를 백그라운드 agent로 분담. 결과 활용으로 Stage D 진입 즉시 함정 2개 사전 차단.
 - **2026-04-24 · E3 Stage A·B (Tenant·User·RBAC) 완료**: depguard로 도메인 격리(audit 외부 production 차단, 테스트 예외) 강제. `internal/domain/tenant/` 단일 패키지에 Tenant·User·Role·Permission. 마이그레이션 0003(tenants+users)+0004(roles+user_roles). argon2id m=64MB·t=3·p=1·keyLen=32·saltLen=16 PHC 포맷. AuditEmitter 인터페이스로 audit 도메인 결합 분리(P5) — `cmd/rosshield-server/bootstrap.go`의 `auditEmitterAdapter`가 결선 글루. CreateTenant가 한 Tx에 tenant + admin user + 시스템 역할 3개(admin/auditor/operator) 시드 + admin role 자동 할당 + audit emit. permission는 string set + 와일드카드 `*`(admin). AssignRole `ON CONFLICT DO NOTHING`로 멱등. Service 시그니처: Create/GetTenant/GetUserByEmail/GetRole/AssignRole/GetUserRoles. 21 신규 tests pass(password 5·rbac 4·sqliterepo 8 + bootstrap 0 회귀). 합의된 R-B1·B2·B6·B7·B8 채택. 커밋 `eed4b35`(Stage A) + `bfc498e`(depguard test 예외 fix) + `d344c4b`(Stage B), CI green 3회. 남은 Stage C(ApiKey)·D(JWT)·E(cross-tenant fuzzer).
 - **2026-04-24 · depguard 도메인 격리 룰 추가**: `.golangci.yml`에 `depguard` enable + `audit-domain-isolation` rule. `internal/domain/audit/**` + `cmd/**` + `internal/api/**` 외부에서 audit import 차단. `*_test.go`는 wiring 통합 검증 위해 예외. CI -race는 이미 적용돼 있던 것 확인(line 39). 커밋 `0c744a5`, CI green 53s.
 - **2026-04-24 · Bootstrap 결선 + Signer 영속**: `cmd/rosshield-server/bootstrap.go`에 `Audit audit.Service` + `systemTenant` 추가. Signer는 `soft.LoadOrCreate(<dataDir>/keys/platform.ed25519)`로 변경(raw 64B Ed25519, 파일 0600·디렉토리 0700). Config에 `SystemTenantID`(default "system") + `CheckpointSpec`(default "@every 1h") 노출 — 테스트는 `@every 1s`로 단축. `audit.RegisterCheckpointJob`을 부팅 시 자동 등록(system tenant). healthz `auditHealth{HeadSeq, LastCheckpoint, Status}` 추가, storage liveness + audit 조회를 같은 Bootstrap Tx에서. 9 신규 tests pass(soft 4건·bootstrap 5건). 스모크: 같은 data-dir로 두 번 부팅 → `signerKeyId=key_ce7d13426af78184` 동일. 키 형식 raw bytes 채택(PEM 미사용 — 외부 도구 의존 최소). 커밋 `4b6a2aa`, CI green in 41s.

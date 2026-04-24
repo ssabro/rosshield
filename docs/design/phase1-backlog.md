@@ -226,18 +226,20 @@ type Service interface {
 |---|---|---|
 | E3.T1 ✅ | `TestCreateTenantEmitsAuditAndPersistsRows` — tenant + admin user + audit.Append 같은 Tx | `tenant/sqliterepo` (commit `eed4b35`) |
 | E3.T2 ✅ | `TestUserArgon2PasswordRoundtrip` — `$argon2id$v=19$m=65536,t=3,p=1$..$..` PHC 포맷 | `tenant/password.go` (`eed4b35`) |
-| E3.T3 | `TestLoginIssuesJWTWithTenantAndRoles` — access 15m, refresh 14d | JWT Ed25519 서명 |
-| E3.T4 | `TestJWTRejectsExpiredAndInvalidSignature` | `jwt/v5` 검증 |
-| E3.T5 | `TestApiKeyHashIsArgon2idAndPrefixVisible` — 해시 저장, `fg_live_xxxxx` prefix만 보임 | argon2id + prefix 추출 |
-| E3.T6 | `TestApiKeyRevokeIsSoftDelete` — `revokedAt` 설정, 레코드 유지 | UPDATE revokedAt |
+| E3.T3 ✅ | `TestLoginIssuesJWTWithTenantAndRoles` — access 15m, refresh 14d, claims에 sub/tid/roles | JWT EdDSA + 별도 키 (commit `d8c6b8c`) |
+| E3.T4 ✅ | `TestParseAccessTokenRejectsExpiredAndBadSig` + `TestParseAccessTokenRejectsAlgNone` | `jwt/v5` + WithValidMethods (`d8c6b8c`) |
+| E3.T5 ✅ | `TestApiKeyHashIsArgon2idAndPrefixVisible` — `$argon2id$..` + prefix 12자 + Authenticate roundtrip | `fg_live_<32 base32>` + argon2id (`7d55ca9`) |
+| E3.T6 ✅ | `TestApiKeyRevokeIsSoftDeleteAndDeniesAuth` — RevokedAt 설정 + List 유지 + Auth 거부 + 멱등 | `COALESCE(revoked_at, ?)` (`7d55ca9`) |
 | E3.T7 ✅ | `TestRBACPermissionCheck` — admin wildcard·auditor·operator 7 sub-cases | `tenant.HasPermission` + `SystemRolePermissions` (`d344c4b`) |
-| E3.T8 | `TestTenantScopeBlocksCrossTenantRead` — A 테넌트 사용자가 B의 리소스 조회 시 404(의도적, 존재 누설 방지) | Repository 레이어에서 tenant filter |
+| E3.T8 ✅ | `TestTenantScopeBlocksCrossTenantRead` — 두 tenant 시나리오 + 7개 cross-tenant 메서드 회귀 | tenant_id 강제 + `setupTwoTenants` 헬퍼 (`031fa05`) |
 
 ### Exit 기준
 
-- `POST /api/v1/auth/login` 으로 토큰 발급.
-- JWT에 `sub`·`tid`·`roles`·`exp` 포함, `EdDSA` 서명.
-- cross-tenant fuzzer 테스트가 모든 repo 메서드에서 0 leak.
+- `POST /api/v1/auth/login` 으로 토큰 발급. 🟡 (도메인 Login 메서드 ✅, HTTP 라우트는 E9 API Gateway에서)
+- JWT에 `sub`·`tid`·`roles`·`exp` 포함, `EdDSA` 서명. ✅
+- cross-tenant fuzzer 테스트가 모든 repo 메서드에서 0 leak. ✅
+
+**E3 epic 완료** (8/8). 다음: E4 Pack 시스템.
 
 ### 설계 참조
 
