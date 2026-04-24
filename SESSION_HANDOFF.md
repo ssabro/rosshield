@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-24 (Bootstrap에 audit 결선 + Signer 영속 완료)_
+_마지막 업데이트: 2026-04-24 (E3 Stage A·B 완료 — Tenant·User·RBAC)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Bootstrap이 audit Service 결선 + Signer 키 디스크 영속(`<dataDir>/keys/platform.ed25519`) + system tenant checkpoint 잡 자동 등록 완성.** 두 번 부팅 시 동일 keyID로 checkpoint 검증 가능. healthz는 storage liveness + audit head/checkpoint를 같은 Bootstrap Tx에서 노출. 누적 테스트 ~85건 pass. 원격 32개 커밋, CI green. **다음: E3 Tenant/Auth 도메인 진입** (가장 큰 남은 작업, 1주 추정).
+**E3 Stage A·B 완료** — `internal/domain/tenant/` 첫 도메인이 audit 결선까지 동작. Tenant·User CRUD + argon2id + 시스템 역할 3개(admin·auditor·operator) 자동 시드. depguard로 도메인 격리 production 강제(테스트 예외). 누적 ~104 tests, CI green 6회. **남은 E3**: Stage C(ApiKey)·D(JWT login)·E(cross-tenant fuzzer).
 
 ## 원격 저장소
 
@@ -96,23 +96,25 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E2 + bootstrap 결선 + Signer 영속 완료. 재개 후보:
+E3 Stage A·B 완료. 재개 후보:
 
-1. **E3 Tenant/Auth 도메인 진입** (권장). JWT(Ed25519)·argon2id·tenant/user/role/session/apikey 스키마. audit와 자연스럽게 이어짐 — tenant.create가 첫 audit entry 발생 패턴. 추정 1주(가장 큰 남은 epic).
-2. **depguard 도메인 경계 린트 설정** — `.golangci.yml`에 추가. R1-2 `Storage.Bootstrap`은 boot 경로에서만 호출 강제 + 도메인 간 직접 호출 차단. E3 진입 전 권장 (~30~60분).
-3. **CI에 `-race` 활성화** — Linux 러너에서 `go test -race`. EventBus·Scheduler·Audit checkpoint 동시성 검증에 유용. `.github/workflows/ci.yml` 한 줄 추가 (~10분).
-4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`. `POST /api/v1/audit/verify` 스켈레톤 생성. E9 진입 전 한 번.
+1. **E3 Stage C — ApiKey** (권장). `apikeys` 테이블(0005) + 발급 시 `fg_live_<random>` raw 토큰 한 번만 반환·argon2id 해시 저장 + prefix 12자 표시 + `revokedAt` soft delete. T5·T6. ~1~2시간.
+2. **E3 Stage D — JWT login** (권장 다음). `auth_refresh_tokens` 테이블(0006) + `Login(email, password) → access(15m) + refresh(14d)` + EdDSA(Ed25519) 별도 키(`keys/jwt.ed25519`). T3·T4. ~2~3시간.
+3. **E3 Stage E — Cross-tenant fuzzer** — Stage C·D 완료 후. 모든 SELECT·UPDATE·DELETE에 tenant_id 필터 강제 회귀 테스트. T8. ~1시간.
+4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`. E9 진입 전 한 번. 인증 엔드포인트 스키마와 함께.
 5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백. E2 EventBus 통합 시점에.
 6. **Scheduler Clock 확장 (노선 B)** — Clock에 Sleep/After 추가, FakeClock 타이머 큐.
-7. **Windows ACL 키 파일 보호** — 현재 `LoadOrCreate`는 0600/0700 모드만 설정. Windows에서는 별도 ACL 필요(후순위, 어차피 어플라이언스 OS 미확정).
+7. **Windows ACL 키 파일 보호** — 현재 `LoadOrCreate`는 0600/0700 모드만 설정. Windows에서는 별도 ACL 필요(후순위).
 8. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
 
-**권장 순서**: 2+3 빠르게 한 번씩(파이프라인 위생) → 1(E3 본격 진입).
+**권장 순서**: 1(Stage C) → 2(Stage D) → 3(Stage E) → 4(OpenAPI) → E4 Pack 시스템 진입.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-24 · E3 Stage A·B (Tenant·User·RBAC) 완료**: depguard로 도메인 격리(audit 외부 production 차단, 테스트 예외) 강제. `internal/domain/tenant/` 단일 패키지에 Tenant·User·Role·Permission. 마이그레이션 0003(tenants+users)+0004(roles+user_roles). argon2id m=64MB·t=3·p=1·keyLen=32·saltLen=16 PHC 포맷. AuditEmitter 인터페이스로 audit 도메인 결합 분리(P5) — `cmd/rosshield-server/bootstrap.go`의 `auditEmitterAdapter`가 결선 글루. CreateTenant가 한 Tx에 tenant + admin user + 시스템 역할 3개(admin/auditor/operator) 시드 + admin role 자동 할당 + audit emit. permission는 string set + 와일드카드 `*`(admin). AssignRole `ON CONFLICT DO NOTHING`로 멱등. Service 시그니처: Create/GetTenant/GetUserByEmail/GetRole/AssignRole/GetUserRoles. 21 신규 tests pass(password 5·rbac 4·sqliterepo 8 + bootstrap 0 회귀). 합의된 R-B1·B2·B6·B7·B8 채택. 커밋 `eed4b35`(Stage A) + `bfc498e`(depguard test 예외 fix) + `d344c4b`(Stage B), CI green 3회. 남은 Stage C(ApiKey)·D(JWT)·E(cross-tenant fuzzer).
+- **2026-04-24 · depguard 도메인 격리 룰 추가**: `.golangci.yml`에 `depguard` enable + `audit-domain-isolation` rule. `internal/domain/audit/**` + `cmd/**` + `internal/api/**` 외부에서 audit import 차단. `*_test.go`는 wiring 통합 검증 위해 예외. CI -race는 이미 적용돼 있던 것 확인(line 39). 커밋 `0c744a5`, CI green 53s.
 - **2026-04-24 · Bootstrap 결선 + Signer 영속**: `cmd/rosshield-server/bootstrap.go`에 `Audit audit.Service` + `systemTenant` 추가. Signer는 `soft.LoadOrCreate(<dataDir>/keys/platform.ed25519)`로 변경(raw 64B Ed25519, 파일 0600·디렉토리 0700). Config에 `SystemTenantID`(default "system") + `CheckpointSpec`(default "@every 1h") 노출 — 테스트는 `@every 1s`로 단축. `audit.RegisterCheckpointJob`을 부팅 시 자동 등록(system tenant). healthz `auditHealth{HeadSeq, LastCheckpoint, Status}` 추가, storage liveness + audit 조회를 같은 Bootstrap Tx에서. 9 신규 tests pass(soft 4건·bootstrap 5건). 스모크: 같은 data-dir로 두 번 부팅 → `signerKeyId=key_ce7d13426af78184` 동일. 키 형식 raw bytes 채택(PEM 미사용 — 외부 도구 의존 최소). 커밋 `4b6a2aa`, CI green in 41s.
 - **2026-04-24 · E2 Audit epic 완료 (8/8 + Stage A~D)**: 첫 도메인 패키지 `internal/domain/audit/` + sqliterepo 어댑터.
   - **Stage A** (`0508d4d`) — 스키마 3분할(`audit_entries`/`audit_chain_heads`/`audit_checkpoints`) + BEFORE UPDATE/DELETE trigger + `mapErr` "immutable" 매핑. Append는 외부 Tx에 head 읽기 → INSERT entry → UPSERT head를 묶음. canonical JSON meta(알파벳순 키, RFC3339Nano UTC)로 hash 입력 직렬화. 13 tests pass.

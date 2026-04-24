@@ -224,13 +224,13 @@ type Service interface {
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E3.T1 | `TestCreateTenantEmitsAudit` | `TenantService.Create` + audit.Append |
-| E3.T2 | `TestUserArgon2PasswordVerify` | argon2id 파라미터(m=64MB, t=3, p=1) 고정 |
+| E3.T1 ✅ | `TestCreateTenantEmitsAuditAndPersistsRows` — tenant + admin user + audit.Append 같은 Tx | `tenant/sqliterepo` (commit `eed4b35`) |
+| E3.T2 ✅ | `TestUserArgon2PasswordRoundtrip` — `$argon2id$v=19$m=65536,t=3,p=1$..$..` PHC 포맷 | `tenant/password.go` (`eed4b35`) |
 | E3.T3 | `TestLoginIssuesJWTWithTenantAndRoles` — access 15m, refresh 14d | JWT Ed25519 서명 |
 | E3.T4 | `TestJWTRejectsExpiredAndInvalidSignature` | `jwt/v5` 검증 |
 | E3.T5 | `TestApiKeyHashIsArgon2idAndPrefixVisible` — 해시 저장, `fg_live_xxxxx` prefix만 보임 | argon2id + prefix 추출 |
 | E3.T6 | `TestApiKeyRevokeIsSoftDelete` — `revokedAt` 설정, 레코드 유지 | UPDATE revokedAt |
-| E3.T7 | `TestRBACPermissionCheck` — `robot.write` 없으면 403 | permission set intersection |
+| E3.T7 ✅ | `TestRBACPermissionCheck` — admin wildcard·auditor·operator 7 sub-cases | `tenant.HasPermission` + `SystemRolePermissions` (`d344c4b`) |
 | E3.T8 | `TestTenantScopeBlocksCrossTenantRead` — A 테넌트 사용자가 B의 리소스 조회 시 404(의도적, 존재 누설 방지) | Repository 레이어에서 tenant filter |
 
 ### Exit 기준
