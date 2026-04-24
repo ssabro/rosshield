@@ -11,6 +11,27 @@ linters:
     - staticcheck
     - ineffassign
     - unused
+    - depguard
+
+  # 도메인 경계 강제 (P5):
+  # 각 도메인 패키지는 자기 자신 외 다른 도메인 패키지를 import할 수 없습니다.
+  # 도메인 간 통신은 EventBus 또는 cmd/* bootstrap에서 결선된 Application Service 경유.
+  # cmd/* (bootstrap)와 향후 internal/api/* (Gateway)는 모든 도메인을 결선할 수 있도록 예외.
+  #
+  # 새 도메인을 추가할 때마다 같은 패턴의 rule을 추가하세요.
+  settings:
+    depguard:
+      rules:
+        audit-domain-isolation:
+          list-mode: lax
+          files:
+            - "$all"
+            - "!**/cmd/**"
+            - "!**/internal/api/**"
+            - "!**/internal/domain/audit/**"
+          deny:
+            - pkg: github.com/ssabro/rosshield/internal/domain/audit
+              desc: "다른 도메인·플랫폼은 audit 도메인을 직접 import 금지 (P5). EventBus 또는 cmd/* bootstrap에서 결선된 Service 경유."
 
 formatters:
   enable:
