@@ -96,14 +96,17 @@ type AuditEmitter interface {
 
 // Service는 벤치마크 도메인 진입점입니다.
 //
-// Phase 1은 LoadFromTar(tar.gz 바이트) → Pack을 만들고 DB에 INSERT하는 흐름 + 라이프사이클 전이.
-// Stage A는 LoadFromTar의 첫 절반(YAML 파싱·schema 검증)만 노출.
+// Phase 1: LoadFromTar(tar.gz 바이트, publicKey) → Pack을 만들고 DB INSERT하는 흐름 + 라이프사이클 전이.
 type Service interface {
-	// LoadFromTar는 tar.gz 바이트를 파싱해 Pack을 반환합니다 (DB INSERT 미포함, 검증만).
-	// pack.yaml + checks/*.yaml + MANIFEST + SIGNATURE를 다 검증.
-	// Stage A: pack.yaml + checks/*.yaml YAML 파싱 + JSON Schema 검증까지만.
-	// Stage B: MANIFEST hash + SIGNATURE Ed25519 검증 추가.
-	LoadFromTar(ctx context.Context, tarGzBytes []byte) (Pack, error)
+	// LoadFromTar는 tar.gz 바이트를 파싱·검증해 Pack을 반환합니다 (DB INSERT 미포함).
+	//
+	// 흐름:
+	//   1. tar.gz 안전 해체 (path traversal·size limit 차단)
+	//   2. SIGNATURE = Ed25519(MANIFEST.json) 검증 (publicKey 사용)
+	//   3. MANIFEST 각 파일 sha256 재계산 + 비교
+	//   4. pack.yaml 파싱·schema 검증
+	//   5. checks/*.yaml 모두 파싱·schema 검증
+	LoadFromTar(ctx context.Context, tarGzBytes []byte, publicKey []byte) (Pack, error)
 }
 
 // 공통 에러.
