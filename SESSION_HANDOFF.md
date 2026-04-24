@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-24 (E2 Audit epic 완료 — 8/8 태스크 + Stage A~D)_
+_마지막 업데이트: 2026-04-24 (Bootstrap에 audit 결선 + Signer 영속 완료)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 1 E2 epic 완료 (8/8 태스크).** `internal/domain/audit/` 첫 도메인 패키지 — hash chain append-only + Verify(재계산) + NDJSON+Ed25519 Export + Scheduler 연동 Checkpoint job까지 완성. `sqliterepo` 어댑터는 immutable trigger·UNIQUE 위반을 storage·audit 에러로 매핑. 누적 테스트 ~75건 pass. 원격 30개 커밋, CI green. **다음: bootstrap에 audit 결선 또는 E3 Tenant/Auth 도메인 진입.**
+**Bootstrap이 audit Service 결선 + Signer 키 디스크 영속(`<dataDir>/keys/platform.ed25519`) + system tenant checkpoint 잡 자동 등록 완성.** 두 번 부팅 시 동일 keyID로 checkpoint 검증 가능. healthz는 storage liveness + audit head/checkpoint를 같은 Bootstrap Tx에서 노출. 누적 테스트 ~85건 pass. 원격 32개 커밋, CI green. **다음: E3 Tenant/Auth 도메인 진입** (가장 큰 남은 작업, 1주 추정).
 
 ## 원격 저장소
 
@@ -96,25 +96,24 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E2 Audit 완료. 재개 후보:
+E2 + bootstrap 결선 + Signer 영속 완료. 재개 후보:
 
-1. **Bootstrap에 audit 결선** (권장). `cmd/rosshield-server/bootstrap.go`의 `Platform`에 `Audit audit.Service` 추가. `system` tenant에 대한 checkpoint 잡을 `@every 1h`로 자동 등록. `/healthz`에 `audit_chain_heads` row 수·최신 checkpoint 정보 노출. ~30~60분.
-2. **E3 Tenant/Auth 도메인 진입** — 다음 에픽. JWT(Ed25519)·argon2id·tenant/user/role/session/apikey 스키마. audit와 자연스럽게 이어짐(tenant 생성이 첫 audit entry 발생). 추정 1주.
-3. **Signer 파일 영속** — Ed25519 키를 `~/.rosshield/keys/`에 저장·로드. 현재는 매 부팅 새 키 → checkpoint 서명이 프로세스 재시작 후 검증 불가. **1번과 함께 하는 게 적절**.
-4. **depguard 도메인 경계 린트 설정** — `.golangci.yml`. R1-2 `Storage.Bootstrap`은 boot 경로에서만 호출 강제. E3 진입 전 권장.
-5. **CI에 `-race` 활성화** — Linux 러너에서 `go test -race`. EventBus·Scheduler·Audit checkpoint 동시성 검증에 유용.
-6. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`. `POST /api/v1/audit/verify` 등 스켈레톤 생성.
-7. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
-8. **Scheduler Clock 확장 (노선 B)** — Clock에 Sleep/After 추가, FakeClock 타이머 큐.
-9. **healthz 컴포넌트 검증 강화** — audit head·checkpoint 상태 노출.
-10. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
+1. **E3 Tenant/Auth 도메인 진입** (권장). JWT(Ed25519)·argon2id·tenant/user/role/session/apikey 스키마. audit와 자연스럽게 이어짐 — tenant.create가 첫 audit entry 발생 패턴. 추정 1주(가장 큰 남은 epic).
+2. **depguard 도메인 경계 린트 설정** — `.golangci.yml`에 추가. R1-2 `Storage.Bootstrap`은 boot 경로에서만 호출 강제 + 도메인 간 직접 호출 차단. E3 진입 전 권장 (~30~60분).
+3. **CI에 `-race` 활성화** — Linux 러너에서 `go test -race`. EventBus·Scheduler·Audit checkpoint 동시성 검증에 유용. `.github/workflows/ci.yml` 한 줄 추가 (~10분).
+4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen`. `POST /api/v1/audit/verify` 스켈레톤 생성. E9 진입 전 한 번.
+5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백. E2 EventBus 통합 시점에.
+6. **Scheduler Clock 확장 (노선 B)** — Clock에 Sleep/After 추가, FakeClock 타이머 큐.
+7. **Windows ACL 키 파일 보호** — 현재 `LoadOrCreate`는 0600/0700 모드만 설정. Windows에서는 별도 ACL 필요(후순위, 어차피 어플라이언스 OS 미확정).
+8. **로컬 환경 정리** — Windows Defender `%TEMP%\go-build\*.test.exe` 격리 우회.
 
-**권장 순서**: 1+3 한 번에(bootstrap 결선 + 키 영속) → 4·5 한 번씩 → 2(E3 진입).
+**권장 순서**: 2+3 빠르게 한 번씩(파이프라인 위생) → 1(E3 본격 진입).
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-24 · Bootstrap 결선 + Signer 영속**: `cmd/rosshield-server/bootstrap.go`에 `Audit audit.Service` + `systemTenant` 추가. Signer는 `soft.LoadOrCreate(<dataDir>/keys/platform.ed25519)`로 변경(raw 64B Ed25519, 파일 0600·디렉토리 0700). Config에 `SystemTenantID`(default "system") + `CheckpointSpec`(default "@every 1h") 노출 — 테스트는 `@every 1s`로 단축. `audit.RegisterCheckpointJob`을 부팅 시 자동 등록(system tenant). healthz `auditHealth{HeadSeq, LastCheckpoint, Status}` 추가, storage liveness + audit 조회를 같은 Bootstrap Tx에서. 9 신규 tests pass(soft 4건·bootstrap 5건). 스모크: 같은 data-dir로 두 번 부팅 → `signerKeyId=key_ce7d13426af78184` 동일. 키 형식 raw bytes 채택(PEM 미사용 — 외부 도구 의존 최소). 커밋 `4b6a2aa`, CI green in 41s.
 - **2026-04-24 · E2 Audit epic 완료 (8/8 + Stage A~D)**: 첫 도메인 패키지 `internal/domain/audit/` + sqliterepo 어댑터.
   - **Stage A** (`0508d4d`) — 스키마 3분할(`audit_entries`/`audit_chain_heads`/`audit_checkpoints`) + BEFORE UPDATE/DELETE trigger + `mapErr` "immutable" 매핑. Append는 외부 Tx에 head 읽기 → INSERT entry → UPSERT head를 묶음. canonical JSON meta(알파벳순 키, RFC3339Nano UTC)로 hash 입력 직렬화. 13 tests pass.
   - **Stage B** (`76d41f8` + `566afc5` lint fix) — Verify 재계산 루프. seq 연속성·prev_hash 연결·hash 재계산 3가지 검증, 첫 위반 시 BreakAt+Reason 반환. 6 tests + lint 후속 1.
