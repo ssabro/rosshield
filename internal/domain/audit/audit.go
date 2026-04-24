@@ -12,8 +12,10 @@ package audit
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 
+	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -136,6 +138,13 @@ type Service interface {
 	// fromSeq <= 0이면 1로 보정. toSeq <= 0 또는 toSeq < fromSeq면 head.Seq까지 검증.
 	// 첫 위반 시점에 OK=false + BreakAt + Reason을 채우고 즉시 반환합니다 (early termination).
 	Verify(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64) (VerifyResult, error)
+
+	// Export는 fromSeq~toSeq 엔트리를 NDJSON+gzip으로 내보내고 마지막 라인에 SIGNATURE 메타를 추가합니다.
+	// fromSeq <= 0 → 1, toSeq <= 0 → head.Seq.
+	// 외부 검증 도구(`fg-verify` OSS, §10.6)는 이 스트림을 받아 chain 재계산 + signer.Verify(공개키)로 무결성 확인.
+	//
+	// 호출자는 반환된 ReadCloser에서 모두 읽은 후 Close해야 합니다.
+	Export(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64, sgn signer.Signer) (io.ReadCloser, error)
 }
 
 // 공통 에러.

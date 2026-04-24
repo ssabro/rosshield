@@ -9,14 +9,19 @@
 package sqliterepo
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/platform/clock"
+	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -207,6 +212,107 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 	}
 
 	return audit.VerifyResult{OK: true, EntriesScanned: scanned}, nil
+}
+
+// Export는 audit.Service.Export 구현입니다.
+//
+// 출력 스트림 (gzip):
+//
+//	<entry-line-1>\n
+//	<entry-line-2>\n
+//	...
+//	<entry-line-N>\n
+//	<signature-line>\n
+//
+// signature 라인은 모든 entry 라인(개행 포함)의 sha256을 Ed25519로 서명한 결과 + 공개키 + keyId.
+// 외부 검증 도구는 entry 라인들을 읽어 sha256 재계산 → signer.Verify(publicKey, signature)로 무결성 확인.
+func (r *Repo) Export(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64, sgn signer.Signer) (io.ReadCloser, error) {
+	if sgn == nil {
+		return nil, fmt.Errorf("audit: Export requires non-nil signer")
+	}
+	if fromSeq <= 0 {
+		fromSeq = 1
+	}
+	if toSeq <= 0 || toSeq < fromSeq {
+		head, err := readHead(ctx, tx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		toSeq = head.Seq
+	}
+
+	// entry 라인들을 buffer에 누적 — 다음 sha256 + gzip 입력으로 사용.
+	var entriesBuf bytes.Buffer
+
+	if toSeq >= fromSeq {
+		rows, err := tx.Query(ctx, `
+SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
+       action, target_type, target_id,
+       payload_digest, outcome, error_code, error_message,
+       prev_hash, hash
+  FROM audit_entries
+ WHERE tenant_id = ? AND seq BETWEEN ? AND ?
+ ORDER BY seq ASC`,
+			string(tenantID), fromSeq, toSeq)
+		if err != nil {
+			return nil, fmt.Errorf("audit: export query: %w", err)
+		}
+		defer func() { _ = rows.Close() }()
+
+		for rows.Next() {
+			e, err := scanEntry(rows, tenantID)
+			if err != nil {
+				return nil, err
+			}
+			line, err := audit.MarshalEntryLine(e)
+			if err != nil {
+				return nil, fmt.Errorf("audit: marshal entry seq=%d: %w", e.Seq, err)
+			}
+			entriesBuf.Write(line)
+			entriesBuf.WriteByte('\n')
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("audit: export rows: %w", err)
+		}
+	}
+
+	// SignedDigest = sha256(모든 entry 라인 stream)
+	digest := audit.SignedDigest(entriesBuf.Bytes())
+
+	sig, keyID, err := sgn.Sign(digest[:])
+	if err != nil {
+		return nil, fmt.Errorf("audit: sign export: %w", err)
+	}
+
+	sigLine, err := audit.MarshalSignatureLine(audit.ExportSignatureLine{
+		From:         fromSeq,
+		KeyID:        keyID,
+		PublicKey:    hex.EncodeToString(sgn.PublicKey()),
+		SignedDigest: hex.EncodeToString(digest[:]),
+		Signature:    hex.EncodeToString(sig),
+		To:           toSeq,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// gzip 스트림 구성: entries + signature + 개행.
+	var gzBuf bytes.Buffer
+	gz := gzip.NewWriter(&gzBuf)
+	if _, err := gz.Write(entriesBuf.Bytes()); err != nil {
+		return nil, fmt.Errorf("audit: gzip entries: %w", err)
+	}
+	if _, err := gz.Write(sigLine); err != nil {
+		return nil, fmt.Errorf("audit: gzip signature: %w", err)
+	}
+	if _, err := gz.Write([]byte{'\n'}); err != nil {
+		return nil, fmt.Errorf("audit: gzip newline: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return nil, fmt.Errorf("audit: gzip close: %w", err)
+	}
+
+	return io.NopCloser(&gzBuf), nil
 }
 
 // scanEntry는 audit_entries 한 row를 Entry로 변환합니다.

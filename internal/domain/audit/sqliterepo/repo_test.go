@@ -1,15 +1,23 @@
 package sqliterepo_test
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
+	"github.com/ssabro/rosshield/internal/platform/signer/soft"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	"github.com/ssabro/rosshield/internal/platform/storage/sqlite"
 )
@@ -433,6 +441,149 @@ func TestVerifyDetectsMissingSeq(t *testing.T) {
 	}
 	if result.BreakAt != 2 {
 		t.Errorf("BreakAt = %d, want 2", result.BreakAt)
+	}
+}
+
+// E2.T7
+func TestExportNDJSONIncludesSignature(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	for i := 0; i < 3; i++ {
+		appendOne(t, store, repo, sampleReq("robot.create"))
+	}
+
+	sgn, err := soft.New()
+	if err != nil {
+		t.Fatalf("soft.New: %v", err)
+	}
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	var lines []string
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		rc, err := repo.Export(ctx, tx, testTenant, 1, 3, sgn)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rc.Close() }()
+
+		gz, err := gzip.NewReader(rc)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gz.Close() }()
+
+		scanner := bufio.NewScanner(gz)
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+		}
+		return scanner.Err()
+	}); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	if len(lines) != 4 {
+		t.Fatalf("got %d lines, want 4 (3 entries + 1 signature)", len(lines))
+	}
+
+	// 마지막 라인은 signature.
+	var sig audit.ExportSignatureLine
+	if err := json.Unmarshal([]byte(lines[3]), &sig); err != nil {
+		t.Fatalf("decode signature line: %v", err)
+	}
+	if sig.From != 1 || sig.To != 3 {
+		t.Errorf("range = %d~%d, want 1~3", sig.From, sig.To)
+	}
+	if sig.KeyID != sgn.KeyID() {
+		t.Errorf("keyID = %q, want %q", sig.KeyID, sgn.KeyID())
+	}
+	if sig.PublicKey != hex.EncodeToString(sgn.PublicKey()) {
+		t.Errorf("publicKey hex mismatch")
+	}
+	if sig.Signature == "" {
+		t.Error("signature empty")
+	}
+
+	// 외부 검증 도구 시뮬레이션:
+	// 1. entry 라인들을 다시 buffer에 합쳐 sha256
+	// 2. signer.Verify(payload, signature) 통과
+	var entryBuf strings.Builder
+	for i := 0; i < 3; i++ {
+		entryBuf.WriteString(lines[i])
+		entryBuf.WriteByte('\n')
+	}
+	digest := sha256.Sum256([]byte(entryBuf.String()))
+	if hex.EncodeToString(digest[:]) != sig.SignedDigest {
+		t.Errorf("recomputed digest != signed digest\n got  %s\n want %s",
+			hex.EncodeToString(digest[:]), sig.SignedDigest)
+	}
+
+	sigBytes, err := hex.DecodeString(sig.Signature)
+	if err != nil {
+		t.Fatalf("decode signature hex: %v", err)
+	}
+	if err := sgn.Verify(digest[:], sigBytes); err != nil {
+		t.Errorf("signer.Verify failed: %v", err)
+	}
+}
+
+// E2.T7 보조: 빈 체인 → entries 0개, signature 라인만 남음.
+func TestExportEmptyChainSignsZeroBytes(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	sgn, err := soft.New()
+	if err != nil {
+		t.Fatalf("soft.New: %v", err)
+	}
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	var content []byte
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		rc, err := repo.Export(ctx, tx, testTenant, 1, 0, sgn)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rc.Close() }()
+
+		gz, err := gzip.NewReader(rc)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gz.Close() }()
+
+		content, err = io.ReadAll(gz)
+		return err
+	}); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(string(content), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("got %d lines, want 1 (signature only)", len(lines))
+	}
+	var sig audit.ExportSignatureLine
+	if err := json.Unmarshal([]byte(lines[0]), &sig); err != nil {
+		t.Fatalf("decode signature: %v", err)
+	}
+	emptyDigest := sha256.Sum256(nil)
+	if sig.SignedDigest != hex.EncodeToString(emptyDigest[:]) {
+		t.Errorf("empty digest mismatch")
+	}
+}
+
+// E2.T7 보조: signer 누락 → 명시적 에러.
+func TestExportRequiresSigner(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Export(ctx, tx, testTenant, 1, 0, nil)
+		return e
+	})
+	if err == nil {
+		t.Error("expected error for nil signer")
 	}
 }
 
