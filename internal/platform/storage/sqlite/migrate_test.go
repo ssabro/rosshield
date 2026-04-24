@@ -55,16 +55,18 @@ func TestStorageMigrateIdempotent(t *testing.T) {
 		t.Fatalf("second Migrate: %v", err)
 	}
 
-	// platform_info 테이블은 정확히 한 번 생성되어 있어야 함 (재생성 시 SQLite는 에러를 던짐 → 위 호출이 통과한 것 자체가 idempotency 증명).
-	// goose 버전 테이블도 단일 row.
+	// 모든 마이그레이션이 정확히 한 번씩만 적용되어야 함.
+	// 위 두 번의 Migrate 호출이 통과한 것 자체가 idempotency 증명.
+	// goose 버전 테이블의 max version_id는 현재 마이그레이션 개수와 일치.
 	err := s.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
 		var maxVersion int
 		err := tx.QueryRow(ctx, `SELECT MAX(version_id) FROM goose_db_version`).Scan(&maxVersion)
 		if err != nil {
 			return err
 		}
-		if maxVersion != 1 {
-			t.Errorf("max version_id = %d, want 1", maxVersion)
+		const wantVersion = 2 // 0001 platform_init + 0002 audit
+		if maxVersion != wantVersion {
+			t.Errorf("max version_id = %d, want %d", maxVersion, wantVersion)
 		}
 		return nil
 	})
