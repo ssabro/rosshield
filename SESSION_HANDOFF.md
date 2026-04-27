@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-27 (E6 Stage A 완료 — sshpool Executor + in-proc fake sshd, T2·T3·T4)_
+_마지막 업데이트: 2026-04-27 (E6 Stage B 완료 — Pool + per-host/tenant limits + dial backoff, T1)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E6 Stage A 완료 — sshpool Executor 표면 + in-proc fake sshd.** `internal/platform/sshpool/` 신규 — `Executor.Exec(ctx, target, argv, timeout)`로 dial→handshake→1회용 session→argv POSIX single-quote escape 직렬화→stdout/stderr/exit code 수집. cancel·timeout 시 session.Close + 부분 결과 반환. R4 결정 C(자체 in-proc fake sshd, `golang.org/x/crypto/ssh.Server` 직접) — 외부 의존 추가 0. T2(stdout/stderr/exit) · T3(timeout cancel) · T4(argv shell metachar 미해석) + 보조 8 tests. 누적 ~275+ tests, 전체 그린. **다음: E6 Stage B** — Pool(per-host/key/tenant limits + idle eviction + dial backoff) + T1.
+**E6 Stage B 완료 — sshpool Pool + per-host/tenant 동시성 limit + jittered exponential dial backoff.** `pool.go` 신규 — 채널 semaphore 기반 (sync.Cond보다 ctx 통합 단순). PerHostLimit·PerTenantLimit 강제, ctx cancel 시 슬롯 즉시 반환(누수 0). dial 재시도(default 3회 + base 200ms × 2^n + jitter). Phase 1 단순화: dial-on-acquire / close-on-release(idle 재사용 X — health check 부담 0, Phase 2+에서 도입). T1(`TestSSHPoolRespectsHostLimit` — 12 동시 acquire가 limit 3 절대 초과 X) + 보조 6(per-tenant limit · 두 tenant 격리 · ctx cancel waiting · closed pool 거부 · release idempotent · backoff retry). 누적 ~282+ tests, 전체 그린. **다음: E6 Stage C** — `internal/domain/scan/` 도메인 + 마이그레이션 0011 (scan_sessions·scan_results) + ScanSession FSM.
 
 ## 원격 저장소
 
@@ -96,9 +96,9 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E6 SSH+Scan 진행 중. Stage A 완료, Stage B~E 대기.
+E6 SSH+Scan 진행 중. Stage A·B 완료, Stage C·D·E 대기.
 
-1. **E6 Stage B 진입 (권장)** — `internal/platform/sshpool/pool.go` Pool 구현(`sync.Cond` 기반, per-key/host/tenant 동시 connection limit, idle 5분 eviction, dial backoff jittered exponential 3회). T1(`TestSSHPoolRespectsHostLimit` — 동시 dial 호출 N이 limit M을 넘지 않음 검증, in-proc fake sshd 다중 인스턴스). Executor를 Pool 위에 wrapping하는 옵션 결정 필요(현재 Executor는 dial-per-exec — Pool 결합 시 conn 재사용).
+1. **E6 Stage C 진입 (권장)** — `internal/domain/scan/` 도메인 신설 + 마이그레이션 0011(`scan_sessions`·`scan_results`). ScanSession 모델(pending→running→completed/failed/cancelled FSM), ScanResult 모델(outcome 5-값: pass/fail/indeterminate/error/skipped). Service 인터페이스(StartScan·GetSession·ListSessions·CancelSession·ListResults). audit emit(scan.started·scan.completed·scan.cancelled). 도메인 격선만 — Orchestrator 결선은 Stage D.
 2. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주. E5와 독립적이라 병렬 가능.
 3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack·robot endpoints. ~2시간.
@@ -124,6 +124,7 @@ E6 SSH+Scan 진행 중. Stage A 완료, Stage B~E 대기.
 
 날짜 내림차순.
 
+- **2026-04-27 · E6 Stage B 완료 — sshpool Pool + per-host/tenant limit + dial backoff (T1)**: `internal/platform/sshpool/pool.go` 신규. 채널 semaphore 기반 — `sync.Cond`보다 ctx 통합 단순(R4-1 권장 A를 채널로 교체, 기능 동일). `PoolKey{TenantID, KeyID, Host, Port}` 식별자, per-host(default 5) + per-tenant(default 50) 동시 conn limit, ctx cancel 시 슬롯 즉시 반환(누수 0). dial 재시도 — 1 + DialMaxRetries(default 3)회, base * 2^attempt + jitter[0, base/2). Phase 1 단순화: **idle 재사용 X** — dial-on-acquire / close-on-release. health check·conn 누수 부담 0, Phase 2+에서 부하 테스트 후 도입 검토. dialFunc은 swap 가능(테스트에서 fakesshd로 교체). **신규 7 sshpool tests**: T1(`TestSSHPoolRespectsHostLimit` — 12 동시 acquire가 limit 3 절대 초과 X, atomic CAS로 peak 추적) · RespectsTenantLimit(per-tenant 2 강제) · TenantsIsolated(두 tenant peak ≥3, ≤4) · CancelWaitingAcquire(첫 acquire가 슬롯 점유 후 두 번째는 ctx 200ms cancel → DeadlineExceeded < 1s) · ClosedRejectsAcquire(`Close()` 후 ErrPoolClosed) · ReleaseIdempotent(double release no-op + 슬롯 정상 회수) · DialBackoffRetries(unused port 1 → connection refused, retry 2회 + base 10ms 적용 검증). 누적 sshpool 16 tests, 전체 ~282+ tests, 그린.
 - **2026-04-27 · E6 Stage A 완료 — sshpool Executor + in-proc fake sshd (T2·T3·T4)**: 새 패키지 `internal/platform/sshpool/`. `Executor.Exec(ctx, target, argv, timeout)` — TCP dial → SSH handshake → 1회용 session → argv POSIX single-quote escape 직렬화(`'\''` 패턴) → stdout/stderr/exit 수집. ctx cancel/timeout 시 session.Close + 부분 결과 + ctx.Err 반환(R4-5). MaxStdoutBytes/MaxStderrBytes 10 MiB 기본(§06.8). Target 검증 6건(host/port/user/auth/hostKeyCallback 필수). `golang.org/x/crypto/ssh` 의존(이미 E3에서 존재 — 추가 dep 0). **R4 결정 C** — 자체 in-proc fake sshd(`fakesshd_test.go` ~190줄): ed25519 host key·NoClientAuth·session 채널 accept·exec payload 디코드·delay/stdout/stderr/exit 응답. 받은 cmd 기록으로 argv 직렬화 검증 가능. **신규 sshpool 9 tests**(+6 sub-cases): T2 ReturnsStdoutStderrExitCode · T3 TimeoutCancels(timeout 200ms·fake delay 3s → context.DeadlineExceeded, < 2s 반환) · ContextCancelStops(ctx.Done → context.Canceled) · T4 ArgvNotShellParsed(`['echo','$HOME','&&',...]` → `'echo' '$HOME' '&&' ...` literal 직렬화 검증) · JoinArgvEscapesSingleQuote(POSIX `'\''` 4 cases) · RejectsEmptyArgv · ValidatesTarget(6 sub-cases) · TruncatesLargeStdout(MaxStdoutBytes 100 강제) · RejectsWrongHostKey(FixedHostKey 일치/불일치). 누적 ~275+ tests, 전체 그린.
 - **2026-04-27 · R4-1~R4-7 합의 (E6)**: 권장값 채택 — 자격증명 session당 decrypt 1회 그 컨텍스트 캐시(Phase 2+ keychain 검토) / known_hosts first-touch trust + DB 기록 + 불일치 즉시 실패(설계서 §06.8 정합) / argv quoting은 팩 책임(`bash -c "..."`) + validation·길이 제한만 / Worker pool 10 고정(E6.T6 실측 후 config 항목 검토) / Cancel은 timeout 신뢰·진행 중 완료대기·다음 item 스킵 / Evidence redaction default on(E7) / Differential hash match reuse + 프리플라이트 불가 체크 제외 플래그(§07.9).
 - **2026-04-27 · E5 Stage E 완료 — TestConnection mock + cross-tenant fuzzer (T5) → E5 epic 완전 종료 (5/5 Stage + 7/7 T)**: `robot.SSHTester` 인터페이스(`TestConnection(ctx, host, port, authType, material) error`) — E6 sshpool 구현체 결선 표면 미리 추상. `Service.TestConnection(robotID)` 추가 — GetRobot(활성 검증) → GetCredentialMaterial(unwrap) → SSHTester 위임. SSHTester nil이면 ErrSSHTesterNotConfigured. Deps에 SSHTester 추가, bootstrap에서 nil로 결선(E6 진입 시 sshpool 어댑터 주입). **신규 testconn_test.go 5 tests**: T5(`TestTestConnectionUsesSSHTester` — fakeSSHTester가 정확한 host/port/authType/username 받았는지 검증) + PropagatesSSHError + WithoutTesterReturnsConfigError + RobotSoftDeletedReturnsNotFound + CrossTenantReturnsNotFound. **신규 crosstenant_test.go**: `TestCrossTenantFuzzer` 1 test + 8 sub-cases(GetFleet·GetRobot·ListRobots(by fleetA)·DeleteRobot·GetCredentialMaterial·RotateCredential·TestConnection 모두 ErrNotFound · CreateRobot with fleetA → ErrFleetNotFound) + ListFleets/ListRobots(B만 노출) 2 sub-tests = 8 cross-tenant 회귀(E3 `031fa05` 패턴 답습). **E5 epic 완전 종료** — phase1-backlog.md E5.T1~T7 모두 ✅ + Exit 기준 모두 충족. 누적 robot 도메인 56 tests(A 13 + B 18 + C 12 + D 11 + E 5+8+2). 전체 ~260+ tests, 그린.
