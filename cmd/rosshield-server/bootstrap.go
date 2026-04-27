@@ -132,6 +132,50 @@ func (a *auditEmitterAdapter) EmitFleetCreated(ctx context.Context, tx storage.T
 	return err
 }
 
+// EmitRobotCreated는 robot.created 이벤트를 audit에 emit합니다 (Stage C).
+func (a *auditEmitterAdapter) EmitRobotCreated(ctx context.Context, tx storage.Tx, r robot.Robot, credentialID string) error {
+	payload := fmt.Sprintf(`{"robotId":%q,"name":%q,"fleetId":%q,"host":%q,"credentialId":%q}`,
+		r.ID, r.Name, r.FleetID, r.Host, credentialID)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "robot.created",
+		Target:   audit.Target{Type: "robot", ID: r.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitRobotDeleted는 robot.deleted 이벤트를 audit에 emit합니다 (Stage C, soft delete).
+func (a *auditEmitterAdapter) EmitRobotDeleted(ctx context.Context, tx storage.Tx, robotID string, tenantID storage.TenantID) error {
+	payload := fmt.Sprintf(`{"robotId":%q}`, robotID)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: tenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "robot.deleted",
+		Target:   audit.Target{Type: "robot", ID: robotID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitCredentialRotated는 credential.rotated 이벤트를 audit에 emit합니다 (Stage C, R3-3).
+func (a *auditEmitterAdapter) EmitCredentialRotated(ctx context.Context, tx storage.Tx, robotID, oldCredID, newCredID string, tenantID storage.TenantID) error {
+	payload := fmt.Sprintf(`{"robotId":%q,"oldCredentialId":%q,"newCredentialId":%q}`,
+		robotID, oldCredID, newCredID)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: tenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "credential.rotated",
+		Target:   audit.Target{Type: "robot", ID: robotID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // systemTenantID는 부팅 시 결정된 시스템 테넌트를 반환합니다 (healthz·system audit job용).
 func (p *Platform) systemTenantID() storage.TenantID {
 	return p.systemTenant

@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-27 (E5 Stage B 완료 — KEK/DEK 코어 + 마이그레이션 0009)_
+_마지막 업데이트: 2026-04-27 (E5 Stage C 완료 — Robot CRUD + Credential 결선 + T2/T3/T4/T7)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E5 Stage B 완료 — KEK/DEK envelope encryption 코어 + Credential 모델·마이그레이션.** `kek.go`(LoadOrCreateKEK 32B AES-256, perm 0600 검증, KeyID `kek_<8hex>`), `dek.go`(WrapMaterial/UnwrapMaterial, KEK→DEK 2계층, AAD `t=<id>;c=<id>;v=1`로 cross-credential 격리). 마이그레이션 0009(`credentials` BLOB+JSON meta). `Credential`·`CredentialMaterial`·`EncryptionMeta` 모델, bootstrap KEK 결선. 18 신규 단위 tests(KEK 6 + DEK 12 — roundtrip·tampered ciphertext/wrappedDEK/AAD·KEK 불일치·plaintext 누출 부재·nonce 재사용 부재). 외부 의존 0(stdlib `crypto/aes`·`crypto/cipher`). 누적 ~222 tests, 전체 그린. **다음: E5 Stage C** (Robot CRUD + 한 Tx에 Credential 생성 + T2·T3·T4·T7).
+**E5 Stage C 완료 — Robot CRUD + Credential CRUD(한 Tx) + Rotate + soft delete.** 마이그레이션 0010(`robots` + partial unique 2개 — `(tenant_id, fleet_id, name)` + `(tenant_id, host, port)`, R3-7), CreateRobot/GetRobot/ListRobots/DeleteRobot/GetCredentialMaterial/RotateCredential 6 Service 메서드 + AuditEmitter 3 메서드 추가(EmitRobotCreated·EmitRobotDeleted·EmitCredentialRotated). DeleteRobot은 soft + 연결 credential cascade revoke + audit emit. RotateCredential은 새 cred wrap·INSERT + Robot.credential_id 갱신 + 이전 cred revoke + audit, 모두 같은 Tx(R3-3 수동 API). T2(FleetID 검증·존재)·T3(DB+WAL 파일 grep으로 평문 부재)·T4(rotate audited + 새 material 검증)·T7(soft delete + audit chain Verify) + 보조 8건 = 12 신규 tests. 누적 ~234 tests, 전체 그린. **다음: E5 Stage D** (CSV import + T6).
 
 ## 원격 저장소
 
@@ -96,12 +96,11 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E5 Robot/Fleet 진행 중. Stage A·B 완료, Stage C~E 대기.
+E5 Robot/Fleet 진행 중. Stage A·B·C 완료, Stage D·E 대기.
 
-1. **E5 Stage C 진입 (권장)** — `0010_robots.sql`(FK fleet_id, credential_id) + Robot 모델(name, host, port, authType, criticality, tags, soft delete) + `Service.CreateRobot`(같은 Tx에 Credential 생성·wrap·INSERT) + `Service.GetCredentialMaterial`(unwrap) + `Service.RotateCredential` + 마이그레이션의 partial unique index 2개(`(tenant_id, fleet_id, name)` + `(tenant_id, host, port)`, R3-7) + T2·T3·T4·T7.
-2. **E5 Stage D** — CSV import + T6. Stage C 후.
-3. **E5 Stage E** — TestConnection mock + cross-tenant fuzzer + T5 + 회귀. Stage D 후.
-4. **E6 SSH+Scan** — E5 종료 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. R4-1~R4-7 합의 후. 추정 1.5주.
+1. **E5 Stage D 진입 (권장)** — `Service.ImportRobotsCSV(fleetID, csv)` — 헤더 검증·행별 검증·부분 성공(robots[]+errors[] 분리) + T6(`TestRobotCSVImportValidates` — 잘못된 IP·포트·중복 거부). Phase 1은 표준 영문 헤더만(name, host, port, username, authType, criticality, osDistro, rosDistro, tags, role + password|privateKeyPem column). 한글 헤더·사용자 매핑 UI는 후순위. nrobotcheck 부분 성공 패턴 답습.
+2. **E5 Stage E** — `Service.TestConnection(robotID)` mock interface(SSHClient interface 추상, 실제 SSH는 E6) + cross-tenant fuzzer(E3 패턴 답습 — 두 tenant × 8 cross-tenant 메서드 회귀) + T5 + 회귀. Stage D 후.
+3. **E6 SSH+Scan** — E5 종료 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. R4-1~R4-7 합의 후. 추정 1.5주.
 3. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주.
 4. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
@@ -117,6 +116,7 @@ E5 Robot/Fleet 진행 중. Stage A·B 완료, Stage C~E 대기.
 
 날짜 내림차순.
 
+- **2026-04-27 · E5 Stage C 완료 — Robot CRUD + Credential 결선 + Rotate + soft delete (T2·T3·T4·T7)**: 마이그레이션 0010 — `robots` 테이블, FK fleet_id·credential_id, partial unique 2개(`(tenant_id, fleet_id, name)`·`(tenant_id, host, port)` 모두 `WHERE deleted_at IS NULL` — R3-7), tags TEXT JSON. `internal/domain/robot/sqliterepo/robot.go` 신규 — CreateRobot은 한 Tx에 Credential wrap·INSERT + Robot INSERT + audit emit, FleetID 활성 검증, AuthType↔Material.Type 일치 검증(불일치 시 ErrRobotInvalidAuthType). DeleteRobot은 soft + 연결 credential cascade revoke + audit emit, 두 번째 호출은 ErrNotFound(Phase 1 명시적 한 번). RotateCredential은 새 cred 생성·wrap·INSERT → Robot.credential_id·auth_type 갱신 → 이전 cred revoked_at 설정 → audit emit, 모두 한 Tx(R3-3). GetCredentialMaterial은 활성 Robot+활성 Credential 둘 다 검증 후 unwrap. AuditEmitter 인터페이스 3 메서드 추가(EmitRobotCreated·EmitRobotDeleted·EmitCredentialRotated) + bootstrap auditEmitterAdapter 결선. 마이그레이션 카운트 9→10 정정. **신규 12 tests**: T2(FleetID 빈 값/존재하지 않는 ID 거부) · T3(DB+WAL 파일 grep으로 평문 password marker 부재 검증 — encryption-at-rest acceptance) · T4(rotate audit head +1, OldCredID·NewCredID 검증, 새 material 일치) · T7(soft delete 후 GetRobot ErrNotFound·audit chain Verify·두 번째 delete ErrNotFound) + AppliesDefaults(port 22·medium·privateKey)·DuplicateNameInSameFleet·SameNameAcrossFleets·DuplicateHostPort·AuthTypeMaterialMismatch·CredentialMaterialRoundtrip·ListByFleetAndAll·CrossTenantBlocked(GetRobot·ListRobots·GetCredentialMaterial). 누적 ~234 tests, 전체 그린.
 - **2026-04-27 · E5 Stage B 완료 — KEK/DEK envelope encryption 코어**: `internal/domain/robot/kek.go`(LoadOrCreateKEK — 32B AES-256, perm 0600 Unix 강제·Windows skip[ACL은 후순위], KeyID `kek_<sha256(KEK)[:8] hex>`, Signer LoadOrCreate 패턴 답습) + `dek.go`(WrapMaterial/UnwrapMaterial, KEK→DEK 2계층, per-record DEK 32B random + AAD `t=<tenantID>;c=<credentialID>;v=1`로 cross-credential 키 재사용 차단). 마이그레이션 0009 — `credentials` BLOB(`encrypted_payload`) + TEXT JSON(`encryption_meta`). `Credential`·`CredentialMaterial`·`EncryptionMeta` 모델 추가. bootstrap에 `LoadOrCreateKEK(<dataDir>/keys/credential.kek)` 결선 + `kekKeyId` 부팅 로그. 18 신규 단위 tests pass: KEK 6(generate·reload 동일 keyID·KeyID 형식·invalid length·loose perm·empty path) + DEK 12(roundtrip password·privateKey·plaintext 누출 부재·tampered ciphertext/wrappedDEK/AAD·다른 KEK·미지원 version·다른 두 wrap 다른 결과·empty tenant/credentialID·invalid type·empty username·AAD 형식). **외부 의존 추가 0** — stdlib `crypto/aes`·`crypto/cipher`·`crypto/rand`·`crypto/sha256`만. 마이그레이션 카운트 검증 8→9 정정. 누적 ~222 tests, 전체 그린. T3 acceptance(`TestRobotCredentialEncryptedAtRest` DB grep)는 **Stage C로 이동** — Service.CreateRobot이 Credential을 같은 Tx에 wrap하므로 Robot CRUD와 함께 검증.
 - **2026-04-27 · E5 Stage A 완료 — Fleet 도메인 골격 + bootstrap 결선**: 합의된 R3-1~R3-7 권장값 7건 모두 채택. 새 도메인 패키지 `internal/domain/robot/` 신설(tenant 패키지 답습 — 단일 패키지에 Fleet/Robot/Credential 묶음, P5는 다른 도메인 격리만 강제). 마이그레이션 0008 (`fleets` 테이블, `(tenant_id, name)` partial unique index `WHERE deleted_at IS NULL` — R3-5/R3-7 적용). Fleet 모델 + FleetPolicy 4 필드(R3-4 — DefaultBaselineID·DefaultLevel·DefaultCriticality·ScanSchedule). Service.CreateFleet은 한 Tx에 fleets INSERT + audit emit(`auditEmitterAdapter.EmitFleetCreated` 추가, P5 격리). GetFleet/ListFleets는 deleted_at IS NULL 필터로 cross-tenant + soft-deleted 차단. 13 신규 tests pass(T1 + 보조 12: empty/long/invalid level/invalid criticality/duplicate/soft-deleted reusable/no-tenant-context/get returns/get ignores soft/cross-tenant get/list active only/cross-tenant list/policy roundtrip). bootstrap에 `Platform.Robot robot.Service` 결선. 마이그레이션 카운트 검증 7→8 정정. 누적 ~204 tests, 전체 그린.
 - **2026-04-27 · R3-1~R3-7 합의 (E5)**: 권장값 채택 — KEK 파일(`<dataDir>/keys/credential.kek` 0600, OS Keychain·KMS·TPM은 Phase 3) / Tenant Key Phase 2+ (Phase 1은 KEK→DEK 2계층) / Credential rotation 수동 API만 / FleetPolicy 4 필드 / soft delete `deleted_at` only + 읽기 필터 / Fleet=`fl_<ULID>`·Credential=`cr_<ULID>` / Robot UNIQUE `(tenant_id, fleet_id, name)` + `(tenant_id, host, port)` 둘 다 partial.

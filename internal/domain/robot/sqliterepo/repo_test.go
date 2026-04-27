@@ -19,7 +19,7 @@ import (
 )
 
 // auditAdapter는 audit.Service를 robot.AuditEmitter로 감싸는 테스트용 구현입니다.
-// (cmd/rosshield-server/bootstrap.go에 동일 패턴이 들어갈 예정 — Stage A 결선 단계에서)
+// (cmd/rosshield-server/bootstrap.go에 동일 패턴이 결선됨 — Stage A·C에서)
 type auditAdapter struct {
 	svc audit.Service
 }
@@ -36,9 +36,54 @@ func (a *auditAdapter) EmitFleetCreated(ctx context.Context, tx storage.Tx, f ro
 	return err
 }
 
+func (a *auditAdapter) EmitRobotCreated(ctx context.Context, tx storage.Tx, r robot.Robot, credentialID string) error {
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "robot.created",
+		Target:   audit.Target{Type: "robot", ID: r.ID},
+		Payload:  []byte(`{"name":"` + r.Name + `","credentialId":"` + credentialID + `"}`),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+func (a *auditAdapter) EmitRobotDeleted(ctx context.Context, tx storage.Tx, robotID string, tenantID storage.TenantID) error {
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: tenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "robot.deleted",
+		Target:   audit.Target{Type: "robot", ID: robotID},
+		Payload:  []byte(`{}`),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+func (a *auditAdapter) EmitCredentialRotated(ctx context.Context, tx storage.Tx, robotID, oldCredID, newCredID string, tenantID storage.TenantID) error {
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: tenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "credential.rotated",
+		Target:   audit.Target{Type: "robot", ID: robotID},
+		Payload:  []byte(`{"oldCredentialId":"` + oldCredID + `","newCredentialId":"` + newCredID + `"}`),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 func newTestRepo(t *testing.T) (*sqliterepo.Repo, audit.Service, storage.Storage) {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "robot.db")
+	repo, auditSvc, store, _ := newTestRepoFull(t)
+	return repo, auditSvc, store
+}
+
+// newTestRepoFull은 테스트가 DB 파일 경로를 필요로 하는 경우(T3 — DB grep 검증) 사용합니다.
+func newTestRepoFull(t *testing.T) (*sqliterepo.Repo, audit.Service, storage.Storage, string) {
+	t.Helper()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "robot.db")
+	kekPath := filepath.Join(dir, "credential.kek")
 	store, err := sqlite.Open(storage.Config{Driver: "sqlite", DSN: dbPath})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -49,13 +94,19 @@ func newTestRepo(t *testing.T) (*sqliterepo.Repo, audit.Service, storage.Storage
 		t.Fatalf("Migrate: %v", err)
 	}
 
+	kek, err := robot.LoadOrCreateKEK(kekPath)
+	if err != nil {
+		t.Fatalf("LoadOrCreateKEK: %v", err)
+	}
+
 	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clock.System()})
 	repo := sqliterepo.New(sqliterepo.Deps{
 		Clock: clock.System(),
 		IDGen: idgen.NewULID(),
 		Audit: &auditAdapter{svc: auditSvc},
+		KEK:   kek,
 	})
-	return repo, auditSvc, store
+	return repo, auditSvc, store, dbPath
 }
 
 // seedTenant는 fleets.tenant_id FK를 만족시키기 위해 직접 tenants row를 INSERT합니다.

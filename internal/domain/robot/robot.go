@@ -82,16 +82,26 @@ type CreateFleetRequest struct {
 
 // AuditEmitter는 도메인 변경을 감사 로그에 기록하는 콜백입니다 (P5 — audit 도메인 직접 import 회피).
 //
-// Stage A는 EmitFleetCreated만. 후속 Stage에서 Robot·Credential 메서드 추가.
+// Stage A: EmitFleetCreated. Stage C: EmitRobotCreated/EmitRobotDeleted/EmitCredentialRotated.
 type AuditEmitter interface {
 	// EmitFleetCreated는 fleet.created 엔트리를 audit에 append합니다.
 	// tx는 fleet 생성과 같은 Tx — 같은 commit·rollback에 묶임.
 	EmitFleetCreated(ctx context.Context, tx storage.Tx, f Fleet) error
+
+	// EmitRobotCreated는 robot.created 엔트리를 audit에 append합니다.
+	// Robot+Credential은 같은 Tx에 생성되므로 단일 audit 엔트리로 묶음.
+	EmitRobotCreated(ctx context.Context, tx storage.Tx, r Robot, credentialID string) error
+
+	// EmitRobotDeleted는 robot.deleted 엔트리를 audit에 append합니다 (soft delete).
+	EmitRobotDeleted(ctx context.Context, tx storage.Tx, robotID string, tenantID storage.TenantID) error
+
+	// EmitCredentialRotated는 credential.rotated 엔트리를 audit에 append합니다 (R3-3).
+	EmitCredentialRotated(ctx context.Context, tx storage.Tx, robotID, oldCredID, newCredID string, tenantID storage.TenantID) error
 }
 
 // Service는 robot 도메인 진입점입니다.
 //
-// Stage A는 Fleet CRUD만. 후속 Stage에서 Robot·Credential 메서드가 추가됩니다.
+// Stage A는 Fleet CRUD. Stage C는 Robot·Credential CRUD가 추가됩니다.
 type Service interface {
 	// CreateFleet는 새 Fleet을 생성하고 audit를 emit합니다.
 	// ctx의 TenantID로 격리. 이름 중복(같은 tenant 내, 살아있는 fleet) 시 ErrFleetNameDuplicate.
@@ -102,6 +112,30 @@ type Service interface {
 
 	// ListFleets는 tenant의 활성 fleet을 모두 반환합니다 (deleted_at IS NULL).
 	ListFleets(ctx context.Context, tx storage.Tx) ([]Fleet, error)
+
+	// CreateRobot는 새 Robot + Credential을 한 Tx에 생성하고 audit를 emit합니다.
+	// req.Material은 KEK로 wrap된 후 폐기됩니다.
+	// FleetID 부재·deleted 시 ErrFleetNotFound. 이름 또는 (host,port) 중복 시 각각 Err...Duplicate.
+	CreateRobot(ctx context.Context, tx storage.Tx, req CreateRobotRequest) (CreateRobotResult, error)
+
+	// GetRobot은 ID로 robot을 조회합니다 (deleted_at IS NULL 만). 없으면 storage.ErrNotFound.
+	GetRobot(ctx context.Context, tx storage.Tx, id string) (Robot, error)
+
+	// ListRobots는 tenant의 활성 robot을 반환합니다.
+	// fleetID="" 면 tenant 전체, 그 외엔 해당 fleet으로 필터.
+	ListRobots(ctx context.Context, tx storage.Tx, fleetID string) ([]Robot, error)
+
+	// DeleteRobot은 robot을 soft delete하고 연결된 credential을 revoke합니다 + audit emit.
+	// 이미 삭제된 robot은 storage.ErrNotFound (멱등 아님 — Phase 1은 명시적 한 번만).
+	DeleteRobot(ctx context.Context, tx storage.Tx, id string) error
+
+	// GetCredentialMaterial은 robot의 credential을 unwrap하여 평문 자격증명을 반환합니다.
+	// SSH client(E6)가 사용 시점에만 호출. 호출자는 결과를 사용 후 즉시 폐기 권장.
+	GetCredentialMaterial(ctx context.Context, tx storage.Tx, robotID string) (CredentialMaterial, error)
+
+	// RotateCredential은 새 credential을 생성하고 robot의 credential_id를 갱신합니다 + audit emit.
+	// 이전 credential은 revoked_at으로 soft delete (감사 추적 보존).
+	RotateCredential(ctx context.Context, tx storage.Tx, req RotateCredentialRequest) (RotateCredentialResult, error)
 }
 
 // CredentialType은 SSH 자격증명 유형입니다 (§04.2).
@@ -160,6 +194,75 @@ type Credential struct {
 	RevokedAt        *time.Time // soft delete (R3-5)
 }
 
+// AuthType은 SSH 인증 방식입니다 (§04.2).
+//
+// Phase 1은 password·privateKey만 지원 — `agent` 옵션은 §06.5 "ssh agent forward 없이 직접 사용" 정책 위반 위험으로 보류.
+type AuthType string
+
+const (
+	AuthTypePassword   AuthType = "password"
+	AuthTypePrivateKey AuthType = "privateKey"
+)
+
+// Robot은 스캔 대상 로봇입니다 (§04.2).
+type Robot struct {
+	ID           string // "ro_<ULID>"
+	TenantID     storage.TenantID
+	FleetID      string
+	CredentialID string
+	Name         string
+	Host         string
+	Port         int
+	AuthType     AuthType
+	OSDistro     string // "ubuntu-24.04" 등
+	ROSDistro    string // "jazzy" 등
+	Tags         []string
+	Role         string // "mobile" | "manipulator" | custom
+	Criticality  Criticality
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	LastScanAt   *time.Time
+	DeletedAt    *time.Time // soft delete (R3-5)
+}
+
+// CreateRobotRequest는 Service.CreateRobot 입력입니다.
+//
+// Material은 평문 자격증명 — wrap 후 즉시 폐기됩니다 (메모리 외 영속화 X).
+// Port=0이면 default 22, AuthType="" 이면 PrivateKey, Criticality="" 이면 Medium.
+type CreateRobotRequest struct {
+	FleetID     string
+	Name        string
+	Host        string
+	Port        int
+	AuthType    AuthType
+	Material    CredentialMaterial
+	OSDistro    string
+	ROSDistro   string
+	Tags        []string
+	Role        string
+	Criticality Criticality
+}
+
+// CreateRobotResult는 Service.CreateRobot 출력입니다.
+//
+// Credential은 메타데이터만 포함 (EncryptedPayload는 DB 저장본, 평문 자격증명 노출 X).
+type CreateRobotResult struct {
+	Robot      Robot
+	Credential Credential
+}
+
+// RotateCredentialRequest는 Service.RotateCredential 입력입니다 (R3-3 — 수동 API만).
+type RotateCredentialRequest struct {
+	RobotID  string
+	Material CredentialMaterial
+}
+
+// RotateCredentialResult는 새 credentialID와 이전 credentialID(감사용)를 반환합니다.
+type RotateCredentialResult struct {
+	NewCredentialID string
+	OldCredentialID string
+}
+
 // 공통 에러.
 var (
 	ErrFleetEmptyName       = errors.New("robot: fleet Name is required")
@@ -175,6 +278,18 @@ var (
 	ErrCredentialEmptyUser   = errors.New("robot: Credential Username is required")
 	ErrCredentialDecrypt     = errors.New("robot: failed to decrypt credential (key mismatch or tampered)")
 	ErrCredentialMetaVersion = errors.New("robot: EncryptionMeta.Version unsupported")
+
+	// Robot errors (Stage C).
+	ErrRobotEmptyName        = errors.New("robot: Name is required")
+	ErrRobotNameTooLong      = errors.New("robot: Name exceeds 200 characters")
+	ErrRobotEmptyHost        = errors.New("robot: Host is required")
+	ErrRobotInvalidPort      = errors.New("robot: Port must be 1..65535")
+	ErrRobotEmptyFleet       = errors.New("robot: FleetID is required")
+	ErrRobotInvalidAuthType  = errors.New("robot: AuthType must be password or privateKey")
+	ErrRobotInvalidCritical  = errors.New("robot: Criticality must be one of low|medium|high|critical")
+	ErrFleetNotFound         = errors.New("robot: Fleet not found")
+	ErrRobotNameDuplicate    = errors.New("robot: Name already exists in this fleet")
+	ErrRobotHostPortConflict = errors.New("robot: Host:Port already exists in this tenant")
 )
 
 // MarshalPolicy는 FleetPolicy를 DB 저장용 canonical JSON으로 직렬화합니다.
