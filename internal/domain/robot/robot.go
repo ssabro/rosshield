@@ -290,6 +290,13 @@ var (
 	ErrFleetNotFound         = errors.New("robot: Fleet not found")
 	ErrRobotNameDuplicate    = errors.New("robot: Name already exists in this fleet")
 	ErrRobotHostPortConflict = errors.New("robot: Host:Port already exists in this tenant")
+
+	// CSV import errors (Stage D).
+	ErrCSVEmpty               = errors.New("robot: CSV input is empty")
+	ErrCSVMissingHeader       = errors.New("robot: CSV header missing required columns (name, host, username, authType)")
+	ErrCSVUnknownHeader       = errors.New("robot: CSV header contains unknown column")
+	ErrCSVCredentialAmbiguous = errors.New("robot: CSV row has both password and privateKeyPem")
+	ErrCSVCredentialMissing   = errors.New("robot: CSV row has neither password nor privateKeyPem")
 )
 
 // MarshalPolicy는 FleetPolicy를 DB 저장용 canonical JSON으로 직렬화합니다.
