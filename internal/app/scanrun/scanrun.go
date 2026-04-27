@@ -109,6 +109,8 @@ func (o *Orchestrator) Run(ctx context.Context, tenantID storage.TenantID, sessi
 	}()
 
 	// 3. fan-out — semaphore로 동시성 제한.
+	// worker ctx에 tenant 세팅 — SSHExecutor 어댑터가 storage.Tx로 GetCredentialMaterial 호출 시 필요.
+	workerCtx := storage.WithTenantID(runCtx, tenantID)
 	sem := semaphore.NewWeighted(int64(o.deps.WorkerLimit))
 	var wg sync.WaitGroup
 
@@ -125,7 +127,7 @@ outer:
 			go func() {
 				defer wg.Done()
 				defer sem.Release(1)
-				o.executeOne(runCtx, tenantID, sessionID, r, c)
+				o.executeOne(workerCtx, tenantID, sessionID, r, c)
 			}()
 		}
 	}

@@ -348,6 +348,7 @@ type Service interface {
 | E6.T10 ✅ | `TestRunPublishesProgressAndCompleted` | EventBus inproc publish (Stage D.1) |
 | E6.Stage C ✅ | scan 도메인 격선 — ScanSession FSM·ScanResult 5-값·Service·sqliterepo·audit (R5-1~R5-7) | 마이그레이션 0011 + `internal/domain/scan/` |
 | E6.Stage D.1 ✅ | Orchestrator 골격 + mock-based 단위 (T5·T6·T9·T10) | `internal/app/scanrun/` (R6-1~R6-8) |
+| E6.Stage D.2 ✅ | bootstrap 결선 — sshExecutorAdapter + benchmarkEvaluatorAdapter + Platform.ScanRun | `cmd/rosshield-server/scanexec.go` + auth method 단위 7 + evaluator 단위 3 |
 
 ### Exit 기준
 

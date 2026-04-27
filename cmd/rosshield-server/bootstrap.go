@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/ssabro/rosshield/internal/app/scanrun"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
@@ -28,8 +29,10 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
 	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/signer/soft"
+	"github.com/ssabro/rosshield/internal/platform/sshpool"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	"github.com/ssabro/rosshield/internal/platform/storage/sqlite"
+	xssh "golang.org/x/crypto/ssh"
 )
 
 // Config는 부트스트랩 입력입니다.
@@ -61,6 +64,7 @@ type Platform struct {
 	Benchmark benchmark.Service
 	Robot     robot.Service
 	Scan      scan.Service
+	ScanRun   *scanrun.Orchestrator
 
 	systemTenant storage.TenantID
 
@@ -340,6 +344,28 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Audit: emitter,
 	})
 
+	// E6 Stage D.2 — scan Orchestrator 결선 (R6-1~R6-8).
+	// host key callback은 임시 InsecureIgnoreHostKey + warning 로그.
+	// R4-2 first-touch trust + DB 기록은 후속 stage(D.3 또는 별도)에서.
+	logger.Warn("ScanRun host-key check disabled (Phase 1 placeholder) — R4-2 first-touch trust pending",
+		"todo", "implement known_hosts file + first-touch DB record")
+	sshExec := sshpool.New(sshpool.Deps{Logger: logger})
+	scanRun := scanrun.New(scanrun.Deps{
+		Scan:    scanSvc,
+		Storage: store,
+		Executor: &sshExecutorAdapter{
+			pool:      sshExec,
+			robot:     robotSvc,
+			storage:   store,
+			hostKeyCB: xssh.InsecureIgnoreHostKey(), //nolint:gosec // Phase 1 placeholder; R4-2 후속 결선
+			logger:    logger,
+		},
+		Evaluator: &benchmarkEvaluatorAdapter{},
+		Bus:       bus,
+		Clock:     clk,
+		// WorkerLimit은 default(R4-4 — 10).
+	})
+
 	systemTenant := cfg.SystemTenantID
 	if systemTenant == "" {
 		systemTenant = "system"
@@ -377,6 +403,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Benchmark:    benchmarkSvc,
 		Robot:        robotSvc,
 		Scan:         scanSvc,
+		ScanRun:      scanRun,
 		systemTenant: systemTenant,
 	}, nil
 }
