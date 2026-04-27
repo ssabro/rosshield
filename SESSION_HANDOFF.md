@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-24 (E4 운영 준비 완료 — sqliterepo + bootstrap 결선, T8)_
+_마지막 업데이트: 2026-04-27 (E5 진입 — 핸드오프/백로그 E5·E6 표기 통일)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E4 Pack 시스템 epic 운영 준비 완료 (8/8 도메인 + sqliterepo + bootstrap 결선).** Pack DB INSERT/조회/lifecycle 전이 + audit emit까지 동작. `bootstrap.Platform.Benchmark` 결선으로 향후 API gateway·CLI에서 즉시 사용 가능. 4 epic(E1·E2·E3·E4) 완성. 누적 ~190 tests, CI green 6회(E4만), 원격 49+ commits. **다음: E5 Scan engine** (SSH executor + check 실행 + 결과 audit). E5 SSH 사전 리서치 완료.
+**E4 Pack 시스템 epic 운영 준비 완료 (8/8 도메인 + sqliterepo + bootstrap 결선).** Pack DB INSERT/조회/lifecycle 전이 + audit emit까지 동작. `bootstrap.Platform.Benchmark` 결선으로 향후 API gateway·CLI에서 즉시 사용 가능. 4 epic(E1·E2·E3·E4) 완성. 누적 ~190 tests, CI green 6회(E4만), 원격 49+ commits. **다음: E5 Robot/Fleet** (Robot·Fleet·Credential 도메인 — KEK/DEK AES-256-GCM 암호화). E6 SSH+Scan은 그 다음(Robot 도메인이 SSH executor의 입력 모델이라 prerequisite).
 
 ## 원격 저장소
 
@@ -96,24 +96,31 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E4 운영 결선 완료. 재개 후보:
+E5 Robot/Fleet 진입 중(2026-04-27 사용자 선택 A).
 
-1. **E5 Scan 엔진 진입** (권장). `internal/domain/scan/` — SSH executor + Check 실행 + Result 기록 + audit emit. 가장 큰 핵심 epic. **사전 리서치 완료**(SSH connection 재사용·session 1회용·knownhosts 검증·ctx 통합·세션 누수 방지). 추정 1주.
-2. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주.
-3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
-4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
-5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
-6. **Scheduler Clock 확장 (노선 B)** — 결정론적 테스트 필요해질 때.
-7. **Refresh reuse detection** — Phase 1 미구현, API 미들웨어 도입 시.
-8. **Windows ACL 키 파일 보호** — 후순위.
-9. **로컬 Windows Defender 우회** — 환경 위생.
+1. **E5 Robot/Fleet 진행 중** — `internal/domain/robot/` (또는 `tenant`처럼 단일 패키지에 Fleet/Robot/Credential 묶음). Credential KEK/DEK AES-256-GCM. soft delete. CSV import. `testConnection`은 mock interface (실제 SSH는 E6). 추정 4일. 백그라운드 agent 2개(nrobotcheck 자산 조사 + E6 SSH+Scan 사전 리서치) 병렬 진행.
+2. **E6 SSH+Scan** — E5 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluationRule executor 결선. 추정 1.5주.
+3. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주.
+4. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
+5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
+6. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
+7. **Scheduler Clock 확장 (노선 B)** — 결정론적 테스트 필요해질 때.
+8. **Refresh reuse detection** — Phase 1 미구현, API 미들웨어 도입 시.
+9. **Windows ACL 키 파일 보호** — 후순위.
+10. **로컬 Windows Defender 우회** — 환경 위생.
 
-**권장 순서**: 1(E5 Scan) — 가장 큰 작업이자 핵심 가치(스캔 결과 → audit). 그 다음 2(pack-tools)로 자료 활용 + 4(OpenAPI)로 API 골격.
+**권장 순서**: 1(E5) → 2(E6) → 3(pack-tools)로 자료 활용 + 5(OpenAPI)로 API 골격.
 
 ## 결정 로그
 
 날짜 내림차순.
 
+- **2026-04-27 · E5 Robot/Fleet 진입 · 핸드오프/백로그 표기 정정 · 사전 리서치 노트 2건 신규**:
+  - **표기 정정**: 백로그(`phase1-backlog.md`)는 E5=Robot/Fleet, E6=SSH+Scan으로 정의되어 있으나 핸드오프 line 13/101이 E5를 "Scan engine"으로 부르던 불일치를 백로그 의존 그래프(E5→E6) 기준으로 통일. 사용자 선택지 A(Robot/Fleet 먼저, SSH+Scan은 prerequisite로서 그 다음).
+  - **사전 리서치 결과물 부재 보강**: 이전 세션이 "E5 SSH 사전 리서치 완료"로 표기했으나 결과물이 노트로 보존되지 않음(휘발). 백그라운드 agent 2개 병렬 분담 — (1) nrobotcheck robot/fleet/credential 자산 조사, (2) E6 SSH+Scan 사전 리서치 — 모두 노트로 보존.
+  - **신규 노트**: `docs/design/notes/e5-robot-fleet-deepdive.md` (E5 도메인 구조·KEK/DEK·CSV import·함정 6건·결정 R3-1~R3-7), `docs/design/notes/e6-ssh-scan-deepdive.md` (E6 SSH 라이브러리·Pool·Executor·Orchestrator·Evaluator 결선·결정 R4-1~R4-7).
+  - **결정 ID 컨벤션**: E1=R1(storage)·R2(eventbus), E5=R3, E6=R4. 후속 epic도 동일 패턴.
+  - **R3-1~R3-7 (E5)** — KEK 저장 위치·Tenant Key 도입 시점·Credential rotation 트리거·Fleet policy 구조·Soft delete cascade·Fleet/Credential ID 접두사·UNIQUE 제약 범위. 사용자 합의 대기 중(E5 Stage A 착수 전).
 - **2026-04-24 · E4 sqliterepo + bootstrap 결선 — 운영 준비 완료 (T8)**: `internal/domain/benchmark/sqliterepo/` 패키지 신설. Service 인터페이스를 5 메서드로 재정의 (InstallPack/GetPackByKey/ListPacks/CurrentState/TransitionPack). InstallPack은 한 Tx에서 packs/checks/lifecycle INSERT + audit emit. UNIQUE 위반 → ErrPackAlreadyInstalled 매핑. bootstrap의 `auditEmitterAdapter`에 EmitPackInstalled + EmitPackLifecycleChanged 추가 (P5 격리 — benchmark가 audit 직접 import 안 함). Platform.Benchmark 결선 완료. 4 신규 sqliterepo tests + bootstrap 회귀, ~190 tests, CI green 1m2s. 커밋 `f8acb30`. **다음 epic E5 Scan 사전 리서치 완료** (SSH connection 재사용·knownhosts·ctx 취소·세션 누수 방지 패턴 — 진입 즉시 활용).
 - **2026-04-24 · E4 Pack 시스템 epic 완전 종료 (7/7 + Stage A~E)**: 새 도메인 `internal/domain/benchmark/` — 외부 자산(서명된 콘텐츠) 처리 첫 도메인. **5 stages, 합의된 C1~C8 모두 권장 채택**.
   - **Stage A** (`d2017eb`) — pack.yaml/checks/*.yaml YAML 파싱 + JSON Schema (draft 2020-12). `go.yaml.in/yaml/v3` 채택(v4는 RC). KnownFields strict + additionalProperties:false 이중 차단.
