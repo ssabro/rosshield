@@ -298,18 +298,21 @@ type Service interface {
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E5.T1 | `TestCreateFleetWithDefaultPolicy` | `FleetService.Create` |
-| E5.T2 | `TestCreateRobotRequiresFleet` — 존재하지 않는 fleet ID 거부 | FK 제약 + 도메인 검증 |
-| E5.T3 | `TestRobotCredentialEncryptedAtRest` — DB 원본이 plaintext 아님 | KEK/DEK AES-256-GCM |
-| E5.T4 | `TestRobotCredentialRotateIsAudited` | rotate API + audit |
-| E5.T5 | `TestTestConnectionUsesSSHPool` (mocked SSH) — 실제 SSH 호출은 E6에서 | SSH 클라이언트 interface mock |
-| E5.T6 | `TestRobotCSVImportValidates` — 잘못된 IP·포트 거부 | csv → validation |
-| E5.T7 | `TestRobotDeleteKeepsAuditReferences` — 삭제 후에도 `scan_results.robot_id`는 참조 가능 | soft delete (`deletedAt`) |
+| E5.T1 ✅ | `TestCreateFleetWithDefaultPolicy` | `Service.CreateFleet` (commit `af599a2`, Stage A) |
+| E5.T2 ✅ | `TestCreateRobotRequiresFleet` — 존재하지 않는/빈 fleet ID 거부 | `assertFleetActive` + 검증 (commit `ff1f6c9`, Stage C) |
+| E5.T3 ✅ | `TestRobotCredentialEncryptedAtRest` — DB+WAL grep으로 평문 부재 | KEK/DEK AES-256-GCM (commits `4841381`+`ff1f6c9`, Stage B+C) |
+| E5.T4 ✅ | `TestRobotCredentialRotateIsAudited` | RotateCredential 한 Tx에 새 cred wrap·INSERT + revoke + audit (`ff1f6c9`, Stage C) |
+| E5.T5 ✅ | `TestTestConnectionUsesSSHTester` (mocked SSH) — 실제 SSH 호출은 E6에서 | SSHTester interface + sqliterepo.TestConnection (Stage E) |
+| E5.T6 ✅ | `TestParseRobotsCSVRejectsInvalidRows` — 9 거부 케이스 + 1 정상 통과 | `ParseRobotsCSV` 패키지 함수 (commit `eeaf714`, Stage D) |
+| E5.T7 ✅ | `TestRobotDeleteKeepsAuditReferences` — soft delete 후 audit chain 보존 | `deleted_at` + cascade revoke + audit chain Verify (`ff1f6c9`, Stage C) |
 
 ### Exit 기준
 
-- Robot CRUD 전부 audit-wrapped.
-- Credential 평문이 DB 파일·로그에 노출되지 않는다(grep 검증).
+- Robot CRUD 전부 audit-wrapped. ✅
+- Credential 평문이 DB 파일·로그에 노출되지 않는다(grep 검증). ✅ (T3 — DB+WAL 검증)
+- Cross-tenant 격리 — 8 메서드 회귀(GetFleet·ListFleets·GetRobot·ListRobots·DeleteRobot·GetCredentialMaterial·RotateCredential·TestConnection + CreateRobot fleet ref). ✅
+
+**E5 epic 완료** (Stage A~E + 모든 T1~T7). 다음: E6 SSH+Scan.
 
 ### 설계 참조
 

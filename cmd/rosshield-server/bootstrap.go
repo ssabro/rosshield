@@ -269,6 +269,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		IDGen: ids,
 		Audit: emitter,
 		KEK:   kek,
+		// SSHTester는 E6 sshpool 결선 시 주입 — Phase 1 E5는 nil (TestConnection 호출 시 ErrSSHTesterNotConfigured).
+		SSHTester: nil,
 	})
 
 	systemTenant := cfg.SystemTenantID

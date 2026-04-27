@@ -299,6 +299,25 @@ UPDATE credentials
 	}, nil
 }
 
+// TestConnection은 robot.Service.TestConnection 구현입니다 (Stage E).
+//
+// 절차: GetRobot(활성 검증·tenant 격리) → GetCredentialMaterial(unwrap) → SSHTester에 위임.
+// SSHTester nil이면 ErrSSHTesterNotConfigured (E6 결선 전).
+func (r *Repo) TestConnection(ctx context.Context, tx storage.Tx, robotID string) error {
+	if r.deps.SSHTester == nil {
+		return robot.ErrSSHTesterNotConfigured
+	}
+	rb, err := r.GetRobot(ctx, tx, robotID)
+	if err != nil {
+		return err
+	}
+	mat, err := r.GetCredentialMaterial(ctx, tx, robotID)
+	if err != nil {
+		return err
+	}
+	return r.deps.SSHTester.TestConnection(ctx, rb.Host, rb.Port, rb.AuthType, mat)
+}
+
 // --- helpers ---
 
 const robotSelectColumns = `

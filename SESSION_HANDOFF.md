@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-27 (E5 Stage D 완료 — CSV import 파서 + T6)_
+_마지막 업데이트: 2026-04-27 (E5 Robot/Fleet epic 완전 종료 — 5/5 Stage + 7/7 T)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E5 Stage D 완료 — CSV import 파서 (`encoding/csv` stdlib).** `internal/domain/robot/csv.go` — 패키지 레벨 함수 `ParseRobotsCSV(fleetID, reader) → ([]CSVRow, []ImportRowError, error)`로 Service 인터페이스 외부에 둠(호출자가 row별 Service.CreateRobot 호출). 표준 헤더(Phase 1 영문 소문자만): name·host·port·username·authType·criticality·osDistro·rosDistro·tags(`;` 구분)·role·password·privateKeyPem·privateKeyPassphrase. 필수: name·host·username·authType + 자격증명 정확히 하나(password XOR privateKeyPem). UTF-8 BOM 자동 제거, 빈 행 skip, 부분 성공 패턴(nrobotcheck 답습). T6 acceptance(잘못된 IP·포트·자격증명 9개 행 거부 + 1개 정상 통과) + 보조 10건 = 11 신규 tests. 누적 ~245 tests, 전체 그린. **다음: E5 Stage E** (TestConnection mock + cross-tenant fuzzer + T5 + 회귀 → E5 epic 종료).
+**E5 Robot/Fleet epic 완전 종료 (5/5 Stage A~E + 7/7 T1~T7).** Fleet·Robot·Credential 도메인 운영 준비 완료. CreateRobot 한 Tx 묶음, KEK/DEK envelope encryption(AES-256-GCM, AAD로 cross-credential 격리), soft delete + cascade revoke, RotateCredential, CSV import(부분 성공), TestConnection mock(SSHTester interface — E6에서 결선), cross-tenant fuzzer 회귀까지. 5 epic(E1·E2·E3·E4·E5) 완성. 누적 ~260+ tests(robot 56 신규 — Stage A 13 + B 18 + C 12 + D 11 + E 5+sub-cases), 전체 그린. **다음: E6 SSH+Scan** — `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. R4-1~R4-7 합의 후 진입(추정 1.5주).
 
 ## 원격 저장소
 
@@ -96,10 +96,19 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E5 Robot/Fleet 진행 중. Stage A·B·C·D 완료, Stage E 대기.
+E5 epic 완전 종료. 재개 후보:
 
-1. **E5 Stage E 진입 (권장)** — `Service.TestConnection(robotID)` mock SSHClient interface 추상(실제 SSH는 E6) + T5 + cross-tenant fuzzer(E3 `031fa05` 패턴 답습 — 두 tenant 시나리오 × Service 메서드 회귀: GetFleet·ListFleets·GetRobot·ListRobots·GetCredentialMaterial·DeleteRobot·RotateCredential). 마지막 stage. 진행 시 E5 epic 완전 종료.
-2. **E6 SSH+Scan** — E5 종료 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. R4-1~R4-7 합의 후. 추정 1.5주.
+1. **E6 SSH+Scan 진입 (권장)** — `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. **사전 리서치 노트 `e6-ssh-scan-deepdive.md` 작성 완료** (SSH 라이브러리·Pool 아키텍처·Executor·Orchestrator FSM·E4 evaluator 결선·테스트 전략·R4-1~R4-7 결정). 진입 전 R4-1~R4-7 사용자 합의 필수. 추정 1.5주. SSHTester interface는 E5 Stage E에서 미리 추상화돼 있어 결선 즉시 가능.
+2. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주. E5와 독립적이라 병렬 가능.
+3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
+4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack·robot endpoints. ~2시간.
+5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
+6. **Scheduler Clock 확장 (노선 B)** — 결정론적 테스트 필요해질 때.
+7. **Refresh reuse detection** — Phase 1 미구현, API 미들웨어 도입 시.
+8. **Windows ACL 키 파일 보호** — 후순위.
+9. **로컬 Windows Defender 우회** — 환경 위생.
+
+**권장 순서**: 1(E6 Scan, 가장 큰 핵심 가치 + Phase 1 Exit 직결) → 2(pack-tools)로 자료 활용 + 4(OpenAPI)로 API 골격.
 3. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주.
 4. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
@@ -115,6 +124,7 @@ E5 Robot/Fleet 진행 중. Stage A·B·C·D 완료, Stage E 대기.
 
 날짜 내림차순.
 
+- **2026-04-27 · E5 Stage E 완료 — TestConnection mock + cross-tenant fuzzer (T5) → E5 epic 완전 종료 (5/5 Stage + 7/7 T)**: `robot.SSHTester` 인터페이스(`TestConnection(ctx, host, port, authType, material) error`) — E6 sshpool 구현체 결선 표면 미리 추상. `Service.TestConnection(robotID)` 추가 — GetRobot(활성 검증) → GetCredentialMaterial(unwrap) → SSHTester 위임. SSHTester nil이면 ErrSSHTesterNotConfigured. Deps에 SSHTester 추가, bootstrap에서 nil로 결선(E6 진입 시 sshpool 어댑터 주입). **신규 testconn_test.go 5 tests**: T5(`TestTestConnectionUsesSSHTester` — fakeSSHTester가 정확한 host/port/authType/username 받았는지 검증) + PropagatesSSHError + WithoutTesterReturnsConfigError + RobotSoftDeletedReturnsNotFound + CrossTenantReturnsNotFound. **신규 crosstenant_test.go**: `TestCrossTenantFuzzer` 1 test + 8 sub-cases(GetFleet·GetRobot·ListRobots(by fleetA)·DeleteRobot·GetCredentialMaterial·RotateCredential·TestConnection 모두 ErrNotFound · CreateRobot with fleetA → ErrFleetNotFound) + ListFleets/ListRobots(B만 노출) 2 sub-tests = 8 cross-tenant 회귀(E3 `031fa05` 패턴 답습). **E5 epic 완전 종료** — phase1-backlog.md E5.T1~T7 모두 ✅ + Exit 기준 모두 충족. 누적 robot 도메인 56 tests(A 13 + B 18 + C 12 + D 11 + E 5+8+2). 전체 ~260+ tests, 그린.
 - **2026-04-27 · E5 Stage D 완료 — CSV import 파서 (T6)**: `internal/domain/robot/csv.go` 신규 — 패키지 레벨 함수 `ParseRobotsCSV(fleetID, reader)` → `([]CSVRow, []ImportRowError, error)`. **Service 인터페이스 건드리지 않음** — 호출자(API gateway·CLI)가 결과 row별로 `Service.CreateRobot` 반복 호출. `encoding/csv` stdlib만, 외부 의존 0. 표준 영문 소문자 헤더 13개(필수 4: name·host·username·authType + 옵션). 자격증명은 password XOR privateKeyPem 강제 — ambiguous(둘 다)/missing(둘 다 빈) 시 ImportRowError. UTF-8 BOM 자동 제거(파일 시작 BOM 보존, 첫 헤더 셀 strip), 빈/공백-only 행 skip, 부분 성공(nrobotcheck `robot.router.ts:155-276` 패턴 답습). 11 신규 tests: T6(`TestParseRobotsCSVRejectsInvalidRows` — 9 거부 케이스 + 1 정상 통과: 빈 host·port out-of-range·port 비숫자·invalid authType·자격증명 missing/ambiguous·authType↔자격증명 mismatch·빈 username·invalid criticality) + 보조 10(AcceptsValidRows·MissingHeader·UnknownHeader·Empty·HeaderOnly·StripsBOM·AppliesFleetID·SkipsBlankLines·LineNumber·ImportRowErrorString). 함정: Go는 string literal 안의 mid-file UTF-8 BOM을 거부 — escape sequence `﻿` 필수(테스트 데이터 작성 시 주의). 누적 ~245 tests, 전체 그린.
 - **2026-04-27 · E5 Stage C 완료 — Robot CRUD + Credential 결선 + Rotate + soft delete (T2·T3·T4·T7)**: 마이그레이션 0010 — `robots` 테이블, FK fleet_id·credential_id, partial unique 2개(`(tenant_id, fleet_id, name)`·`(tenant_id, host, port)` 모두 `WHERE deleted_at IS NULL` — R3-7), tags TEXT JSON. `internal/domain/robot/sqliterepo/robot.go` 신규 — CreateRobot은 한 Tx에 Credential wrap·INSERT + Robot INSERT + audit emit, FleetID 활성 검증, AuthType↔Material.Type 일치 검증(불일치 시 ErrRobotInvalidAuthType). DeleteRobot은 soft + 연결 credential cascade revoke + audit emit, 두 번째 호출은 ErrNotFound(Phase 1 명시적 한 번). RotateCredential은 새 cred 생성·wrap·INSERT → Robot.credential_id·auth_type 갱신 → 이전 cred revoked_at 설정 → audit emit, 모두 한 Tx(R3-3). GetCredentialMaterial은 활성 Robot+활성 Credential 둘 다 검증 후 unwrap. AuditEmitter 인터페이스 3 메서드 추가(EmitRobotCreated·EmitRobotDeleted·EmitCredentialRotated) + bootstrap auditEmitterAdapter 결선. 마이그레이션 카운트 9→10 정정. **신규 12 tests**: T2(FleetID 빈 값/존재하지 않는 ID 거부) · T3(DB+WAL 파일 grep으로 평문 password marker 부재 검증 — encryption-at-rest acceptance) · T4(rotate audit head +1, OldCredID·NewCredID 검증, 새 material 일치) · T7(soft delete 후 GetRobot ErrNotFound·audit chain Verify·두 번째 delete ErrNotFound) + AppliesDefaults(port 22·medium·privateKey)·DuplicateNameInSameFleet·SameNameAcrossFleets·DuplicateHostPort·AuthTypeMaterialMismatch·CredentialMaterialRoundtrip·ListByFleetAndAll·CrossTenantBlocked(GetRobot·ListRobots·GetCredentialMaterial). 누적 ~234 tests, 전체 그린.
 - **2026-04-27 · E5 Stage B 완료 — KEK/DEK envelope encryption 코어**: `internal/domain/robot/kek.go`(LoadOrCreateKEK — 32B AES-256, perm 0600 Unix 강제·Windows skip[ACL은 후순위], KeyID `kek_<sha256(KEK)[:8] hex>`, Signer LoadOrCreate 패턴 답습) + `dek.go`(WrapMaterial/UnwrapMaterial, KEK→DEK 2계층, per-record DEK 32B random + AAD `t=<tenantID>;c=<credentialID>;v=1`로 cross-credential 키 재사용 차단). 마이그레이션 0009 — `credentials` BLOB(`encrypted_payload`) + TEXT JSON(`encryption_meta`). `Credential`·`CredentialMaterial`·`EncryptionMeta` 모델 추가. bootstrap에 `LoadOrCreateKEK(<dataDir>/keys/credential.kek)` 결선 + `kekKeyId` 부팅 로그. 18 신규 단위 tests pass: KEK 6(generate·reload 동일 keyID·KeyID 형식·invalid length·loose perm·empty path) + DEK 12(roundtrip password·privateKey·plaintext 누출 부재·tampered ciphertext/wrappedDEK/AAD·다른 KEK·미지원 version·다른 두 wrap 다른 결과·empty tenant/credentialID·invalid type·empty username·AAD 형식). **외부 의존 추가 0** — stdlib `crypto/aes`·`crypto/cipher`·`crypto/rand`·`crypto/sha256`만. 마이그레이션 카운트 검증 8→9 정정. 누적 ~222 tests, 전체 그린. T3 acceptance(`TestRobotCredentialEncryptedAtRest` DB grep)는 **Stage C로 이동** — Service.CreateRobot이 Credential을 같은 Tx에 wrap하므로 Robot CRUD와 함께 검증.

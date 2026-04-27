@@ -35,9 +35,13 @@ type Deps struct {
 	Audit robot.AuditEmitter // bootstrap이 audit.Service를 어댑팅한 구현체 주입.
 
 	// KEK는 Credential wrap/unwrap에 사용 (Stage B 도입).
-	// Stage B 시점엔 robotSvc 내부에서 직접 사용하지 않지만(Stage C에서 CreateRobot 일부로),
-	// bootstrap이 부팅 시 LoadOrCreate해 주입 — Phase 1 운영 표면 연결.
+	// bootstrap이 부팅 시 LoadOrCreate해 주입.
 	KEK *robot.KEK
+
+	// SSHTester는 Service.TestConnection이 위임하는 SSH 연결 테스트 표면 (Stage E).
+	// nil이면 TestConnection 호출 시 ErrSSHTesterNotConfigured.
+	// 실제 구현은 E6 sshpool에서 등장 — 그 전까지 bootstrap에서 nil로 주입.
+	SSHTester robot.SSHTester
 }
 
 // Repo는 robot.Service의 SQLite 구현입니다.

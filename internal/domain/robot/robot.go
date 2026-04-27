@@ -80,6 +80,16 @@ type CreateFleetRequest struct {
 	Policy      FleetPolicy
 }
 
+// SSHTester는 SSH 연결 테스트 표면입니다 (Stage E mock interface).
+//
+// 실제 구현은 E6(`internal/platform/sshpool` + `internal/domain/scan`)에서.
+// Phase 1 E5는 Service.TestConnection이 이 인터페이스에 위임하는 결선만 제공 — 구현은 테스트의 mock.
+//
+// 호출자(미들웨어·CLI)가 SSH client를 만든 직후 즉시 폐기 책임. material은 결과 후 zero-out 권장.
+type SSHTester interface {
+	TestConnection(ctx context.Context, host string, port int, authType AuthType, material CredentialMaterial) error
+}
+
 // AuditEmitter는 도메인 변경을 감사 로그에 기록하는 콜백입니다 (P5 — audit 도메인 직접 import 회피).
 //
 // Stage A: EmitFleetCreated. Stage C: EmitRobotCreated/EmitRobotDeleted/EmitCredentialRotated.
@@ -136,6 +146,11 @@ type Service interface {
 	// RotateCredential은 새 credential을 생성하고 robot의 credential_id를 갱신합니다 + audit emit.
 	// 이전 credential은 revoked_at으로 soft delete (감사 추적 보존).
 	RotateCredential(ctx context.Context, tx storage.Tx, req RotateCredentialRequest) (RotateCredentialResult, error)
+
+	// TestConnection은 robot의 host:port에 credential로 SSH 연결을 시도합니다 (Stage E).
+	// 내부적으로 GetCredentialMaterial로 unwrap → SSHTester에 위임 → 결과 반환.
+	// SSHTester가 nil이면 ErrSSHTesterNotConfigured.
+	TestConnection(ctx context.Context, tx storage.Tx, robotID string) error
 }
 
 // CredentialType은 SSH 자격증명 유형입니다 (§04.2).
@@ -297,6 +312,9 @@ var (
 	ErrCSVUnknownHeader       = errors.New("robot: CSV header contains unknown column")
 	ErrCSVCredentialAmbiguous = errors.New("robot: CSV row has both password and privateKeyPem")
 	ErrCSVCredentialMissing   = errors.New("robot: CSV row has neither password nor privateKeyPem")
+
+	// TestConnection errors (Stage E).
+	ErrSSHTesterNotConfigured = errors.New("robot: SSHTester not configured (E6 결선 전에는 사용 불가)")
 )
 
 // MarshalPolicy는 FleetPolicy를 DB 저장용 canonical JSON으로 직렬화합니다.

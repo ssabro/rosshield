@@ -252,13 +252,13 @@ type SSHClient interface { // E6에서 구현, E5는 mock
 
 E3·E4 패턴 답습 (Stage A·B·C·D·E). 마이그레이션도 stage별 분할(0007은 E4에서 사용 중이므로 **0008부터**):
 
-- **Stage A** — `0008_fleets.sql` + Fleet 도메인 + ID 접두사 + T1.
-- **Stage B** — `0009_credentials.sql` + KEK/DEK 코어 + EncryptionMeta + Credential 모델 + KEK/DEK 단위 테스트 (T3 acceptance는 Stage C로 이동 — Service 메서드 추가가 같은 단계라야 자연스러움).
-- **Stage C** — `0010_robots.sql`(FK fleet_id, credential_id) + Robot CRUD + Credential CRUD(같은 Tx에 CreateRobot 묶음) + soft delete + audit emit + T2·T3·T4·T7.
-- **Stage D** — CSV import + T6.
-- **Stage E** — Test connection mock interface + cross-tenant fuzzer + T5 + E3 fuzzer 패턴.
+- **Stage A ✅** (`af599a2`) — `0008_fleets.sql` + Fleet 도메인 + ID 접두사 + T1.
+- **Stage B ✅** (`4841381`) — `0009_credentials.sql` + KEK/DEK 코어 + EncryptionMeta + Credential 모델 + KEK/DEK 단위 테스트.
+- **Stage C ✅** (`ff1f6c9`) — `0010_robots.sql`(FK fleet_id, credential_id) + Robot CRUD + Credential CRUD(같은 Tx에 CreateRobot 묶음) + soft delete + audit emit + T2·T3·T4·T7.
+- **Stage D ✅** (`eeaf714`) — CSV import + T6.
+- **Stage E ✅** — TestConnection mock interface(`SSHTester`) + cross-tenant fuzzer + T5 + E3 fuzzer 패턴.
 
-각 Stage commit 가능. 예상 총 4일.
+**E5 epic 완전 종료** (5/5 Stage + 7/7 태스크).
 
 ## §11 다음 단계
 
