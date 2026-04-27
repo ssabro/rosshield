@@ -71,6 +71,9 @@ func TestBootstrapInitsAllPlatformServices(t *testing.T) {
 	if p.Robot == nil {
 		t.Error("Robot is nil")
 	}
+	if p.Scan == nil {
+		t.Error("Scan is nil")
+	}
 }
 
 func TestBootstrapCreatesDataFileAndAppliesMigration(t *testing.T) {

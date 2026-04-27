@@ -16,6 +16,8 @@ import (
 	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	robotrepo "github.com/ssabro/rosshield/internal/domain/robot/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/scan"
+	scanrepo "github.com/ssabro/rosshield/internal/domain/scan/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
@@ -58,6 +60,7 @@ type Platform struct {
 	Tenant    tenant.Service
 	Benchmark benchmark.Service
 	Robot     robot.Service
+	Scan      scan.Service
 
 	systemTenant storage.TenantID
 
@@ -176,6 +179,64 @@ func (a *auditEmitterAdapter) EmitCredentialRotated(ctx context.Context, tx stor
 	return err
 }
 
+// EmitScanStarted는 scan.AuditEmitter 구현 (E6 Stage C — pending → running 전이 시점).
+func (a *auditEmitterAdapter) EmitScanStarted(ctx context.Context, tx storage.Tx, s scan.ScanSession) error {
+	payload := fmt.Sprintf(`{"sessionId":%q,"fleetId":%q,"packId":%q,"trigger":%q,"total":%d}`,
+		s.ID, s.FleetID, s.PackID, string(s.Trigger), s.Progress.Total)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: s.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "scan.started",
+		Target:   audit.Target{Type: "scan_session", ID: s.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitScanCompleted는 running → completed 전이 시점 audit 엔트리입니다.
+func (a *auditEmitterAdapter) EmitScanCompleted(ctx context.Context, tx storage.Tx, s scan.ScanSession) error {
+	payload := fmt.Sprintf(`{"sessionId":%q,"completed":%d,"failed":%d}`,
+		s.ID, s.Progress.Completed, s.Progress.Failed)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: s.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "scan.completed",
+		Target:   audit.Target{Type: "scan_session", ID: s.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitScanFailed는 (pending|running) → failed 전이 시점 audit 엔트리입니다.
+func (a *auditEmitterAdapter) EmitScanFailed(ctx context.Context, tx storage.Tx, s scan.ScanSession, reason string) error {
+	payload := fmt.Sprintf(`{"sessionId":%q,"reason":%q}`, s.ID, reason)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: s.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "scan.failed",
+		Target:   audit.Target{Type: "scan_session", ID: s.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeFailure,
+	})
+	return err
+}
+
+// EmitScanCancelled는 (pending|running) → cancelled 전이 시점 audit 엔트리입니다 (R5-5).
+func (a *auditEmitterAdapter) EmitScanCancelled(ctx context.Context, tx storage.Tx, s scan.ScanSession, reason string) error {
+	payload := fmt.Sprintf(`{"sessionId":%q,"reason":%q}`, s.ID, reason)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: s.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "scan.cancelled",
+		Target:   audit.Target{Type: "scan_session", ID: s.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // systemTenantID는 부팅 시 결정된 시스템 테넌트를 반환합니다 (healthz·system audit job용).
 func (p *Platform) systemTenantID() storage.TenantID {
 	return p.systemTenant
@@ -273,6 +334,12 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		SSHTester: nil,
 	})
 
+	scanSvc := scanrepo.New(scanrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: emitter,
+	})
+
 	systemTenant := cfg.SystemTenantID
 	if systemTenant == "" {
 		systemTenant = "system"
@@ -309,6 +376,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Tenant:       tenantSvc,
 		Benchmark:    benchmarkSvc,
 		Robot:        robotSvc,
+		Scan:         scanSvc,
 		systemTenant: systemTenant,
 	}, nil
 }

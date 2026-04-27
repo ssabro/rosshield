@@ -336,16 +336,17 @@ type Service interface {
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E6.T1 | `TestSSHPoolRespectsHostLimit` (docker-based testcontainer로 실제 sshd) | `golang.org/x/crypto/ssh` + sync.Cond |
-| E6.T2 | `TestSSHExecReturnsStdoutStderrExitCode` | `session.CombinedOutput` 래핑 |
-| E6.T3 | `TestSSHExecTimeoutCancels` — 10초 timeout 후 channel close | context + deadline |
-| E6.T4 | `TestSSHExecArgvNotShellParsed` — argv 슬라이스 그대로 전달 | quote 없음, shell 개입 없음 |
-| E6.T5 | `TestScanSessionCreatesPendingResultPerRobotCheck` | fan-out |
-| E6.T6 | `TestScanExecutorParallelWithinLimits` | semaphore |
-| E6.T7 | `TestEvaluationRuleStdoutMatch` (fixture) | 정규식 기반 |
-| E6.T8 | `TestEvaluationRuleExpressionComposite` | AND/OR/NOT |
-| E6.T9 | `TestScanCancelStopsInFlight` | context cancellation |
-| E6.T10 | `TestScanEmitsEventsAtMilestones` — `ScanStarted`·`ScanProgress`·`ScanCompleted` | EventBus publish |
+| E6.T1 ✅ | `TestSSHPoolRespectsHostLimit` (in-proc fakesshd 12 동시) | `pool.go` 채널 semaphore + per-host/tenant limit + dial backoff (Stage B, `88331a6`) |
+| E6.T2 ✅ | `TestExecReturnsStdoutStderrExitCode` | `Executor.Exec` + `golang.org/x/crypto/ssh` 1회용 session (Stage A, `0fc839c`) |
+| E6.T3 ✅ | `TestExecTimeoutCancels` | ctx + deadline + session.Close 강제 (Stage A) |
+| E6.T4 ✅ | `TestArgvNotShellParsed` | POSIX `'\''` 직렬화, 쉘 개입 0 (Stage A) |
+| E6.T5 (Stage D) | `TestScanSessionCreatesPendingResultPerRobotCheck` | Orchestrator fan-out (Stage D) |
+| E6.T6 (Stage D) | `TestScanExecutorParallelWithinLimits` | semaphore + worker pool 10 |
+| E6.T7 (Stage D) | `TestEvaluationRuleStdoutMatch` (fixture) | E4 sealed AST evaluator 결선 |
+| E6.T8 (Stage D) | `TestEvaluationRuleExpressionComposite` | AND/OR/NOT |
+| E6.T9 (Stage D) | `TestScanCancelStopsInFlight` | ctx cancellation (R4-5) |
+| E6.T10 (Stage D) | `TestScanEmitsEventsAtMilestones` | EventBus publish |
+| E6.Stage C ✅ | scan 도메인 격선 — ScanSession FSM·ScanResult 5-값·Service·sqliterepo·audit (R5-1~R5-7) | 마이그레이션 0011 + `internal/domain/scan/` |
 
 ### Exit 기준
 

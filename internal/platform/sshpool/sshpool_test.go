@@ -49,8 +49,9 @@ func TestExecReturnsStdoutStderrExitCode(t *testing.T) {
 	if res.ExitCode != 7 {
 		t.Errorf("ExitCode = %d, want 7", res.ExitCode)
 	}
-	if res.Duration <= 0 {
-		t.Error("Duration should be > 0")
+	// Windows의 시계 분해능 한계로 in-proc fake sshd 호출이 0ns로 측정될 수 있음 — 음수만 거부.
+	if res.Duration < 0 {
+		t.Errorf("Duration should be >= 0, got %v", res.Duration)
 	}
 }
 
