@@ -157,7 +157,107 @@ func (s SessionStatus) canTransitionTo(target SessionStatus) bool {
 	}
 }
 
-// SSHTester / SSHExecutor 등 외부 표면은 Stage D에서 정의 — Stage C는 도메인 격선만.
+// === Stage D — Orchestrator 결합 표면 (R6-2·R6-3·R6-6) ===
+//
+// scan 도메인은 application layer(`internal/app/scanrun/`)에 의해 결합됩니다.
+// 도메인 자체는 외부 도메인(robot·benchmark·sshpool)을 import하지 않고,
+// 호출자가 채워서 주입할 minimal struct + interface만 노출합니다.
+
+// RobotTarget은 Orchestrator.Run 입력으로 전달되는 robot의 최소 식별·연결 정보입니다.
+//
+// robot.Robot의 부분 복제 — scan 패키지가 robot 도메인을 import하지 않도록 하기 위함(P5 + R6-2).
+// 호출자(application service)가 robot.Service.GetRobot 결과로 채움.
+type RobotTarget struct {
+	RobotID      string
+	Host         string
+	Port         int
+	AuthType     string // "password" | "privateKey" — 도메인 격리 위해 string
+	CredentialID string // 호출자가 GetCredentialMaterial을 적시 호출
+}
+
+// CheckDef는 한 check의 audit command + 평가 규칙입니다.
+//
+// pack_checks의 부분 복제 — scan 패키지가 benchmark 도메인을 import하지 않도록 하기 위함(P5 + R6-2).
+// 호출자(application service)가 pack 자료에서 채움.
+type CheckDef struct {
+	PackCheckID  string   // pack_checks.id ("ck_<ULID>")
+	Code         string   // "CIS-1.1.1.1" — 팩 내 식별자
+	AuditCommand []string // SSH exec argv
+	TimeoutSec   int      // SSH exec timeout. 0이면 DefaultCheckTimeoutSec.
+	EvalRuleJSON []byte   // 평가 규칙 AST JSON — CheckEvaluator에 위임
+}
+
+// DefaultCheckTimeoutSec는 CheckDef.TimeoutSec=0일 때 기본 SSH exec timeout (§07.7).
+const DefaultCheckTimeoutSec = 10
+
+// ExecResult는 SSH exec 결과입니다.
+//
+// sshpool.ExecResult의 도메인 격리 사본 — scan 패키지가 sshpool 도메인을 import하지 않도록.
+type ExecResult struct {
+	Stdout, Stderr []byte
+	ExitCode       int
+	Duration       time.Duration
+}
+
+// EvalResult는 CheckEvaluator.Evaluate의 출력입니다.
+//
+// Outcome은 본 패키지 5-값 enum 중 하나(pass·fail·indeterminate·error·skipped).
+// Reason은 평가 사유 — pass/fail/indeterminate에서 의미 있고, error는 evaluator 실패 메시지.
+type EvalResult struct {
+	Outcome Outcome
+	Reason  string
+}
+
+// SSHExecutor는 Orchestrator가 호출하는 SSH 실행 표면입니다 (R6-3).
+//
+// bootstrap이 sshpool.Executor를 어댑팅해 주입(robot 도메인의 GetCredentialMaterial 호출 결합 포함).
+// 단위 테스트는 mock.
+//
+// 호출자는 ctx 취소 시 timeout보다 일찍 끝나야 함(R4-5는 진행 중 작업은 timeout까지 대기).
+type SSHExecutor interface {
+	Exec(ctx context.Context, target RobotTarget, argv []string, timeout time.Duration) (ExecResult, error)
+}
+
+// CheckEvaluator는 Orchestrator가 호출하는 평가 규칙 실행 표면입니다 (R6-3).
+//
+// bootstrap이 benchmark 도메인의 evaluator를 어댑팅해 주입.
+// 단위 테스트는 mock.
+type CheckEvaluator interface {
+	Evaluate(ruleJSON []byte, exec ExecResult) (EvalResult, error)
+}
+
+// === EventBus 페이로드 (R6-6) ===
+
+// 토픽 컨벤션 (R2-3 — `<domain>.<EventName>`).
+const (
+	EventTypeProgress  = "scan.progress"
+	EventTypeCompleted = "scan.completed"
+)
+
+// AggregateTypeScanSession은 EventBus envelope의 aggregate.type 값입니다.
+const AggregateTypeScanSession = "ScanSession"
+
+// ProgressEventPayload는 `scan.progress` 이벤트 본문입니다.
+//
+// 한 RecordResult 직후 publish — 구독자(UI·CLI)가 진행률 모니터링 가능.
+type ProgressEventPayload struct {
+	SessionID string `json:"sessionId"`
+	Total     int    `json:"total"`
+	Completed int    `json:"completed"`
+	Failed    int    `json:"failed"`
+}
+
+// CompletedEventPayload는 `scan.completed` 이벤트 본문입니다.
+//
+// terminal 전이 직후 publish — Status는 completed/failed/cancelled 중 하나.
+type CompletedEventPayload struct {
+	SessionID string `json:"sessionId"`
+	Status    string `json:"status"`           // SessionStatus의 string화
+	Reason    string `json:"reason,omitempty"` // failed/cancelled 사유
+	Total     int    `json:"total"`
+	Completed int    `json:"completed"`
+	Failed    int    `json:"failed"`
+}
 
 // AuditEmitter는 scan 도메인 변경을 감사 로그에 기록하는 콜백입니다 (P5 — audit 도메인 직접 import 회피).
 //

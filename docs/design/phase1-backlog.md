@@ -340,13 +340,14 @@ type Service interface {
 | E6.T2 ✅ | `TestExecReturnsStdoutStderrExitCode` | `Executor.Exec` + `golang.org/x/crypto/ssh` 1회용 session (Stage A, `0fc839c`) |
 | E6.T3 ✅ | `TestExecTimeoutCancels` | ctx + deadline + session.Close 강제 (Stage A) |
 | E6.T4 ✅ | `TestArgvNotShellParsed` | POSIX `'\''` 직렬화, 쉘 개입 0 (Stage A) |
-| E6.T5 (Stage D) | `TestScanSessionCreatesPendingResultPerRobotCheck` | Orchestrator fan-out (Stage D) |
-| E6.T6 (Stage D) | `TestScanExecutorParallelWithinLimits` | semaphore + worker pool 10 |
-| E6.T7 (Stage D) | `TestEvaluationRuleStdoutMatch` (fixture) | E4 sealed AST evaluator 결선 |
-| E6.T8 (Stage D) | `TestEvaluationRuleExpressionComposite` | AND/OR/NOT |
-| E6.T9 (Stage D) | `TestScanCancelStopsInFlight` | ctx cancellation (R4-5) |
-| E6.T10 (Stage D) | `TestScanEmitsEventsAtMilestones` | EventBus publish |
+| E6.T5 ✅ | `TestRunFanOutProducesResultPerRobotCheck` (mock SSH/Eval) | Orchestrator fan-out + RecordResult (Stage D.1) |
+| E6.T6 ✅ | `TestRunRespectsWorkerLimit` (atomic peak counter) | `golang.org/x/sync/semaphore` weighted (R6-4) |
+| E6.T7 (Stage D.2) | evaluation rule fixture 통합 | E4 sealed AST evaluator 어댑터 |
+| E6.T8 (Stage D.2) | composite expression | E4 evaluator 그대로 |
+| E6.T9 ✅ | `TestRunCancelSkipsRemainingButWaitsInFlight` | ctx cancellation + R4-5 (Stage D.1) |
+| E6.T10 ✅ | `TestRunPublishesProgressAndCompleted` | EventBus inproc publish (Stage D.1) |
 | E6.Stage C ✅ | scan 도메인 격선 — ScanSession FSM·ScanResult 5-값·Service·sqliterepo·audit (R5-1~R5-7) | 마이그레이션 0011 + `internal/domain/scan/` |
+| E6.Stage D.1 ✅ | Orchestrator 골격 + mock-based 단위 (T5·T6·T9·T10) | `internal/app/scanrun/` (R6-1~R6-8) |
 
 ### Exit 기준
 
