@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/scan"
 	"github.com/ssabro/rosshield/internal/platform/sshpool"
 	"github.com/ssabro/rosshield/internal/platform/storage"
-	"time"
 )
 
 // sshExecutorAdapter는 scan.SSHExecutor를 sshpool.Executor + robot 자격증명 unwrap으로 결선합니다.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -24,7 +25,6 @@ import (
 	pkglogger "github.com/ssabro/rosshield/internal/platform/logger"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	"github.com/ssabro/rosshield/internal/platform/storage/sqlite"
-	"io"
 )
 
 // === scan.AuditEmitter 테스트 어댑터 ===
