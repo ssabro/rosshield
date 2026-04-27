@@ -33,6 +33,11 @@ type Deps struct {
 	Clock clock.Clock
 	IDGen idgen.IDGen
 	Audit robot.AuditEmitter // bootstrap이 audit.Service를 어댑팅한 구현체 주입.
+
+	// KEK는 Credential wrap/unwrap에 사용 (Stage B 도입).
+	// Stage B 시점엔 robotSvc 내부에서 직접 사용하지 않지만(Stage C에서 CreateRobot 일부로),
+	// bootstrap이 부팅 시 LoadOrCreate해 주입 — Phase 1 운영 표면 연결.
+	KEK *robot.KEK
 }
 
 // Repo는 robot.Service의 SQLite 구현입니다.

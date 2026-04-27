@@ -212,10 +212,19 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		DefaultSignerKeyID: sgn.KeyID(), // audit checkpoint와 같은 키로 pack 서명한다고 가정
 	})
 
+	kekPath := filepath.Join(cfg.DataDir, "keys", "credential.kek")
+	kek, err := robot.LoadOrCreateKEK(kekPath)
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: KEK: %w", err)
+	}
+
 	robotSvc := robotrepo.New(robotrepo.Deps{
 		Clock: clk,
 		IDGen: ids,
 		Audit: emitter,
+		KEK:   kek,
 	})
 
 	systemTenant := cfg.SystemTenantID
@@ -238,6 +247,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"dbPath", dbPath,
 		"keyPath", keyPath,
 		"signerKeyId", sgn.KeyID(),
+		"kekKeyId", kek.KeyID(),
 		"systemTenant", string(systemTenant),
 		"checkpointSpec", checkpointSpec)
 

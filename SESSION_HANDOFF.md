@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-27 (E5 Stage A 완료 — Fleet 도메인 + 마이그레이션 0008 + bootstrap 결선)_
+_마지막 업데이트: 2026-04-27 (E5 Stage B 완료 — KEK/DEK 코어 + 마이그레이션 0009)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E5 Stage A 완료 — Fleet 도메인 골격 + bootstrap 결선.** `internal/domain/robot/`(단일 패키지로 Fleet/Robot/Credential 묶음 — tenant 패턴 답습), 마이그레이션 0008(`fleets` + partial unique index `WHERE deleted_at IS NULL`), Service.CreateFleet/GetFleet/ListFleets, FleetPolicy 4 필드(BaselineID·Level·Criticality·ScanSchedule), `auditEmitterAdapter.EmitFleetCreated` 추가, Platform.Robot 결선. 누적 ~204 tests(robot 13 신규 + 기존 회귀), 전체 그린. **다음: E5 Stage B** (Credential KEK/DEK + 마이그레이션 0009 + T3 — `crypto/aes`·`crypto/cipher` stdlib만, 외부 의존 0).
+**E5 Stage B 완료 — KEK/DEK envelope encryption 코어 + Credential 모델·마이그레이션.** `kek.go`(LoadOrCreateKEK 32B AES-256, perm 0600 검증, KeyID `kek_<8hex>`), `dek.go`(WrapMaterial/UnwrapMaterial, KEK→DEK 2계층, AAD `t=<id>;c=<id>;v=1`로 cross-credential 격리). 마이그레이션 0009(`credentials` BLOB+JSON meta). `Credential`·`CredentialMaterial`·`EncryptionMeta` 모델, bootstrap KEK 결선. 18 신규 단위 tests(KEK 6 + DEK 12 — roundtrip·tampered ciphertext/wrappedDEK/AAD·KEK 불일치·plaintext 누출 부재·nonce 재사용 부재). 외부 의존 0(stdlib `crypto/aes`·`crypto/cipher`). 누적 ~222 tests, 전체 그린. **다음: E5 Stage C** (Robot CRUD + 한 Tx에 Credential 생성 + T2·T3·T4·T7).
 
 ## 원격 저장소
 
@@ -96,13 +96,12 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E5 Robot/Fleet 진행 중. Stage A 완료, Stage B~E 대기.
+E5 Robot/Fleet 진행 중. Stage A·B 완료, Stage C~E 대기.
 
-1. **E5 Stage B 진입 (권장)** — `0009_credentials.sql` + KEK/DEK (`crypto/aes`·`crypto/cipher` stdlib만) + EncryptionMeta + `kek.go`(LoadOrCreate, 32B AES-256 키, perm 0600) + `dek.go`(per-record nonce, AAD=tenant) + Credential 모델·CRUD + T3(`TestRobotCredentialEncryptedAtRest` — DB 파일 grep으로 평문 부재 검증).
-2. **E5 Stage C** — `0010_robots.sql` + Robot CRUD (한 Tx에 Robot+Credential) + soft delete + audit emit + T2·T4·T7. Stage B 후.
-3. **E5 Stage D** — CSV import + T6. Stage C 후.
-4. **E5 Stage E** — TestConnection mock + cross-tenant fuzzer + T5 + 회귀. Stage D 후.
-5. **E6 SSH+Scan** — E5 종료 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. R4-1~R4-7 합의 후. 추정 1.5주.
+1. **E5 Stage C 진입 (권장)** — `0010_robots.sql`(FK fleet_id, credential_id) + Robot 모델(name, host, port, authType, criticality, tags, soft delete) + `Service.CreateRobot`(같은 Tx에 Credential 생성·wrap·INSERT) + `Service.GetCredentialMaterial`(unwrap) + `Service.RotateCredential` + 마이그레이션의 partial unique index 2개(`(tenant_id, fleet_id, name)` + `(tenant_id, host, port)`, R3-7) + T2·T3·T4·T7.
+2. **E5 Stage D** — CSV import + T6. Stage C 후.
+3. **E5 Stage E** — TestConnection mock + cross-tenant fuzzer + T5 + 회귀. Stage D 후.
+4. **E6 SSH+Scan** — E5 종료 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. R4-1~R4-7 합의 후. 추정 1.5주.
 3. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주.
 4. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
@@ -118,6 +117,7 @@ E5 Robot/Fleet 진행 중. Stage A 완료, Stage B~E 대기.
 
 날짜 내림차순.
 
+- **2026-04-27 · E5 Stage B 완료 — KEK/DEK envelope encryption 코어**: `internal/domain/robot/kek.go`(LoadOrCreateKEK — 32B AES-256, perm 0600 Unix 강제·Windows skip[ACL은 후순위], KeyID `kek_<sha256(KEK)[:8] hex>`, Signer LoadOrCreate 패턴 답습) + `dek.go`(WrapMaterial/UnwrapMaterial, KEK→DEK 2계층, per-record DEK 32B random + AAD `t=<tenantID>;c=<credentialID>;v=1`로 cross-credential 키 재사용 차단). 마이그레이션 0009 — `credentials` BLOB(`encrypted_payload`) + TEXT JSON(`encryption_meta`). `Credential`·`CredentialMaterial`·`EncryptionMeta` 모델 추가. bootstrap에 `LoadOrCreateKEK(<dataDir>/keys/credential.kek)` 결선 + `kekKeyId` 부팅 로그. 18 신규 단위 tests pass: KEK 6(generate·reload 동일 keyID·KeyID 형식·invalid length·loose perm·empty path) + DEK 12(roundtrip password·privateKey·plaintext 누출 부재·tampered ciphertext/wrappedDEK/AAD·다른 KEK·미지원 version·다른 두 wrap 다른 결과·empty tenant/credentialID·invalid type·empty username·AAD 형식). **외부 의존 추가 0** — stdlib `crypto/aes`·`crypto/cipher`·`crypto/rand`·`crypto/sha256`만. 마이그레이션 카운트 검증 8→9 정정. 누적 ~222 tests, 전체 그린. T3 acceptance(`TestRobotCredentialEncryptedAtRest` DB grep)는 **Stage C로 이동** — Service.CreateRobot이 Credential을 같은 Tx에 wrap하므로 Robot CRUD와 함께 검증.
 - **2026-04-27 · E5 Stage A 완료 — Fleet 도메인 골격 + bootstrap 결선**: 합의된 R3-1~R3-7 권장값 7건 모두 채택. 새 도메인 패키지 `internal/domain/robot/` 신설(tenant 패키지 답습 — 단일 패키지에 Fleet/Robot/Credential 묶음, P5는 다른 도메인 격리만 강제). 마이그레이션 0008 (`fleets` 테이블, `(tenant_id, name)` partial unique index `WHERE deleted_at IS NULL` — R3-5/R3-7 적용). Fleet 모델 + FleetPolicy 4 필드(R3-4 — DefaultBaselineID·DefaultLevel·DefaultCriticality·ScanSchedule). Service.CreateFleet은 한 Tx에 fleets INSERT + audit emit(`auditEmitterAdapter.EmitFleetCreated` 추가, P5 격리). GetFleet/ListFleets는 deleted_at IS NULL 필터로 cross-tenant + soft-deleted 차단. 13 신규 tests pass(T1 + 보조 12: empty/long/invalid level/invalid criticality/duplicate/soft-deleted reusable/no-tenant-context/get returns/get ignores soft/cross-tenant get/list active only/cross-tenant list/policy roundtrip). bootstrap에 `Platform.Robot robot.Service` 결선. 마이그레이션 카운트 검증 7→8 정정. 누적 ~204 tests, 전체 그린.
 - **2026-04-27 · R3-1~R3-7 합의 (E5)**: 권장값 채택 — KEK 파일(`<dataDir>/keys/credential.kek` 0600, OS Keychain·KMS·TPM은 Phase 3) / Tenant Key Phase 2+ (Phase 1은 KEK→DEK 2계층) / Credential rotation 수동 API만 / FleetPolicy 4 필드 / soft delete `deleted_at` only + 읽기 필터 / Fleet=`fl_<ULID>`·Credential=`cr_<ULID>` / Robot UNIQUE `(tenant_id, fleet_id, name)` + `(tenant_id, host, port)` 둘 다 partial.
 - **2026-04-27 · E5 Robot/Fleet 진입 · 핸드오프/백로그 표기 정정 · 사전 리서치 노트 2건 신규**:

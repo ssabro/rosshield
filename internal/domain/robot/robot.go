@@ -104,6 +104,62 @@ type Service interface {
 	ListFleets(ctx context.Context, tx storage.Tx) ([]Fleet, error)
 }
 
+// CredentialType은 SSH 자격증명 유형입니다 (§04.2).
+type CredentialType string
+
+const (
+	CredentialTypePassword   CredentialType = "password"
+	CredentialTypePrivateKey CredentialType = "privateKey"
+)
+
+// EncryptionAlgorithm은 현재 알고리즘 식별자입니다.
+const EncryptionAlgorithm = "AES-256-GCM"
+
+// EncryptionVersion은 EncryptionMeta 포맷 버전입니다.
+// Phase 1 = 1 (KEK→DEK 2계층). Phase 2+에 Tenant Key 추가 시 2.
+const EncryptionVersion = 1
+
+// CredentialMaterial은 평문 자격증명입니다 (메모리 전용 — 절대 영속화 X).
+//
+// SSH client(E6)에서 사용 시점에만 unwrap → 사용 후 즉시 폐기 (defer로 zero-out 권장).
+type CredentialMaterial struct {
+	Type                 CredentialType `json:"type"`
+	Username             string         `json:"username"`
+	Password             string         `json:"password,omitempty"`             // type=password
+	PrivateKeyPEM        string         `json:"privateKeyPem,omitempty"`        // type=privateKey
+	PrivateKeyPassphrase string         `json:"privateKeyPassphrase,omitempty"` // 옵션
+}
+
+// EncryptionMeta는 Credential.encrypted_payload의 wrap 메타데이터입니다 (§06.6, R3-1).
+//
+// 모든 필드 필수(omitempty 안 함) — 변조 검증 단순화.
+type EncryptionMeta struct {
+	Version      int       `json:"version"`      // EncryptionVersion (1)
+	Algorithm    string    `json:"algorithm"`    // EncryptionAlgorithm
+	KEKKeyID     string    `json:"kekKeyId"`     // "kek_<sha256(KEK)[:8] hex>"
+	AAD          string    `json:"aad"`          // "t=<tenantID>;c=<credentialID>;v=1"
+	DEKNonce     []byte    `json:"dekNonce"`     // 12B (DEK wrap용)
+	PayloadNonce []byte    `json:"payloadNonce"` // 12B (payload encrypt용)
+	WrappedDEK   []byte    `json:"wrappedDek"`   // KEK로 wrap된 32B DEK + 16B GCM tag
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+// Credential은 암호화된 자격증명 레코드입니다 (§04.2).
+//
+// EncryptedPayload는 DEK로 암호화된 CredentialMaterial JSON.
+// EncryptionMeta는 KEK·DEK·nonce·AAD를 포함 — KEK 부재 시 unwrap 불가능.
+type Credential struct {
+	ID               string // "cr_<ULID>"
+	TenantID         storage.TenantID
+	Type             CredentialType
+	EncryptedPayload []byte
+	EncryptionMeta   EncryptionMeta
+	RotationDueAt    *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	RevokedAt        *time.Time // soft delete (R3-5)
+}
+
 // 공통 에러.
 var (
 	ErrFleetEmptyName       = errors.New("robot: fleet Name is required")
@@ -111,6 +167,14 @@ var (
 	ErrFleetNameDuplicate   = errors.New("robot: fleet Name already exists in this tenant")
 	ErrFleetInvalidLevel    = errors.New("robot: fleet Policy.DefaultLevel must be L1 or L2 if set")
 	ErrFleetInvalidCritical = errors.New("robot: fleet Policy.DefaultCriticality must be one of low|medium|high|critical if set")
+
+	// Credential errors (Stage B).
+	ErrKEKInvalidLength      = errors.New("robot: KEK file must be exactly 32 bytes")
+	ErrKEKFilePermissions    = errors.New("robot: KEK file permissions too permissive (require 0600)")
+	ErrCredentialUnknownType = errors.New("robot: Credential Type must be password or privateKey")
+	ErrCredentialEmptyUser   = errors.New("robot: Credential Username is required")
+	ErrCredentialDecrypt     = errors.New("robot: failed to decrypt credential (key mismatch or tampered)")
+	ErrCredentialMetaVersion = errors.New("robot: EncryptionMeta.Version unsupported")
 )
 
 // MarshalPolicy는 FleetPolicy를 DB 저장용 canonical JSON으로 직렬화합니다.
