@@ -4,13 +4,13 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-27 (E5 진입 — 핸드오프/백로그 E5·E6 표기 통일)_
+_마지막 업데이트: 2026-04-27 (E5 Stage A 완료 — Fleet 도메인 + 마이그레이션 0008 + bootstrap 결선)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**E4 Pack 시스템 epic 운영 준비 완료 (8/8 도메인 + sqliterepo + bootstrap 결선).** Pack DB INSERT/조회/lifecycle 전이 + audit emit까지 동작. `bootstrap.Platform.Benchmark` 결선으로 향후 API gateway·CLI에서 즉시 사용 가능. 4 epic(E1·E2·E3·E4) 완성. 누적 ~190 tests, CI green 6회(E4만), 원격 49+ commits. **다음: E5 Robot/Fleet** (Robot·Fleet·Credential 도메인 — KEK/DEK AES-256-GCM 암호화). E6 SSH+Scan은 그 다음(Robot 도메인이 SSH executor의 입력 모델이라 prerequisite).
+**E5 Stage A 완료 — Fleet 도메인 골격 + bootstrap 결선.** `internal/domain/robot/`(단일 패키지로 Fleet/Robot/Credential 묶음 — tenant 패턴 답습), 마이그레이션 0008(`fleets` + partial unique index `WHERE deleted_at IS NULL`), Service.CreateFleet/GetFleet/ListFleets, FleetPolicy 4 필드(BaselineID·Level·Criticality·ScanSchedule), `auditEmitterAdapter.EmitFleetCreated` 추가, Platform.Robot 결선. 누적 ~204 tests(robot 13 신규 + 기존 회귀), 전체 그린. **다음: E5 Stage B** (Credential KEK/DEK + 마이그레이션 0009 + T3 — `crypto/aes`·`crypto/cipher` stdlib만, 외부 의존 0).
 
 ## 원격 저장소
 
@@ -96,10 +96,13 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-E5 Robot/Fleet 진입 중(2026-04-27 사용자 선택 A).
+E5 Robot/Fleet 진행 중. Stage A 완료, Stage B~E 대기.
 
-1. **E5 Robot/Fleet 진행 중** — `internal/domain/robot/` (또는 `tenant`처럼 단일 패키지에 Fleet/Robot/Credential 묶음). Credential KEK/DEK AES-256-GCM. soft delete. CSV import. `testConnection`은 mock interface (실제 SSH는 E6). 추정 4일. 백그라운드 agent 2개(nrobotcheck 자산 조사 + E6 SSH+Scan 사전 리서치) 병렬 진행.
-2. **E6 SSH+Scan** — E5 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluationRule executor 결선. 추정 1.5주.
+1. **E5 Stage B 진입 (권장)** — `0009_credentials.sql` + KEK/DEK (`crypto/aes`·`crypto/cipher` stdlib만) + EncryptionMeta + `kek.go`(LoadOrCreate, 32B AES-256 키, perm 0600) + `dek.go`(per-record nonce, AAD=tenant) + Credential 모델·CRUD + T3(`TestRobotCredentialEncryptedAtRest` — DB 파일 grep으로 평문 부재 검증).
+2. **E5 Stage C** — `0010_robots.sql` + Robot CRUD (한 Tx에 Robot+Credential) + soft delete + audit emit + T2·T4·T7. Stage B 후.
+3. **E5 Stage D** — CSV import + T6. Stage C 후.
+4. **E5 Stage E** — TestConnection mock + cross-tenant fuzzer + T5 + 회귀. Stage D 후.
+5. **E6 SSH+Scan** — E5 종료 후. `internal/platform/sshpool` + `internal/domain/scan` + evaluator 결선. R4-1~R4-7 합의 후. 추정 1.5주.
 3. **E12 pack-tools 진입** — `cmd/pack-tools convert` — nrobotcheck 312+329 baseline → rosshield pack 형식 변환. 백그라운드 agent가 4계층 evaluation 패턴 조사 완료. 추정 1주.
 4. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 5. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack endpoints. ~2시간.
@@ -115,6 +118,8 @@ E5 Robot/Fleet 진입 중(2026-04-27 사용자 선택 A).
 
 날짜 내림차순.
 
+- **2026-04-27 · E5 Stage A 완료 — Fleet 도메인 골격 + bootstrap 결선**: 합의된 R3-1~R3-7 권장값 7건 모두 채택. 새 도메인 패키지 `internal/domain/robot/` 신설(tenant 패키지 답습 — 단일 패키지에 Fleet/Robot/Credential 묶음, P5는 다른 도메인 격리만 강제). 마이그레이션 0008 (`fleets` 테이블, `(tenant_id, name)` partial unique index `WHERE deleted_at IS NULL` — R3-5/R3-7 적용). Fleet 모델 + FleetPolicy 4 필드(R3-4 — DefaultBaselineID·DefaultLevel·DefaultCriticality·ScanSchedule). Service.CreateFleet은 한 Tx에 fleets INSERT + audit emit(`auditEmitterAdapter.EmitFleetCreated` 추가, P5 격리). GetFleet/ListFleets는 deleted_at IS NULL 필터로 cross-tenant + soft-deleted 차단. 13 신규 tests pass(T1 + 보조 12: empty/long/invalid level/invalid criticality/duplicate/soft-deleted reusable/no-tenant-context/get returns/get ignores soft/cross-tenant get/list active only/cross-tenant list/policy roundtrip). bootstrap에 `Platform.Robot robot.Service` 결선. 마이그레이션 카운트 검증 7→8 정정. 누적 ~204 tests, 전체 그린.
+- **2026-04-27 · R3-1~R3-7 합의 (E5)**: 권장값 채택 — KEK 파일(`<dataDir>/keys/credential.kek` 0600, OS Keychain·KMS·TPM은 Phase 3) / Tenant Key Phase 2+ (Phase 1은 KEK→DEK 2계층) / Credential rotation 수동 API만 / FleetPolicy 4 필드 / soft delete `deleted_at` only + 읽기 필터 / Fleet=`fl_<ULID>`·Credential=`cr_<ULID>` / Robot UNIQUE `(tenant_id, fleet_id, name)` + `(tenant_id, host, port)` 둘 다 partial.
 - **2026-04-27 · E5 Robot/Fleet 진입 · 핸드오프/백로그 표기 정정 · 사전 리서치 노트 2건 신규**:
   - **표기 정정**: 백로그(`phase1-backlog.md`)는 E5=Robot/Fleet, E6=SSH+Scan으로 정의되어 있으나 핸드오프 line 13/101이 E5를 "Scan engine"으로 부르던 불일치를 백로그 의존 그래프(E5→E6) 기준으로 통일. 사용자 선택지 A(Robot/Fleet 먼저, SSH+Scan은 prerequisite로서 그 다음).
   - **사전 리서치 결과물 부재 보강**: 이전 세션이 "E5 SSH 사전 리서치 완료"로 표기했으나 결과물이 노트로 보존되지 않음(휘발). 백그라운드 agent 2개 병렬 분담 — (1) nrobotcheck robot/fleet/credential 자산 조사, (2) E6 SSH+Scan 사전 리서치 — 모두 노트로 보존.

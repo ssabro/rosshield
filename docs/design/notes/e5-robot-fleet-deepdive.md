@@ -244,19 +244,19 @@ type SSHClient interface { // E6에서 구현, E5는 mock
 | **R3-2** | Tenant Key 도입 시점 | Phase 2+ (Phase 1은 KEK→DEK 2계층) | EncryptionMeta version 필드만 예약 |
 | **R3-3** | Credential rotation 트리거 | Phase 1은 수동 API만, 자동 회전 Phase 2+ | Service.RotateCredential 표면 |
 | **R3-4** | Fleet policy 구조 | `{DefaultBaselineID, DefaultLevel, DefaultCriticality, ScanSchedule}` 4 필드 | model.go FleetPolicy |
-| **R3-5** | Soft delete cascade 정책 | `deleted_at` only + 읽기 필터 + 쓰기 거부, partial unique index | sqliterepo 마이그레이션 0007 |
+| **R3-5** | Soft delete cascade 정책 | `deleted_at` only + 읽기 필터 + 쓰기 거부, partial unique index | sqliterepo 마이그레이션 0010 |
 | **R3-6** | Fleet·Credential ID 접두사 | `fl_<ULID>` / `cr_<ULID>` (제안 — 설계서 미명시) | idgen 호출부 |
-| **R3-7** | Robot UNIQUE 제약 범위 | `(tenant_id, fleet_id, name)` + `(tenant_id, host, port)` 둘 다 partial(`WHERE deleted_at IS NULL`) | 마이그레이션 0007 |
+| **R3-7** | Robot UNIQUE 제약 범위 | `(tenant_id, fleet_id, name)` + `(tenant_id, host, port)` 둘 다 partial(`WHERE deleted_at IS NULL`) | 마이그레이션 0010 |
 
 ## §10 Stage 분할 제안
 
-E3·E4 패턴 답습 (Stage A·B·C·D·E):
+E3·E4 패턴 답습 (Stage A·B·C·D·E). 마이그레이션도 stage별 분할(0007은 E4에서 사용 중이므로 **0008부터**):
 
-- **Stage A** — Fleet 도메인 + 마이그레이션 0007(fleets·robots·credentials 스켈레톤) + ID 접두사. T1 + 보조.
-- **Stage B** — Credential KEK/DEK + EncryptionMeta. kek.go·dek.go + 별도 테스트. (T3 구현 기반)
-- **Stage C** — Robot CRUD + 한 Tx Create + audit emit. T2·T4·T7 + soft delete partial index.
-- **Stage D** — CSV import. T6.
-- **Stage E** — Test connection mock interface + cross-tenant fuzzer. T5 + E3 패턴 fuzzer.
+- **Stage A** — `0008_fleets.sql` + Fleet 도메인 + ID 접두사 + T1.
+- **Stage B** — `0009_credentials.sql` + KEK/DEK + EncryptionMeta + Credential 모델·CRUD + T3.
+- **Stage C** — `0010_robots.sql`(FK fleet_id, credential_id) + Robot CRUD + soft delete + audit emit + T2·T4·T7.
+- **Stage D** — CSV import + T6.
+- **Stage E** — Test connection mock interface + cross-tenant fuzzer + T5 + E3 fuzzer 패턴.
 
 각 Stage commit 가능. 예상 총 4일.
 

@@ -68,6 +68,9 @@ func TestBootstrapInitsAllPlatformServices(t *testing.T) {
 	if p.Benchmark == nil {
 		t.Error("Benchmark is nil")
 	}
+	if p.Robot == nil {
+		t.Error("Robot is nil")
+	}
 }
 
 func TestBootstrapCreatesDataFileAndAppliesMigration(t *testing.T) {

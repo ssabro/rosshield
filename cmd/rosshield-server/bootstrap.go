@@ -14,6 +14,8 @@ import (
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/robot"
+	robotrepo "github.com/ssabro/rosshield/internal/domain/robot/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
@@ -55,6 +57,7 @@ type Platform struct {
 	Audit     audit.Service
 	Tenant    tenant.Service
 	Benchmark benchmark.Service
+	Robot     robot.Service
 
 	systemTenant storage.TenantID
 
@@ -109,6 +112,20 @@ func (a *auditEmitterAdapter) EmitPackLifecycleChanged(ctx context.Context, tx s
 		Actor:    audit.Actor{Type: audit.ActorSystem, ID: actorID},
 		Action:   "pack.lifecycle." + string(to),
 		Target:   audit.Target{Type: "pack", ID: packID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitFleetCreated는 robot.AuditEmitter 구현 (P5 격리 — robot이 audit 직접 import 안 함).
+func (a *auditEmitterAdapter) EmitFleetCreated(ctx context.Context, tx storage.Tx, f robot.Fleet) error {
+	payload := fmt.Sprintf(`{"fleetId":%q,"name":%q}`, f.ID, f.Name)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: f.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "fleet.created",
+		Target:   audit.Target{Type: "fleet", ID: f.ID},
 		Payload:  []byte(payload),
 		Outcome:  audit.OutcomeSuccess,
 	})
@@ -195,6 +212,12 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		DefaultSignerKeyID: sgn.KeyID(), // audit checkpoint와 같은 키로 pack 서명한다고 가정
 	})
 
+	robotSvc := robotrepo.New(robotrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: emitter,
+	})
+
 	systemTenant := cfg.SystemTenantID
 	if systemTenant == "" {
 		systemTenant = "system"
@@ -229,6 +252,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Audit:        auditSvc,
 		Tenant:       tenantSvc,
 		Benchmark:    benchmarkSvc,
+		Robot:        robotSvc,
 		systemTenant: systemTenant,
 	}, nil
 }
