@@ -11,14 +11,15 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/ssabro/rosshield/internal/platform/sshpool"
+	"github.com/ssabro/rosshield/internal/platform/sshpool/sshpooltest"
 )
 
 // E6.T1 — Pool은 동시 acquire가 PerHostLimit를 절대 초과하지 않음을 보장.
 func TestSSHPoolRespectsHostLimit(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
 		// fake가 응답 안 함 — 호출자가 release까지 conn 보유.
-		return execResponse{ExitCode: 0}
+		return sshpooltest.ExecResponse{ExitCode: 0}
 	})
 
 	const perHostLimit = 3
@@ -29,11 +30,11 @@ func TestSSHPoolRespectsHostLimit(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 
 	target := sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}
-	key := sshpool.PoolKey{TenantID: "tn_TEST", KeyID: "kek_test", Host: srv.host, Port: srv.port}
+	key := sshpool.PoolKey{TenantID: "tn_TEST", KeyID: "kek_test", Host: srv.Host, Port: srv.Port}
 
 	const N = 12
 	var (
@@ -81,8 +82,8 @@ func TestSSHPoolRespectsHostLimit(t *testing.T) {
 // per-tenant limit 강제.
 func TestSSHPoolRespectsTenantLimit(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
-		return execResponse{ExitCode: 0}
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
+		return sshpooltest.ExecResponse{ExitCode: 0}
 	})
 
 	pool := sshpool.NewPool(sshpool.PoolConfig{
@@ -93,11 +94,11 @@ func TestSSHPoolRespectsTenantLimit(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 
 	target := sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}
-	key := sshpool.PoolKey{TenantID: "tn_T1", KeyID: "k", Host: srv.host, Port: srv.port}
+	key := sshpool.PoolKey{TenantID: "tn_T1", KeyID: "k", Host: srv.Host, Port: srv.Port}
 
 	const N = 8
 	var (
@@ -138,8 +139,8 @@ func TestSSHPoolRespectsTenantLimit(t *testing.T) {
 // 두 tenant는 서로 limit 영향 X.
 func TestSSHPoolTenantsIsolated(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
-		return execResponse{ExitCode: 0}
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
+		return sshpooltest.ExecResponse{ExitCode: 0}
 	})
 
 	pool := sshpool.NewPool(sshpool.PoolConfig{
@@ -150,14 +151,14 @@ func TestSSHPoolTenantsIsolated(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 
 	target := sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}
 
 	// tenant A 2개 + tenant B 2개 동시 보유 → 4개 동시 가능.
-	keyA := sshpool.PoolKey{TenantID: "tn_A", KeyID: "kA", Host: srv.host, Port: srv.port}
-	keyB := sshpool.PoolKey{TenantID: "tn_B", KeyID: "kB", Host: srv.host, Port: srv.port}
+	keyA := sshpool.PoolKey{TenantID: "tn_A", KeyID: "kA", Host: srv.Host, Port: srv.Port}
+	keyB := sshpool.PoolKey{TenantID: "tn_B", KeyID: "kB", Host: srv.Host, Port: srv.Port}
 
 	var (
 		wg            sync.WaitGroup
@@ -203,7 +204,7 @@ func TestSSHPoolTenantsIsolated(t *testing.T) {
 // ctx cancel 시 대기 중 Acquire는 즉시 ctx.Err() 반환.
 func TestSSHPoolCancelWaitingAcquire(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse { return execResponse{ExitCode: 0} })
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse { return sshpooltest.ExecResponse{ExitCode: 0} })
 
 	pool := sshpool.NewPool(sshpool.PoolConfig{
 		PerHostLimit:   1,
@@ -212,11 +213,11 @@ func TestSSHPoolCancelWaitingAcquire(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 
 	target := sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}
-	key := sshpool.PoolKey{TenantID: "tn", KeyID: "k", Host: srv.host, Port: srv.port}
+	key := sshpool.PoolKey{TenantID: "tn", KeyID: "k", Host: srv.Host, Port: srv.Port}
 
 	// 첫 acquire가 슬롯 점유.
 	_, release1, err := pool.Acquire(context.Background(), key, target)
@@ -242,7 +243,7 @@ func TestSSHPoolCancelWaitingAcquire(t *testing.T) {
 // Close 후 Acquire는 ErrPoolClosed.
 func TestSSHPoolClosedRejectsAcquire(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse { return execResponse{} })
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse { return sshpooltest.ExecResponse{} })
 
 	pool := sshpool.NewPool(sshpool.PoolConfig{})
 	if err := pool.Close(); err != nil {
@@ -250,11 +251,11 @@ func TestSSHPoolClosedRejectsAcquire(t *testing.T) {
 	}
 
 	target := sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}
-	key := sshpool.PoolKey{TenantID: "tn", KeyID: "k", Host: srv.host, Port: srv.port}
+	key := sshpool.PoolKey{TenantID: "tn", KeyID: "k", Host: srv.Host, Port: srv.Port}
 
 	_, _, err := pool.Acquire(context.Background(), key, target)
 	if !errors.Is(err, sshpool.ErrPoolClosed) {
@@ -265,7 +266,7 @@ func TestSSHPoolClosedRejectsAcquire(t *testing.T) {
 // release()는 idempotent — 두 번째 호출 시 no-op.
 func TestSSHPoolReleaseIdempotent(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse { return execResponse{} })
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse { return sshpooltest.ExecResponse{} })
 
 	pool := sshpool.NewPool(sshpool.PoolConfig{
 		PerHostLimit:   1,
@@ -274,11 +275,11 @@ func TestSSHPoolReleaseIdempotent(t *testing.T) {
 	t.Cleanup(func() { _ = pool.Close() })
 
 	target := sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}
-	key := sshpool.PoolKey{TenantID: "tn", KeyID: "k", Host: srv.host, Port: srv.port}
+	key := sshpool.PoolKey{TenantID: "tn", KeyID: "k", Host: srv.Host, Port: srv.Port}
 
 	_, release, err := pool.Acquire(context.Background(), key, target)
 	if err != nil {

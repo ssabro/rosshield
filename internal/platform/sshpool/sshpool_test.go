@@ -10,6 +10,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/ssabro/rosshield/internal/platform/sshpool"
+	"github.com/ssabro/rosshield/internal/platform/sshpool/sshpooltest"
 )
 
 func newExecutor() sshpool.Executor {
@@ -23,8 +24,8 @@ func dummyAuth() ssh.AuthMethod {
 // E6.T2 — Exec가 fake sshd의 stdout/stderr/exit code를 정확히 반환.
 func TestExecReturnsStdoutStderrExitCode(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
-		return execResponse{
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
+		return sshpooltest.ExecResponse{
 			Stdout:   "hello stdout\n",
 			Stderr:   "hello stderr\n",
 			ExitCode: 7,
@@ -33,9 +34,9 @@ func TestExecReturnsStdoutStderrExitCode(t *testing.T) {
 
 	ex := newExecutor()
 	res, err := ex.Exec(context.Background(), sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}, []string{"echo", "hello"}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
@@ -58,8 +59,8 @@ func TestExecReturnsStdoutStderrExitCode(t *testing.T) {
 // E6.T3 — Exec가 timeout 도달 시 ctx.DeadlineExceeded 반환 + session close.
 func TestExecTimeoutCancels(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
-		return execResponse{
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
+		return sshpooltest.ExecResponse{
 			Stdout:   "delayed",
 			ExitCode: 0,
 			Delay:    3 * time.Second, // timeout보다 큼
@@ -69,9 +70,9 @@ func TestExecTimeoutCancels(t *testing.T) {
 	ex := newExecutor()
 	start := time.Now()
 	res, err := ex.Exec(context.Background(), sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}, []string{"sleep", "10"}, 200*time.Millisecond)
 	dur := time.Since(start)
 
@@ -90,8 +91,8 @@ func TestExecTimeoutCancels(t *testing.T) {
 // Exec ctx cancel도 timeout과 동일 동작.
 func TestExecContextCancelStops(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
-		return execResponse{Delay: 3 * time.Second}
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
+		return sshpooltest.ExecResponse{Delay: 3 * time.Second}
 	})
 
 	ex := newExecutor()
@@ -103,9 +104,9 @@ func TestExecContextCancelStops(t *testing.T) {
 
 	start := time.Now()
 	_, err := ex.Exec(ctx, sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}, []string{"sleep", "10"}, 5*time.Second)
 	dur := time.Since(start)
 
@@ -120,18 +121,18 @@ func TestExecContextCancelStops(t *testing.T) {
 // E6.T4 — argv가 shell metachar 해석 없이 그대로 전달.
 func TestExecArgvNotShellParsed(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
 		// fake가 받은 cmd를 그대로 stdout에 echo — 검증용
-		return execResponse{Stdout: cmd}
+		return sshpooltest.ExecResponse{Stdout: cmd}
 	})
 
 	ex := newExecutor()
 	// $HOME, &&, |, > 등 shell metachar가 literal로 전달돼야.
 	argv := []string{"echo", "$HOME", "&&", "rm", "-rf", "/tmp"}
 	res, err := ex.Exec(context.Background(), sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}, argv, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
@@ -170,12 +171,12 @@ func TestJoinArgvEscapesSingleQuote(t *testing.T) {
 
 func TestExecRejectsEmptyArgv(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, nil)
+	srv := sshpooltest.New(t, nil)
 	ex := newExecutor()
 	_, err := ex.Exec(context.Background(), sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}, nil, 0)
 	if !errors.Is(err, sshpool.ErrEmptyArgv) {
 		t.Errorf("err = %v, want ErrEmptyArgv", err)
@@ -210,15 +211,15 @@ func TestExecValidatesTarget(t *testing.T) {
 func TestExecTruncatesLargeStdout(t *testing.T) {
 	t.Parallel()
 	big := strings.Repeat("X", 1000)
-	srv := newFakeSSHD(t, func(cmd string) execResponse {
-		return execResponse{Stdout: big, ExitCode: 0}
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
+		return sshpooltest.ExecResponse{Stdout: big, ExitCode: 0}
 	})
 
 	ex := sshpool.New(sshpool.Deps{MaxStdoutBytes: 100, MaxStderrBytes: 100})
 	res, err := ex.Exec(context.Background(), sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: srv.hostKeyCallback(),
+		HostKeyCallback: srv.HostKeyCallback(),
 	}, []string{"large"}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
@@ -233,14 +234,14 @@ func TestExecTruncatesLargeStdout(t *testing.T) {
 
 func TestExecRejectsWrongHostKey(t *testing.T) {
 	t.Parallel()
-	srv := newFakeSSHD(t, func(cmd string) execResponse { return execResponse{} })
+	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse { return sshpooltest.ExecResponse{} })
 
 	// Mismatched host key callback — 항상 에러 반환.
 	ex := newExecutor()
 	_, err := ex.Exec(context.Background(), sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
-		HostKeyCallback: ssh.FixedHostKey(srv.hostPubKey), // 정상 OK
+		HostKeyCallback: ssh.FixedHostKey(srv.HostPubKey), // 정상 OK
 	}, []string{"echo", "ok"}, 5*time.Second)
 	if err != nil {
 		t.Fatalf("matched host key should succeed: %v", err)
@@ -249,7 +250,7 @@ func TestExecRejectsWrongHostKey(t *testing.T) {
 	// 다른 호스트 키 (FixedHostKey에 dummy)
 	dummyPub := dummyHostKey(t)
 	_, err = ex.Exec(context.Background(), sshpool.Target{
-		Host: srv.host, Port: srv.port,
+		Host: srv.Host, Port: srv.Port,
 		Username: "u", Auth: dummyAuth(),
 		HostKeyCallback: ssh.FixedHostKey(dummyPub),
 	}, []string{"echo"}, 5*time.Second)
@@ -260,6 +261,6 @@ func TestExecRejectsWrongHostKey(t *testing.T) {
 
 func dummyHostKey(t *testing.T) ssh.PublicKey {
 	t.Helper()
-	srv := newFakeSSHD(t, nil) // 별도 fake = 다른 키
-	return srv.hostPubKey
+	srv := sshpooltest.New(t, nil) // 별도 fake = 다른 키
+	return srv.HostPubKey
 }

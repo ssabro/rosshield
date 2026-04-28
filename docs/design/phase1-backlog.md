@@ -342,18 +342,23 @@ type Service interface {
 | E6.T4 ✅ | `TestArgvNotShellParsed` | POSIX `'\''` 직렬화, 쉘 개입 0 (Stage A) |
 | E6.T5 ✅ | `TestRunFanOutProducesResultPerRobotCheck` (mock SSH/Eval) | Orchestrator fan-out + RecordResult (Stage D.1) |
 | E6.T6 ✅ | `TestRunRespectsWorkerLimit` (atomic peak counter) | `golang.org/x/sync/semaphore` weighted (R6-4) |
-| E6.T7 (Stage D.2) | evaluation rule fixture 통합 | E4 sealed AST evaluator 어댑터 |
-| E6.T8 (Stage D.2) | composite expression | E4 evaluator 그대로 |
+| E6.T7 ✅ | `TestIntegration3RobotsX3ChecksEndToEnd` (단일 op contains·regex 통합) | E4 sealed AST evaluator 어댑터 + sshpooltest fakesshd (Stage D.3) |
+| E6.T8 ✅ | `TestIntegration3RobotsX3ChecksEndToEnd` (composite and+not 통합) | E4 evaluator 그대로 (Stage D.3) |
 | E6.T9 ✅ | `TestRunCancelSkipsRemainingButWaitsInFlight` | ctx cancellation + R4-5 (Stage D.1) |
 | E6.T10 ✅ | `TestRunPublishesProgressAndCompleted` | EventBus inproc publish (Stage D.1) |
 | E6.Stage C ✅ | scan 도메인 격선 — ScanSession FSM·ScanResult 5-값·Service·sqliterepo·audit (R5-1~R5-7) | 마이그레이션 0011 + `internal/domain/scan/` |
 | E6.Stage D.1 ✅ | Orchestrator 골격 + mock-based 단위 (T5·T6·T9·T10) | `internal/app/scanrun/` (R6-1~R6-8) |
 | E6.Stage D.2 ✅ | bootstrap 결선 — sshExecutorAdapter + benchmarkEvaluatorAdapter + Platform.ScanRun | `cmd/rosshield-server/scanexec.go` + auth method 단위 7 + evaluator 단위 3 |
+| E6.Stage D.3 ✅ | Exit 검증 — 3 fakesshd × 3 check end-to-end + goleak + audit chain (R7-1~R7-7) | `sshpooltest` 패키지 export + `internal/app/scanrun/integration_test.go` 2 통합 |
 
 ### Exit 기준
 
-- 로컬 docker `linuxserver/openssh-server` 3대 fleet에 대해 CIS 팩 2~3 check가 end-to-end 실행·pass/fail 분류 성공.
-- 메모리·goroutine 누수 없음(`go test -race` + `pprof` 스팟체크).
+- ✅ 3대 in-proc fakesshd × CIS 팩 3 check가 end-to-end 실행·pass/fail 분류 성공 (5 PASS + 4 FAIL 정확).
+  - `linuxserver/openssh-server` docker 대신 R4 결정 C(in-proc fakesshd) 채택 — 외부 의존 0, 동등 검증.
+- ✅ 메모리·goroutine 누수 없음 (`go.uber.org/goleak.VerifyNone` + `IgnoreCurrent()` snapshot).
+- ✅ audit chain 정합 — 두 session × {started, completed} = 4 entry seq 1~4 monotonic.
+
+**E6 epic 완료** (Stage A·B·C·D.1·D.2·D.3 + T1~T10). 다음: E7 Evidence 또는 E12 pack-tools.
 
 ### 설계 참조
 
