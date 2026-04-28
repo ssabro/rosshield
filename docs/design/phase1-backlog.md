@@ -552,12 +552,13 @@ cmd/pack-tools/
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E12.T1 | `TestConvertCISUbuntu2404Baseline` — 1,138KB JSON → N개 CheckDefinition YAML | 역직렬화 + 재직렬화 |
-| E12.T2 | `TestConvertROS2JazzyFrameworkV1_1` — 1,348KB JSON → YAML | 동일 패턴 |
-| E12.T3 | `TestPassLogicTreeToExpression` — `{and:[{equals:"ok"},{contains:"foo"}]}` → `stdout.equals("ok") && stdout.contains("foo")` | AST 변환기 |
-| E12.T4 | `TestConvertedPackLoadsInBenchmarkLoader` — E4 로더가 결과 팩을 수용 | 통합 테스트 |
-| E12.T5 | `TestSelfTestSkeletonGenerated` — fixture 없는 degraded check 목록 산출 | `selftest/cases.yaml` 자동 생성 |
-| E12.T6 | `TestConvertedPackSignedAndVerifies` | Signer 호출 |
+| E12.T1 (Stage C) | `TestConvertCISUbuntu2404Baseline` — 1,138KB JSON → N개 CheckDefinition YAML | bash audit + `** PASS **` 마커 매칭 evaluationRule |
+| E12.T2 (Stage B) | `TestConvertROS2JazzyFrameworkV1_1` — 1,348KB JSON → YAML | conditions+pass_logic 매핑 |
+| E12.T3 (Stage B) | `TestPassLogicTreeToExpression` — AND/OR/NOT 트리 → AST | `passlogic.go` |
+| E12.T4 (Stage D) | `TestConvertedPackLoadsInBenchmarkLoader` — E4 로더가 결과 팩을 수용 | 통합 테스트 |
+| E12.T5 (Stage D) | `TestSelfTestSkeletonGenerated` — fixture 없는 degraded check 목록 산출 | `selftest/cases.yaml` 자동 생성 |
+| E12.T6 (Stage D) | `TestConvertedPackSignedAndVerifies` | Signer 호출 |
+| E12.Stage A ✅ | CLI 골격 + converter 공통 표면 + writer (라운드트립 10 tests) | `cmd/pack-tools/main.go` + `cmd/pack-tools/converter/` (R8-1~R8-8) |
 
 ### Exit 기준
 
