@@ -553,12 +553,13 @@ cmd/pack-tools/
 | ID | 테스트 | 구현 |
 |---|---|---|
 | E12.T1 (Stage C) | `TestConvertCISUbuntu2404Baseline` — 1,138KB JSON → N개 CheckDefinition YAML | bash audit + `** PASS **` 마커 매칭 evaluationRule |
-| E12.T2 (Stage B) | `TestConvertROS2JazzyFrameworkV1_1` — 1,348KB JSON → YAML | conditions+pass_logic 매핑 |
-| E12.T3 (Stage B) | `TestPassLogicTreeToExpression` — AND/OR/NOT 트리 → AST | `passlogic.go` |
+| E12.T2 ✅ | `TestConvertROS2RealJazzyV1_1` — 329 items, 86.3% 자동(284/329) | single-bash combine + degraded fallback |
+| E12.T3 ✅ | `TestPassLogic*` (13 tests) AND/OR/NOT/nested/case-insensitive/error 케이스 | `passlogic.go` |
 | E12.T4 (Stage D) | `TestConvertedPackLoadsInBenchmarkLoader` — E4 로더가 결과 팩을 수용 | 통합 테스트 |
 | E12.T5 (Stage D) | `TestSelfTestSkeletonGenerated` — fixture 없는 degraded check 목록 산출 | `selftest/cases.yaml` 자동 생성 |
 | E12.T6 (Stage D) | `TestConvertedPackSignedAndVerifies` | Signer 호출 |
 | E12.Stage A ✅ | CLI 골격 + converter 공통 표면 + writer (라운드트립 10 tests) | `cmd/pack-tools/main.go` + `cmd/pack-tools/converter/` (R8-1~R8-8) |
+| E12.Stage B ✅ | ROS2 framework 변환기 — single-bash combine + passlogic AST + condition→bash (R8-4', T2·T3, 32 tests) | `converter/{ros2,passlogic,condition}.go` + main.go convert dispatch |
 
 ### Exit 기준
 

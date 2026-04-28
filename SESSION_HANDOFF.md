@@ -4,11 +4,15 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-28 (E12 Stage A 완료 — pack-tools CLI 골격 + converter writer 라운드트립 10 tests)_
+_마지막 업데이트: 2026-04-28 (E12 Stage B 완료 — ROS2 framework 변환기, 86.3% 자동 변환, T2·T3)_
 
 ---
 
 ## 현재 상태 한 줄
+
+**E12 Stage B 완료 — ROS2 framework 변환기 (single-bash combine + passlogic AST).** R8-4' 보정 채택. (a) `converter/passlogic.go` — pass_logic JSON 트리(AND/OR/NOT, nested 포함) → bash 조건 표현식. LeafEvaluator 패턴으로 condition leaf는 호출자가 책임 분리. AND `&&` / OR `||` / NOT `! { ...; }` 직번역. case-insensitive op. 에러 4종(ErrUnknownPassLogicOp·ErrInvalidPassLogicShape·ErrEmptyPassLogicArgs·ErrInvalidNotArgs). 13 tests(T3). (b) `converter/condition.go` — 단일 condition → bash test 표현식 변환. 지원 op: empty/not_empty/equals/not_equals/contains/regex(string). degraded fallback: extract_pattern(11건)·value_type=number·numeric op(gt/gte/lt/lte 약 30건). ConditionTranslateError sentinel + Reason 표준화. shellSingleQuote(POSIX `'\''` escape). 12 tests. (c) `converter/ros2.go` — ConvertROS2(jsonBytes, opts) → Pack + ROS2ConvertReport. 다중 conditions를 single bash로 combine: `set -o pipefail; <Cn_OUT setup>; if <pass_logic_bash>; then echo '** PASS **'; else echo '** FAIL **'; fi`. evaluationRule은 단순 `{"op":"contains","value":"** PASS **"}`. wrapBash로 outer single-quote escape. ros2 한국어 severity(상·중·하·치명적·...) normalize. 다국어 우선 옵션(PreferEnglish). 변환 실패 시 abort 안 하고 degraded marker(auditCommand="true" + sentinel evaluationRule)로 fallback. 11 tests + e2e(`TestConvertROS2RealJazzyV1_1`, ROSSHIELD_NROBOTCHECK_DIR env로 실제 1.3MB JSON 검증). (d) `main.go runConvertROS2` — ros2-framework-v1 dispatch. utf-8 BOM strip. 변환 통계 + degraded 목록 stdout 출력. **실측: 329 items → 284 자동(86.3%) + 45 degraded** (대부분 numeric value_type 또는 extract_pattern). 신규 dep 0. **신규 36 tests** 모두 그린 — 누적 ~375+ tests. **다음: E12 Stage C** — CIS Ubuntu 변환기 (bash audit + `** PASS **` 마커 매칭, 추정 1일).
+
+### 직전 한 줄 (E12 Stage A)
 
 **E12 Stage A 완료 — pack-tools CLI 골격 + converter writer.** 권장 R8-1~R8-8 채택. (a) `cmd/pack-tools/main.go` — flag 기반 서브커맨드 디스패치 `convert`·`archive`. convert는 `-input`·`-format`·`-output` 필수, ros2-framework-v1·cis-ubuntu-json-v1 두 포맷은 Stage B/C에서 enable, 현재는 미구현 메시지 + exit 1. archive는 Stage D 보류. (b) `cmd/pack-tools/converter/` 신규 패키지 — `Pack`·`Check` intermediate 표현(DB 필드 제외, 와이어 형식만), `MarshalPack`/`MarshalCheck`/`WriteToDir`. packYAML/checkYAML 자체 와이어 정의(internal/domain/benchmark/yaml.go와 1:1 호환, 라운드트립 테스트로 등가성 보장 — schema drift 시 즉시 fail). 안전 장치: outputDir 존재 시 `ErrOutputExists`, duplicate check ID `ErrDuplicateCheckID`(silently 덮어쓰기 함정 방지), 빈 ID `ErrEmptyCheckID`, 빈 pack.Name `ErrEmptyPackName`, evaluationRule JSON 무효 시 `ErrInvalidEvalRule`. omitempty 적용(description·rationale·fixGuidance). 신규 dep 0(go.yaml.in/yaml/v3 이미 존재). **신규 10 tests** (`converter_test.go`): TestWriteRoundtripsThroughBenchmarkLoader(핵심 — Marshal·Write 출력이 benchmark.ParsePackYAML+ParseCheckYAML+ParseEvalRule 모두 통과)·MarshalPackRejectsEmptyName·MarshalPackDefaultsSchemaVersion·MarshalCheckRejectsEmptyID/InvalidEvalRule·MarshalCheckDefaultsSeverity·MarshalCheckOmitsEmptyOptionalFields·WriteToDirRefusesExistingOutputDir/RejectsDuplicateCheckID/CreatesExpectedLayout. 누적 ~339+ tests, 전체 그린. **다음: E12 Stage B** — ROS2 framework JSON 변환기(JSON 디코더 + audit_command.conditions 매핑 + pass_logic AND/OR/NOT 트리 → evaluationRule AST). 추정 2일.
 
@@ -104,10 +108,10 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-**E12 진행 중** (Stage A ✅, Stage B/C/D 대기). Phase 1 backlog 12 epic 중 ~6개 완료 + E12 Stage A.
+**E12 진행 중** (Stage A·B ✅, Stage C/D 대기). Phase 1 backlog 12 epic 중 ~6개 완료 + E12 Stage A·B.
 
-1. **E12 Stage B 진입 (권장)** — ROS2 framework 변환기. JSON 디코더 + audit_command.conditions(다중 조건은 first만 + degraded 마커, R8-4) + pass_logic AND/OR/NOT → evaluationRule AST(passlogic.go). 추정 2일. T2·T3 완료 목표.
-2. **E12 Stage C 진입** — CIS Ubuntu 변환기. bash audit를 그대로 wrap + `** PASS **` 마커 매칭 evaluationRule(R8-3). 추정 1일. T1.
+1. **E12 Stage C 진입 (권장)** — CIS Ubuntu 변환기. bash audit를 그대로 wrap + `** PASS **` 마커 매칭 evaluationRule(R8-3). 312 items 거의 100% 자동 변환 예상(audit 스크립트 자체에 PASS/FAIL 마커 명시). 추정 1일. T1.
+2. **E12 Stage D 진입** — MANIFEST + SIGNATURE + tar.gz archive + Self-Test skeleton + E4 로더 통합 검증. 추정 0.5~1일. T4·T5·T6.
 3. **E7 Evidence 진입** — Content-addressed Blob Store. 추정 3일. (E12와 독립 — 병렬 가능)
 3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack·robot·scan endpoints. ~2시간.
@@ -133,6 +137,7 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 날짜 내림차순.
 
+- **2026-04-28 · R8-4' 보정 (E12 Stage B)**: 원래 R8-4(다중 conditions = first만 + degraded)는 137/329 데이터 손실 — 보정 채택: **single-bash combine** (모든 conditions를 한 bash로 합치고 pass_logic을 bash if문으로 직번역, stdout `** PASS **`/`** FAIL **` 마커, evaluationRule은 단순 contains). 실측 결과 329 items → 284 자동(86.3%) + 45 degraded(numeric value_type 또는 extract_pattern). Phase 2 fixture로 보강 예정.
 - **2026-04-28 · R8-1~R8-8 합의 (E12)**: 권장값 채택 — 4 sub-stage 분할(A 골격·B ROS2·C CIS·D archive·signature, 5일) / convert·archive 두 단계 분리 CLI(디버깅 용이) / CIS는 bash audit 그대로 wrap + `** PASS **` 마커 매칭 일괄 / ROS2 conditions 다중은 first만 + Phase 2 fixture로 보류 / signer-key 옵션 + 테스트 임시 ed25519 / Self-Test skeleton degraded 마커 / cmd/pack-tools만 신규(도메인 0 변경). 권장값 채택 — sshpooltest 서브패키지로 fakesshd export(httptest 패턴) / `internal/app/scanrun/integration_test.go` 통합 테스트 위치(robot.Service stub 회피, fakesshd NoClientAuth=true로 단순화) / T7·T8을 단일 시나리오에 통합(contains + regex multi-line + composite and+not) / `go.uber.org/goleak` + `t.Cleanup` 첫 등록 LIFO 패턴(defer는 t.Cleanup 전 실행되는 함정) / 3 fakesshd × 3 check 9 work item 5 PASS + 4 FAIL 시나리오 / 검증 6 측면(session·Progress·scan_results·audit·EventBus·goleak) / RecordResult 동시 UPDATE 안전성은 통합 테스트 부수효과로 검증.
 
 - **2026-04-27 · E6 Stage D.2 완료 — bootstrap 결선 + Platform.ScanRun + 어댑터 단위 10**: scan 도메인이 외부 도메인 import 안 하므로 (P5) 결선은 cmd/* 책임. `cmd/rosshield-server/scanexec.go` 신규 — (a) `sshExecutorAdapter`: scan.SSHExecutor 구현, 매 Exec마다 storage.Tx로 robot.Service.GetCredentialMaterial 호출 → 평문 CredentialMaterial unwrap → `materialToAuthMethod`로 ssh.AuthMethod 변환 (password=ssh.Password, privateKey=ssh.PublicKeys with ParsePrivateKey/WithPassphrase) → sshpool.Target 구성 + sshpool.Executor.Exec 호출 → ExecResult 변환. material은 함수 종료 시 GC(평문을 Orchestrator에 노출 X). (b) `benchmarkEvaluatorAdapter`: scan.CheckEvaluator 구현, ruleJSON → benchmark.ParseEvalRule → EvalNode.Eval(EvalInput{stdout/stderr 문자열화, exitCode}) → `mapEvalStatus`로 PASS/FAIL/INDETERMINATE → scan.OutcomePass/Fail/Indeterminate (unknown은 OutcomeError fallback). bootstrap.go: sshpool.New(Deps{Logger}) + 어댑터들 + scanrun.New(Deps{Scan, Storage, Executor, Evaluator, Bus, Clock}) → `Platform.ScanRun *scanrun.Orchestrator`. host key callback은 임시 `xssh.InsecureIgnoreHostKey()` + warning 로그(R4-2 first-touch trust + DB 기록은 후속 stage). scanrun.go: worker ctx에 `storage.WithTenantID(runCtx, tenantID)` 적용 — sshExecutorAdapter가 Tx 시작 시 tenant ctx 필요. bootstrap_test에 ScanRun nil-check 추가. 신규 dep 0. **신규 10 tests** (`scanexec_test.go`): mapEvalStatus 5건(PASS/FAIL/INDETERMINATE/unknown/empty → 매핑)·materialToAuthMethod 7건(password/empty/privateKey ed25519 PEM 생성·empty/invalid PEM/unknown type)·benchmarkEvaluatorAdapter 4건(equals pass/fail·empty rule/invalid JSON 거부). 누적 ~327+ tests, 전체 그린.

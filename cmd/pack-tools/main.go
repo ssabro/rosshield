@@ -13,6 +13,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/ssabro/rosshield/cmd/pack-tools/converter"
 )
 
 func main() {
@@ -55,13 +57,14 @@ func usage() {
 func runConvert(args []string) int {
 	fs := flag.NewFlagSet("convert", flag.ContinueOnError)
 	var (
-		input       = fs.String("input", "", "baseline JSON 입력 경로 (필수)")
-		format      = fs.String("format", "", "변환 포맷: ros2-framework-v1 | cis-ubuntu-json-v1 (필수)")
-		output      = fs.String("output", "", "출력 디렉터리 — 존재하면 거부 (필수)")
-		vendor      = fs.String("vendor", "rosshield", "pack metadata.vendor")
-		packName    = fs.String("pack-name", "", "pack metadata.name (미지정 시 baseline에서 추론)")
-		packVersion = fs.String("pack-version", "1.0.0", "pack metadata.version")
-		description = fs.String("description", "", "pack metadata.description")
+		input         = fs.String("input", "", "baseline JSON 입력 경로 (필수)")
+		format        = fs.String("format", "", "변환 포맷: ros2-framework-v1 | cis-ubuntu-json-v1 (필수)")
+		output        = fs.String("output", "", "출력 디렉터리 — 존재하면 거부 (필수)")
+		vendor        = fs.String("vendor", "rosshield", "pack metadata.vendor")
+		packName      = fs.String("pack-name", "", "pack metadata.name (미지정 시 format별 fallback)")
+		packVersion   = fs.String("pack-version", "1.0.0", "pack metadata.version")
+		description   = fs.String("description", "", "pack metadata.description")
+		preferEnglish = fs.Bool("english", false, "ros2-framework-v1: 영어 필드(name_en/description_en/...) 우선")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -72,15 +75,52 @@ func runConvert(args []string) int {
 		return 2
 	}
 
-	// Stage B (ros2-framework-v1) · Stage C (cis-ubuntu-json-v1) 구현 예정.
-	// 현재 Stage A는 골격만 — 실제 변환 로직 미구현.
-	fmt.Fprintf(os.Stderr, "convert: format=%q 미구현 (Stage B·C에서 추가)\n", *format)
-	_ = input
-	_ = vendor
-	_ = packName
-	_ = packVersion
-	_ = description
-	return 1
+	switch *format {
+	case "ros2-framework-v1":
+		return runConvertROS2(*input, *output, converter.ROS2ConvertOptions{
+			PackName: *packName, PackVersion: *packVersion, PackVendor: *vendor,
+			PackDescription: *description, PreferEnglish: *preferEnglish,
+		})
+	case "cis-ubuntu-json-v1":
+		fmt.Fprintln(os.Stderr, "convert: cis-ubuntu-json-v1 (Stage C 미구현)")
+		return 1
+	default:
+		fmt.Fprintf(os.Stderr, "convert: unknown format %q (allowed: ros2-framework-v1, cis-ubuntu-json-v1)\n", *format)
+		return 2
+	}
+}
+
+func runConvertROS2(inputPath, outputDir string, opts converter.ROS2ConvertOptions) int {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "convert: read input: %v\n", err)
+		return 1
+	}
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		data = data[3:] // utf-8 BOM 제거
+	}
+
+	pack, report, err := converter.ConvertROS2(data, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "convert: %v\n", err)
+		return 1
+	}
+	if err := converter.WriteToDir(pack, outputDir); err != nil {
+		fmt.Fprintf(os.Stderr, "convert: write output: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("ROS2 framework 변환 완료: %s\n", outputDir)
+	fmt.Printf("  total: %d, auto-converted: %d, degraded: %d (%.1f%% auto)\n",
+		report.TotalItems, report.Converted, len(report.Degraded),
+		float64(report.Converted)/float64(report.TotalItems)*100)
+	if len(report.Degraded) > 0 {
+		fmt.Println("\nDegraded checks (Phase 2 fixture 필요):")
+		for _, d := range report.Degraded {
+			fmt.Printf("  - %s\n", d)
+		}
+	}
+	return 0
 }
 
 func runArchive(args []string) int {
