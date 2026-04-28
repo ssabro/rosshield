@@ -4,11 +4,15 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-28 (E12 Stage B 완료 — ROS2 framework 변환기, 86.3% 자동 변환, T2·T3)_
+_마지막 업데이트: 2026-04-28 (E12 Stage C 완료 — CIS Ubuntu 변환기, 18.9% 자동, R8-3' 보정 후 T1)_
 
 ---
 
 ## 현재 상태 한 줄
+
+**E12 Stage C 완료 — CIS Ubuntu 변환기 (hashbang 추출 + PASS 마커 매핑).** R8-3' 보정 채택. (a) `converter/cis.go` — ConvertCIS(jsonBytes, opts) → Pack + CISConvertReport. cis JSON 디코더(312 items 와이어 형식). 자동 변환 조건: `assessment_status=Automated` AND `audit`에 `** PASS **` 마커 AND `#!/usr/bin/env bash`(또는 `#!/bin/bash`) hashbang 추출 가능. extractCISBashBody가 자연어 prefix를 잘라내고 hashbang 이후 본문만 wrapBash로 감쌈 — bash -c가 첫 줄이 #로 시작하면 comment로 무시. evaluationRule은 단순 `{"op":"contains","value":"** PASS **"}`(스크립트가 PASS/FAIL 하나만 출력 보장). (b) degraded 분류 3종: assessment_status=Manual(21 items 기준), audit lacks PASS marker(자연어만 250 items), audit lacks hashbang. 모두 auditCommand="true" + degradedEvalRuleJSON sentinel — rationale·fixGuidance(remediation)는 보존돼 사용자 수동 검수 가이드. (c) main.go runConvertCIS dispatch + utf-8 BOM strip + 통계 stdout. **실측 e2e: 312 items → 59 자동(18.9%) + DegradedManual=21 + DegradedNoMarker=232**. R8-3 원래 가정("모든 312 item PASS/FAIL 마커 보유")이 정찰에서 틀렸음을 발견 — 사용자에게 보고 후 R8-3' 보정(자동 변환률 ~20% 수용 + audit 텍스트 보존). 신규 dep 0. **신규 10 tests** (`cis_test.go`): TestConvertCISAutomated/ManualBecomesDegraded/NoMarkerBecomesDegraded/MarkerWithoutHashbangBecomesDegraded/MixedFixtureStatistics(통계 4종 분포)/RejectsInvalidJSON/RejectsNoItems/RoundTripsThroughBenchmarkLoader/EvalRuleParsableByBenchmark/StripsNaturalLanguagePrefix + 실 e2e(`TestConvertCISRealUbuntu2404`, env opt-in). 누적 ~385+ tests, 전체 그린. **다음: E12 Stage D** — MANIFEST + SIGNATURE + tar.gz archive + Self-Test skeleton + E4 로더 통합 검증 (T4·T5·T6, 추정 0.5~1일).
+
+### 직전 한 줄 (E12 Stage B)
 
 **E12 Stage B 완료 — ROS2 framework 변환기 (single-bash combine + passlogic AST).** R8-4' 보정 채택. (a) `converter/passlogic.go` — pass_logic JSON 트리(AND/OR/NOT, nested 포함) → bash 조건 표현식. LeafEvaluator 패턴으로 condition leaf는 호출자가 책임 분리. AND `&&` / OR `||` / NOT `! { ...; }` 직번역. case-insensitive op. 에러 4종(ErrUnknownPassLogicOp·ErrInvalidPassLogicShape·ErrEmptyPassLogicArgs·ErrInvalidNotArgs). 13 tests(T3). (b) `converter/condition.go` — 단일 condition → bash test 표현식 변환. 지원 op: empty/not_empty/equals/not_equals/contains/regex(string). degraded fallback: extract_pattern(11건)·value_type=number·numeric op(gt/gte/lt/lte 약 30건). ConditionTranslateError sentinel + Reason 표준화. shellSingleQuote(POSIX `'\''` escape). 12 tests. (c) `converter/ros2.go` — ConvertROS2(jsonBytes, opts) → Pack + ROS2ConvertReport. 다중 conditions를 single bash로 combine: `set -o pipefail; <Cn_OUT setup>; if <pass_logic_bash>; then echo '** PASS **'; else echo '** FAIL **'; fi`. evaluationRule은 단순 `{"op":"contains","value":"** PASS **"}`. wrapBash로 outer single-quote escape. ros2 한국어 severity(상·중·하·치명적·...) normalize. 다국어 우선 옵션(PreferEnglish). 변환 실패 시 abort 안 하고 degraded marker(auditCommand="true" + sentinel evaluationRule)로 fallback. 11 tests + e2e(`TestConvertROS2RealJazzyV1_1`, ROSSHIELD_NROBOTCHECK_DIR env로 실제 1.3MB JSON 검증). (d) `main.go runConvertROS2` — ros2-framework-v1 dispatch. utf-8 BOM strip. 변환 통계 + degraded 목록 stdout 출력. **실측: 329 items → 284 자동(86.3%) + 45 degraded** (대부분 numeric value_type 또는 extract_pattern). 신규 dep 0. **신규 36 tests** 모두 그린 — 누적 ~375+ tests. **다음: E12 Stage C** — CIS Ubuntu 변환기 (bash audit + `** PASS **` 마커 매칭, 추정 1일).
 
@@ -108,11 +112,11 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-**E12 진행 중** (Stage A·B ✅, Stage C/D 대기). Phase 1 backlog 12 epic 중 ~6개 완료 + E12 Stage A·B.
+**E12 진행 중** (Stage A·B·C ✅, Stage D 대기). Phase 1 backlog 12 epic 중 ~6개 완료 + E12 Stage A·B·C.
 
-1. **E12 Stage C 진입 (권장)** — CIS Ubuntu 변환기. bash audit를 그대로 wrap + `** PASS **` 마커 매칭 evaluationRule(R8-3). 312 items 거의 100% 자동 변환 예상(audit 스크립트 자체에 PASS/FAIL 마커 명시). 추정 1일. T1.
-2. **E12 Stage D 진입** — MANIFEST + SIGNATURE + tar.gz archive + Self-Test skeleton + E4 로더 통합 검증. 추정 0.5~1일. T4·T5·T6.
-3. **E7 Evidence 진입** — Content-addressed Blob Store. 추정 3일. (E12와 독립 — 병렬 가능)
+1. **E12 Stage D 진입 (권장)** — MANIFEST + SIGNATURE + tar.gz archive + Self-Test skeleton + E4 로더 통합. T4·T5·T6 완료 시 E12 epic 종료. 추정 0.5~1일.
+2. **E7 Evidence 진입** — Content-addressed Blob Store. 추정 3일. (E12 Stage D와 독립 가능)
+3. **bootstrap CLI seed admin** — system tenant + admin user 시드. 1~2시간. Phase 1 Exit 흐름에 필요.
 3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack·robot·scan endpoints. ~2시간.
 5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
@@ -137,6 +141,7 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 날짜 내림차순.
 
+- **2026-04-28 · R8-3' 보정 (E12 Stage C)**: 원래 R8-3("모든 312 CIS item이 `** PASS **`/`** FAIL **` 마커 출력") 가정이 정찰에서 틀렸음 — 마커 가진 audit는 62개뿐, 나머지 250개는 자연어 + bash 명령 혼합 매뉴얼. 옵션 A 채택(마커 + hashbang 동시 보유 items만 자동 변환, 나머지는 degraded marker, audit/remediation 텍스트는 rationale·fixGuidance에 보존). 실 e2e 결과 312 → 59 자동(18.9%). Phase 1 Exit "CIS 팩으로 감사" 요건은 핵심 보안 항목 위주의 59 items로 가능 + ROS2 284 items가 보조. Phase 2에서 SCAP datastream 또는 manual fixture로 보강.
 - **2026-04-28 · R8-4' 보정 (E12 Stage B)**: 원래 R8-4(다중 conditions = first만 + degraded)는 137/329 데이터 손실 — 보정 채택: **single-bash combine** (모든 conditions를 한 bash로 합치고 pass_logic을 bash if문으로 직번역, stdout `** PASS **`/`** FAIL **` 마커, evaluationRule은 단순 contains). 실측 결과 329 items → 284 자동(86.3%) + 45 degraded(numeric value_type 또는 extract_pattern). Phase 2 fixture로 보강 예정.
 - **2026-04-28 · R8-1~R8-8 합의 (E12)**: 권장값 채택 — 4 sub-stage 분할(A 골격·B ROS2·C CIS·D archive·signature, 5일) / convert·archive 두 단계 분리 CLI(디버깅 용이) / CIS는 bash audit 그대로 wrap + `** PASS **` 마커 매칭 일괄 / ROS2 conditions 다중은 first만 + Phase 2 fixture로 보류 / signer-key 옵션 + 테스트 임시 ed25519 / Self-Test skeleton degraded 마커 / cmd/pack-tools만 신규(도메인 0 변경). 권장값 채택 — sshpooltest 서브패키지로 fakesshd export(httptest 패턴) / `internal/app/scanrun/integration_test.go` 통합 테스트 위치(robot.Service stub 회피, fakesshd NoClientAuth=true로 단순화) / T7·T8을 단일 시나리오에 통합(contains + regex multi-line + composite and+not) / `go.uber.org/goleak` + `t.Cleanup` 첫 등록 LIFO 패턴(defer는 t.Cleanup 전 실행되는 함정) / 3 fakesshd × 3 check 9 work item 5 PASS + 4 FAIL 시나리오 / 검증 6 측면(session·Progress·scan_results·audit·EventBus·goleak) / RecordResult 동시 UPDATE 안전성은 통합 테스트 부수효과로 검증.
 

@@ -82,8 +82,10 @@ func runConvert(args []string) int {
 			PackDescription: *description, PreferEnglish: *preferEnglish,
 		})
 	case "cis-ubuntu-json-v1":
-		fmt.Fprintln(os.Stderr, "convert: cis-ubuntu-json-v1 (Stage C 미구현)")
-		return 1
+		return runConvertCIS(*input, *output, converter.CISConvertOptions{
+			PackName: *packName, PackVersion: *packVersion, PackVendor: *vendor,
+			PackDescription: *description,
+		})
 	default:
 		fmt.Fprintf(os.Stderr, "convert: unknown format %q (allowed: ros2-framework-v1, cis-ubuntu-json-v1)\n", *format)
 		return 2
@@ -120,6 +122,35 @@ func runConvertROS2(inputPath, outputDir string, opts converter.ROS2ConvertOptio
 			fmt.Printf("  - %s\n", d)
 		}
 	}
+	return 0
+}
+
+func runConvertCIS(inputPath, outputDir string, opts converter.CISConvertOptions) int {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "convert: read input: %v\n", err)
+		return 1
+	}
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		data = data[3:] // utf-8 BOM
+	}
+
+	pack, report, err := converter.ConvertCIS(data, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "convert: %v\n", err)
+		return 1
+	}
+	if err := converter.WriteToDir(pack, outputDir); err != nil {
+		fmt.Fprintf(os.Stderr, "convert: write output: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("CIS Ubuntu 변환 완료: %s\n", outputDir)
+	fmt.Printf("  total: %d, auto-converted: %d (%.1f%% auto)\n",
+		report.TotalItems, report.Converted,
+		float64(report.Converted)/float64(report.TotalItems)*100)
+	fmt.Printf("  degraded: Manual=%d, NoMarker=%d (Phase 2 fixture 필요)\n",
+		report.DegradedManual, report.DegradedNoMarker)
 	return 0
 }
 
