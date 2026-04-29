@@ -77,6 +77,12 @@ func TestBootstrapInitsAllPlatformServices(t *testing.T) {
 	if p.ScanRun == nil {
 		t.Error("ScanRun is nil")
 	}
+	if p.Evidence == nil {
+		t.Error("Evidence is nil")
+	}
+	if p.BlobStore == nil {
+		t.Error("BlobStore is nil")
+	}
 }
 
 func TestBootstrapCreatesDataFileAndAppliesMigration(t *testing.T) {

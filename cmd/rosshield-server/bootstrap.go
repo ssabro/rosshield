@@ -15,12 +15,16 @@ import (
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/evidence"
+	evidencerepo "github.com/ssabro/rosshield/internal/domain/evidence/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	robotrepo "github.com/ssabro/rosshield/internal/domain/robot/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/scan"
 	scanrepo "github.com/ssabro/rosshield/internal/domain/scan/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
+	"github.com/ssabro/rosshield/internal/platform/blobstore"
+	blobfs "github.com/ssabro/rosshield/internal/platform/blobstore/fs"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
@@ -65,6 +69,8 @@ type Platform struct {
 	Robot     robot.Service
 	Scan      scan.Service
 	ScanRun   *scanrun.Orchestrator
+	Evidence  evidence.Service
+	BlobStore blobstore.Store
 
 	systemTenant storage.TenantID
 
@@ -241,6 +247,22 @@ func (a *auditEmitterAdapter) EmitScanCancelled(ctx context.Context, tx storage.
 	return err
 }
 
+// EmitEvidenceStored는 evidence.AuditEmitter 구현 (E7 Stage C — 신규 evidence INSERT 시점).
+// dedup 히트는 emit하지 않음(이미 chain에 있음).
+func (a *auditEmitterAdapter) EmitEvidenceStored(ctx context.Context, tx storage.Tx, rec evidence.Record) error {
+	payload := fmt.Sprintf(`{"sha256":%q,"contentType":%q,"sizeBytes":%d}`,
+		rec.SHA256, string(rec.ContentType), rec.SizeBytes)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: rec.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "evidence.stored",
+		Target:   audit.Target{Type: "evidence", ID: rec.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // systemTenantID는 부팅 시 결정된 시스템 테넌트를 반환합니다 (healthz·system audit job용).
 func (p *Platform) systemTenantID() storage.TenantID {
 	return p.systemTenant
@@ -344,7 +366,22 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Audit: emitter,
 	})
 
-	// E6 Stage D.2 — scan Orchestrator 결선 (R6-1~R6-8).
+	// E7 Stage C — Evidence 도메인 결선 (R9-1 fs blobstore, R9-8 tenant scope).
+	blobRoot := filepath.Join(cfg.DataDir, "evidence")
+	bs, err := blobfs.New(blobRoot)
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: blobstore: %w", err)
+	}
+	evidenceSvc := evidencerepo.New(evidencerepo.Deps{
+		Clock:     clk,
+		IDGen:     ids,
+		Audit:     emitter,
+		BlobStore: bs,
+	})
+
+	// E6 Stage D.2 — scan Orchestrator 결선 (R6-1~R6-8) + E7 evidence 결선.
 	// host key callback은 임시 InsecureIgnoreHostKey + warning 로그.
 	// R4-2 first-touch trust + DB 기록은 후속 stage(D.3 또는 별도)에서.
 	logger.Warn("ScanRun host-key check disabled (Phase 1 placeholder) — R4-2 first-touch trust pending",
@@ -363,6 +400,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Evaluator: &benchmarkEvaluatorAdapter{},
 		Bus:       bus,
 		Clock:     clk,
+		Evidence:  evidenceSvc,
 		// WorkerLimit은 default(R4-4 — 10).
 	})
 
@@ -387,6 +425,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"keyPath", keyPath,
 		"signerKeyId", sgn.KeyID(),
 		"kekKeyId", kek.KeyID(),
+		"blobRoot", blobRoot,
 		"systemTenant", string(systemTenant),
 		"checkpointSpec", checkpointSpec)
 
@@ -404,6 +443,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Robot:        robotSvc,
 		Scan:         scanSvc,
 		ScanRun:      scanRun,
+		Evidence:     evidenceSvc,
+		BlobStore:    bs,
 		systemTenant: systemTenant,
 	}, nil
 }

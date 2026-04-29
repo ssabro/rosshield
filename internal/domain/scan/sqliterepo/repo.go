@@ -239,7 +239,6 @@ func (r *Repo) RecordResult(ctx context.Context, tx storage.Tx, req scan.RecordR
 		PackCheckID: req.PackCheckID,
 		Outcome:     req.Outcome,
 		EvalReason:  req.EvalReason,
-		EvidenceRef: req.EvidenceRef,
 		DurationMs:  req.DurationMs,
 		ExecutedAt:  executedAt.UTC(),
 		CreatedAt:   now,
@@ -248,12 +247,12 @@ func (r *Repo) RecordResult(ctx context.Context, tx storage.Tx, req scan.RecordR
 	if _, err := tx.Exec(ctx, `
 INSERT INTO scan_results (
     id, session_id, tenant_id, robot_id, check_id, pack_check_id,
-    outcome, eval_reason, evidence_ref, duration_ms,
+    outcome, eval_reason, duration_ms,
     executed_at, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		result.ID, result.SessionID, string(result.TenantID), result.RobotID,
 		result.CheckID, result.PackCheckID, string(result.Outcome),
-		result.EvalReason, result.EvidenceRef, result.DurationMs,
+		result.EvalReason, result.DurationMs,
 		result.ExecutedAt.Format(rfc3339Nano), result.CreatedAt.Format(rfc3339Nano),
 	); err != nil {
 		if isUniqueViolation(err) {
@@ -320,7 +319,7 @@ SELECT id, tenant_id, fleet_id, pack_id, trigger, status,
 
 const resultSelectColumns = `
 SELECT id, session_id, tenant_id, robot_id, check_id, pack_check_id,
-       outcome, eval_reason, evidence_ref, duration_ms,
+       outcome, eval_reason, duration_ms,
        executed_at, created_at`
 
 func updateSessionStatus(ctx context.Context, tx storage.Tx, s scan.ScanSession) error {
@@ -414,12 +413,12 @@ func scanSessionRow(scanFn func(...any) error) (scan.ScanSession, error) {
 
 func scanResultRow(scanFn func(...any) error) (scan.ScanResult, error) {
 	var (
-		id, sessionID, tenantID, robotID, checkID, packCheckID  string
-		outcome, evalReason, evidenceRef, executedAt, createdAt string
-		durationMs                                              int64
+		id, sessionID, tenantID, robotID, checkID, packCheckID string
+		outcome, evalReason, executedAt, createdAt             string
+		durationMs                                             int64
 	)
 	if err := scanFn(&id, &sessionID, &tenantID, &robotID, &checkID, &packCheckID,
-		&outcome, &evalReason, &evidenceRef, &durationMs,
+		&outcome, &evalReason, &durationMs,
 		&executedAt, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return scan.ScanResult{}, storage.ErrNotFound
@@ -443,7 +442,6 @@ func scanResultRow(scanFn func(...any) error) (scan.ScanResult, error) {
 		PackCheckID: packCheckID,
 		Outcome:     scan.Outcome(outcome),
 		EvalReason:  evalReason,
-		EvidenceRef: evidenceRef,
 		DurationMs:  durationMs,
 		ExecutedAt:  executed,
 		CreatedAt:   created,

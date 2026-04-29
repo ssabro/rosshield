@@ -376,11 +376,15 @@ type Service interface {
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E7.T1 | `TestStoreAssignsSHA256AndDeduplicates` | content-addressed |
-| E7.T2 | `TestStoreRefcountIncrementsOnRepeat` | `evidence_refs` 테이블 |
-| E7.T3 | `TestStoreReadReturnsByHash` | fs 어댑터: `<hash[0:2]>/<hash[2:4]>/<hash>.blob` |
-| E7.T4 | `TestStoreRejectsCorruption` — 읽기 시 해시 재계산 후 불일치면 오류 | 읽기 검증 |
-| E7.T5 | `TestStoreReductionRemovesKnownSecrets` — `password=`·`Authorization: Bearer ...` 마스킹 | pattern engine (로거와 공유) |
+| E7.T1 ✅ | `TestStoreNewEvidenceInsertsAndReturnsIsNew` + `TestStoreDedupReturnsExistingIDIsNewFalse` | content-addressed (tenant,sha256) UNIQUE |
+| E7.T2 ✅ | `TestLinkToResultInsertsRefsAndListReturnsThemInPositionOrder` + `TestIntegrationEvidenceDedupAcrossRobots` | `evidence_refs` N:M 테이블 |
+| E7.T3 ✅ | `TestPutThenGetReturnsSameBytes` + `TestShardLayoutMatchesExpected` | fs 어댑터: `<aa>/<bb>/<sha>.blob` (R9-1·R9-2 atomic write) |
+| E7.T4 ✅ | `TestGetVerifiesHashAndReturnsErrCorruptedOnMismatch` + `TestQuarantinePreservesOriginalForensics` | lazy verify on read + `.quarantine/` 격리 (R9-3) |
+| E7.T5 ✅ | redaction.go 17 tests (PEM·AWS·GitHub·Slack·Bearer·password·api_key·private_key + truthy false-positive 차단) | 자체 정규식 8개 (R9-5, gitleaks 패턴 참고만, 외부 dep 0) |
+| E7.Stage A ✅ | Redaction 엔진 — 8 패턴 + RedactionMark 정렬·우선순위 병합 + 단일 패스 substitution (17 tests, 24 sub) | `internal/domain/evidence/redaction.go` |
+| E7.Stage B ✅ | Filesystem blob store — atomic write + shard 2-level + verify on read + quarantine + 11 함정 대응 (20 tests) | `internal/platform/blobstore/{blobstore.go, fs/fs.go}` |
+| E7.Stage C ✅ | Domain + sqliterepo + 마이그레이션 0012 + scanrun + bootstrap 결선 (12 tests) | `internal/domain/evidence/{evidence.go, sqliterepo/}` + `0012_evidence.sql` + scanrun.Deps.Evidence |
+| E7.Stage D ✅ | Exit 통합 검증 — `TestIntegrationEvidenceStoreFlow` (redact·blob·ref 라운드트립) + `TestIntegrationEvidenceDedupAcrossRobots` (dedup 시나리오) | `internal/app/scanrun/evidence_integration_test.go` |
 
 ### Exit 기준
 

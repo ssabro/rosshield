@@ -99,7 +99,6 @@ type ScanResult struct {
 	PackCheckID string // pack_checks.id ("ck_<ULID>")
 	Outcome     Outcome
 	EvalReason  string
-	EvidenceRef string // E7 sha256 (Stage D 결선 시 채움)
 	DurationMs  int64
 	ExecutedAt  time.Time
 	CreatedAt   time.Time
@@ -308,7 +307,6 @@ type RecordResultRequest struct {
 	PackCheckID string
 	Outcome     Outcome
 	EvalReason  string
-	EvidenceRef string
 	DurationMs  int64
 	ExecutedAt  time.Time
 }

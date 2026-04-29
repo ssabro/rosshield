@@ -26,6 +26,7 @@ import (
 
 	"golang.org/x/sync/semaphore"
 
+	"github.com/ssabro/rosshield/internal/domain/evidence"
 	"github.com/ssabro/rosshield/internal/domain/scan"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
@@ -43,6 +44,10 @@ type Deps struct {
 	Evaluator scan.CheckEvaluator
 	Bus       eventbus.Bus
 	Clock     clock.Clock
+
+	// Evidence는 SSH stdout/stderr를 redact·해시·blob 영속하고 N:M ref를 부착합니다 (E7 Stage C).
+	// nil이면 evidence 기록을 skip — bootstrap이 아직 결선 안 한 단위 테스트 호환.
+	Evidence evidence.Service
 
 	// WorkerLimit은 한 Run 내 동시 worker 최대 수. 0이면 DefaultWorkerLimit.
 	WorkerLimit int
@@ -196,15 +201,39 @@ func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID
 		}
 	}
 
-	// RecordResult — 별도 Tx, ctx cancel 영향 받지 않게 background ctx 사용.
-	// (R4-5 시멘틱: 진행 중 work는 timeout까지 완료해야 하고, 그 결과는 반드시 기록.)
+	// RecordResult + Evidence 기록 — 같은 Tx에 atomic.
+	// 별도 Tx + background ctx (R4-5: ctx cancel 영향 받지 않게).
 	bgCtx := storage.WithTenantID(context.Background(), tenantID)
 	recordCtx, recordCancel := context.WithTimeout(bgCtx, 5*time.Second)
 	defer recordCancel()
 
 	var session scan.ScanSession
 	if err := o.deps.Storage.Tx(recordCtx, func(c context.Context, tx storage.Tx) error {
-		if _, err := o.deps.Scan.RecordResult(c, tx, scan.RecordResultRequest{
+		// 1. Evidence Store — stdout 항상, stderr는 비어있지 않으면. error outcome도 stderr 보존.
+		var evidenceIDs []string
+		if o.deps.Evidence != nil {
+			if exec.Stdout != nil || outcome != scan.OutcomeError {
+				res, err := o.deps.Evidence.Store(c, tx, evidence.StoreInput{
+					TenantID: tenantID, ContentType: evidence.ContentStdout, Raw: exec.Stdout,
+				})
+				if err != nil {
+					return fmt.Errorf("evidence stdout: %w", err)
+				}
+				evidenceIDs = append(evidenceIDs, res.EvidenceID)
+			}
+			if len(exec.Stderr) > 0 {
+				res, err := o.deps.Evidence.Store(c, tx, evidence.StoreInput{
+					TenantID: tenantID, ContentType: evidence.ContentStderr, Raw: exec.Stderr,
+				})
+				if err != nil {
+					return fmt.Errorf("evidence stderr: %w", err)
+				}
+				evidenceIDs = append(evidenceIDs, res.EvidenceID)
+			}
+		}
+
+		// 2. RecordResult — scan_results INSERT + 진행률 갱신.
+		result, err := o.deps.Scan.RecordResult(c, tx, scan.RecordResultRequest{
 			SessionID:   sessionID,
 			RobotID:     robot.RobotID,
 			CheckID:     check.Code,
@@ -213,9 +242,18 @@ func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID
 			EvalReason:  reason,
 			DurationMs:  duration.Milliseconds(),
 			ExecutedAt:  o.deps.Clock.Now(),
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
+
+		// 3. Evidence ↔ ScanResult N:M ref.
+		if o.deps.Evidence != nil && len(evidenceIDs) > 0 {
+			if _, err := o.deps.Evidence.LinkToResult(c, tx, result.ID, evidenceIDs); err != nil {
+				return fmt.Errorf("evidence link: %w", err)
+			}
+		}
+
 		s, err := o.deps.Scan.GetSession(c, tx, sessionID)
 		session = s
 		return err
