@@ -2,7 +2,7 @@ GO ?= go
 BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
 
-.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types
+.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types compose-build compose-up compose-down compose-smoke
 
 all: ci
 
@@ -59,6 +59,20 @@ web-test:
 web-types:
 	cd web && npx openapi-typescript ../openapi/openapi.yaml -o src/api/types.ts
 	@echo "✓ Generated web/src/api/types.ts"
+
+# E11 Compose — Docker 온프렘 데모.
+# 설계: deploy/compose/README.md.
+compose-build:
+	cd deploy/compose && docker compose build
+
+compose-up:
+	cd deploy/compose && docker compose up -d
+
+compose-down:
+	cd deploy/compose && docker compose down -v
+
+compose-smoke:
+	bash scripts/compose-smoke.sh
 
 clean:
 	rm -rf $(BIN_DIR)

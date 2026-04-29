@@ -1,0 +1,22 @@
+# E11 Compose — Docker 빌드 컨텍스트 최소화.
+# 주의: internal/web/dist/는 빌드 시 embed에 필요하므로 유지.
+# (글로벌 dist/ 패턴은 web/dist/만 좁게 지정해 internal/web/dist/는 보존.)
+
+.git/
+.gitignore
+.github/
+.idea/
+.vscode/
+bin/
+web/node_modules/
+web/dist/
+web/.tanstack/
+node_modules/
+*.log
+*.db
+*.db-shm
+*.db-wal
+*.tmp
+docs/
+*.md
+!README.md

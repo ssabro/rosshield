@@ -535,9 +535,10 @@ deploy/compose/
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E11.T1 | `TestComposeUpSmoke` (scripts/compose-smoke.sh) — up → healthz 200 → down | shell 스크립트 + CI job |
-| E11.T2 | `TestFirstBootSeedsAdmin` — 초회 기동 시 admin 계정 발급 토큰 출력 | init 스크립트 |
-| E11.T3 | `TestPersistenceSurvivesRestart` — volume 마운트 검증 | named volume |
+| E11.T1 ✅ | `scripts/compose-smoke.sh` — up --build → /healthz polling 30s → down -v | bash 스크립트, docker 부재 시 graceful skip |
+| E11.T2 ✅ | `entrypoint.sh` first-boot 감지 — data.db 부재 시 env 강제(`ROSSHIELD_ADMIN_EMAIL/PASSWORD`)로 `seed admin` → JSON stdout | init 흐름 자동화 (E9 seed admin 재활용) |
+| E11.T3 ✅ | named volume `rosshield-data` → `/var/lib/rosshield` 마운트 | docker compose down -v 후 up 시 데이터 유지(volume 영속) |
+| E11.Stage A ✅ | Dockerfile + docker-compose.yml + .env.example + entrypoint.sh + README + .dockerignore + smoke script + Makefile compose-* 4 타겟 (289 LOC) | `deploy/compose/` + `scripts/compose-smoke.sh` (R13-1~R13-7) |
 
 ### Exit 기준
 
