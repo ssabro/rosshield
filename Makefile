@@ -28,8 +28,15 @@ tidy:
 lint:
 	golangci-lint run ./...
 
+OAPI_CODEGEN_VERSION := v2.4.1
+
 openapi:
-	@echo "TODO: OpenAPI 번들 (Step 0.3)"
+	@command -v oapi-codegen >/dev/null 2>&1 || { \
+		echo "Installing oapi-codegen $(OAPI_CODEGEN_VERSION)..."; \
+		$(GO) install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION); \
+	}
+	cd internal/api && oapi-codegen -config config.yaml ../../openapi/openapi.yaml
+	@echo "✓ Generated internal/api/gen/openapi.gen.go"
 
 ci: vet test build
 

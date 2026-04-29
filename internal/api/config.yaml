@@ -1,0 +1,19 @@
+# oapi-codegen 설정 (Step 0.3-β)
+#
+# 사용법:
+#   cd internal/api && oapi-codegen -config config.yaml ../../openapi/openapi.yaml
+#
+# 또는 루트에서:
+#   make openapi
+#
+# 결정 (R10'):
+#   - chi-server: 미들웨어/라우팅 생산성 + Phase 1 단계 의존 부담 가벼움.
+#   - embedded-spec: runtime에서 raw spec 검증·디스커버리 가능.
+#   - models: 모든 schema → Go struct.
+#   - skip-prune 옵션은 사용 안 함 (output-options 미설정 → 기본 동작 유지).
+package: gen
+output: gen/openapi.gen.go
+generate:
+  models: true
+  chi-server: true
+  embedded-spec: true

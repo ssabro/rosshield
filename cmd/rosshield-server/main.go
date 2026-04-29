@@ -124,6 +124,11 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "report" {
 		os.Exit(reportSubcommand(os.Args[2:]))
 	}
+	// `seed` 서브커맨드 분기 — 부팅 직후 system tenant + admin user 시드 (Phase 1 Exit 데모).
+	// 사용 예: rosshield-server seed admin --email admin@example.com --password verylongpassword1
+	if len(os.Args) > 1 && os.Args[1] == "seed" {
+		os.Exit(seedSubcommand(os.Args[2:]))
+	}
 
 	addr := flag.String("addr", "127.0.0.1:0", "bind address")
 	dataDir := flag.String("data-dir", defaultDataDir(), "data directory (SQLite DB, keys, etc.)")
