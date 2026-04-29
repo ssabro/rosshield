@@ -7,7 +7,6 @@
 package gen
 
 import (
-	"net/http"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -94,8 +93,8 @@ func TestChiServerInterfaceGenerated(t *testing.T) {
 	t.Parallel()
 
 	// Handler 함수가 ServerInterface 구현체를 받아 http.Handler를 반환해야 함.
-	// 반환 타입이 이미 http.Handler라 별도 type assertion 불필요(staticcheck S1040).
-	var h http.Handler = Handler(&nilHandler{})
+	// (반환 타입이 이미 http.Handler라 별도 type assertion 불필요 — staticcheck S1040/ST1023.)
+	h := Handler(&nilHandler{})
 	if h == nil {
 		t.Fatal("Handler(&nilHandler{}) returned nil")
 	}
