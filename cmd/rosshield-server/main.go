@@ -119,6 +119,12 @@ func defaultDataDir() string {
 }
 
 func main() {
+	// `report` 서브커맨드 분기 — 서버 부팅 없이 오프라인 검증만 수행.
+	// 사용 예: rosshield-server report verify report.tar.gz
+	if len(os.Args) > 1 && os.Args[1] == "report" {
+		os.Exit(reportSubcommand(os.Args[2:]))
+	}
+
 	addr := flag.String("addr", "127.0.0.1:0", "bind address")
 	dataDir := flag.String("data-dir", defaultDataDir(), "data directory (SQLite DB, keys, etc.)")
 	flag.Parse()

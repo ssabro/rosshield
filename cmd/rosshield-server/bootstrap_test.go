@@ -83,6 +83,12 @@ func TestBootstrapInitsAllPlatformServices(t *testing.T) {
 	if p.BlobStore == nil {
 		t.Error("BlobStore is nil")
 	}
+	if p.Reporting == nil {
+		t.Error("Reporting is nil")
+	}
+	if p.ReportSigner == nil {
+		t.Error("ReportSigner is nil")
+	}
 }
 
 func TestBootstrapCreatesDataFileAndAppliesMigration(t *testing.T) {

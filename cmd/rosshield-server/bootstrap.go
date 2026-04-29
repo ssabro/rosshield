@@ -17,6 +17,9 @@ import (
 	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/evidence"
 	evidencerepo "github.com/ssabro/rosshield/internal/domain/evidence/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/reporting"
+	"github.com/ssabro/rosshield/internal/domain/reporting/pdf"
+	reportingrepo "github.com/ssabro/rosshield/internal/domain/reporting/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	robotrepo "github.com/ssabro/rosshield/internal/domain/robot/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/scan"
@@ -56,21 +59,23 @@ type Config struct {
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
 // 도메인 서비스는 이 구조체에서 필요한 의존성만 주입받습니다 (§03.4 시작 시퀀스).
 type Platform struct {
-	Logger    *slog.Logger
-	Clock     clock.Clock
-	IDGen     idgen.IDGen
-	Storage   storage.Storage
-	EventBus  eventbus.Bus
-	Signer    signer.Signer
-	Scheduler scheduler.Scheduler
-	Audit     audit.Service
-	Tenant    tenant.Service
-	Benchmark benchmark.Service
-	Robot     robot.Service
-	Scan      scan.Service
-	ScanRun   *scanrun.Orchestrator
-	Evidence  evidence.Service
-	BlobStore blobstore.Store
+	Logger       *slog.Logger
+	Clock        clock.Clock
+	IDGen        idgen.IDGen
+	Storage      storage.Storage
+	EventBus     eventbus.Bus
+	Signer       signer.Signer
+	Scheduler    scheduler.Scheduler
+	Audit        audit.Service
+	Tenant       tenant.Service
+	Benchmark    benchmark.Service
+	Robot        robot.Service
+	Scan         scan.Service
+	ScanRun      *scanrun.Orchestrator
+	Evidence     evidence.Service
+	BlobStore    blobstore.Store
+	Reporting    reporting.Service
+	ReportSigner signer.Signer // R10-7: report 키 ↔ audit checkpoint 키 분리
 
 	systemTenant storage.TenantID
 
@@ -263,6 +268,38 @@ func (a *auditEmitterAdapter) EmitEvidenceStored(ctx context.Context, tx storage
 	return err
 }
 
+// EmitReportGenerated는 reporting.AuditEmitter 구현 (E8 Stage A — Generate 후).
+// 서명 전 시점 — Sign 이전 통계와 PDF 본문 sha256만 기록.
+func (a *auditEmitterAdapter) EmitReportGenerated(ctx context.Context, tx storage.Tx, r reporting.Report) error {
+	payload := fmt.Sprintf(`{"sessionId":%q,"pdfSha256":%q,"sizeBytes":%d,"generatedBy":%q}`,
+		r.SessionID, r.PDFSHA256, r.PDFSizeBytes, r.GeneratedBy)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: r.GeneratedBy},
+		Action:   "reporting.generate",
+		Target:   audit.Target{Type: "report", ID: r.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitReportSigned는 reporting.AuditEmitter 구현 (E8 Stage A — Sign 후).
+// signer keyId + chain head anchor를 audit에 박아 향후 cross-check.
+func (a *auditEmitterAdapter) EmitReportSigned(ctx context.Context, tx storage.Tx, r reporting.Report) error {
+	payload := fmt.Sprintf(`{"signerKeyId":%q,"chainHeadSeq":%d,"chainHeadHash":%q}`,
+		r.Signature.SignerKeyID, r.Signature.ChainHeadSeq, r.Signature.ChainHeadHash)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "reporting.sign",
+		Target:   audit.Target{Type: "report", ID: r.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // systemTenantID는 부팅 시 결정된 시스템 테넌트를 반환합니다 (healthz·system audit job용).
 func (p *Platform) systemTenantID() storage.TenantID {
 	return p.systemTenant
@@ -381,6 +418,26 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		BlobStore: bs,
 	})
 
+	// E8 Stage D — Reporting 도메인 결선 (R10-1 signintech/gopdf, R10-7 키 분리).
+	// Report signer는 audit checkpoint signer와 별도 키 파일(역할 격리·키 회전 분리).
+	reportKeyPath := filepath.Join(cfg.DataDir, "keys", "report.ed25519")
+	reportSigner, err := soft.LoadOrCreate(reportKeyPath)
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: report signer: %w", err)
+	}
+	reportingSvc := reportingrepo.New(reportingrepo.Deps{
+		Clock:    clk,
+		IDGen:    ids,
+		Audit:    emitter,
+		Builder:  &pdfBuilderAdapter{inner: pdf.New()},
+		Scan:     &reportingScanAdapter{svc: scanSvc},
+		Evidence: &reportingEvidenceAdapter{svc: evidenceSvc},
+		Tenant:   &reportingTenantAdapter{svc: tenantSvc},
+		// PackReader/RobotReader는 Phase 1 미주입 — 표시 메타는 빈 string으로 노출.
+	})
+
 	// E6 Stage D.2 — scan Orchestrator 결선 (R6-1~R6-8) + E7 evidence 결선.
 	// host key callback은 임시 InsecureIgnoreHostKey + warning 로그.
 	// R4-2 first-touch trust + DB 기록은 후속 stage(D.3 또는 별도)에서.
@@ -426,6 +483,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"signerKeyId", sgn.KeyID(),
 		"kekKeyId", kek.KeyID(),
 		"blobRoot", blobRoot,
+		"reportSignerKeyId", reportSigner.KeyID(),
 		"systemTenant", string(systemTenant),
 		"checkpointSpec", checkpointSpec)
 
@@ -445,6 +503,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		ScanRun:      scanRun,
 		Evidence:     evidenceSvc,
 		BlobStore:    bs,
+		Reporting:    reportingSvc,
+		ReportSigner: reportSigner,
 		systemTenant: systemTenant,
 	}, nil
 }

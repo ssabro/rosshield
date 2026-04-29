@@ -414,12 +414,17 @@ type Service interface {
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E8.T1 | `TestReportBuildIncludesSessionSummary` — 스캔 세션의 pass/fail/error counts | builder |
-| E8.T2 | `TestReportPDFContainsSignatureBlock` — PDF 말미에 `X-Signature-KeyId`·`X-Signature-Base64` | custom PDF trailer |
-| E8.T3 | `TestReportVerifyAcceptsClean` | Signer.Verify |
-| E8.T4 | `TestReportVerifyRejectsTamperedPage` | PDF 해시 변경 후 검증 실패 |
-| E8.T5 | `TestReportIncludesAuditChainAnchor` — 리포트가 참조한 audit seq의 hash 포함 | audit.Head 참조 |
-| E8.T6 | `TestReportGenerationIsAudited` | `reporting.generate`·`reporting.sign` |
+| E8.T1 ✅ | `TestGenerateAggregatesStatsCorrectly` + `TestGenerateRowsSortedByRobotThenCheck` (sqliterepo) | PDFInput.Stats 집계 + 안정 정렬 |
+| E8.T2 ✅ | `TestBuildBundleProducesAllFourEntries` + `TestReportingFullFlowEndToEnd` | detached `.sig` + tar.gz 번들 (R10-2 minisign 호환, PAdES 거부) |
+| E8.T3 ✅ | `TestBuildBundleProducesAllFourEntries` + CLI `TestReportVerifyExitsZeroOnValidBundle` | ed25519.Verify(pub, pdfBytes, sig) |
+| E8.T4 ✅ | `TestVerifyBundleRejectsTamperedPDF` + CLI `TestReportVerifyExitsTwoOnTamperedBundle` | PDF·sig 변조 모두 ErrBundleSignatureInvalid |
+| E8.T5 ✅ | `TestReportingFullFlowEndToEnd` (anchor.HeadSeq + HeadHash 검증) | audit.Head snapshot anchor 매핑 |
+| E8.T6 ✅ | `TestReportingFullFlowEndToEnd` (audit chain head=3 = seed+Generate+Sign) | EmitReportGenerated + EmitReportSigned |
+| E8.Stage A ✅ | 도메인 모델 + Service + sqliterepo + 마이그레이션 0013 (19 tests, R10-7 키 분리 메타) | `internal/domain/reporting/{reporting.go, sqliterepo/}` + `0013_reports.sql` |
+| E8.Stage B ✅ | PDF builder + NanumGothic embed + 결정성 회귀 fixture(1·50·1000) (11 tests) | `internal/domain/reporting/pdf/{builder.go, fonts/, testdata/}` (R10-1 signintech/gopdf MIT) |
+| E8.Stage C ✅ | bundle.go — tar.gz + Ed25519 detached sig + PKIX PEM 공개키 + AnchorPayload (9 tests) | `internal/domain/reporting/bundle.go` (R10-2·R10-3·R10-4) |
+| E8.Stage D ✅ | bootstrap 결선 + audit emit + Generate→Sign→Bundle 흐름 + 결정성 회귀 통합 (2 tests) | `cmd/rosshield-server/{report_signer.go, reportexec.go, reporting_integration_test.go}` |
+| E8.Stage E ✅ | `rosshield-server report verify <bundle>` CLI + JSON 출력 + exit code 매핑 (5 tests) | `cmd/rosshield-server/{report_verify.go, report_verify_test.go}` |
 
 ### Exit 기준
 
