@@ -461,11 +461,15 @@ rosshield audit verify [--from --to]
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E9.T1 | `TestLoginStoresTokenInConfig` | `~/.rosshield/config.yaml` (chmod 600) |
-| E9.T2 | `TestScanRunStreamsProgressViaWebSocket` | `nhooyr.io/websocket` 클라이언트 |
-| E9.T3 | `TestReportVerifyOfflineNeedsNoServer` | PDF + 서명 공개키 bundled |
-| E9.T4 | `TestCLIOutputFormatJSONOrTable` — `-o json` 플래그 | `text/tabwriter` vs JSON |
-| E9.T5 | `TestCLIRespectsHTTPError` — API 4xx/5xx 시 적절한 exit code | exit codes 0/1/2/3 |
+| E9.T1 ✅ | `TestLoginPersistsTokenAndExitsZero` | `~/.rosshield/config.yaml` (chmod 600 best-effort, Windows skip) |
+| E9.T2 ⏸ | (WebSocket scan progress streaming) | Phase 2 또는 E10 Web UI로 미룸 (`coder/websocket` 신규 dep + WS 핸들러 결선 부담) |
+| E9.T3 ✅ | `TestReportVerifyExitsZeroOnValidBundle`(cmd/rosshield) | offline `reporting.VerifyBundle`(PDF + 번들 내 PEM 공개키) |
+| E9.T4 ✅ | `TestParseOutputFormatJSON`/`TestWriteJSONEmitsIndented`/`TestWriteTableAlignsColumns` | `text/tabwriter` + JSON helper (output.go) |
+| E9.T5 ✅ | `TestHTTPErrorClientServerClassification` 등 | R11-8 exit code 매핑 (0/1/2/3) |
+| E9.Stage A ✅ | CLI 골격 + offline 명령(`version`·`config init|show`·`report verify`) (33 tests) | `cmd/rosshield/{main, version, config, output, report_verify}.go` |
+| E9.Stage B ✅ | 서버 핸들러 5종(login/me/robots/scans/reports) + JWT auth middleware (16 tests) | `internal/api/handlers/*` + `cmd/rosshield-server/main.go` newMux 결선 |
+| E9.Stage C ✅ | CLI HTTP 클라이언트 5 명령(`login·whoami·robot list·scan run·report list`) (15+ tests) | `cmd/rosshield/{http_client, login, whoami, robot, scan, report_list}.go` |
+| E9.Stage D ✅ | Exit 통합 검증 — CLI E2E + bootstrap newMux 라우팅 (3 tests) | `cmd/rosshield/integration_e2e_test.go` + `cmd/rosshield-server/api_routing_test.go` |
 
 ### Exit 기준
 

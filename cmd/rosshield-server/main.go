@@ -13,6 +13,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/ssabro/rosshield/internal/api/handlers"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -103,9 +106,31 @@ func healthHandler(p *Platform) http.HandlerFunc {
 	}
 }
 
-func newMux(p *Platform) *http.ServeMux {
+// newMux는 /healthz + /api/v1/* 핸들러를 mount한 http.Handler를 반환합니다.
+//
+// E9 Stage B 결선:
+//   - /healthz: 기존 healthHandler 유지 (stdlib mux)
+//   - /api/v1/*: chi 라우터에 handlers.Mount — Login·Me·ListRobots·StartScan·ListReports
+//     5개 endpoint + 미구현 endpoint 자동 501.
+//
+// 반환 타입은 http.Handler — http.Server.Handler가 interface이므로 호환 유지.
+func newMux(p *Platform) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthHandler(p))
+
+	// E9 Stage B — chi 라우터로 API mount.
+	apiRouter := chi.NewRouter()
+	h := handlers.New(handlers.Deps{
+		Storage:   p.Storage,
+		Clock:     p.Clock,
+		Tenant:    p.Tenant,
+		Robot:     p.Robot,
+		Scan:      p.Scan,
+		Reporting: p.Reporting,
+	})
+	h.Mount(apiRouter)
+	mux.Handle("/api/v1/", apiRouter)
+
 	return mux
 }
 

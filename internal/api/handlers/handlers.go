@@ -1,0 +1,157 @@
+// Package handlers는 OpenAPI에 정의된 HTTP 엔드포인트의 도메인 결선 구현체입니다 (E9 Stage B).
+//
+// 책임 분담:
+//   - oapi-codegen이 생성한 `gen.ServerInterface`(13개 메서드)를 `*Handlers`가 구현
+//   - Phase 1 Stage B는 5개 endpoint만 실구현 (Login·Me·ListRobots·StartScan·ListReports)
+//   - 나머지는 `gen.Unimplemented` embed로 자동 501 반환
+//   - JWT auth middleware는 보호된 path에 자동 적용 (Bearer → tenant.AccessClaims → ctx 주입)
+//
+// R11 합의:
+//   - R11-6: chi-server 스텁 활용 (재생성 없이 spec과 결선)
+//   - R11-8: HTTP exit code 매핑은 CLI 책임 — 서버는 표준 status code (200/201/400/401/403/404/500)
+//
+// 도메인 경계 규칙(P5):
+//
+//	본 패키지는 domain.* Service interface만 호출하며, repo·storage 직접 접근 금지.
+//	Storage.Tx는 미들웨어가 ctx에 TenantID를 주입한 후 호출자(handler)가 진입.
+package handlers
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/ssabro/rosshield/internal/api/gen"
+	"github.com/ssabro/rosshield/internal/domain/reporting"
+	"github.com/ssabro/rosshield/internal/domain/robot"
+	"github.com/ssabro/rosshield/internal/domain/scan"
+	"github.com/ssabro/rosshield/internal/domain/tenant"
+	"github.com/ssabro/rosshield/internal/platform/clock"
+	"github.com/ssabro/rosshield/internal/platform/storage"
+)
+
+// Deps는 핸들러 의존성 묶음입니다.
+//
+// bootstrap이 *Platform에서 필요한 도메인 서비스만 추출하여 주입.
+// Phase 1 Stage B는 Storage·Tenant·Robot·Scan·Reporting만 직접 사용 — 나머지는 후속 Stage.
+type Deps struct {
+	Storage   storage.Storage
+	Clock     clock.Clock
+	Tenant    tenant.Service
+	Robot     robot.Service
+	Scan      scan.Service
+	Reporting reporting.Service
+}
+
+// Handlers는 gen.ServerInterface 구현체입니다.
+//
+// gen.Unimplemented 임베딩으로 미구현 endpoint는 자동 501 반환 — 본 Stage가 override한
+// 5개(Login·GetCurrentSession·ListRobots·CreateScan/없음 — ListReports 추가)만 동작.
+//
+// 주의: ListReports는 OpenAPI spec에 정의되지 않음 (현 spec은 reports/{id}:verify만 있음).
+// 본 Stage는 spec 미변경 원칙(R11-6)에 따라 ListReports 대신 VerifyReport는 501로 두고,
+// 핸들러 메서드 ListReports는 chi router에 별도 mount하여 노출 (`GET /api/v1/reports?sessionId=...`).
+type Handlers struct {
+	gen.Unimplemented // 미구현 endpoint는 자동 501
+
+	deps Deps
+}
+
+// New는 새 Handlers를 반환합니다.
+func New(deps Deps) *Handlers {
+	return &Handlers{deps: deps}
+}
+
+// Mount는 chi 라우터에 모든 endpoint를 mount합니다.
+//
+// 절차:
+//  1. /healthz·/readyz·login은 인증 없이 노출
+//  2. /api/v1/* 나머지는 AuthMiddleware로 보호
+//  3. ListReports는 OpenAPI spec 미정의 — chi에 직접 등록
+//
+// chi router를 받아 modify — 호출자(main.go)가 NewRouter() 후 본 메서드로 결선.
+func (h *Handlers) Mount(r chi.Router) {
+	// 1. Public endpoints — auth 미적용
+	r.Post("/api/v1/auth/login", h.Login)
+
+	// 2. Protected endpoints — AuthMiddleware 통과 후 진입
+	r.Group(func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.Get("/api/v1/auth/me", h.GetCurrentSession)
+		r.Get("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
+			// chi 직접 등록 — gen 래퍼는 query parsing이 ListRobotsParams 객체로 들어가지만
+			// 본 Stage는 fleetId 한 개만 사용하므로 query 직접 추출.
+			h.ListRobots(w, req, gen.ListRobotsParams{
+				FleetId: stringPtrOrNil(req.URL.Query().Get("fleetId")),
+			})
+		})
+		r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
+			h.CreateScan(w, req, gen.CreateScanParams{})
+		})
+		r.Get("/api/v1/reports", h.ListReports)
+
+		// 미구현 endpoint들 (gen.Unimplemented 위임 — 자동 501)
+		r.Get("/api/v1/audit/head", h.GetAuditHead)
+		r.Post("/api/v1/audit/verify", h.VerifyAuditChain)
+		r.Get("/api/v1/tenants/current", h.GetCurrentTenant)
+		r.Post("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
+			h.CreateRobot(w, req, gen.CreateRobotParams{})
+		})
+		r.Get("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
+			h.GetRobot(w, req, chi.URLParam(req, "robotId"))
+		})
+		r.Get("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
+			h.ListScans(w, req, gen.ListScansParams{})
+		})
+		r.Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
+			h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
+		})
+	})
+}
+
+// stringPtrOrNil는 빈 문자열을 nil 포인터로 변환합니다 (query 옵션 표현).
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// writeJSON은 status + JSON body를 응답합니다.
+//
+// Content-Type을 application/json으로 설정하고 indent 없이 직렬화 — 응답 사이즈 최소화.
+// encode 실패는 무시 (이미 헤더가 송신됐을 가능성).
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
+}
+
+// writeError는 표준 에러 응답을 작성합니다.
+//
+// `{"error": "<message>"}` 형식 — Phase 1 단순화. OpenAPI ErrorEnvelope는 후속 Stage에서.
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+
+// errorStatusFor는 도메인 sentinel을 HTTP status로 매핑합니다.
+//
+// 알 수 없는 에러는 500 — 호출자가 message를 노출 여부 결정.
+func errorStatusFor(err error) int {
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, storage.ErrTenantMissing):
+		return http.StatusUnauthorized
+	case errors.Is(err, tenant.ErrInvalidCredentials),
+		errors.Is(err, tenant.ErrUserDisabled),
+		errors.Is(err, tenant.ErrInvalidToken),
+		errors.Is(err, tenant.ErrTokenExpired),
+		errors.Is(err, tenant.ErrTokenSignatureInvalid):
+		return http.StatusUnauthorized
+	default:
+		return http.StatusInternalServerError
+	}
+}

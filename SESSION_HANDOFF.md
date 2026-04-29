@@ -4,11 +4,15 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-29 (bootstrap CLI seed admin + OpenAPI 코드 생성 셋업, 두 작업 병렬)_
+_마지막 업데이트: 2026-04-29 (E9 CLI epic 종료 — Stage A·B·C·D, T1·T3·T4·T5, T2 deferred, 병렬 2 에이전트)_
 
 ---
 
 ## 현재 상태 한 줄
+
+**E9 CLI epic 완전 종료 (Stage A·B·C·D + T1·T3·T4·T5, T2 WebSocket은 Phase 2로 deferred, R11-1~R11-8).** 2 정찰·합의 단계 없이(R11 권장값 즉시 채택) → Stage A·B 두 에이전트 병렬 → Stage C·D 메인 직접. 외부 dep 0 추가(stdlib만). (a) **Stage A — CLI 골격 + offline 명령** (`cmd/rosshield/`, 신규 바이너리, 33 tests). 서브커맨드 router(`flag` + 1단계 분기) + `version`/`config init|show`/`report verify`. Config{ServerURL,AccessToken,RefreshToken,Email} YAML 영속(chmod 600·디렉터리 0700, Windows best-effort). MaskToken으로 token show 마스킹. report verify는 `reporting.VerifyBundle`(domain) 직접 호출 + JSON/table 출력. exit code R11-8 매핑(0 OK / 1 read·parse / 2 args·auth-missing / 3 sig·verify 실패). (b) **Stage B — 서버 핸들러 5종 + JWT auth** (`internal/api/handlers/`, 16 tests). `Handlers` struct가 oapi-codegen `gen.Unimplemented`를 임베드 — 5 endpoint(POST /auth/login, GET /auth/me, GET /robots, POST /scans, GET /reports)만 override → 나머지 8개 자동 501. JWT auth middleware(`tenant.Service.VerifyAccessToken` 재사용, claims를 ctxKey + `storage.WithTenantID`로 주입). Login은 단일 tenant 가정(Bootstrap Tx로 email→tenantID lookup → tenant scope Tx로 Login). 401 매핑 통일(헤더 부재·Bearer 누락·invalid token·invalid creds·disabled user). cmd/rosshield-server/main.go의 newMux에 chi router로 mount. (c) **Stage C — CLI HTTP 클라이언트 5 명령** (`cmd/rosshield/{http_client,login,whoami,robot,scan,report_list}.go`, 15+ tests). HTTP client wrapper(stdlib net/http, 30s timeout, Bearer 자동 부착). HTTPError sentinel + IsClientError/IsServerError로 R11-8 exit 매핑. login은 Token persist 후 stdout JSON/table 출력. whoami/robot list/scan run/report list 모두 동일 패턴(config 로드 → token 검증 → HTTP 호출 → exit 매핑). httptest.NewServer mock으로 단위 테스트(authGuard로 Bearer 검증). (d) **Stage D — Exit 통합 검증** (`cmd/rosshield/integration_e2e_test.go` + `cmd/rosshield-server/api_routing_test.go`, 3 tests). E2E: config init → login(token persist) → whoami → robot list → scan run → report list 한 fixture. bootstrap.newMux 라우팅 검증(404 부재 = 라우트 살아있음 + /healthz 회귀). **WebSocket scan progress(T2) Phase 2 deferred** — `coder/websocket` 신규 dep + WS 핸들러 + Orchestrator EventBus → WS 결선이 부담, Phase 1 데모는 polling으로 충분. **신규 ~67 tests** (Stage A 33 + B 16 + C 15+ + D 3). 누적 ~590+ tests, 31 패키지 그린. **Phase 1 Exit 데모 흐름이 한 바이너리쌍(`rosshield-server`+`rosshield`)으로 완결** — bootstrap → seed admin → login → robot list → scan run → report list/verify. **다음**: E10 Web UI(Tauri+React, 1~2주) 또는 E11 Compliance(1주) 또는 push origin(현재 9 commits ahead).
+
+### 직전 한 줄 (운영 도구 2종)
 
 **Phase 1 운영 도구 2종 동시 결선 (병렬 2 에이전트 활용).** (a) **`rosshield-server seed admin` 서브커맨드** — `--email <e> --password <p> [--name <s>] [--display-name <s>] [--data-dir <d>] [--password-stdin]`. 한 Bootstrap Tx에서 `tenant.Service.Create`로 tenant + admin user + 시스템 역할 3개(admin/auditor/operator) + admin role 자동 할당 + audit emit 원자 처리. stdout JSON(`{tenantId,tenantName,userId,email,seededAt}`) — 파이프 친화 / stderr Warn 이상만 라우팅. 중복 시드 가드는 cmd/* 영역에서 `SELECT EXISTS(SELECT 1 FROM tenants)` 사전 체크 → exit 3(도메인 미수정 제약). exit 매핑: 0 OK / 1 storage·bootstrap 실패 / 2 validation(empty/short password·invalid email·missing name·unknown plan) / 3 중복 시드. `--password-stdin`로 패스워드를 명령행 노출 없이 stdin에서 읽기. **신규 11 tests** (CreatesTenantAndAdminUser·RejectsMissingEmail/Password/ShortPassword/InvalidEmail·RejectsDuplicateSeed·AcceptsCustomTenantNameAndDisplayName·EmitsAuditEntry·PasswordStdin·HelpExitsZero·UnknownSubcommand). 신규 파일 `cmd/rosshield-server/{admin_seed.go, admin_seed_test.go}` (292+320 LOC) + main.go에 `seed` 분기 추가(5줄). (b) **OpenAPI 코드 생성 파이프라인 (Step 0.3-β)** — `oapi-codegen v2.4.1`(Apache-2.0) 도입 + `chi-server` 채택(net/http에 zero-overhead, 미들웨어 체인 자동 생성). `tools.go` `//go:build tools` 패턴으로 `go mod tidy`가 dep 추적, 빌드 제외. `internal/api/config.yaml`(package=gen, output=openapi.gen.go, models+chi-server+embedded-spec). `Makefile openapi:` 타겟 — `go install ...@v2.4.1` 후 `cd internal/api && oapi-codegen -config config.yaml ../../openapi/openapi.yaml`. **embedded-spec ON** — runtime `GetSwagger()`로 spec 재추출(에어갭 1급 P3 정합). 첫 generation 1001 LOC 산출, 두 번째 실행 sha256 동일(idempotent 검증). generated 파일 git commit(CI 결정성). **신규 4 tests** (`internal/api/gen/openapi_gen_test.go`) — EmbeddedSpec 로드 + 모델 type 존재 + ServerInterface compile-time 가드 + 재생성 idempotent. 신규 의존성: `oapi-codegen/v2 v2.4.1`(direct, 버전 핀) + `oapi-codegen/runtime v1.4.0`(런타임) + `go-chi/chi/v5 v5.2.5` + `getkin/kin-openapi v0.137.0` + transitive ~15. spec 자체(openapi/openapi.yaml 415줄)는 무변경 — codegen이 그대로 통과(3.1 경고 1개 무해). **신규 15 tests 합계** (seed 11 + openapi 4). 누적 ~525+ tests, 전 패키지 그린(29 패키지). 두 에이전트 작업 디렉터리는 `cmd/rosshield-server/` vs `Makefile + tools.go + internal/api/`로 충돌 0. **다음**: E9 CLI(나머지 fg-cli 서브커맨드 — auth·pack·robot·scan, 5일) 또는 E10 Web UI(Tauri+React, 1~2주) 또는 E11 Compliance(1주) 또는 push origin (현재 9 commits ahead).
 
@@ -128,14 +132,12 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-**Phase 1 운영 도구 2종 완료** (seed admin + OpenAPI codegen). Phase 1 backlog 12 epic 중 ~9개 + 운영 도구 2종 완료.
+**E9 CLI 종료** — Phase 1 backlog 12 epic 중 ~10개 완료(E1~E9 + E12). Phase 1 Exit 데모 흐름은 한 바이너리쌍으로 완결됨.
 
-**Phase 1 Exit 데모 흐름은 결선 완료**: bootstrap → seed admin → 로그인 → robot 등록 → scan 실행 → evidence redact → 서명 PDF → 외부 검증.
-
-1. **E9 CLI 진입 (권장)** — `rosshield-server` 추가 서브커맨드(auth·pack·robot·scan)로 `seed`/`report` 패턴 확장. Phase 1 Exit 시연을 한 바이너리로 완결. 추정 5일.
-2. **E10 Web UI** — Tauri 데스크톱 + React. D3 결정 채택. 1~2주.
-3. **E11 Compliance** — ISO27001·NIST·CIS·IEC-62443 매핑 도메인. 1주.
-4. **Push origin** — 현재 9 commits ahead. CI 검증 + 백업 목적.
+1. **E10 Web UI 진입 (권장)** — Tauri 2.x 데스크톱 + React 19 + Vite + Tailwind v4. D3 채택. 추정 1~2주.
+2. **E11 Compliance** — ISO27001·NIST·CIS·IEC-62443 매핑 도메인. 1주.
+3. **WebSocket scan progress (E9.T2 deferred)** — `coder/websocket` + 서버 WS 핸들러 + CLI `scan watch`. 1일.
+4. **Push origin** — 현재 9 commits ahead. CI 검증 + 백업.
 3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack·robot·scan endpoints. ~2시간.
 5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
@@ -160,6 +162,8 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 날짜 내림차순.
 
+- **2026-04-29 · E9 CLI epic 종료 (Stage A·B·C·D, T1·T3·T4·T5 + T2 deferred, R11-1~R11-8, ~67 신규 tests, 병렬 2 에이전트)**: 신규 바이너리 `cmd/rosshield/` + 서버 핸들러 5종 + JWT auth + 5 CLI HTTP 명령 + Exit 통합. Stage A·B 두 에이전트 병렬(`cmd/rosshield/` vs `internal/api/handlers/` + `Makefile/main.go newMux`) — 충돌 0. Stage C·D 메인. 외부 dep 0(stdlib + 기존 chi/v5 + reporting/audit 도메인). WebSocket(T2)는 Phase 2 미룸 — `coder/websocket` 신규 dep + Orchestrator EventBus → WS 결선 부담. Phase 1 Exit 데모 흐름이 한 바이너리쌍으로 완결: bootstrap → seed admin → login → robot list → scan run → report list/verify. 누적 ~590+ tests, 31 패키지 그린.
+- **2026-04-29 · R11-1~R11-8 합의 (E9)**: 권장 즉시 채택 — R11-1 별도 바이너리 cmd/rosshield/(P7) / R11-2 stdlib net/http(P3 에어갭, cobra/resty 회피) / R11-3 stdlib flag + 1단계 분기(seed/report 패턴 답습) / R11-4 ~/.rosshield/config.yaml chmod 600 / R11-5 text/tabwriter 기본 + -o json 옵션 / R11-6 chi-server stub override(`gen.Unimplemented` embed로 5 endpoint만, 나머지 자동 501) / R11-7 coder/websocket Phase 2 / R11-8 exit 0/1/2/3 매핑(0 OK / 1 transport·local / 2 4xx·args / 3 5xx·verify-fail).
 - **2026-04-29 · 운영 도구 2종 동시 결선 (seed admin + OpenAPI codegen, 병렬 2 에이전트)**: Phase 1 Exit 데모 흐름 완성 부품 두 가지 동시 진행. (1) `rosshield-server seed admin` 서브커맨드 — `tenant.Service.Create` 일임으로 한 Bootstrap Tx 원자 시드, JSON stdout, 11 tests. (2) oapi-codegen v2.4.1 + chi-server + embedded-spec — `Makefile openapi:` + `tools.go` + `internal/api/{config.yaml, gen/}` + 1001 LOC 첫 generated 산출물 commit, idempotent 확인, 4 tests. 두 에이전트 작업 디렉터리 충돌 0(`cmd/rosshield-server/admin_seed*` vs `Makefile + tools.go + internal/api/`). 신규 dep: `oapi-codegen/v2 v2.4.1` + runtime + chi/v5 + kin-openapi. 누적 ~525+ tests, 29 패키지 그린.
 - **2026-04-29 · E8 Reporting 완료 → epic 종료 (R10-1~R10-8, T1~T6, ~46 신규 tests, 병렬 5 에이전트 활용)**: 정찰 3 에이전트 병렬(PDF lib·전신 자산·서명 패턴) → R10 합의 → Stage A·B 구현 2 에이전트 병렬(별 패키지 충돌 0) → Stage C·D·E 메인 직접. signintech/gopdf(MIT pure Go) + NanumGothic(SIL OFL embed) + Ed25519 detached `.sig` (minisign 호환, PAdES 거부) + tar.gz 번들(report.pdf+sig+anchor+pubkey PEM) + audit chain anchor JSON. report 키 ↔ audit checkpoint 키 분리(R10-7). 결정성 보장(같은 입력 → byte-identical PDF/anchor JSON/tar.gz 모두). Phase 1 Exit "서명 PDF + 외부 검증 성공" 흐름 완성 — `rosshield-server report verify report.tar.gz` 한 줄로 외부 감사인 검증 가능. 누적 ~510+ tests, 전체 그린.
 - **2026-04-29 · R10-1~R10-8 합의 (E8)**: 권장 채택 — R10-1 signintech/gopdf 단독(gofpdf archived, unipdf AGPL/상용 거부, maroto v2 transitive archived) + 보조 pdfcpu / R10-2 detached `.sig` minisign 호환(PAdES X.509 의존 거부, trailing block은 Phase 2) / R10-3 anchor `{tenantId,headSeq,headHash,signedAt,signerKeyId}` JSON + 마지막 페이지 footer 가시화 / R10-4 tar.gz 4-entry 번들 / R10-5 결정성 함정 8종 회피 + golden fixture sha256 회귀 / R10-6 NanumGothic embed.FS / R10-7 report 키 별도 파일 / R10-8 메타 → 통계(색상) → check 상세 → anchor footer.
