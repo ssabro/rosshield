@@ -72,8 +72,9 @@
 
 | 문서 | 내용 |
 |---|---|
-| [phase1-backlog.md](./phase1-backlog.md) | Phase 1(Core MVP) 에픽 12개 × TDD 태스크 분해, 의존 그래프, Exit 기준 |
-| [notes/](./notes/) | 에픽별 사전 설계 노트 — `e1-storage-deepdive.md`, `e1-eventbus-deepdive.md` (E1.T4~T7 구현 전 참고) |
+| [phase2-backlog.md](./phase2-backlog.md) | Phase 2(Intelligence & Compliance) 에픽 7개(E13~E19) + Phase 1 carryover C1~C7 |
+| [archive/phase1-backlog.md](./archive/phase1-backlog.md) | Phase 1 완료 백로그(E1~E12 + 운영 도구, 12 epic 모두 ✅) — 아카이브 |
+| [notes/](./notes/) | 에픽별 사전 설계 노트 — Phase 1 R3·R4·R5·R6·R7·R8·R9·R10 정찰 결과 |
 
 ---
 

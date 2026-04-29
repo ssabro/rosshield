@@ -4,11 +4,15 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-29 (E11 Compose 번들 종료 → **Phase 1 backlog 12 epic 모두 완료**, 단일 에이전트)_
+_마지막 업데이트: 2026-04-29 (Phase 2 진입 준비 — phase1 archive + phase2-backlog 신규)_
 
 ---
 
 ## 현재 상태 한 줄
+
+**Phase 2 진입 준비 완료 — `phase1-backlog.md` → `archive/`로 이전 + `phase2-backlog.md` 신규 작성 (E13~E19 7 epic + Carryover C1~C7).** Phase 2 epic: E13 LLM Adapter(noop/ollama/anthropic, 1주)·E14 Insight(drift·anomaly·peer 결정론, 1주)·E15 Compliance(ISMS-P/ISO27001/NIST, 1.5주)·E16 Advisor(LLM 대화, 1주)·E17 자동 매핑 제안(3일)·E18 Framework PDF(3일)·E19 Web UI 3 페이지(1주). 의존: E13/E14/E15 평행 가능 → E16/E17/E18 후속 → E19 마지막. 추정 6.5주 단독, 5주 병렬. Carryover(C1 WebSocket·C2 Tauri·C3 Web UI 추가 페이지·C4 Playwright·C5 i18n·C6 HttpOnly cookie·C7 refresh reuse) 우선순위는 사용자 합의 대기. Phase 2 Exit: ISMS-P 통제 점수·리포트·외부 검증. `docs/design/README.md` Part VII 갱신 + `SESSION_HANDOFF.md` 작업 재개 절차 phase2-backlog 참조로 갱신. **다음**: R14 결정(LLM 기본 어댑터 전략·Compliance 데이터 출처) 합의 후 E13/E14/E15 병렬 진입 또는 Carryover 우선(C1 WebSocket이 데모 UX 핵심).
+
+### 직전 한 줄 (E11 Compose)
 
 **E11 Compose 번들 epic 완전 종료 (T1·T2·T3, R13-1~R13-7) → Phase 1 backlog 12 epic 모두 완료.** 단일 에이전트 dispatch — Docker 미설치 환경에서 syntax check 검증, 실 build는 사용자/CI. 신규 디렉터리 `deploy/compose/` + `scripts/` + Makefile 4 타겟. 기존 Go·TS 코드 무수정. (a) **Multi-stage Dockerfile** — `golang:1.26-alpine`(CGO_ENABLED=0, modernc.org/sqlite pure Go) build → `alpine:3.20` runtime(wget healthcheck + sh entrypoint), Web 자산은 git 트래킹된 `internal/web/dist`를 builder가 그대로 embed. (b) **entrypoint.sh first-boot init** — `data.db` 부재 시 env 강제(`ROSSHIELD_ADMIN_EMAIL/PASSWORD`)로 `rosshield-server seed admin` 호출 후 `exec rosshield-server`로 PID 1 양도. JSON stdout(docker logs로 token 회수). (c) **docker-compose.yml** — 단일 서비스 + named volume `rosshield-data` → `/var/lib/rosshield` 영속, 비-root user(`rosshield`) 실행, `unless-stopped` restart 정책. .env에서 admin email/password 강제. (d) **HEALTHCHECK** — `wget --quiet --tries=1 --spider http://localhost:8080/healthz` 30s interval / 5s timeout / 10s start-period / 3 retries. (e) **scripts/compose-smoke.sh** — `up --build → /healthz polling 30s → down -v` cleanup, .env 자동 fixture, docker 부재 시 graceful skip(exit 0). (f) **.dockerignore** — `web/node_modules/`·`web/dist/`만 좁게 제외(서버 embed에 필요한 `internal/web/dist/`는 컨텍스트 보존). (g) **Makefile** — `compose-{build,up,down,smoke}` 4 타겟. (h) **README.md** (110줄) — 빠른 시작·첫 부팅·persistence·healthcheck·시연·트러블슈팅·백업·보안 노트. **신규 dep 0** (외부 base image만). 본 머신 미설치라 syntax check만 검증(bash -n PASS). 누적 ~611+ tests, 32 패키지 그린(unchanged). **Phase 1 backlog 12 epic 모두 완료** — E1~E12 + 운영 도구 2종(seed admin, OpenAPI codegen) 결선. **다음**: ⭐ **Phase 1 Exit 검증 + push origin** (현재 11 commits ahead) 또는 deferred 항목 회수(WebSocket scan progress, Tauri 데스크톱) 또는 Phase 2 진입 준비.
 
@@ -118,12 +122,14 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 │   └── source-benchmarks/          # nrobotcheck 원본 자료 포인터 (파일 미복사)
 ├── bin/                            # 빌드 산출물 (gitignored)
 └── docs/
-    └── design/                     # 설계 문서 13종 + phase1-backlog.md
+    └── design/                     # 설계 문서 13종 + phase2-backlog.md (phase1은 archive/)
         ├── README.md
         ├── 00-mission-and-positioning.md
         ├── ...
         ├── 12-migration-and-non-goals.md
-        └── phase1-backlog.md       # 실행 백로그 (Part VII)
+        ├── phase2-backlog.md       # 현재 실행 백로그 (Part VII)
+        └── archive/
+            └── phase1-backlog.md   # Phase 1 완료 백로그 (참조용)
 ```
 
 ## 결정 필요 항목 (Phase 0 Exit 조건)
@@ -140,14 +146,14 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 ## 진행 중 선택지
 
-🎉 **Phase 1 backlog 12 epic 모두 완료** (E1~E12 + 운영 도구). `rosshield-server` 단일 바이너리에 API + Web Console + 정적 자산 + 서명 PDF + audit chain + offline verify + Docker compose 모두 결선.
+**Phase 2 진입 가능** — `phase2-backlog.md` 작성 완료(E13~E19 7 epic + C1~C7 carryover). 본격 구현 전 R14 합의 또는 carryover 우선 결정 필요.
 
-1. **Push origin (강력 권장)** — 현재 11 commits ahead. CI 검증 + GitHub 백업 + 외부 review 가능. 명시 요청 필요(CLAUDE.md 정책).
-2. **Phase 1 Exit 검증 시연** — `make compose-smoke` (Docker 환경에서) 또는 수동 데모 흐름 검증. 1시간.
-3. **WebSocket scan progress (E9.T2 + E10.T3 deferred)** — `coder/websocket` + 서버 WS + CLI `scan watch` + Web ScanDetailPage. 1~2일.
-4. **Tauri 데스크톱 셸 (R12-9 deferred)** — Rust 툴체인 + Web Console 번들. 1주.
-5. **Compliance 도메인 (off-backlog, §08 design)** — ISO27001/NIST/CIS/IEC-62443 매핑. Phase 2 후보. 1주.
-6. **Phase 2 진입 준비** — `docs/design/archive/phase1-backlog.md` 이전 + `phase2-backlog.md` 신규.
+1. **R14 결정 합의 후 E13·E14·E15 병렬 진입 (권장)** — Phase 2 첫 epic. LLM Adapter·Insight·Compliance 평행 가능. R14 항목: LLM 기본값(noop/ollama 중)·Compliance 데이터 출처(KISA OpenISMS-P JSON 등)·Insight drift 윈도우 N. 결정 후 3 에이전트 병렬 dispatch.
+2. **Carryover C1 (WebSocket scan progress) 우선 회수** — Phase 1 데모 UX 마무리. `coder/websocket` 도입. 1~2일.
+3. **Carryover C2 (Tauri 데스크톱)** — Rust 툴체인 도입. D3 채택 spec 정합. 1주.
+4. **Carryover C3 (Web UI Overview·Findings·Audit·Settings 페이지)** — 4 추가 페이지. Compliance·Advisor는 E15·E16 후속. 3~5일.
+5. **GitHub repo public 전환 (D6 트리거)** — Phase 1 exit 후 public 전환 정책. README/LICENSE 점검 + visibility 변경.
+6. **잠시 휴식 + 자축** — Phase 1 12 epic 완료 + CI green.
 3. **bootstrap CLI seed admin** — `--seed-admin email password` 플래그로 system tenant + admin user + 기본 system pack 시드. ~1~2시간.
 4. **Step 0.3-β OpenAPI 코드 생성** — `oapi-codegen` for auth·pack·robot·scan endpoints. ~2시간.
 5. **EventBus WithCriticalFailure 옵션** — R2-4 핵심 구독자(audit) 실패 콜백.
@@ -172,6 +178,7 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 날짜 내림차순.
 
+- **2026-04-29 · Phase 2 진입 준비**: `docs/design/phase1-backlog.md` → `archive/`로 git mv (history 보존). `phase2-backlog.md` 신규 — Phase 2 7 epic(E13 LLM Adapter·E14 Insight·E15 Compliance·E16 Advisor·E17 자동 매핑·E18 Framework PDF·E19 Web UI 3 페이지) + Phase 1 Carryover C1~C7(WebSocket·Tauri·UI 페이지·Playwright·i18n·HttpOnly cookie·refresh reuse). 의존 그래프(E13/E14/E15 평행 가능 → E16/E17/E18 후속 → E19 마지막), 추정 6.5주 단독·5주 병렬, Exit 기준(ISMS-P 통제 점수·외부 검증). `docs/design/README.md` Part VII 갱신 + `SESSION_HANDOFF.md` 작업 재개 절차 phase2 참조로 갱신. CI green 상태 유지(371c314).
 - **2026-04-29 · 🎉 Phase 1 backlog 12 epic 모두 완료 (E11 Compose 번들 종료, R13-1~R13-7)**: Multi-stage Dockerfile(`golang:1.26-alpine` build → `alpine:3.20` runtime, CGO=0 pure Go) + entrypoint.sh first-boot 자동 admin seed + named volume 영속 + HEALTHCHECK + `scripts/compose-smoke.sh` (docker 미설치 시 graceful skip) + Makefile compose-* 4 타겟. 신규 dep 0(외부 base image만). Docker 미설치 환경이라 syntax check만(bash -n PASS). `rosshield-server` 단일 바이너리에 API + Web Console + 정적 자산 + 서명 PDF + audit chain + offline verify + Docker compose 모두 결선. 누적 ~611+ tests(unchanged), 32 패키지 그린.
 - **2026-04-29 · R13-1~R13-7 합의 (E11)**: 권장 즉시 채택 — R13-1 alpine:3.20 runtime(shell + wget) / R13-2 Multi-stage(go build + alpine), web build 불필요(internal/web/dist 트래킹) / R13-3 entrypoint first-boot init + exec server / R13-4 데이터 볼륨 /var/lib/rosshield / R13-5 admin env vars 강제 + JSON stdout / R13-6 wget healthcheck 30s interval / R13-7 smoke 30s polling.
 - **2026-04-29 · E10 Web UI epic 종료 (Stage A·B·C·D, T1만 + T2~T5 Phase 2 deferred, R12-1~R12-12, 21 신규 tests, 3 에이전트 순차 + 메인)**: 신규 frontend toolchain(Node 22 + pnpm 10) 도입 + Vite 6 + React 19 + Tailwind v4 + TanStack Router/Query + Zustand + shadcn/ui 23 컴포넌트(전신 nrobotcheck 답습) + openapi-fetch + 5 TanStack Query 훅 + 4 페이지(Login/Robots/Scans/Reports) + `_authenticated` pathless layout 인증 가드 + Vitest/RTL/jsdom + Go embed.FS로 dist 임베드. **Phase 1 Exit "한 바이너리에 백엔드 + Web Console 모두" 완성** — `rosshield-server` 한 파일이 API + 정적 자산(115KB gzipped) 동시 서빙(P7 single binary, P3 에어갭). 신규 Go dep 0(stdlib `embed`만). T2(Overview)·T3(WebSocket scan progress)·T4(Playwright E2E)·T5(i18next ko/en)는 Phase 2 deferred — Tauri 데스크톱(R12-9)·WebSocket(R12-10)·Playwright(R12-7)·i18n(R12-8) 모두 단순화 우선.
@@ -264,12 +271,12 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 1. 이 문서 읽기
 2. `git log --oneline -10` 및 `gh run list --limit 3 --repo ssabro/rosshield`로 최근 상태·CI 확인
 3. 사용자에게 "## 진행 중 선택지"를 제시하고 번호 선택 받기
-4. 관련 설계서 섹션 정독 (Phase 1이면 `docs/design/phase1-backlog.md`의 해당 에픽)
+4. 관련 설계서 섹션 정독 (Phase 2면 `docs/design/phase2-backlog.md`의 해당 epic, Phase 1 참조는 `archive/phase1-backlog.md`)
 5. 도메인 경계·테넌시·감사 영향을 1차 점검 (아래 "긴급 체크리스트")
 6. TDD 착수 (Red → Green → 필요 시 Refactor)
 7. 커밋 전 로컬 파이프라인 녹색 확인: `make vet && make test && make lint` (또는 `make ci`)
 8. 커밋·push 후 GitHub Actions 녹색 확인 (`gh run watch`)
-9. 에픽/스텝 완료 시 이 문서 **"결정 로그"** + **"현재 상태 한 줄"** + (필요 시) **"진행 중 선택지"** 갱신 + `docs/design/phase1-backlog.md`의 태스크 체크박스 업데이트
+9. 에픽/스텝 완료 시 이 문서 **"결정 로그"** + **"현재 상태 한 줄"** + (필요 시) **"진행 중 선택지"** 갱신 + `docs/design/phase2-backlog.md`의 태스크 체크박스 업데이트
 
 ## 아직 없는 것 (Phase 1 이후 생길 것)
 
