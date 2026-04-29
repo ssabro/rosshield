@@ -19,6 +19,9 @@ desktop.ini
 # ─── Node / TypeScript ──────────────────────────────────
 node_modules/
 dist/
+# 예외: internal/web/dist/는 Go //go:embed 대상이라 git에 commit (E10 R12-11 single binary).
+!internal/web/dist/
+!internal/web/dist/**
 build/
 out/
 .next/
