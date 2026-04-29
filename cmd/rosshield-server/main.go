@@ -17,6 +17,7 @@ import (
 
 	"github.com/ssabro/rosshield/internal/api/handlers"
 	"github.com/ssabro/rosshield/internal/platform/storage"
+	webembed "github.com/ssabro/rosshield/internal/web"
 )
 
 // healthResponse는 /healthz 응답 본문입니다.
@@ -130,6 +131,20 @@ func newMux(p *Platform) http.Handler {
 	})
 	h.Mount(apiRouter)
 	mux.Handle("/api/v1/", apiRouter)
+
+	// E10 Stage D — Web Console 정적 자산 서빙 (R12-11 single binary).
+	// 빌드 결과 부재(`make web-build` 미실행)는 graceful skip — /api는 계속 동작,
+	// /과 /assets/* 만 503/안내 메시지 반환.
+	if webHandler, err := webembed.Handler(); err == nil {
+		mux.Handle("/", webHandler)
+	} else {
+		// dist 미빌드 — 진단용 fallback (production에서는 build 시 항상 존재).
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("rosshield Web Console not built — run `make web-build` then rebuild server\n"))
+		})
+	}
 
 	return mux
 }

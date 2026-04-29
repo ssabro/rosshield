@@ -2,7 +2,7 @@ GO ?= go
 BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
 
-.PHONY: all build test vet fmt tidy lint ci clean openapi
+.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types
 
 all: ci
 
@@ -39,6 +39,26 @@ openapi:
 	@echo "✓ Generated internal/api/gen/openapi.gen.go"
 
 ci: vet test build
+
+# Web Console (E10) — pnpm 기반.
+# 설계: docs/design/09-ui-and-clients.md §9.2.
+web-install:
+	cd web && pnpm install
+
+web-dev:
+	cd web && pnpm dev
+
+web-build:
+	cd web && pnpm build
+
+# E10 Stage D — Vitest 단위 테스트 (jsdom + RTL).
+web-test:
+	cd web && pnpm test
+
+# OpenAPI spec → TS 타입 자동 생성 (Stage B). 결과물은 git 커밋 대상.
+web-types:
+	cd web && npx openapi-typescript ../openapi/openapi.yaml -o src/api/types.ts
+	@echo "✓ Generated web/src/api/types.ts"
 
 clean:
 	rm -rf $(BIN_DIR)

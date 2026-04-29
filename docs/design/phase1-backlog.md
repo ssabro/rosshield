@@ -495,11 +495,15 @@ rosshield audit verify [--from --to]
 
 | ID | 테스트 | 구현 |
 |---|---|---|
-| E10.T1 | `LoginPage.test.tsx` — 잘못된 자격증명 시 에러 메시지 | Vitest + RTL |
-| E10.T2 | `OverviewPage` — 스캔 상태 카드 렌더 | mock API |
-| E10.T3 | `ScanDetailPage` — WS 이벤트로 진행률 업데이트 | MSW + websocket mock |
-| E10.T4 | Playwright E2E — login → new scan → watch progress → open report | docker-compose harness |
-| E10.T5 | i18n — `i18next` ko/en 번들 분할 동작 | Vitest |
+| E10.T1 ✅ | `login.test.tsx` — 401 시 한국어 에러 + ApiError 분기 | Vitest + RTL (`web/src/routes/login.test.tsx`) |
+| E10.T2 ⏸ | (Overview 카드 렌더) | Phase 2 — Phase 1은 4 페이지만(R12-1) |
+| E10.T3 ⏸ | (WS 진행률 업데이트) | Phase 2 — WebSocket deferred(R12-10) |
+| E10.T4 ⏸ | (Playwright E2E) | Phase 2 — docker-compose harness 부담(R12-7) |
+| E10.T5 ⏸ | (i18next ko/en) | Phase 2 — 한국어 only(R12-8) |
+| E10.Stage A ✅ | `web/` 부트스트랩 — Vite 6 + React 19 + TS + Tailwind v4 + TanStack Router/Query + Zustand + shadcn/ui 23개 (115KB gzipped) | `web/{package.json, vite.config.ts, src/}` + Makefile `web-{install,dev,build}` |
+| E10.Stage B ✅ | OpenAPI → TS 타입(606 LOC) + openapi-fetch + 5 TanStack Query 훅(useLogin/useMe/useRobots/useStartScan/useReports) + Zustand auth 스토어(localStorage persist) | `web/src/{api/, stores/auth.ts}` + Makefile `web-types` |
+| E10.Stage C ✅ | 4 페이지(Login·Robots·Scans·Reports) + TanStack Router file-based + `_authenticated` pathless layout 인증 가드 + Sidebar/Header (autoCodeSplitting로 페이지별 chunk) | `web/src/routes/{login,index,_authenticated/...}.tsx` + `components/layout/` |
+| E10.Stage D ✅ | Vitest + RTL 단위 16 tests + `internal/web/embed.go` Go embed.FS + `cmd/rosshield-server/main.go` newMux 정적 자산 mount(SPA fallback + immutable cache) | `web/src/test/setup.ts` + `vitest.config.ts` + `internal/web/{embed.go, _test.go}` |
 
 ### Exit 기준
 

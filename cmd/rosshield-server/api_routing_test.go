@@ -11,6 +11,9 @@ import (
 	"testing"
 )
 
+// strings를 명시 import (이미 위에서 import — placeholder).
+var _ = strings.Contains
+
 func TestNewMuxExposesAPIRoutes(t *testing.T) {
 	t.Parallel()
 	p := newTestPlatform(t)
@@ -58,5 +61,49 @@ func TestHealthzPreservedAfterAPIMount(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/healthz status=%d, want 200", rec.Code)
+	}
+}
+
+// E10 Stage D — Web Console 정적 자산이 newMux 결선됐는지 검증.
+//
+// `make web-build`로 internal/web/dist가 생성된 환경에서만 의미 있음 — 빌드 부재 시
+// 503 + "not built" 메시지가 반환되며 테스트는 graceful skip(개발 빌드 의존).
+func TestWebConsoleServedAtRoot(t *testing.T) {
+	t.Parallel()
+	p := newTestPlatform(t)
+	mux := newMux(p)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusServiceUnavailable {
+		t.Skip("web/dist 미빌드 — `make web-build` 후 재실행")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200 or 503", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "<!doctype html>") &&
+		!strings.Contains(rec.Body.String(), "<!DOCTYPE html>") {
+		t.Fatalf("body missing doctype")
+	}
+}
+
+func TestWebConsoleSPAFallback(t *testing.T) {
+	t.Parallel()
+	p := newTestPlatform(t)
+	mux := newMux(p)
+
+	for _, path := range []string{"/login", "/robots", "/scans", "/reports"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code == http.StatusServiceUnavailable {
+			t.Skipf("web/dist 미빌드 — %s skip", path)
+			return
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: status=%d, want 200 (SPA fallback)", path, rec.Code)
+		}
 	}
 }

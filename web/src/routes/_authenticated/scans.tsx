@@ -1,0 +1,151 @@
+import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
+
+import { ApiError } from '@/api/errors'
+import { useStartScan } from '@/api/hooks'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+import type { ScanSession } from '@/api/hooks'
+import type { FormEvent } from 'react'
+
+// `/scans` — 새 스캔 시작 폼.
+// - 별도 목록 endpoint가 Stage B에 없어, Phase 1은 시작 폼 + 결과 카드만 노출.
+// - 성공 시 sessionId·status 카드 표시. 실패 시 에러 메시지.
+const TRIGGERS = ['manual', 'schedule', 'event'] as const
+
+function ScansPage(): React.ReactElement {
+  const [fleetId, setFleetId] = useState('')
+  const [packId, setPackId] = useState('')
+  const [trigger, setTrigger] = useState<string>('manual')
+  const [lastSession, setLastSession] = useState<ScanSession | null>(null)
+  const [error, setError] = useState('')
+
+  const startScan = useStartScan()
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
+    e.preventDefault()
+    setError('')
+    setLastSession(null)
+    startScan.mutate(
+      { fleetId, packId, trigger },
+      {
+        onSuccess: (session) => setLastSession(session),
+        onError: (err) => {
+          if (err instanceof ApiError) {
+            setError(err.message)
+          } else {
+            setError(err instanceof Error ? err.message : '스캔 시작 실패')
+          }
+        },
+      },
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">스캔</h1>
+        <p className="text-sm text-muted-foreground">
+          플릿과 벤치마크 팩을 선택해 새 스캔 세션을 시작합니다.
+        </p>
+      </div>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>새 스캔 시작</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="fleetId">Fleet ID</Label>
+              <Input
+                id="fleetId"
+                required
+                value={fleetId}
+                onChange={(e) => setFleetId(e.target.value)}
+                placeholder="예: production"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="packId">Pack ID</Label>
+              <Input
+                id="packId"
+                required
+                value={packId}
+                onChange={(e) => setPackId(e.target.value)}
+                placeholder="예: cis-ubuntu-24.04"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="trigger">트리거</Label>
+              <Select value={trigger} onValueChange={setTrigger}>
+                <SelectTrigger id="trigger">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TRIGGERS.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {error && (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+            <Button type="submit" disabled={startScan.isPending}>
+              {startScan.isPending ? '시작 중…' : '스캔 시작'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {lastSession && (
+        <Card className="max-w-xl">
+          <CardHeader>
+            <CardTitle>시작된 세션</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div>
+              <span className="text-muted-foreground">Session ID: </span>
+              <span className="font-mono">{lastSession.sessionId}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">상태: </span>
+              <span>{lastSession.status}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">진행: </span>
+              <span>
+                {lastSession.completed} / {lastSession.total} (실패{' '}
+                {lastSession.failed})
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+export const Route = createFileRoute('/_authenticated/scans')({
+  component: ScansPage,
+})
