@@ -141,7 +141,7 @@ func TestReportVerifyJSONOutputContainsAnchorFields(t *testing.T) {
 	oldStdout := os.Stdout
 	os.Stdout = w
 	exitCode := runReportVerify([]string{bundlePath})
-	w.Close()
+	_ = w.Close()
 	os.Stdout = oldStdout
 
 	out, _ := io.ReadAll(r)

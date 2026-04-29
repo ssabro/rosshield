@@ -23,16 +23,6 @@ func markerCount(out []byte) int {
 	return bytes.Count(out, []byte("[REDACTED:"))
 }
 
-// findMarkByType은 marks 슬라이스에서 첫 type 일치 항목을 돌려줍니다.
-func findMarkByType(marks []RedactionMark, typ string) (RedactionMark, bool) {
-	for _, m := range marks {
-		if m.Type == typ {
-			return m, true
-		}
-	}
-	return RedactionMark{}, false
-}
-
 func TestRedactRemovesPasswordEqualsValue(t *testing.T) {
 	in := []byte("config: password=secret123 verified")
 	out, marks := Redact(in)

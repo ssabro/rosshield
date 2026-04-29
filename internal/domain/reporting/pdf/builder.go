@@ -178,7 +178,7 @@ func (b *Builder) Build(input PDFInput) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	if err := doc.Write(&buf); err != nil {
+	if _, err := doc.WriteTo(&buf); err != nil {
 		return nil, fmt.Errorf("pdf: write: %w", err)
 	}
 	return buf.Bytes(), nil

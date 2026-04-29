@@ -94,12 +94,10 @@ func TestChiServerInterfaceGenerated(t *testing.T) {
 	t.Parallel()
 
 	// Handler 함수가 ServerInterface 구현체를 받아 http.Handler를 반환해야 함.
-	h := Handler(&nilHandler{})
+	// 반환 타입이 이미 http.Handler라 별도 type assertion 불필요(staticcheck S1040).
+	var h http.Handler = Handler(&nilHandler{})
 	if h == nil {
 		t.Fatal("Handler(&nilHandler{}) returned nil")
-	}
-	if _, ok := h.(http.Handler); !ok {
-		t.Error("Handler return value does not satisfy http.Handler")
 	}
 
 	// HandlerFromMux 함수도 동일한 시그니처로 노출되는지 확인 (컴파일 시 보장,
@@ -117,10 +115,7 @@ func TestChiServerInterfaceGenerated(t *testing.T) {
 func TestServerInterfaceCoversAllOperations(t *testing.T) {
 	t.Parallel()
 
-	var s ServerInterface = Unimplemented{}
-
-	// nil이 아닌 인터페이스를 갖고 있으면 컴파일 시점 모든 메서드 셋이 통과한 것.
-	if s == nil {
-		t.Fatal("Unimplemented does not satisfy ServerInterface")
-	}
+	// 컴파일 시점 가드 — 모든 메서드 셋이 ServerInterface와 호환되어야 함.
+	// (struct literal `Unimplemented{}`는 nil이 될 수 없으므로 런타임 nil 체크 불필요.)
+	var _ ServerInterface = Unimplemented{}
 }

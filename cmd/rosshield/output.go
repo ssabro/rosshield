@@ -45,10 +45,10 @@ func PrintTable(headers []string, rows [][]string) {
 func writeTable(w io.Writer, headers []string, rows [][]string) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	if len(headers) > 0 {
-		fmt.Fprintln(tw, joinTabs(headers))
+		_, _ = fmt.Fprintln(tw, joinTabs(headers))
 	}
 	for _, row := range rows {
-		fmt.Fprintln(tw, joinTabs(row))
+		_, _ = fmt.Fprintln(tw, joinTabs(row))
 	}
 	_ = tw.Flush()
 }
