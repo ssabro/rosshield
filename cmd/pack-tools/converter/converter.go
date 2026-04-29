@@ -180,12 +180,18 @@ func MarshalCheck(c Check) ([]byte, error) {
 //	  pack.yaml
 //	  checks/
 //	    <id>.yaml ...
+//	  selftest/
+//	    <id>.yaml ...     (자동 변환된 check만 — degraded·custom은 사용자 수동 작성)
 //
 // outputDir이 이미 존재하면 ErrOutputExists — 의도치 않은 덮어쓰기 차단.
 // 부모 디렉터리는 호출자가 보장(존재하지 않으면 MkdirAll로 생성).
 //
 // duplicate ID는 ErrDuplicateCheckID로 즉시 거부 — 변환기가 ID 충돌을 흘려보내면
 // 마지막 항목으로 silently 덮어쓰여지는 함정을 방지.
+//
+// Self-Test fixture는 PASS 마커 매칭 rule에 한해서만 자동 생성(GenerateSelfTestSkeletons).
+// degraded·custom rule의 check는 selftest/<id>.yaml이 만들어지지 않으므로 production
+// `benchmark.RunPackSelfTests`가 Degraded=true로 보고 — Phase 2에서 수동 보강.
 func WriteToDir(p Pack, outputDir string) error {
 	if _, err := os.Stat(outputDir); err == nil {
 		return fmt.Errorf("%w: %s", ErrOutputExists, outputDir)
@@ -223,6 +229,20 @@ func WriteToDir(p Pack, outputDir string) error {
 		path := filepath.Join(checksDir, c.ID+".yaml")
 		if err := os.WriteFile(path, checkBytes, 0o644); err != nil {
 			return fmt.Errorf("converter: write check %q: %w", c.ID, err)
+		}
+	}
+
+	report := GenerateSelfTestSkeletons(p)
+	if len(report.Skeletons) > 0 {
+		selftestDir := filepath.Join(outputDir, "selftest")
+		if err := os.MkdirAll(selftestDir, 0o755); err != nil {
+			return fmt.Errorf("converter: mkdir selftest: %w", err)
+		}
+		for _, sk := range report.Skeletons {
+			path := filepath.Join(selftestDir, sk.CheckID+".yaml")
+			if err := os.WriteFile(path, sk.YAML, 0o644); err != nil {
+				return fmt.Errorf("converter: write selftest %q: %w", sk.CheckID, err)
+			}
 		}
 	}
 	return nil

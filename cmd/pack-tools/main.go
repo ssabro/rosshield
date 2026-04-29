@@ -10,6 +10,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"os"
@@ -51,7 +52,12 @@ func usage() {
 사용법:
   pack-tools convert -input <baseline.json> -format <ros2-framework-v1|cis-ubuntu-json-v1> -output <dir>
                      [-vendor <s>] [-pack-name <s>] [-pack-version <s>] [-description <s>]
-  pack-tools archive -input <dir> -signer-key <ed25519.pem> -output <pack>.tar.gz`)
+  pack-tools archive -input <dir> -signer-key <ed25519.key> -output <pack>.tar.gz
+
+archive 옵션:
+  -signer-key  raw 64-byte Ed25519 private key 파일
+               (생성: openssl genpkey -algorithm ed25519 후 raw bytes 추출,
+                또는 internal/platform/signer/soft.LoadOrCreatePrivateKey 결과 키 파일)`)
 }
 
 func runConvert(args []string) int {
@@ -158,8 +164,9 @@ func runArchive(args []string) int {
 	fs := flag.NewFlagSet("archive", flag.ContinueOnError)
 	var (
 		input     = fs.String("input", "", "변환된 pack 디렉터리 경로 (필수)")
-		signerKey = fs.String("signer-key", "", "Ed25519 PEM 서명 키 경로 (필수)")
+		signerKey = fs.String("signer-key", "", "raw 64-byte Ed25519 private key 파일 (필수)")
 		output    = fs.String("output", "", "출력 .tar.gz 경로 (필수)")
+		force     = fs.Bool("force", false, "출력 파일이 존재하면 덮어쓰기")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -169,7 +176,54 @@ func runArchive(args []string) int {
 		fs.Usage()
 		return 2
 	}
-	// Stage D 구현 예정.
-	fmt.Fprintln(os.Stderr, "archive: Stage D 미구현")
-	return 1
+
+	priv, err := loadEd25519PrivateKey(*signerKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "archive: load signer key: %v\n", err)
+		return 1
+	}
+
+	if !*force {
+		if _, err := os.Stat(*output); err == nil {
+			fmt.Fprintf(os.Stderr, "archive: output %q already exists (use -force to overwrite)\n", *output)
+			return 1
+		} else if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "archive: stat output: %v\n", err)
+			return 1
+		}
+	}
+
+	data, err := converter.BuildArchive(*input, priv)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "archive: %v\n", err)
+		return 1
+	}
+	if err := os.WriteFile(*output, data, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "archive: write output: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("archive 생성 완료: %s (%d bytes)\n", *output, len(data))
+	return 0
+}
+
+// loadEd25519PrivateKey는 raw 64-byte Ed25519 private key 파일을 로드합니다.
+//
+// 형식: ed25519.PrivateKey (seed 32B + public 32B). production
+// `internal/platform/signer/soft.LoadOrCreatePrivateKey`가 만드는 파일과 호환.
+//
+// PEM/PKCS#8 등 외부 형식은 미지원 — 오프라인 도구이므로 단일 형식 강제(설계 단순성).
+// PEM이 필요하면 사용자가 외부 도구로 raw bytes 추출 후 사용.
+func loadEd25519PrivateKey(path string) (ed25519.PrivateKey, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read key file %q: %w", path, err)
+	}
+	if len(data) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("key file %q has size %d, want %d (raw Ed25519 private key)",
+			path, len(data), ed25519.PrivateKeySize)
+	}
+	priv := make(ed25519.PrivateKey, ed25519.PrivateKeySize)
+	copy(priv, data)
+	return priv, nil
 }
