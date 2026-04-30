@@ -12,10 +12,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ssabro/rosshield/internal/app/advisorrun"
 	"github.com/ssabro/rosshield/internal/app/insightautorun"
 	"github.com/ssabro/rosshield/internal/app/llmmapper"
 	"github.com/ssabro/rosshield/internal/app/scanrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
+	advisorrepo "github.com/ssabro/rosshield/internal/domain/advisor/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
@@ -101,6 +103,7 @@ type Platform struct {
 	Insight      insight.Service
 	Compliance   compliance.Service
 	LLM          llm.Adapter
+	Advisor      advisor.Service // E16
 
 	systemTenant storage.TenantID
 
@@ -785,6 +788,21 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	// (Compliance 도메인은 E18 결선 순서 변경으로 reporting 위에서 만듦)
 
+	// E16 — Advisor 결선 (옵트인, LLM 어댑터 noop이면 ErrAdvisorDisabled).
+	advisorRepoSvc := advisorrepo.New(advisorrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: emitter,
+	})
+	advisorDispatcher := advisorrun.NewDispatcher(scanSvc, evidenceSvc, clk)
+	advisorLLMClient := advisorrun.NewLLMClient(llmAdapter)
+	advisorSvc := advisorrun.NewOrchestrator(advisorrun.OrchestratorDeps{
+		Repo:         advisorRepoSvc,
+		LLM:          advisorLLMClient,
+		Dispatcher:   advisorDispatcher,
+		DefaultModel: cfg.LLMModel,
+	})
+
 	// E19 — scan.completed 이벤트 구독 → Insight.RunForFleet 자동 호출.
 	insightAutorun := insightautorun.New(insightautorun.Deps{
 		Logger:  logger,
@@ -842,6 +860,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Insight:           insightSvc,
 		Compliance:        complianceSvc,
 		LLM:               llmAdapter,
+		Advisor:           advisorSvc,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}, nil
