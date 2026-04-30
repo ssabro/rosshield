@@ -31,6 +31,12 @@ func (f *fakeAuditEmitter) EmitSnapshotGenerated(_ context.Context, _ storage.Tx
 	f.snapshotCreated = append(f.snapshotCreated, s)
 	return nil
 }
+func (f *fakeAuditEmitter) EmitSuggestionCreated(_ context.Context, _ storage.Tx, _ compliance.MappingSuggestion) error {
+	return nil
+}
+func (f *fakeAuditEmitter) EmitSuggestionDecided(_ context.Context, _ storage.Tx, _ compliance.MappingSuggestion) error {
+	return nil
+}
 
 // fakeScanReader는 미리 채워진 results를 반환합니다.
 type fakeScanReader struct {

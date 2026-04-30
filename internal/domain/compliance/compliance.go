@@ -123,13 +123,133 @@ type FrameworkSnapshot struct {
 //
 // 호출 시점:
 //
-//	CreateProfile      → EmitProfileCreated
-//	GenerateSnapshot   → EmitSnapshotGenerated
+//	CreateProfile        → EmitProfileCreated
+//	GenerateSnapshot     → EmitSnapshotGenerated
+//	SuggestMappings      → EmitSuggestionCreated (각 신규 INSERT마다 1회)
+//	ConfirmSuggestion    → EmitSuggestionConfirmed
+//	RejectSuggestion     → EmitSuggestionRejected
 //
 // bootstrap이 audit.Service를 어댑팅해 주입.
 type AuditEmitter interface {
 	EmitProfileCreated(ctx context.Context, tx storage.Tx, p ComplianceProfile) error
 	EmitSnapshotGenerated(ctx context.Context, tx storage.Tx, s FrameworkSnapshot) error
+	// E17 Phase 2 — LLM 자동 매핑 제안 audit emit.
+	EmitSuggestionCreated(ctx context.Context, tx storage.Tx, s MappingSuggestion) error
+	EmitSuggestionDecided(ctx context.Context, tx storage.Tx, s MappingSuggestion) error
+}
+
+// E17 — LLM 자동 매핑 제안 모델 + 표면.
+
+// SuggestionStatus는 MappingSuggestion의 상태입니다.
+//
+// 결정 알고리즘:
+//
+//	SuggestMappings(LLM 호출)        → "pending"
+//	ConfirmSuggestion                  → "confirmed"
+//	RejectSuggestion                   → "rejected"
+//
+// 자동 적용은 X (P2 옵트인 + R14-1) — confirm 후 ControlDefinition.MappedCheckIDs 갱신은
+// 별도 흐름(Phase 2는 git commit YAML, Phase 3 검토).
+type SuggestionStatus string
+
+const (
+	SuggestionPending   SuggestionStatus = "pending"
+	SuggestionConfirmed SuggestionStatus = "confirmed"
+	SuggestionRejected  SuggestionStatus = "rejected"
+)
+
+// SuggestionProducedBy는 제안 출처입니다.
+type SuggestionProducedBy string
+
+const (
+	SuggestionByLLM    SuggestionProducedBy = "llm"
+	SuggestionByRules  SuggestionProducedBy = "rules"
+	SuggestionByManual SuggestionProducedBy = "manual"
+)
+
+// MappingSuggestion은 한 check를 한 control에 매핑하자는 제안입니다.
+//
+// (TenantID, CheckCode, ControlID) UNIQUE — 같은 조합으로 두 번 제안되지 않음.
+type MappingSuggestion struct {
+	ID          string
+	TenantID    storage.TenantID
+	CheckCode   string // pack 내 check.code (예: "CIS-1.1.1.1")
+	Framework   Framework
+	ControlID   string  // 제안 control ID (예: "ISMS-P:2.5.1")
+	Confidence  float64 // 0.0~1.0 (LLM 추정; rules는 0.5 default)
+	Reasoning   string  // LLM이 생성한 rationale (P11)
+	ProducedBy  SuggestionProducedBy
+	Status      SuggestionStatus
+	LLMProvider string
+	LLMModel    string
+	CreatedAt   time.Time
+	DecidedAt   *time.Time
+	DecidedBy   string
+}
+
+// LLMSuggester는 LLM 어댑터를 한 단계 추상화한 표면입니다 (P5 — compliance가 platform/llm을 직접 import 안 함).
+//
+// bootstrap이 llm.Adapter + prompt 빌더를 어댑팅해 주입. LLM 비활성(noop) 시 ErrLLMDisabled.
+type LLMSuggester interface {
+	Suggest(ctx context.Context, req SuggestRequest) (SuggestResponse, error)
+}
+
+// SuggestRequest는 LLM에 보낼 정보 묶음입니다 (도메인 격리 DTO).
+//
+// CheckMeta는 prompt 컨텍스트 — 길어지면 caller가 truncate.
+// CandidateControls는 LLM이 후보로 골라야 할 통제 풀 (Top-N 평가).
+type SuggestRequest struct {
+	CheckCode      string
+	CheckTitle     string
+	CheckRationale string
+	Framework      Framework
+
+	CandidateControls []CandidateControl
+	TopN              int // 0이면 default 5
+}
+
+// CandidateControl은 LLM이 매칭 대상으로 평가할 control 한 건입니다.
+type CandidateControl struct {
+	ID      string // "ISMS-P:2.5.1"
+	Title   string
+	Summary string // 짧은 설명
+}
+
+// SuggestResponse는 LLM 응답 정규화 결과입니다.
+//
+// Suggestions는 confidence 내림차순으로 caller가 정렬 권장.
+// LLMProvider/LLMModel은 LlmTrace에서 채움 — 영속에 박아 audit cross-check.
+type SuggestResponse struct {
+	Suggestions []SuggestionDraft
+	LLMProvider string
+	LLMModel    string
+}
+
+// SuggestionDraft는 LLM이 제안한 단일 결과입니다.
+type SuggestionDraft struct {
+	ControlID  string
+	Confidence float64
+	Reasoning  string
+}
+
+// SuggestMappingsRequest는 Service.SuggestMappings 입력입니다.
+//
+// CheckMeta + Framework를 직접 전달 — caller(Phase 2 CLI/handler)가 pack에서 추출.
+// Phase 3에서 PackReader 어댑터로 자동 회수 가능.
+type SuggestMappingsRequest struct {
+	CheckCode      string
+	CheckTitle     string
+	CheckRationale string
+	Framework      Framework
+	TopN           int
+}
+
+// SuggestionListFilter는 ListSuggestions 필터입니다.
+type SuggestionListFilter struct {
+	CheckCode string           // 옵션
+	Framework Framework        // 옵션
+	Status    SuggestionStatus // 옵션 (빈 값 → 모든 상태)
+	Limit     int              // 0이면 50
 }
 
 // ScanReader는 compliance가 필요한 scan 도메인 read-only 표면입니다 (P5 minimal DTO).
@@ -188,6 +308,24 @@ type Service interface {
 	// ListSnapshots는 profile의 snapshot을 created_at DESC로 반환합니다.
 	// limit <= 0이면 default 50.
 	ListSnapshots(ctx context.Context, tx storage.Tx, profileID string, limit int) ([]FrameworkSnapshot, error)
+
+	// E17 Phase 2 — LLM 자동 매핑 제안 4 메서드.
+
+	// SuggestMappings는 LLMSuggester로 후보 control을 받아 mapping_suggestions에 INSERT합니다.
+	//
+	// 같은 (tenant, check, control) UNIQUE 충돌은 silently skip (이미 제안된 것).
+	// LLM이 ErrLLMDisabled를 반환하면 ErrLLMSuggesterUnavailable 래핑 (caller가 fallback 결정).
+	SuggestMappings(ctx context.Context, tx storage.Tx, req SuggestMappingsRequest) ([]MappingSuggestion, error)
+
+	// ListSuggestions는 filter 기준으로 created_at DESC 정렬 결과를 반환합니다.
+	ListSuggestions(ctx context.Context, tx storage.Tx, filter SuggestionListFilter) ([]MappingSuggestion, error)
+
+	// ConfirmSuggestion은 pending 제안을 confirmed로 전이합니다.
+	// 이미 결정된 상태면 ErrSuggestionAlreadyDecided.
+	ConfirmSuggestion(ctx context.Context, tx storage.Tx, id, decidedBy string) (MappingSuggestion, error)
+
+	// RejectSuggestion은 pending 제안을 rejected로 전이합니다.
+	RejectSuggestion(ctx context.Context, tx storage.Tx, id, decidedBy string) (MappingSuggestion, error)
 }
 
 // 공통 에러.
@@ -197,6 +335,11 @@ var (
 	ErrUnknownFramework         = errors.New("compliance: unknown framework")
 	ErrFrameworkVersionMismatch = errors.New("compliance: requested framework version does not match embedded YAML")
 	ErrSnapshotNotFound         = errors.New("compliance: snapshot not found")
+
+	// E17 — 매핑 제안 sentinel.
+	ErrSuggestionNotFound       = errors.New("compliance: mapping suggestion not found")
+	ErrSuggestionAlreadyDecided = errors.New("compliance: mapping suggestion already decided")
+	ErrLLMSuggesterUnavailable  = errors.New("compliance: LLM suggester not available (provider disabled)")
 )
 
 // ValidateFramework는 Framework enum 값이 알려진 framework인지 검증합니다.

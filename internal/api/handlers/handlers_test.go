@@ -715,6 +715,12 @@ func (n *nullAuditEmitter) EmitProfileCreated(_ context.Context, _ storage.Tx, _
 func (n *nullAuditEmitter) EmitSnapshotGenerated(_ context.Context, _ storage.Tx, _ compliance.FrameworkSnapshot) error {
 	return nil
 }
+func (n *nullAuditEmitter) EmitSuggestionCreated(_ context.Context, _ storage.Tx, _ compliance.MappingSuggestion) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitSuggestionDecided(_ context.Context, _ storage.Tx, _ compliance.MappingSuggestion) error {
+	return nil
+}
 
 // fakeBuilder는 reporting Service Phase 1 Stage B는 reporting 호출 없음 — 의존성 충족용 dummy.
 type fakeBuilder struct{}

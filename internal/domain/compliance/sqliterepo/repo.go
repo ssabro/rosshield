@@ -39,6 +39,7 @@ type Deps struct {
 	Audit       compliance.AuditEmitter // bootstrap에서 audit.Service 어댑터 주입.
 	ScanReader  compliance.ScanReader   // bootstrap에서 scan.Service 어댑터 주입.
 	AuditReader compliance.AuditReader  // bootstrap에서 audit.Service 어댑터 주입 (Head 조회).
+	Suggester   compliance.LLMSuggester // E17 — SuggestMappings에서 사용. 미주입(nil)이면 ErrLLMSuggesterUnavailable.
 }
 
 // Repo는 compliance.Service의 SQLite 구현입니다.

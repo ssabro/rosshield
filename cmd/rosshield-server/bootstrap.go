@@ -400,6 +400,40 @@ func (a *auditEmitterAdapter) EmitProfileCreated(ctx context.Context, tx storage
 	return err
 }
 
+// EmitSuggestionCreated는 compliance.AuditEmitter 구현 (E17 — SuggestMappings INSERT마다).
+func (a *auditEmitterAdapter) EmitSuggestionCreated(ctx context.Context, tx storage.Tx, s compliance.MappingSuggestion) error {
+	payload := fmt.Sprintf(`{"suggestionId":%q,"checkCode":%q,"framework":%q,"controlId":%q,"confidence":%g,"producedBy":%q,"llmProvider":%q}`,
+		s.ID, s.CheckCode, string(s.Framework), s.ControlID, s.Confidence, string(s.ProducedBy), s.LLMProvider)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: s.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "compliance.suggestion.created",
+		Target:   audit.Target{Type: "mapping_suggestion", ID: s.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitSuggestionDecided는 compliance.AuditEmitter 구현 (E17 — Confirm/Reject 시점).
+func (a *auditEmitterAdapter) EmitSuggestionDecided(ctx context.Context, tx storage.Tx, s compliance.MappingSuggestion) error {
+	actorID := s.DecidedBy
+	if actorID == "" {
+		actorID = "system"
+	}
+	payload := fmt.Sprintf(`{"suggestionId":%q,"checkCode":%q,"controlId":%q,"status":%q,"decidedBy":%q}`,
+		s.ID, s.CheckCode, s.ControlID, string(s.Status), s.DecidedBy)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: s.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorUser, ID: actorID},
+		Action:   "compliance.suggestion." + string(s.Status),
+		Target:   audit.Target{Type: "mapping_suggestion", ID: s.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // EmitSnapshotGenerated는 compliance.AuditEmitter 구현 (GenerateSnapshot 시점).
 // chain anchor (head_seq, head_hash)는 snapshot 자체에 포함되어 있어 payload에 그대로 직렬화.
 func (a *auditEmitterAdapter) EmitSnapshotGenerated(ctx context.Context, tx storage.Tx, s compliance.FrameworkSnapshot) error {
