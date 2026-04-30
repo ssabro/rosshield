@@ -239,32 +239,51 @@ internal/domain/advisor/
 
 ---
 
+## Phase 2 Wiring & Operationalization 트랙 (W1~W3)
+
+E13~E15 도메인 작성 후 발견된 결선·HTTP·자동화 작업. 원래 backlog에 명시 항목이 없어 별도 트랙으로 기록(2026-04-30).
+
+| ID | 내용 | 추정 | 상태 | Commit |
+|---|---|---|---|---|
+| W1 | Bootstrap 결선 — Platform에 Insight·Compliance·LLM 통합. auditEmitterAdapter에 4 메서드 추가, Scan/Audit 어댑터 3종(insight/compliance ScanReader·AuditReader). LLMProvider 선택기(noop/ollama/anthropic). | 0.5일 | ✅ | `4601b55` |
+| W2 | API 핸들러 — OpenAPI spec에 7 엔드포인트(insight 3 + compliance 4). oapi-codegen 재생성. handlers.Deps 확장 + Insight·Compliance handler + complianceErrorStatus(409/400 매핑). 통합 테스트 9건. | 1일 | ✅ | `85a0974` |
+| W3 | scan.completed 자동 구독 — `internal/app/insightautorun` 패키지로 분리. payload 디코딩 → GetSession → Insight.RunForFleet best-effort. failed/cancelled는 skip. bootstrap에서 Subscriber 결선 + Shutdown subscription cancel. | 0.5일 | ✅ | `3e17e86` |
+
+**관계**: W1~W3는 E14·E15의 자연스런 후속이며 E16(Advisor)·E17(LLM 자동 매핑)·E19(Web UI)와 독립적. backlog의 E16/E17/E19는 그대로 유효(LLM 활용·Web UI 본 작업).
+
+---
+
 ## 의존 그래프
 
 ```
 E13 LLM Adapter ──┬─→ E16 Advisor ──┐
                   └─→ E17 자동 매핑 │
                                    ├─→ E19 Web UI 페이지
-E14 Insight ──────────────────────┘
+E14 Insight ──┬───────────────────┘
+              └─→ W3 자동 구독
 E15 Compliance ──→ E18 Framework PDF ──→ E19
+E14·E15 ──────→ W1 결선 → W2 API
 ```
 
-병렬 가능: E13·E14·E15는 독립(평행 진행 가능). E16·E17·E18는 후속.
+병렬 가능: E13·E14·E15는 독립(평행 진행 가능). E16·E17·E18는 후속. W1·W2·W3는 E14·E15 직후 결선/표면 단계.
 
 ---
 
 ## 추정 (병렬 + 1인 운영 가정)
 
-| Epic | 단독 추정 | 병렬 단축 |
-|---|---|---|
-| E13 LLM Adapter | 1주 | (병렬 진입) |
-| E14 Insight | 1주 | (병렬 진입) |
-| E15 Compliance | 1.5주 | (병렬 진입) |
-| E16 Advisor | 1주 | E13 후 |
-| E17 자동 매핑 | 3일 | E13·E15 후 |
-| E18 Framework PDF | 3일 | E15 후 |
-| E19 Web UI | 1주 | E15·E16·E17 후 |
-| **합계** | **6.5주** | **~5주** |
+| Epic | 단독 추정 | 병렬 단축 | 상태 |
+|---|---|---|---|
+| E13 LLM Adapter | 1주 | (병렬 진입) | ✅ `d11b3cb` |
+| E14 Insight | 1주 | (병렬 진입) | ✅ `5bcb741` |
+| E15 Compliance | 1.5주 | (병렬 진입) | ✅ `5bcb741` |
+| W1 Bootstrap 결선 | 0.5일 | E14·E15 후 | ✅ `4601b55` |
+| W2 API 핸들러 | 1일 | W1 후 | ✅ `85a0974` |
+| W3 scan.completed 자동 구독 | 0.5일 | W1 후 | ✅ `3e17e86` |
+| E16 Advisor | 1주 | E13 후 | ⬜ |
+| E17 자동 매핑 | 3일 | E13·E15 후 | ⬜ |
+| E18 Framework PDF | 3일 | E15 후 | ⬜ |
+| E19 Web UI | 1주 | E15·E16·E17 후 | ⬜ |
+| **합계** | **6.5주 + 2일 W** | **~5주** | |
 
 Carryover(C1~C7) 추가 시 +1~2주.
 

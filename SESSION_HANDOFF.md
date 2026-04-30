@@ -4,13 +4,17 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-04-29 (Phase 2 진입 준비 — phase1 archive + phase2-backlog 신규)_
+_마지막 업데이트: 2026-04-30 (Phase 2 — E13·E14·E15 + W1·W2·W3 완료, 5/10 epic + 3/3 wiring)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 2 진입 준비 완료 — `phase1-backlog.md` → `archive/`로 이전 + `phase2-backlog.md` 신규 작성 (E13~E19 7 epic + Carryover C1~C7).** Phase 2 epic: E13 LLM Adapter(noop/ollama/anthropic, 1주)·E14 Insight(drift·anomaly·peer 결정론, 1주)·E15 Compliance(ISMS-P/ISO27001/NIST, 1.5주)·E16 Advisor(LLM 대화, 1주)·E17 자동 매핑 제안(3일)·E18 Framework PDF(3일)·E19 Web UI 3 페이지(1주). 의존: E13/E14/E15 평행 가능 → E16/E17/E18 후속 → E19 마지막. 추정 6.5주 단독, 5주 병렬. Carryover(C1 WebSocket·C2 Tauri·C3 Web UI 추가 페이지·C4 Playwright·C5 i18n·C6 HttpOnly cookie·C7 refresh reuse) 우선순위는 사용자 합의 대기. Phase 2 Exit: ISMS-P 통제 점수·리포트·외부 검증. `docs/design/README.md` Part VII 갱신 + `SESSION_HANDOFF.md` 작업 재개 절차 phase2-backlog 참조로 갱신. **다음**: R14 결정(LLM 기본 어댑터 전략·Compliance 데이터 출처) 합의 후 E13/E14/E15 병렬 진입 또는 Carryover 우선(C1 WebSocket이 데모 UX 핵심).
+**Phase 2 백엔드 도메인 + 결선 + HTTP 표면 + 자동 구독 모두 완료 — E13·E14·E15 + W1·W2·W3 (commits `d11b3cb` → `3e17e86`).** (a) **E13** LLM Adapter — noop(기본·ErrLLMDisabled)·ollama(NDJSON streaming)·anthropic(SSE + claude-3-haiku 비용) 3 어댑터. stdlib net/http만, 외부 SDK 0. 16 tests. (b) **E14** Insight 파이프라인 — drift(직전 5 sessions pass→fail)·anomaly(IQR 1.5×)·peer(fleet 평균 - 1σ) 결정론 detector + sqliterepo + dedup. 마이그레이션 0014. (c) **E15** Compliance 도메인 — ISMS-P/ISO27001-2022/NIST-800-53-Rev5 3개 framework YAML(//go:embed) + ControlStatus 5-값 산출 + FrameworkSnapshot anchored(chain head) 영속. 마이그레이션 0015 (session_id FK는 옵션 anchor라 제외 — insights.scope_*와 동일 정책). (d) **W1** Bootstrap 결선 — Platform에 Insight·Compliance·LLM 통합. auditEmitterAdapter에 4 메서드 추가(EmitInsightCreated/Dismissed·EmitProfileCreated·EmitSnapshotGenerated). Scan/Audit 어댑터 3종(P5 격리). LLMProvider 선택기(noop/ollama/anthropic + 미지정 시 default). (e) **W2** API 핸들러 — OpenAPI spec에 7 endpoint(insight 3 + compliance 4) 추가, oapi-codegen 재생성. handlers.Deps 확장 + 신규 핸들러 + complianceErrorStatus(409 conflict / 400 version mismatch). 통합 테스트 9건. (f) **W3** scan.completed 자동 구독 — `internal/app/insightautorun` 신규 패키지. payload status=="completed"만 통과 → GetSession으로 FleetID 확보 → Insight.RunForFleet best-effort. failed/cancelled skip. bootstrap에서 Subscriber 결선 + Shutdown subscription cancel. 4 단위 테스트. **40 패키지 통과, gofmt 0, vet 0**. backlog 참조: `docs/design/phase2-backlog.md`(W1~W3 트랙 명시). **다음 후보**: E18 Framework PDF(3일, 백엔드)·E16 Advisor(1주, LLM 옵트인)·E17 LLM 자동 매핑(3일)·E19 Web UI(1주, dev server 검증 필요)·Carryover C1 WebSocket(1~2일)·push origin(현재 9 commits ahead).
+
+### 직전 한 줄 (Phase 2 진입)
+
+**Phase 2 진입 준비 완료 — `phase1-backlog.md` → `archive/`로 이전 + `phase2-backlog.md` 신규 작성 (E13~E19 7 epic + Carryover C1~C7).** Phase 2 epic: E13 LLM Adapter(noop/ollama/anthropic, 1주)·E14 Insight(drift·anomaly·peer 결정론, 1주)·E15 Compliance(ISMS-P/ISO27001/NIST, 1.5주)·E16 Advisor(LLM 대화, 1주)·E17 자동 매핑 제안(3일)·E18 Framework PDF(3일)·E19 Web UI 3 페이지(1주). 의존: E13/E14/E15 평행 가능 → E16/E17/E18 후속 → E19 마지막. 추정 6.5주 단독, 5주 병렬. Carryover(C1 WebSocket·C2 Tauri·C3 Web UI 추가 페이지·C4 Playwright·C5 i18n·C6 HttpOnly cookie·C7 refresh reuse) 우선순위는 사용자 합의 대기. Phase 2 Exit: ISMS-P 통제 점수·리포트·외부 검증. `docs/design/README.md` Part VII 갱신 + `SESSION_HANDOFF.md` 작업 재개 절차 phase2-backlog 참조로 갱신.
 
 ### 직전 한 줄 (E11 Compose)
 
