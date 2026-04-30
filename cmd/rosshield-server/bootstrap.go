@@ -3,20 +3,26 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/ssabro/rosshield/internal/app/scanrun"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/compliance"
+	compliancerepo "github.com/ssabro/rosshield/internal/domain/compliance/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/evidence"
 	evidencerepo "github.com/ssabro/rosshield/internal/domain/evidence/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/insight"
+	insightrepo "github.com/ssabro/rosshield/internal/domain/insight/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 	"github.com/ssabro/rosshield/internal/domain/reporting/pdf"
 	reportingrepo "github.com/ssabro/rosshield/internal/domain/reporting/sqliterepo"
@@ -32,6 +38,10 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
+	"github.com/ssabro/rosshield/internal/platform/llm"
+	llmanthropic "github.com/ssabro/rosshield/internal/platform/llm/anthropic"
+	llmnoop "github.com/ssabro/rosshield/internal/platform/llm/noop"
+	llmollama "github.com/ssabro/rosshield/internal/platform/llm/ollama"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
 	"github.com/ssabro/rosshield/internal/platform/signer"
@@ -54,6 +64,15 @@ type Config struct {
 	// CheckpointSpec은 audit checkpoint 잡의 cron spec.
 	// 빈 값이면 "@every 1h" (§10.5 매시간 기본). 테스트에서 `@every 1s` 등으로 단축.
 	CheckpointSpec string
+
+	// LLM 옵션 — R14-1 옵트인 (기본값 noop).
+	// LLMProvider: "" → noop, "ollama" → Ollama, "anthropic" → Anthropic. 그 외는 부트스트랩 에러.
+	// LLMModel·LLMBaseURL·LLMAPIKey·LLMTimeout은 provider별 의미가 다름 (provider 주석 참조).
+	LLMProvider string
+	LLMModel    string
+	LLMBaseURL  string        // ollama daemon URL 또는 anthropic API base
+	LLMAPIKey   string        // anthropic 전용
+	LLMTimeout  time.Duration // 0이면 어댑터 기본값
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -76,6 +95,9 @@ type Platform struct {
 	BlobStore    blobstore.Store
 	Reporting    reporting.Service
 	ReportSigner signer.Signer // R10-7: report 키 ↔ audit checkpoint 키 분리
+	Insight      insight.Service
+	Compliance   compliance.Service
+	LLM          llm.Adapter
 
 	systemTenant storage.TenantID
 
@@ -300,6 +322,154 @@ func (a *auditEmitterAdapter) EmitReportSigned(ctx context.Context, tx storage.T
 	return err
 }
 
+// EmitInsightCreated는 insight.AuditEmitter 구현 (E14·E16 — RunForFleet INSERT마다).
+func (a *auditEmitterAdapter) EmitInsightCreated(ctx context.Context, tx storage.Tx, in insight.Insight) error {
+	payload := fmt.Sprintf(`{"insightId":%q,"kind":%q,"severity":%q,"summary":%q,"producedBy":%q}`,
+		in.ID, string(in.Kind), string(in.Severity), in.Summary, string(in.ProducedBy))
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: in.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "insight.created",
+		Target:   audit.Target{Type: "insight", ID: in.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitInsightDismissed는 insight.AuditEmitter 구현 (Dismiss 시점, reason 포함).
+func (a *auditEmitterAdapter) EmitInsightDismissed(ctx context.Context, tx storage.Tx, in insight.Insight, reason string) error {
+	payload := fmt.Sprintf(`{"insightId":%q,"kind":%q,"dismissedBy":%q,"reason":%q}`,
+		in.ID, string(in.Kind), in.DismissedBy, reason)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: in.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorUser, ID: in.DismissedBy},
+		Action:   "insight.dismissed",
+		Target:   audit.Target{Type: "insight", ID: in.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitProfileCreated는 compliance.AuditEmitter 구현 (E15·E16 — CreateProfile 시점).
+func (a *auditEmitterAdapter) EmitProfileCreated(ctx context.Context, tx storage.Tx, p compliance.ComplianceProfile) error {
+	payload := fmt.Sprintf(`{"profileId":%q,"framework":%q,"frameworkVersion":%q,"enabled":%t}`,
+		p.ID, string(p.Framework), p.FrameworkVersion, p.Enabled)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: p.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "compliance.profile.created",
+		Target:   audit.Target{Type: "compliance_profile", ID: p.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitSnapshotGenerated는 compliance.AuditEmitter 구현 (GenerateSnapshot 시점).
+// chain anchor (head_seq, head_hash)는 snapshot 자체에 포함되어 있어 payload에 그대로 직렬화.
+func (a *auditEmitterAdapter) EmitSnapshotGenerated(ctx context.Context, tx storage.Tx, s compliance.FrameworkSnapshot) error {
+	payload := fmt.Sprintf(`{"snapshotId":%q,"profileId":%q,"sessionId":%q,"score":%g,"chainHeadSeq":%d,"chainHeadHash":%q}`,
+		s.ID, s.ProfileID, s.SessionID, s.OverallScore, s.ChainHeadSeq, s.ChainHeadHash)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: s.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "compliance.snapshot.generated",
+		Target:   audit.Target{Type: "compliance_snapshot", ID: s.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// insightScanAdapter는 scan.Service를 insight.ScanReader로 어댑팅합니다 (P5 — insight가 scan import 안 함).
+//
+// ListRecentSessions: scan.ListSessions(filter{FleetID, Status=completed}) → completed_at DESC 정렬,
+// limit 적용. scan은 created_at DESC를 반환하지만 completed 세션은 created_at과 completed_at의
+// 상대 순서가 거의 일치하므로(StartScan→Transition 갭 작음) 추가 정렬 없이 그대로 사용.
+type insightScanAdapter struct {
+	svc scan.Service
+}
+
+func (a *insightScanAdapter) ListRecentSessions(ctx context.Context, tx storage.Tx, fleetID string, limit int) ([]insight.ScanSessionView, error) {
+	sessions, err := a.svc.ListSessions(ctx, tx, scan.ListSessionsFilter{
+		FleetID: fleetID,
+		Status:  scan.StatusCompleted,
+		Limit:   limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]insight.ScanSessionView, 0, len(sessions))
+	for _, s := range sessions {
+		out = append(out, insight.ScanSessionView{
+			ID:          s.ID,
+			TenantID:    s.TenantID,
+			FleetID:     s.FleetID,
+			Status:      string(s.Status),
+			CompletedAt: s.CompletedAt,
+		})
+	}
+	return out, nil
+}
+
+func (a *insightScanAdapter) ListResultsForSession(ctx context.Context, tx storage.Tx, sessionID string) ([]insight.ScanResultView, error) {
+	results, err := a.svc.ListResults(ctx, tx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]insight.ScanResultView, 0, len(results))
+	for _, r := range results {
+		out = append(out, insight.ScanResultView{
+			ID:         r.ID,
+			SessionID:  r.SessionID,
+			RobotID:    r.RobotID,
+			CheckID:    r.CheckID,
+			Outcome:    string(r.Outcome),
+			DurationMs: r.DurationMs,
+		})
+	}
+	return out, nil
+}
+
+// complianceScanAdapter는 scan.Service를 compliance.ScanReader로 어댑팅합니다 (P5).
+type complianceScanAdapter struct {
+	svc scan.Service
+}
+
+func (a *complianceScanAdapter) ListResultsForSession(ctx context.Context, tx storage.Tx, sessionID string) ([]compliance.ScanResultView, error) {
+	results, err := a.svc.ListResults(ctx, tx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]compliance.ScanResultView, 0, len(results))
+	for _, r := range results {
+		out = append(out, compliance.ScanResultView{
+			CheckID: r.CheckID,
+			Outcome: string(r.Outcome),
+		})
+	}
+	return out, nil
+}
+
+// complianceAuditReaderAdapter는 audit.Service를 compliance.AuditReader로 어댑팅합니다 (P5).
+// audit.ChainHead.Hash는 [32]byte → lowercase hex (compliance 격리 사본).
+type complianceAuditReaderAdapter struct {
+	svc audit.Service
+}
+
+func (a *complianceAuditReaderAdapter) Head(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) (compliance.HeadView, error) {
+	head, err := a.svc.Head(ctx, tx, tenantID)
+	if err != nil {
+		return compliance.HeadView{}, err
+	}
+	return compliance.HeadView{
+		Seq:  head.Seq,
+		Hash: hex.EncodeToString(head.Hash[:]),
+	}, nil
+}
+
 // systemTenantID는 부팅 시 결정된 시스템 테넌트를 반환합니다 (healthz·system audit job용).
 func (p *Platform) systemTenantID() storage.TenantID {
 	return p.systemTenant
@@ -461,6 +631,31 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		// WorkerLimit은 default(R4-4 — 10).
 	})
 
+	// E16 — LLM 어댑터 결선 (R14-1 옵트인, 기본값 noop).
+	llmAdapter, err := buildLLMAdapter(cfg)
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: llm: %w", err)
+	}
+
+	// E16 — Insight 도메인 결선 (E14 + scan/audit 어댑터 주입).
+	insightSvc := insightrepo.New(insightrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: emitter,
+		Scan:  &insightScanAdapter{svc: scanSvc},
+	})
+
+	// E16 — Compliance 도메인 결선 (E15 + scan/audit 어댑터 주입).
+	complianceSvc := compliancerepo.New(compliancerepo.Deps{
+		Clock:       clk,
+		IDGen:       ids,
+		Audit:       emitter,
+		ScanReader:  &complianceScanAdapter{svc: scanSvc},
+		AuditReader: &complianceAuditReaderAdapter{svc: auditSvc},
+	})
+
 	systemTenant := cfg.SystemTenantID
 	if systemTenant == "" {
 		systemTenant = "system"
@@ -485,7 +680,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"blobRoot", blobRoot,
 		"reportSignerKeyId", reportSigner.KeyID(),
 		"systemTenant", string(systemTenant),
-		"checkpointSpec", checkpointSpec)
+		"checkpointSpec", checkpointSpec,
+		"llmProvider", llmAdapter.Provider())
 
 	return &Platform{
 		Logger:       logger,
@@ -505,8 +701,42 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		BlobStore:    bs,
 		Reporting:    reportingSvc,
 		ReportSigner: reportSigner,
+		Insight:      insightSvc,
+		Compliance:   complianceSvc,
+		LLM:          llmAdapter,
 		systemTenant: systemTenant,
 	}, nil
+}
+
+// buildLLMAdapter는 cfg.LLMProvider 기반으로 어댑터 1개를 생성합니다 (R14-1 옵트인).
+//
+//	"" / "noop"   → noop.New()  — 기본값, ErrLLMDisabled 즉시 반환.
+//	"ollama"      → ollama.New(BaseURL, DefaultModel, Timeout)
+//	"anthropic"   → anthropic.New(BaseURL, APIKey, DefaultModel, Timeout). APIKey 누락은 에러.
+//	그 외          → 에러 (오타 방지).
+func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
+	switch cfg.LLMProvider {
+	case "", "noop":
+		return llmnoop.New(), nil
+	case "ollama":
+		return llmollama.New(llmollama.Options{
+			Endpoint:     cfg.LLMBaseURL,
+			DefaultModel: cfg.LLMModel,
+			HTTPTimeout:  cfg.LLMTimeout,
+		}), nil
+	case "anthropic":
+		if cfg.LLMAPIKey == "" {
+			return nil, errors.New("anthropic: LLMAPIKey is required")
+		}
+		return llmanthropic.New(llmanthropic.Options{
+			APIKey:       cfg.LLMAPIKey,
+			BaseURL:      cfg.LLMBaseURL,
+			DefaultModel: cfg.LLMModel,
+			HTTPTimeout:  cfg.LLMTimeout,
+		}), nil
+	default:
+		return nil, fmt.Errorf("unknown LLMProvider %q (allowed: noop|ollama|anthropic)", cfg.LLMProvider)
+	}
 }
 
 // Shutdown은 platform 서비스를 역순으로 정상 종료합니다 (idempotent).

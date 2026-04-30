@@ -89,6 +89,63 @@ func TestBootstrapInitsAllPlatformServices(t *testing.T) {
 	if p.ReportSigner == nil {
 		t.Error("ReportSigner is nil")
 	}
+	if p.Insight == nil {
+		t.Error("Insight is nil")
+	}
+	if p.Compliance == nil {
+		t.Error("Compliance is nil")
+	}
+	if p.LLM == nil {
+		t.Error("LLM is nil")
+	}
+	if p.LLM.Provider() != "noop" {
+		t.Errorf("default LLM.Provider() = %q, want %q", p.LLM.Provider(), "noop")
+	}
+}
+
+// TestBootstrapLLMProviderSelection은 cfg.LLMProvider에 따른 어댑터 선택을 검증합니다.
+func TestBootstrapLLMProviderSelection(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name         string
+		cfg          Config
+		wantProvider string
+		wantErr      bool
+	}{
+		{name: "default empty → noop", cfg: Config{}, wantProvider: "noop"},
+		{name: "noop explicit", cfg: Config{LLMProvider: "noop"}, wantProvider: "noop"},
+		{name: "ollama", cfg: Config{LLMProvider: "ollama"}, wantProvider: "ollama"},
+		{name: "anthropic without key → error", cfg: Config{LLMProvider: "anthropic"}, wantErr: true},
+		{name: "anthropic with key", cfg: Config{LLMProvider: "anthropic", LLMAPIKey: "sk-test"}, wantProvider: "anthropic"},
+		{name: "unknown provider → error", cfg: Config{LLMProvider: "openai"}, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := tc.cfg
+			cfg.DataDir = t.TempDir()
+			cfg.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
+			p, err := Bootstrap(context.Background(), cfg)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("Bootstrap should error, got nil")
+					_ = p.Shutdown(context.Background())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Bootstrap: %v", err)
+			}
+			t.Cleanup(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = p.Shutdown(ctx)
+			})
+			if p.LLM.Provider() != tc.wantProvider {
+				t.Errorf("Provider() = %q, want %q", p.LLM.Provider(), tc.wantProvider)
+			}
+		})
+	}
 }
 
 func TestBootstrapCreatesDataFileAndAppliesMigration(t *testing.T) {
