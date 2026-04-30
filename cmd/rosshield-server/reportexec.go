@@ -10,7 +10,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/ssabro/rosshield/internal/domain/compliance"
 	"github.com/ssabro/rosshield/internal/domain/evidence"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 	"github.com/ssabro/rosshield/internal/domain/reporting/pdf"
@@ -137,4 +139,142 @@ func toPDFBuilderInput(in reporting.PDFInput) pdf.PDFInput {
 			SignerKeyID: in.AuditAnchor.SignerKeyID,
 		},
 	}
+}
+
+// === E18 — Framework PDF builder + Compliance reader 어댑터 ===
+
+// frameworkPdfBuilderAdapter는 pdf.Builder를 reporting.FrameworkContentBuilder로 매핑합니다.
+//
+// reporting.FrameworkPDFInput와 pdf.FrameworkPDFInput은 같은 spec이지만 별 type
+// (P5: pdf 패키지가 reporting 도메인을 import하지 않음). 1:1 변환.
+type frameworkPdfBuilderAdapter struct{ inner *pdf.Builder }
+
+func (a *frameworkPdfBuilderAdapter) BuildFramework(input reporting.FrameworkPDFInput) ([]byte, error) {
+	return a.inner.BuildFramework(toFrameworkPDFBuilderInput(input))
+}
+
+func toFrameworkPDFBuilderInput(in reporting.FrameworkPDFInput) pdf.FrameworkPDFInput {
+	controls := make([]pdf.FrameworkPDFControlRow, len(in.Controls))
+	for i, c := range in.Controls {
+		controls[i] = pdf.FrameworkPDFControlRow{
+			ControlID: c.ControlID,
+			Title:     c.Title,
+			Status:    c.Status,
+			PassCount: c.PassCount,
+			FailCount: c.FailCount,
+			Notes:     c.Notes,
+		}
+	}
+	return pdf.FrameworkPDFInput{
+		TenantID:         in.TenantID,
+		TenantName:       in.TenantName,
+		ProfileID:        in.ProfileID,
+		Framework:        in.Framework,
+		FrameworkVersion: in.FrameworkVersion,
+		SnapshotID:       in.SnapshotID,
+		OverallScore:     in.OverallScore,
+		Stats: pdf.FrameworkPDFStats{
+			TotalControls: in.Stats.TotalControls,
+			Pass:          in.Stats.Pass,
+			Fail:          in.Stats.Fail,
+			Partial:       in.Stats.Partial,
+			NotApplicable: in.Stats.NotApplicable,
+			Unmapped:      in.Stats.Unmapped,
+		},
+		Controls:    controls,
+		GeneratedAt: in.GeneratedAt,
+		GeneratedBy: in.GeneratedBy,
+		AuditAnchor: pdf.PDFAuditAnchor{
+			HeadSeq:     in.AuditAnchor.HeadSeq,
+			HeadHash:    in.AuditAnchor.HeadHash,
+			SignedAt:    in.AuditAnchor.SignedAt,
+			SignerKeyID: in.AuditAnchor.SignerKeyID,
+		},
+	}
+}
+
+// complianceReaderAdapter는 compliance.Service를 reporting.ComplianceReader로 매핑합니다.
+//
+// 흐름: ListProfiles + ListSnapshots → profileID/snapshotID 매칭 → ControlID→Title을
+// LoadFramework(YAML embed)로 보강 → FrameworkComplianceView 조립.
+//
+// 단순화: 데이터셋이 작아 List 후 in-memory 필터. Phase 3에서 필요 시 GetProfile/GetSnapshot 추가.
+type complianceReaderAdapter struct{ svc compliance.Service }
+
+func (a *complianceReaderAdapter) LoadProfileSnapshot(ctx context.Context, tx storage.Tx, profileID, snapshotID string) (reporting.FrameworkComplianceView, error) {
+	// 1) profile 찾기.
+	profiles, err := a.svc.ListProfiles(ctx, tx)
+	if err != nil {
+		return reporting.FrameworkComplianceView{}, fmt.Errorf("compliance reader: list profiles: %w", err)
+	}
+	var profile compliance.ComplianceProfile
+	var found bool
+	for _, p := range profiles {
+		if p.ID == profileID {
+			profile = p
+			found = true
+			break
+		}
+	}
+	if !found {
+		return reporting.FrameworkComplianceView{}, reporting.ErrFrameworkSnapshotNotFound
+	}
+
+	// 2) snapshot 찾기 (profile scope).
+	snapshots, err := a.svc.ListSnapshots(ctx, tx, profileID, 0)
+	if err != nil {
+		return reporting.FrameworkComplianceView{}, fmt.Errorf("compliance reader: list snapshots: %w", err)
+	}
+	var snapshot compliance.FrameworkSnapshot
+	found = false
+	for _, s := range snapshots {
+		if s.ID == snapshotID {
+			snapshot = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return reporting.FrameworkComplianceView{}, reporting.ErrFrameworkSnapshotNotFound
+	}
+
+	// 3) ControlID → Title 보강 (YAML로 메모리 캐시).
+	titleByID := map[string]string{}
+	if defs, _, err := compliance.LoadFramework(profile.Framework); err == nil {
+		for _, d := range defs {
+			titleByID[d.ID] = d.Title
+		}
+	}
+	statuses := make([]reporting.FrameworkControlStatusView, 0, len(snapshot.Statuses))
+	for _, st := range snapshot.Statuses {
+		statuses = append(statuses, reporting.FrameworkControlStatusView{
+			ControlID: st.ControlID,
+			Title:     titleByID[st.ControlID], // 없으면 빈 문자열
+			Status:    string(st.Status),
+			PassCount: st.PassCount,
+			FailCount: st.FailCount,
+			Notes:     st.Notes,
+		})
+	}
+
+	return reporting.FrameworkComplianceView{
+		Profile: reporting.FrameworkProfileView{
+			ID:               profile.ID,
+			Framework:        string(profile.Framework),
+			FrameworkVersion: profile.FrameworkVersion,
+		},
+		Snapshot: reporting.FrameworkSnapshotView{
+			ID:                 snapshot.ID,
+			OverallScore:       snapshot.OverallScore,
+			PassCount:          snapshot.PassCount,
+			FailCount:          snapshot.FailCount,
+			PartialCount:       snapshot.PartialCount,
+			NotApplicableCount: snapshot.NotApplicableCount,
+			UnmappedCount:      snapshot.UnmappedCount,
+			ChainHeadSeq:       snapshot.ChainHeadSeq,
+			ChainHeadHash:      snapshot.ChainHeadHash,
+			CreatedAt:          snapshot.CreatedAt,
+			Statuses:           statuses,
+		},
+	}, nil
 }

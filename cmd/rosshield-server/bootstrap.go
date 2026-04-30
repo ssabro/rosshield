@@ -621,6 +621,15 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		BlobStore: bs,
 	})
 
+	// E15 Compliance 도메인 결선 — reporting 결선 전에 만들어 framework 어댑터를 reporting Deps에 주입 (E18).
+	complianceSvc := compliancerepo.New(compliancerepo.Deps{
+		Clock:       clk,
+		IDGen:       ids,
+		Audit:       emitter,
+		ScanReader:  &complianceScanAdapter{svc: scanSvc},
+		AuditReader: &complianceAuditReaderAdapter{svc: auditSvc},
+	})
+
 	// E8 Stage D — Reporting 도메인 결선 (R10-1 signintech/gopdf, R10-7 키 분리).
 	// Report signer는 audit checkpoint signer와 별도 키 파일(역할 격리·키 회전 분리).
 	reportKeyPath := filepath.Join(cfg.DataDir, "keys", "report.ed25519")
@@ -630,14 +639,17 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: report signer: %w", err)
 	}
+	reportPDFBuilder := pdf.New()
 	reportingSvc := reportingrepo.New(reportingrepo.Deps{
-		Clock:    clk,
-		IDGen:    ids,
-		Audit:    emitter,
-		Builder:  &pdfBuilderAdapter{inner: pdf.New()},
-		Scan:     &reportingScanAdapter{svc: scanSvc},
-		Evidence: &reportingEvidenceAdapter{svc: evidenceSvc},
-		Tenant:   &reportingTenantAdapter{svc: tenantSvc},
+		Clock:            clk,
+		IDGen:            ids,
+		Audit:            emitter,
+		Builder:          &pdfBuilderAdapter{inner: reportPDFBuilder},
+		Scan:             &reportingScanAdapter{svc: scanSvc},
+		Evidence:         &reportingEvidenceAdapter{svc: evidenceSvc},
+		Tenant:           &reportingTenantAdapter{svc: tenantSvc},
+		FrameworkBuilder: &frameworkPdfBuilderAdapter{inner: reportPDFBuilder}, // E18
+		Compliance:       &complianceReaderAdapter{svc: complianceSvc},         // E18
 		// PackReader/RobotReader는 Phase 1 미주입 — 표시 메타는 빈 string으로 노출.
 	})
 
@@ -680,14 +692,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Scan:  &insightScanAdapter{svc: scanSvc},
 	})
 
-	// E16 — Compliance 도메인 결선 (E15 + scan/audit 어댑터 주입).
-	complianceSvc := compliancerepo.New(compliancerepo.Deps{
-		Clock:       clk,
-		IDGen:       ids,
-		Audit:       emitter,
-		ScanReader:  &complianceScanAdapter{svc: scanSvc},
-		AuditReader: &complianceAuditReaderAdapter{svc: auditSvc},
-	})
+	// (Compliance 도메인은 E18 결선 순서 변경으로 reporting 위에서 만듦)
 
 	// E19 — scan.completed 이벤트 구독 → Insight.RunForFleet 자동 호출.
 	insightAutorun := insightautorun.New(insightautorun.Deps{

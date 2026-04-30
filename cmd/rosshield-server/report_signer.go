@@ -80,3 +80,43 @@ func GenerateAndSignReport(ctx context.Context, p *Platform, req reporting.Gener
 
 // 컴파일 타임 가드: audit.ChainHead가 본 파일이 가정하는 표면을 가지고 있는지.
 var _ = audit.ChainHead{}.Seq
+
+// GenerateAndSignFrameworkReport는 ComplianceProfile/Snapshot 기반 PDF를 생성·서명합니다 (E18).
+//
+// GenerateAndSignReport와 동일 패턴이지만 framework 전용 메서드 호출:
+//
+//	GenerateFramework → ReportSigner.Sign(pdfBytes) → audit.Head → SignFramework.
+//
+// Phase 2는 번들 미생성 — 검증은 chain head anchor + sig_* 컬럼으로 cross-check.
+func GenerateAndSignFrameworkReport(ctx context.Context, p *Platform, req reporting.GenerateFrameworkRequest) (reporting.FrameworkReport, error) {
+	if p == nil {
+		return reporting.FrameworkReport{}, fmt.Errorf("reporting: platform nil")
+	}
+
+	var signed reporting.FrameworkReport
+	tenantCtx := storage.WithTenantID(ctx, req.TenantID)
+	if err := p.Storage.Tx(tenantCtx, func(c context.Context, tx storage.Tx) error {
+		r, err := p.Reporting.GenerateFramework(c, tx, req)
+		if err != nil {
+			return fmt.Errorf("generate framework: %w", err)
+		}
+		sigBytes, signerKeyID, err := p.ReportSigner.Sign(r.PDF)
+		if err != nil {
+			return fmt.Errorf("signer: %w", err)
+		}
+		head, err := p.Audit.Head(c, tx, req.TenantID)
+		if err != nil {
+			return fmt.Errorf("audit head: %w", err)
+		}
+		s, err := p.Reporting.SignFramework(c, tx, r.ID, signerKeyID, sigBytes,
+			head.Seq, hex.EncodeToString(head.Hash[:]), p.Clock.Now())
+		if err != nil {
+			return fmt.Errorf("reporting sign framework: %w", err)
+		}
+		signed = s
+		return nil
+	}); err != nil {
+		return reporting.FrameworkReport{}, err
+	}
+	return signed, nil
+}
