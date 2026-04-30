@@ -308,6 +308,162 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  # E17 (Phase 2) — Insight 도메인 표면.
+  /api/v1/insights:
+    get:
+      tags: [insight]
+      operationId: listInsights
+      summary: List active (non-dismissed) insights
+      x-status: phase2
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - { in: query, name: kind,     schema: { type: string, enum: [drift, anomaly, peer, root_cause, prediction] } }
+        - { in: query, name: severity, schema: { type: string, enum: [info, low, medium, high, critical] } }
+        - { in: query, name: robotId,  schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/insights/{insightId}:dismiss:
+    post:
+      tags: [insight]
+      operationId: dismissInsight
+      summary: Mark an insight as dismissed
+      x-status: phase2
+      parameters:
+        - { in: path, name: insightId, required: true, schema: { type: string, pattern: "^ins_[A-Z0-9]+$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "200":
+          description: Dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/fleets/{fleetId}/insights:run:
+    post:
+      tags: [insight]
+      operationId: runFleetInsights
+      summary: Trigger insight detectors for a fleet (drift/anomaly/peer)
+      description: |
+        Manually runs the insight pipeline for the given fleet. E19 will subscribe
+        this to scan.completed events for automation; this endpoint remains for
+        on-demand recompute.
+      x-status: phase2
+      parameters:
+        - { in: path, name: fleetId, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Detectors ran (may produce 0 insights if no history)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  # E17 (Phase 2) — Compliance 도메인 표면.
+  /api/v1/compliance/profiles:
+    get:
+      tags: [compliance]
+      operationId: listComplianceProfiles
+      summary: List compliance profiles for the current tenant
+      x-status: phase2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [compliance]
+      operationId: createComplianceProfile
+      summary: Activate a compliance framework
+      x-status: phase2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [framework, frameworkVersion]
+              properties:
+                framework:        { type: string, enum: [isms-p, iso27001-2022, nist-800-53-rev5] }
+                frameworkVersion: { type: string }
+                enabled:          { type: boolean, default: true }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/compliance/profiles/{profileId}/snapshots:
+    parameters:
+      - { in: path, name: profileId, required: true, schema: { type: string, pattern: "^cp_[A-Z0-9]+$" } }
+    get:
+      tags: [compliance]
+      operationId: listComplianceSnapshots
+      summary: List snapshots for a profile (created_at DESC)
+      x-status: phase2
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [compliance]
+      operationId: generateComplianceSnapshot
+      summary: Generate a snapshot from a scan session
+      x-status: phase2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string }
+      responses:
+        "201":
+          description: Generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:

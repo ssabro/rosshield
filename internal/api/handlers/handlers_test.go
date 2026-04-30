@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -24,6 +25,12 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/handlers"
+	"github.com/ssabro/rosshield/internal/domain/audit"
+	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/compliance"
+	compliancerepo "github.com/ssabro/rosshield/internal/domain/compliance/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/insight"
+	insightrepo "github.com/ssabro/rosshield/internal/domain/insight/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 	reportingrepo "github.com/ssabro/rosshield/internal/domain/reporting/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/robot"
@@ -42,16 +49,19 @@ import (
 
 // testFixture는 한 테스트의 모든 결선 자원입니다.
 type testFixture struct {
-	server   *httptest.Server
-	storage  storage.Storage
-	tenant   tenant.Service
-	robot    robot.Service
-	scan     scan.Service
-	tenantID storage.TenantID
-	userID   string
-	email    string
-	password string
-	closeFn  func()
+	server     *httptest.Server
+	storage    storage.Storage
+	tenant     tenant.Service
+	robot      robot.Service
+	scan       scan.Service
+	auditSvc   audit.Service
+	insight    insight.Service    // E17 Phase 2
+	compliance compliance.Service // E17 Phase 2
+	tenantID   storage.TenantID
+	userID     string
+	email      string
+	password   string
+	closeFn    func()
 }
 
 // newFixture는 SQLite + 도메인 서비스 + handlers + httptest.Server를 결선합니다.
@@ -125,6 +135,23 @@ func newFixture(t *testing.T) *testFixture {
 		Builder: &fakeBuilder{},
 	})
 
+	// E17 — audit 실서비스 + insight/compliance 결선.
+	// audit는 compliance.AuditReader.Head 호출에 실 결과 필요 (chain head anchor).
+	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clk})
+	insightSvc := insightrepo.New(insightrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: &nullAuditEmitter{},
+		Scan:  &testInsightScanAdapter{svc: scanSvc},
+	})
+	complianceSvc := compliancerepo.New(compliancerepo.Deps{
+		Clock:       clk,
+		IDGen:       ids,
+		Audit:       &nullAuditEmitter{},
+		ScanReader:  &testComplianceScanAdapter{svc: scanSvc},
+		AuditReader: &testComplianceAuditReaderAdapter{svc: auditSvc},
+	})
+
 	// admin 시드.
 	const (
 		email = "admin@example.com"
@@ -152,12 +179,14 @@ func newFixture(t *testing.T) *testFixture {
 
 	// handlers 결선.
 	h := handlers.New(handlers.Deps{
-		Storage:   store,
-		Clock:     clk,
-		Tenant:    tenantSvc,
-		Robot:     robotSvc,
-		Scan:      scanSvc,
-		Reporting: reportingSvc,
+		Storage:    store,
+		Clock:      clk,
+		Tenant:     tenantSvc,
+		Robot:      robotSvc,
+		Scan:       scanSvc,
+		Reporting:  reportingSvc,
+		Insight:    insightSvc,
+		Compliance: complianceSvc,
 	})
 
 	router := chi.NewRouter()
@@ -166,15 +195,18 @@ func newFixture(t *testing.T) *testFixture {
 	server := httptest.NewServer(router)
 
 	return &testFixture{
-		server:   server,
-		storage:  store,
-		tenant:   tenantSvc,
-		robot:    robotSvc,
-		scan:     scanSvc,
-		tenantID: createResult.Tenant.ID,
-		userID:   createResult.Admin.ID,
-		email:    email,
-		password: pw,
+		server:     server,
+		storage:    store,
+		tenant:     tenantSvc,
+		robot:      robotSvc,
+		scan:       scanSvc,
+		auditSvc:   auditSvc,
+		insight:    insightSvc,
+		compliance: complianceSvc,
+		tenantID:   createResult.Tenant.ID,
+		userID:     createResult.Admin.ID,
+		email:      email,
+		password:   pw,
 		closeFn: func() {
 			server.Close()
 			_ = store.Close()
@@ -662,9 +694,85 @@ func (n *nullAuditEmitter) EmitReportSigned(_ context.Context, _ storage.Tx, _ r
 	return nil
 }
 
+// E17 — insight·compliance audit emitter 메서드 (no-op).
+func (n *nullAuditEmitter) EmitInsightCreated(_ context.Context, _ storage.Tx, _ insight.Insight) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitInsightDismissed(_ context.Context, _ storage.Tx, _ insight.Insight, _ string) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitProfileCreated(_ context.Context, _ storage.Tx, _ compliance.ComplianceProfile) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitSnapshotGenerated(_ context.Context, _ storage.Tx, _ compliance.FrameworkSnapshot) error {
+	return nil
+}
+
 // fakeBuilder는 reporting Service Phase 1 Stage B는 reporting 호출 없음 — 의존성 충족용 dummy.
 type fakeBuilder struct{}
 
 func (f *fakeBuilder) Build(_ reporting.PDFInput) ([]byte, error) {
 	return []byte("%PDF-1.4 fake\n"), nil
+}
+
+// === E17 어댑터 — bootstrap.go 패턴 복사 (P5: domain이 scan/audit 직접 import 안 함). ===
+
+type testInsightScanAdapter struct{ svc scan.Service }
+
+func (a *testInsightScanAdapter) ListRecentSessions(ctx context.Context, tx storage.Tx, fleetID string, limit int) ([]insight.ScanSessionView, error) {
+	sessions, err := a.svc.ListSessions(ctx, tx, scan.ListSessionsFilter{
+		FleetID: fleetID,
+		Status:  scan.StatusCompleted,
+		Limit:   limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]insight.ScanSessionView, 0, len(sessions))
+	for _, s := range sessions {
+		out = append(out, insight.ScanSessionView{
+			ID: s.ID, TenantID: s.TenantID, FleetID: s.FleetID,
+			Status: string(s.Status), CompletedAt: s.CompletedAt,
+		})
+	}
+	return out, nil
+}
+
+func (a *testInsightScanAdapter) ListResultsForSession(ctx context.Context, tx storage.Tx, sessionID string) ([]insight.ScanResultView, error) {
+	results, err := a.svc.ListResults(ctx, tx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]insight.ScanResultView, 0, len(results))
+	for _, r := range results {
+		out = append(out, insight.ScanResultView{
+			ID: r.ID, SessionID: r.SessionID, RobotID: r.RobotID,
+			CheckID: r.CheckID, Outcome: string(r.Outcome), DurationMs: r.DurationMs,
+		})
+	}
+	return out, nil
+}
+
+type testComplianceScanAdapter struct{ svc scan.Service }
+
+func (a *testComplianceScanAdapter) ListResultsForSession(ctx context.Context, tx storage.Tx, sessionID string) ([]compliance.ScanResultView, error) {
+	results, err := a.svc.ListResults(ctx, tx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]compliance.ScanResultView, 0, len(results))
+	for _, r := range results {
+		out = append(out, compliance.ScanResultView{CheckID: r.CheckID, Outcome: string(r.Outcome)})
+	}
+	return out, nil
+}
+
+type testComplianceAuditReaderAdapter struct{ svc audit.Service }
+
+func (a *testComplianceAuditReaderAdapter) Head(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) (compliance.HeadView, error) {
+	head, err := a.svc.Head(ctx, tx, tenantID)
+	if err != nil {
+		return compliance.HeadView{}, err
+	}
+	return compliance.HeadView{Seq: head.Seq, Hash: hex.EncodeToString(head.Hash[:])}, nil
 }

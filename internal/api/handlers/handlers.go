@@ -20,10 +20,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/gen"
+	"github.com/ssabro/rosshield/internal/domain/compliance"
+	"github.com/ssabro/rosshield/internal/domain/insight"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	"github.com/ssabro/rosshield/internal/domain/scan"
@@ -37,12 +40,14 @@ import (
 // bootstrap이 *Platform에서 필요한 도메인 서비스만 추출하여 주입.
 // Phase 1 Stage B는 Storage·Tenant·Robot·Scan·Reporting만 직접 사용 — 나머지는 후속 Stage.
 type Deps struct {
-	Storage   storage.Storage
-	Clock     clock.Clock
-	Tenant    tenant.Service
-	Robot     robot.Service
-	Scan      scan.Service
-	Reporting reporting.Service
+	Storage    storage.Storage
+	Clock      clock.Clock
+	Tenant     tenant.Service
+	Robot      robot.Service
+	Scan       scan.Service
+	Reporting  reporting.Service
+	Insight    insight.Service    // E17 Phase 2
+	Compliance compliance.Service // E17 Phase 2
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -108,7 +113,65 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
 			h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
 		})
+
+		// E17 Phase 2 — Insight 도메인 표면.
+		r.Get("/api/v1/insights", func(w http.ResponseWriter, req *http.Request) {
+			h.ListInsights(w, req, parseListInsightsParams(req))
+		})
+		r.Post("/api/v1/insights/{insightId}:dismiss", func(w http.ResponseWriter, req *http.Request) {
+			h.DismissInsight(w, req, chi.URLParam(req, "insightId"))
+		})
+		r.Post("/api/v1/fleets/{fleetId}/insights:run", func(w http.ResponseWriter, req *http.Request) {
+			h.RunFleetInsights(w, req, chi.URLParam(req, "fleetId"))
+		})
+
+		// E17 Phase 2 — Compliance 도메인 표면.
+		r.Get("/api/v1/compliance/profiles", h.ListComplianceProfiles)
+		r.Post("/api/v1/compliance/profiles", h.CreateComplianceProfile)
+		r.Get("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
+			h.ListComplianceSnapshots(w, req, chi.URLParam(req, "profileId"), parseListSnapshotsParams(req))
+		})
+		r.Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
+			h.GenerateComplianceSnapshot(w, req, chi.URLParam(req, "profileId"))
+		})
 	})
+}
+
+// parseListInsightsParams는 query string에서 ListInsightsParams를 추출합니다.
+//
+// gen 래퍼 대신 직접 파싱 — chi 미들웨어 단계에서 typed binding 없이 진입하므로 query 추출.
+func parseListInsightsParams(req *http.Request) gen.ListInsightsParams {
+	q := req.URL.Query()
+	params := gen.ListInsightsParams{}
+	if v := q.Get("kind"); v != "" {
+		k := gen.ListInsightsParamsKind(v)
+		params.Kind = &k
+	}
+	if v := q.Get("severity"); v != "" {
+		s := gen.ListInsightsParamsSeverity(v)
+		params.Severity = &s
+	}
+	if v := q.Get("robotId"); v != "" {
+		params.RobotId = &v
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			params.Limit = &n
+		}
+	}
+	return params
+}
+
+// parseListSnapshotsParams는 query string에서 ListComplianceSnapshotsParams를 추출합니다.
+func parseListSnapshotsParams(req *http.Request) gen.ListComplianceSnapshotsParams {
+	q := req.URL.Query()
+	params := gen.ListComplianceSnapshotsParams{}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			params.Limit = &n
+		}
+	}
+	return params
 }
 
 // stringPtrOrNil는 빈 문자열을 nil 포인터로 변환합니다 (query 옵션 표현).
@@ -141,7 +204,8 @@ func writeError(w http.ResponseWriter, status int, message string) {
 // 알 수 없는 에러는 500 — 호출자가 message를 노출 여부 결정.
 func errorStatusFor(err error) int {
 	switch {
-	case errors.Is(err, storage.ErrNotFound):
+	case errors.Is(err, storage.ErrNotFound),
+		errors.Is(err, insight.ErrInsightNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, storage.ErrTenantMissing):
 		return http.StatusUnauthorized
@@ -153,5 +217,24 @@ func errorStatusFor(err error) int {
 		return http.StatusUnauthorized
 	default:
 		return http.StatusInternalServerError
+	}
+}
+
+// complianceErrorStatus는 compliance 도메인 sentinel을 HTTP status로 매핑합니다.
+//
+// 별도 함수로 두는 이유: ErrProfileExists → 409, ErrFrameworkVersionMismatch → 400 등
+// 일반 errorStatusFor 매핑과 카테고리가 다름.
+func complianceErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, compliance.ErrProfileNotFound),
+		errors.Is(err, compliance.ErrSnapshotNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, compliance.ErrProfileExists):
+		return http.StatusConflict
+	case errors.Is(err, compliance.ErrFrameworkVersionMismatch),
+		errors.Is(err, compliance.ErrUnknownFramework):
+		return http.StatusBadRequest
+	default:
+		return errorStatusFor(err)
 	}
 }

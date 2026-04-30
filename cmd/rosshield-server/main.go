@@ -122,12 +122,14 @@ func newMux(p *Platform) http.Handler {
 	// E9 Stage B — chi 라우터로 API mount.
 	apiRouter := chi.NewRouter()
 	h := handlers.New(handlers.Deps{
-		Storage:   p.Storage,
-		Clock:     p.Clock,
-		Tenant:    p.Tenant,
-		Robot:     p.Robot,
-		Scan:      p.Scan,
-		Reporting: p.Reporting,
+		Storage:    p.Storage,
+		Clock:      p.Clock,
+		Tenant:     p.Tenant,
+		Robot:      p.Robot,
+		Scan:       p.Scan,
+		Reporting:  p.Reporting,
+		Insight:    p.Insight,
+		Compliance: p.Compliance,
 	})
 	h.Mount(apiRouter)
 	mux.Handle("/api/v1/", apiRouter)

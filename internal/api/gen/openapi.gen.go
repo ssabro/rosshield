@@ -45,6 +45,31 @@ const (
 	Unavailable HealthStatusStatus = "unavailable"
 )
 
+// Defines values for CreateComplianceProfileJSONBodyFramework.
+const (
+	IsmsP         CreateComplianceProfileJSONBodyFramework = "isms-p"
+	Iso270012022  CreateComplianceProfileJSONBodyFramework = "iso27001-2022"
+	Nist80053Rev5 CreateComplianceProfileJSONBodyFramework = "nist-800-53-rev5"
+)
+
+// Defines values for ListInsightsParamsKind.
+const (
+	Anomaly    ListInsightsParamsKind = "anomaly"
+	Drift      ListInsightsParamsKind = "drift"
+	Peer       ListInsightsParamsKind = "peer"
+	Prediction ListInsightsParamsKind = "prediction"
+	RootCause  ListInsightsParamsKind = "root_cause"
+)
+
+// Defines values for ListInsightsParamsSeverity.
+const (
+	Critical ListInsightsParamsSeverity = "critical"
+	High     ListInsightsParamsSeverity = "high"
+	Info     ListInsightsParamsSeverity = "info"
+	Low      ListInsightsParamsSeverity = "low"
+	Medium   ListInsightsParamsSeverity = "medium"
+)
+
 // Envelope defines model for Envelope.
 type Envelope struct {
 	Meta  *Meta        `json:"meta,omitempty"`
@@ -118,6 +143,45 @@ type LoginJSONBody struct {
 	Password string              `json:"password"`
 }
 
+// CreateComplianceProfileJSONBody defines parameters for CreateComplianceProfile.
+type CreateComplianceProfileJSONBody struct {
+	Enabled          *bool                                    `json:"enabled,omitempty"`
+	Framework        CreateComplianceProfileJSONBodyFramework `json:"framework"`
+	FrameworkVersion string                                   `json:"frameworkVersion"`
+}
+
+// CreateComplianceProfileJSONBodyFramework defines parameters for CreateComplianceProfile.
+type CreateComplianceProfileJSONBodyFramework string
+
+// ListComplianceSnapshotsParams defines parameters for ListComplianceSnapshots.
+type ListComplianceSnapshotsParams struct {
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GenerateComplianceSnapshotJSONBody defines parameters for GenerateComplianceSnapshot.
+type GenerateComplianceSnapshotJSONBody struct {
+	SessionId string `json:"sessionId"`
+}
+
+// ListInsightsParams defines parameters for ListInsights.
+type ListInsightsParams struct {
+	Limit    *Limit                      `form:"limit,omitempty" json:"limit,omitempty"`
+	Kind     *ListInsightsParamsKind     `form:"kind,omitempty" json:"kind,omitempty"`
+	Severity *ListInsightsParamsSeverity `form:"severity,omitempty" json:"severity,omitempty"`
+	RobotId  *string                     `form:"robotId,omitempty" json:"robotId,omitempty"`
+}
+
+// ListInsightsParamsKind defines parameters for ListInsights.
+type ListInsightsParamsKind string
+
+// ListInsightsParamsSeverity defines parameters for ListInsights.
+type ListInsightsParamsSeverity string
+
+// DismissInsightJSONBody defines parameters for DismissInsight.
+type DismissInsightJSONBody struct {
+	Reason string `json:"reason"`
+}
+
 // ListRobotsParams defines parameters for ListRobots.
 type ListRobotsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -162,6 +226,15 @@ type VerifyAuditChainJSONRequestBody VerifyAuditChainJSONBody
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody LoginJSONBody
 
+// CreateComplianceProfileJSONRequestBody defines body for CreateComplianceProfile for application/json ContentType.
+type CreateComplianceProfileJSONRequestBody CreateComplianceProfileJSONBody
+
+// GenerateComplianceSnapshotJSONRequestBody defines body for GenerateComplianceSnapshot for application/json ContentType.
+type GenerateComplianceSnapshotJSONRequestBody GenerateComplianceSnapshotJSONBody
+
+// DismissInsightJSONRequestBody defines body for DismissInsight for application/json ContentType.
+type DismissInsightJSONRequestBody DismissInsightJSONBody
+
 // CreateRobotJSONRequestBody defines body for CreateRobot for application/json ContentType.
 type CreateRobotJSONRequestBody = CreateRobotJSONBody
 
@@ -182,6 +255,27 @@ type ServerInterface interface {
 	// Current session info
 	// (GET /api/v1/auth/me)
 	GetCurrentSession(w http.ResponseWriter, r *http.Request)
+	// List compliance profiles for the current tenant
+	// (GET /api/v1/compliance/profiles)
+	ListComplianceProfiles(w http.ResponseWriter, r *http.Request)
+	// Activate a compliance framework
+	// (POST /api/v1/compliance/profiles)
+	CreateComplianceProfile(w http.ResponseWriter, r *http.Request)
+	// List snapshots for a profile (created_at DESC)
+	// (GET /api/v1/compliance/profiles/{profileId}/snapshots)
+	ListComplianceSnapshots(w http.ResponseWriter, r *http.Request, profileId string, params ListComplianceSnapshotsParams)
+	// Generate a snapshot from a scan session
+	// (POST /api/v1/compliance/profiles/{profileId}/snapshots)
+	GenerateComplianceSnapshot(w http.ResponseWriter, r *http.Request, profileId string)
+	// Trigger insight detectors for a fleet (drift/anomaly/peer)
+	// (POST /api/v1/fleets/{fleetId}/insights:run)
+	RunFleetInsights(w http.ResponseWriter, r *http.Request, fleetId string)
+	// List active (non-dismissed) insights
+	// (GET /api/v1/insights)
+	ListInsights(w http.ResponseWriter, r *http.Request, params ListInsightsParams)
+	// Mark an insight as dismissed
+	// (POST /api/v1/insights/{insightId}:dismiss)
+	DismissInsight(w http.ResponseWriter, r *http.Request, insightId string)
 	// Verify the signature of a report
 	// (POST /api/v1/reports/{reportId}:verify)
 	VerifyReport(w http.ResponseWriter, r *http.Request, reportId string)
@@ -236,6 +330,48 @@ func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
 // Current session info
 // (GET /api/v1/auth/me)
 func (_ Unimplemented) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List compliance profiles for the current tenant
+// (GET /api/v1/compliance/profiles)
+func (_ Unimplemented) ListComplianceProfiles(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Activate a compliance framework
+// (POST /api/v1/compliance/profiles)
+func (_ Unimplemented) CreateComplianceProfile(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List snapshots for a profile (created_at DESC)
+// (GET /api/v1/compliance/profiles/{profileId}/snapshots)
+func (_ Unimplemented) ListComplianceSnapshots(w http.ResponseWriter, r *http.Request, profileId string, params ListComplianceSnapshotsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Generate a snapshot from a scan session
+// (POST /api/v1/compliance/profiles/{profileId}/snapshots)
+func (_ Unimplemented) GenerateComplianceSnapshot(w http.ResponseWriter, r *http.Request, profileId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Trigger insight detectors for a fleet (drift/anomaly/peer)
+// (POST /api/v1/fleets/{fleetId}/insights:run)
+func (_ Unimplemented) RunFleetInsights(w http.ResponseWriter, r *http.Request, fleetId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List active (non-dismissed) insights
+// (GET /api/v1/insights)
+func (_ Unimplemented) ListInsights(w http.ResponseWriter, r *http.Request, params ListInsightsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Mark an insight as dismissed
+// (POST /api/v1/insights/{insightId}:dismiss)
+func (_ Unimplemented) DismissInsight(w http.ResponseWriter, r *http.Request, insightId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -373,6 +509,252 @@ func (siw *ServerInterfaceWrapper) GetCurrentSession(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentSession(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListComplianceProfiles operation middleware
+func (siw *ServerInterfaceWrapper) ListComplianceProfiles(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListComplianceProfiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateComplianceProfile operation middleware
+func (siw *ServerInterfaceWrapper) CreateComplianceProfile(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateComplianceProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListComplianceSnapshots operation middleware
+func (siw *ServerInterfaceWrapper) ListComplianceSnapshots(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "profileId" -------------
+	var profileId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profileId", chi.URLParam(r, "profileId"), &profileId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profileId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListComplianceSnapshotsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListComplianceSnapshots(w, r, profileId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GenerateComplianceSnapshot operation middleware
+func (siw *ServerInterfaceWrapper) GenerateComplianceSnapshot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "profileId" -------------
+	var profileId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profileId", chi.URLParam(r, "profileId"), &profileId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profileId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GenerateComplianceSnapshot(w, r, profileId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunFleetInsights operation middleware
+func (siw *ServerInterfaceWrapper) RunFleetInsights(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "fleetId" -------------
+	var fleetId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fleetId", chi.URLParam(r, "fleetId"), &fleetId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fleetId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunFleetInsights(w, r, fleetId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInsights operation middleware
+func (siw *ServerInterfaceWrapper) ListInsights(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInsightsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "kind", r.URL.Query(), &params.Kind)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "severity" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "severity", r.URL.Query(), &params.Severity)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "severity", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "robotId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "robotId", r.URL.Query(), &params.RobotId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "robotId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInsights(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissInsight operation middleware
+func (siw *ServerInterfaceWrapper) DismissInsight(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "insightId" -------------
+	var insightId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "insightId", chi.URLParam(r, "insightId"), &insightId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "insightId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissInsight(w, r, insightId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -854,6 +1236,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/auth/me", wrapper.GetCurrentSession)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/compliance/profiles", wrapper.ListComplianceProfiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/compliance/profiles", wrapper.CreateComplianceProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/compliance/profiles/{profileId}/snapshots", wrapper.ListComplianceSnapshots)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/compliance/profiles/{profileId}/snapshots", wrapper.GenerateComplianceSnapshot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/fleets/{fleetId}/insights:run", wrapper.RunFleetInsights)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/insights", wrapper.ListInsights)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/insights/{insightId}:dismiss", wrapper.DismissInsight)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/reports/{reportId}:verify", wrapper.VerifyReport)
 	})
 	r.Group(func(r chi.Router) {
@@ -887,45 +1290,55 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"FHWHXpmsTVshQ7v0vwEAAP//Muup6zMlAAA=",
+	"H4sIAAAAAAAC/+Ra23IbN9J+lS78uZDrH3IoJc6BuVIkJ1Ysr12ik1StpJXAQXMGIQaYABhKjIpV+xD7",
+	"hPskW8AcOCSHBymMYztXojA4NL7++oAGHkik0kxJlNaQ/gPJqKYpWtT+v5NcG6XdLy5Jn/yWo56SgEia",
+	"IumTqPgaEBMlmFLXzU4z98VYzWVMZrOAnDFMM2VRRtNXOHV9GJpI88xy5eb86fzsFJSGn346O+3CgKYI",
+	"Y5zCHbcJl3D0RQIaba6lAZsgKM1jLqkAjSZT0mCXBIVsCVKGei5cY92OW7gpZUrvz1HGNiH9L78ISMpl",
+	"9e/hl0HLHs55yu06FIT/2Jye4YjmwpL+817g1uJpnrp/en6p4r/Deh0uLcao/UIDpe0qRN9zFAzcct9C",
+	"pnHE7z08cNu5hZHS4HqjZFzGNRpLMho37yY9zQJSIeoV/0JrpS/KFtcQKWlReuFolgkeUSdc+KtxEj40",
+	"Zv5M44j0yf+Fc16FxVcT+llfyAkKlWGx6uJOfQfAeY9K5kKoqt3xVKsMteWFuCnarYu/dn1mAVHjcj/G",
+	"kr7VOdaaGColkErXaUJF7tYpgPkt5xoZ6V+6wdd1fzX8FSPrunu5V8WKqMVY6elOuJxUnWcBiRTDVR6c",
+	"KmuRgfsIB9iNu3Cr1VDZrlT2ZqRyyW6fkRX+Oowt5cJLRBnjbjYq3jYkXUBhvqsUjaExtvAlIJbqGO3q",
+	"ljlr7z7NsN0/LK26hLcHIpgDORdqrRpOGqCjdLZ2SXJJc5ugtI63yEhARkoPOWMonZFU8LmVlBwJHjlr",
+	"mVDBmac5CYimFm+8qfvheWasRpp6e7OoJRUNieb7XmT8ClpY8WYrOwp9PJHlIypMC81XuR2UErWB+xKp",
+	"sMnAUpub1Z2Yur3C3E/HMNaUFZBJOqFc0KHAFqiWZCmna5PjdYnC4vpuMBp71k6/yrcde8aOlE6pJX3C",
+	"qMWO5Sm2WY1BPUH9M2rDCx+3WeK5ANdtpDYY5Zrb6cDpqRCZZvwVTo9zF3eWTf347ZkPg1zCreuhNP/d",
+	"U7EP3yHVqGEU3wg+wZtut+ujQFr5d69i32e+q8TazO2paK+WLP77vkLjx1/ekWWH/OMv74AbkyOD4RRu",
+	"Q5rxcHIYOmsKhYq5vHWx+83Z6Uk4OH59DhEVYkij8XZhHChcjtTq3gdjFGiVBJNh5APc24QahF4XTpS0",
+	"mka2M+LaWPjvv/8DhZogoZIJ1CaASHCUFganr0xwJalkcHJ+BpFKU/fbJDRDA1QjxCjRmTWDkVYp2IQb",
+	"YCrKU5S2CwPEK3nLVGRChobHMuw979CMd6hkHbf/bsqK8OvyklEuBBT9ulfyShZm0ofJIeSSoa6+wT8U",
+	"ONp6XUKCGoEbcGbKGWpkYKwzkO6V8zmCR1iGX86c8xpx1I4cGY0S7Bx1e/MI32hzbMvTlDoXSC7eDI7g",
+	"e4FoYVBSEI5zxi28FdQ63sDx2zOnHG6Fm0grYxKfcBTtk8oASK/b6x5635KhpBknffJ599ALkVGbeE7P",
+	"CcK4DV1O5lrLSFFv3Fkp+QGtF+Sl67SUfhz1evtLOjbkG29eFfGxzNfaJ6olCxezotkC0Ce51o53CTVJ",
+	"J0ood+r1O7M0Ns5DeEycd7jvVN6SWMWUn2gRuAlqPvIRLFOmBbuf/XcP34lbigSV//lOsemjoFt0o84S",
+	"dneRVu3atyXQL/hPl4HM/iISeDDLad25wlFhX6woFAUUNJUxghp5b+GVDAVJDvC+yB/AK52jfvZ4zlTe",
+	"eD1jzv3nfdEEU8rFgu6LlhaOZNSYO6XZQu+6cVseUE1bD7h+D0SiQrwZkf7lrpQKluGpTg9LzTSK0Jh3",
+	"aoyyNUvB+4xrNI9JUjSONJpk3Zyt+fVSy/Wf4hfLWEP6l9dNezhXERUQafTxjAoQJS/nhLfJTnxPcVNk",
+	"Kb3xAI0p8/dPJLyYYkfgU6fHwebWFJzKCMNMqxEXBRitEJ5zY0/q/m+r7h8/jm5jMEcCKiTqTC4qgbYo",
+	"qbQNiOeDloDOXHZ65H1dq+s90UgtrqC5P2csXcrIFipP6+oaI01TvFN63DypcZOaTuaOskYdfdXrHXaO",
+	"ekdHLrfkxna+7vU6zz/vaJw8bz3i1lPufFSaC9Ey+mkO/vC98LDQJNsbGY8jyyfUItAmJZvw7Ey+zXYe",
+	"PpS/ztgsNJJmJlF2V+sf1P2DhfLwmvg47xIWddPZ9SfiNmrgvLOgle+Ag6jgxQ21cPpicPLskV5jEVNf",
+	"v3UHqvnhrlYeWbaEZk03o9ZlkqRP/hVlN5fHnX/2Ot9c//9nLUnW9Tpf9UN5Jl7V/t7cVRnBWis1y1Wg",
+	"uuuH7BUqzPbnF6oZgdacK2oUFExEZZUEPNE/jASiNeGD/+scApeGx4k1fZ0vnCAWt/maypwKMQWdl5cx",
+	"5TjIeIaCS6xjaMwnKMHP34UXh9/AHRcCTD508w3xSvpai1V+N10vO1pkgBMHUmFduVWp19S3RWUGJcsU",
+	"lxa0OxNI3+tKKtlh6As7Gt08uS1rJ4u0vsilr4GclTslu1hdic9Gm2sxrL/E1Z2ixcgqbdxBEw5SOnXe",
+	"ieURQq/SkwE+Aqkg4cYqPX22N7q+0zyOUdd8YLUwhZ/0QMIB03xkQypVSsU0zHDxpFsO3k7fajcbo9d6",
+	"Re8WsoL2u74x95cEc31VKZTfGwlIuTu3LPqap1bK3kQ0Ny7fyzQyHtnFNGfu+9rXNDhBf5RqW7c8Bgh1",
+	"569GGM9TEpCEx47HkeaWR603E+sW8/dJZ4x8iBzfdzinLvtCOPBOhJuUG4PsWW0tf4Sb4UP564zN+uXc",
+	"62szp0WHkrM7+aZ6+l0zAi7N1pRgP/FdIy17NK7Zq8vv+p492Hqd4me5/oDrhqcVZ/ZGy9dUj4HK2pFS",
+	"AzUxn0JHjZnSjo3FD0fG3SrLF77/Tkyspv4owuR7KPW6/MfwWFKba1/wpaArNCsFFg0Oii0lG++ON0e6",
+	"i6LL0+Pclo7lE6AdevrHK+sCyzyZ2vBYqH2opfFThv32twhiulJ/zS3X0MqrzfUpz6NH02jpddcfiSJ/",
+	"m6rPBcbcWHSZsS5B3668FacQPpS52mxTHbzS6sfO9R/QPgqunSJXnevulEFptSWBaqjInWs3u+2B7/E+",
+	"vHbrmaJA6wledRc//snU+xq1lqaLde1P8LBO5R+Zgz16L3o7jiLM9ulhB5Zq5y8k3q0rmK3VYcOKiysg",
+	"E5ZXQjvcN76rLo0+levGlVuwsmEdcol/JPj7Jqhell2eBBLe0zQT2HxxSNSYzIId4Vt4xNgC4QD1hEf+",
+	"URYVfLLlMptPUKIxkGk1xAZIBQrk2kOikbJpE5HFFS/K1+1HvR4oKaZARy43OP0uKMqhMMxNAFQyyGg0",
+	"Bi4Z3vvna37e7kqp0wX9YsU/kYXbYPQSOK08732+z+cDbl6+EfI2Xi5O+LDwCvLy2kW65lPMy2vnZItn",
+	"hYWLXtxb8YSBoRlblUEIDL1FpujtJNeifOLYD8PDo6+6/tVc/+ve1z0fjZcsVnYyjSkoDV4ZvoDfnMT0",
+	"w/AhUcbO/INkzemwvLZP6iJ9ae7zl3vd0kq69dPkmQ/KJVYrG6poHHpONfA187hf4ru6heP5w2p3qPZv",
+	"LGtvWw72rxNWh9besjro1d5TCYSUShqjh7UvcyECkhvUxe/VuYonjrFWecZlbAqDUYJHvLkLn720SOLT",
+	"ZODSGZzSUz96/kjFLOWMLRMMeCyRwRBllKRUj72xNsbVH9rGNtMMKO4yTC5sY7iPVi1i0zvACWcoI/QX",
+	"IJo1BlVf/MCqMF1CuVTJKqvXi8XFsnoNRfV6De7n5687QxqNkQHeZ4JKTwMDByqzHS6fNUjAJrzKSZd0",
+	"V114Q0qzufpMpHRTeY07rrUKKCtey+Wp4qnC8piX9VNNZOWbPKHiJm2Zv76e/S8AAP//2sOHmiU1AAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
