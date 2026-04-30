@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ssabro/rosshield/internal/app/insightautorun"
+	"github.com/ssabro/rosshield/internal/app/llmmapper"
 	"github.com/ssabro/rosshield/internal/app/scanrun"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
@@ -655,6 +656,18 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		BlobStore: bs,
 	})
 
+	// E16 — LLM 어댑터 결선 (R14-1 옵트인, 기본값 noop). compliance Suggester 주입 전 단계로 위로 이동.
+	llmAdapter, err := buildLLMAdapter(cfg)
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: llm: %w", err)
+	}
+
+	// E17 — LLMSuggester 결선 (compliance.SuggestMappings에서 사용).
+	// noop이어도 결선만 하고, SuggestMappings 호출 시 ErrLLMDisabled가 도메인 sentinel로 매핑.
+	llmSuggester := llmmapper.New(llmAdapter, cfg.LLMModel)
+
 	// E15 Compliance 도메인 결선 — reporting 결선 전에 만들어 framework 어댑터를 reporting Deps에 주입 (E18).
 	complianceSvc := compliancerepo.New(compliancerepo.Deps{
 		Clock:       clk,
@@ -662,6 +675,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Audit:       emitter,
 		ScanReader:  &complianceScanAdapter{svc: scanSvc},
 		AuditReader: &complianceAuditReaderAdapter{svc: auditSvc},
+		Suggester:   llmSuggester, // E17
 	})
 
 	// E8 Stage D — Reporting 도메인 결선 (R10-1 signintech/gopdf, R10-7 키 분리).
@@ -710,13 +724,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		// WorkerLimit은 default(R4-4 — 10).
 	})
 
-	// E16 — LLM 어댑터 결선 (R14-1 옵트인, 기본값 noop).
-	llmAdapter, err := buildLLMAdapter(cfg)
-	if err != nil {
-		_ = sch.Close(ctx)
-		_ = store.Close()
-		return nil, fmt.Errorf("bootstrap: llm: %w", err)
-	}
+	// (LLM·Compliance는 위에서 결선됨 — E17 Suggester 주입 흐름)
 
 	// E16 — Insight 도메인 결선 (E14 + scan/audit 어댑터 주입).
 	insightSvc := insightrepo.New(insightrepo.Deps{
