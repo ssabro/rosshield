@@ -213,3 +213,13 @@ var (
 	ErrRefreshRevoked        = errors.New("tenant: refresh token has been revoked")
 	ErrRefreshExpired        = errors.New("tenant: refresh token has expired")
 )
+
+// ErrRefreshReuseDetected는 이미 revoke된 refresh token이 다시 사용된 경우입니다 (C7).
+//
+// 탈취 신호로 간주 — Refresh 흐름이 같은 Tx에서 해당 user의 모든 활성 refresh token을
+// 일괄 revoke한 뒤 본 sentinel을 반환합니다. caller는 fn에서 nil을 반환해 cleanup commit하거나,
+// 그대로 propagate해 rollback 시 cleanup도 같이 사라짐 — 보수적으로는 propagate 후 별도 Tx에서
+// RevokeAllRefreshForUser 재호출 권장.
+//
+// errors.Is(ErrRefreshReuseDetected, ErrRefreshRevoked) → true (backward-compat: 단순 revoked 처리 caller도 호환).
+var ErrRefreshReuseDetected = fmt.Errorf("%w (reuse detected, cleanup attempted)", ErrRefreshRevoked)

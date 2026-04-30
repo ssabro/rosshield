@@ -418,9 +418,11 @@ func (r *Repo) Refresh(ctx context.Context, tx storage.Tx, refreshToken string) 
 		return tenant.LoginResult{}, err
 	}
 	if row.RevokedAt != nil {
-		// reuse 감지 시 호출자가 별도 Tx로 RevokeAllRefreshForUser를 호출해야 합니다.
-		// 같은 Tx에서 일괄 revoke하면 ErrRefreshRevoked 반환과 함께 rollback돼 의미 없음.
-		return tenant.LoginResult{}, tenant.ErrRefreshRevoked
+		// C7 reuse detection — 같은 Tx에서 user의 모든 활성 refresh token을 일괄 revoke.
+		// caller가 fn에서 nil 반환 시 cleanup commit, propagate 시 rollback (별도 Tx로 재호출 권장).
+		now := r.deps.Clock.Now().UTC()
+		_, _ = revokeAllRefreshForUser(ctx, tx, claims.TenantID, row.UserID, now)
+		return tenant.LoginResult{}, tenant.ErrRefreshReuseDetected
 	}
 	if !row.ExpiresAt.After(r.deps.Clock.Now().UTC()) {
 		return tenant.LoginResult{}, tenant.ErrRefreshExpired
@@ -569,6 +571,41 @@ UPDATE auth_refresh_tokens
 		return fmt.Errorf("tenant: revoke refresh: %w", err)
 	}
 	return nil
+}
+
+// RevokeAllRefreshForUser는 tenant.Service.RevokeAllRefreshForUser 구현입니다 (C7).
+//
+// (tenant_id, user_id) scope의 active(revoked_at IS NULL) refresh token만 갱신 — cross-tenant 격리.
+// 반환은 새로 revoke된 row 수 (이미 revoked는 제외).
+func (r *Repo) RevokeAllRefreshForUser(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, userID string) (int, error) {
+	if tenantID == "" {
+		return 0, storage.ErrTenantMissing
+	}
+	if tx.TenantID() != "" && tx.TenantID() != tenantID {
+		return 0, fmt.Errorf("tenant: tx.TenantID()=%q != tenantID=%q", tx.TenantID(), tenantID)
+	}
+	now := r.deps.Clock.Now().UTC()
+	return revokeAllRefreshForUser(ctx, tx, tenantID, userID, now)
+}
+
+// revokeAllRefreshForUser는 한 (tenant, user)의 모든 active refresh token을 일괄 revoke합니다.
+//
+// SQLite는 RowsAffected를 지원하므로 새로 revoke된 count를 정확히 반환.
+func revokeAllRefreshForUser(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, userID string, now time.Time) (int, error) {
+	res, err := tx.Exec(ctx, `
+UPDATE auth_refresh_tokens
+   SET revoked_at = ?
+ WHERE tenant_id = ? AND user_id = ? AND revoked_at IS NULL`,
+		now.Format(time.RFC3339Nano), string(tenantID), userID)
+	if err != nil {
+		return 0, fmt.Errorf("tenant: revoke all refresh for user: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		// SQLite는 항상 지원 — 오류는 무시 가능하지만 안전하게 0 반환.
+		return 0, nil
+	}
+	return int(n), nil
 }
 
 // GetUserRoles는 tenant.Service.GetUserRoles 구현입니다.

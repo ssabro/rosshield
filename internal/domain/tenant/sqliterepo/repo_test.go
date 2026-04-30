@@ -701,12 +701,130 @@ func TestRefreshRotatesAndRevokesPrevious(t *testing.T) {
 		t.Errorf("reuse: err = %v, want ErrRefreshRevoked", err)
 	}
 
-	// rotated refresh는 여전히 valid (Phase 1은 자동 reuse detection 미구현 — 후속 보안 강화).
+	// rotated refresh는 여전히 valid — caller가 ErrRefreshReuseDetected를 propagate해 rollback했으므로
+	// reuse cleanup이 commit되지 않음 (도메인 메서드 자체는 caller 책임).
+	// caller가 명시적으로 commit하는 흐름은 TestReuseDetectionWhenCallerCommitsRevokesAll.
 	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
 		_, e := repo.Refresh(ctx, tx, rotated.RefreshToken)
 		return e
 	}); err != nil {
 		t.Errorf("rotated refresh should still work: %v", err)
+	}
+}
+
+// C7 — reuse detection이 commit되면 user의 모든 활성 token이 revoke된다.
+//
+// caller가 ErrRefreshReuseDetected를 받았을 때 fn에서 nil을 반환해 cleanup commit하면,
+// 해당 user의 모든 활성 refresh token이 무효화되어 후속 사용도 거부.
+func TestReuseDetectionWhenCallerCommitsRevokesAll(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+	var first tenant.LoginResult
+	_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Login(ctx, tx, tenant.LoginRequest{
+			TenantID: seed.Tenant.ID,
+			Email:    seed.Admin.Email,
+			Password: "long-enough-secret-pw",
+		})
+		first = r
+		return nil
+	})
+
+	// 첫 rotation — 새 token 발급.
+	var rotated tenant.LoginResult
+	_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Refresh(ctx, tx, first.RefreshToken)
+		rotated = r
+		return nil
+	})
+
+	// reuse 감지 — caller가 ErrRefreshReuseDetected catch + nil 반환 → cleanup commit.
+	var reuseErr error
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Refresh(ctx, tx, first.RefreshToken)
+		if errors.Is(e, tenant.ErrRefreshReuseDetected) {
+			reuseErr = e
+			return nil // cleanup commit
+		}
+		return e
+	}); err != nil {
+		t.Fatalf("Tx: %v", err)
+	}
+	if !errors.Is(reuseErr, tenant.ErrRefreshReuseDetected) {
+		t.Fatalf("reuseErr = %v, want ErrRefreshReuseDetected", reuseErr)
+	}
+	// errors.Is(... ErrRefreshRevoked) backward-compat도 true.
+	if !errors.Is(reuseErr, tenant.ErrRefreshRevoked) {
+		t.Errorf("ErrRefreshReuseDetected should wrap ErrRefreshRevoked")
+	}
+
+	// rotated도 이제 revoke됨 — 후속 사용 거부.
+	err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Refresh(ctx, tx, rotated.RefreshToken)
+		return e
+	})
+	if !errors.Is(err, tenant.ErrRefreshRevoked) {
+		t.Errorf("rotated should be revoked after reuse cleanup: err = %v", err)
+	}
+}
+
+// C7 — RevokeAllRefreshForUser는 활성 token만 revoke하고 count 반환.
+func TestRevokeAllRefreshForUserCounts(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var seed tenant.CreateResult
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, _ := repo.Create(ctx, tx, sampleCreate())
+		seed = r
+		return nil
+	})
+
+	tenantCtx := storage.WithTenantID(context.Background(), seed.Tenant.ID)
+	// 3 login → 3 active refresh.
+	for i := 0; i < 3; i++ {
+		_ = store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+			_, _ = repo.Login(ctx, tx, tenant.LoginRequest{
+				TenantID: seed.Tenant.ID,
+				Email:    seed.Admin.Email,
+				Password: "long-enough-secret-pw",
+			})
+			return nil
+		})
+	}
+
+	// 첫 호출 → 3 revoked.
+	var n int
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		count, e := repo.RevokeAllRefreshForUser(ctx, tx, seed.Tenant.ID, seed.Admin.ID)
+		n = count
+		return e
+	}); err != nil {
+		t.Fatalf("RevokeAllRefreshForUser: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("count = %d, want 3", n)
+	}
+
+	// 두 번째 호출 → 0 (이미 모두 revoked).
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		count, e := repo.RevokeAllRefreshForUser(ctx, tx, seed.Tenant.ID, seed.Admin.ID)
+		n = count
+		return e
+	}); err != nil {
+		t.Fatalf("second RevokeAll: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("second count = %d, want 0 (idempotent)", n)
 	}
 }
 

@@ -289,6 +289,14 @@ type Service interface {
 	// VerifyAccessToken은 access token을 stateless 검증하여 claims를 반환합니다.
 	// DB 접근 없음 — 미들웨어가 매 요청마다 호출 가능.
 	VerifyAccessToken(ctx context.Context, accessToken string) (AccessClaims, error)
+
+	// RevokeAllRefreshForUser는 한 user의 모든 활성(revoked_at IS NULL) refresh token을
+	// 일괄 revoke합니다 (C7 reuse detection cleanup용).
+	//
+	// 일반 운영에서도 사용 가능: admin이 user의 비밀번호 강제 변경·계정 정지 시 호출.
+	// 멱등 — 이미 revoked인 token은 그대로 둠.
+	// 반환 int은 새로 revoke된 count.
+	RevokeAllRefreshForUser(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, userID string) (int, error)
 }
 
 // 공통 에러.
