@@ -81,19 +81,24 @@ func GenerateAndSignReport(ctx context.Context, p *Platform, req reporting.Gener
 // 컴파일 타임 가드: audit.ChainHead가 본 파일이 가정하는 표면을 가지고 있는지.
 var _ = audit.ChainHead{}.Seq
 
-// GenerateAndSignFrameworkReport는 ComplianceProfile/Snapshot 기반 PDF를 생성·서명합니다 (E18).
+// GenerateAndSignFrameworkReport는 ComplianceProfile/Snapshot 기반 PDF를 생성·서명·번들링합니다 (E18 + Exit).
 //
 // GenerateAndSignReport와 동일 패턴이지만 framework 전용 메서드 호출:
 //
-//	GenerateFramework → ReportSigner.Sign(pdfBytes) → audit.Head → SignFramework.
+//	GenerateFramework → ReportSigner.Sign(pdfBytes) → audit.Head → SignFramework → BuildFrameworkBundle.
 //
-// Phase 2는 번들 미생성 — 검증은 chain head anchor + sig_* 컬럼으로 cross-check.
-func GenerateAndSignFrameworkReport(ctx context.Context, p *Platform, req reporting.GenerateFrameworkRequest) (reporting.FrameworkReport, error) {
+// 반환: (signed FrameworkReport, tar.gz bundle bytes, framework, frameworkVersion).
+// 번들은 호출자가 디스크에 쓰거나 응답으로 반환 — 외부 검증은 `verify-framework` 서브커맨드.
+func GenerateAndSignFrameworkReport(ctx context.Context, p *Platform, req reporting.GenerateFrameworkRequest) (reporting.FrameworkReport, []byte, error) {
 	if p == nil {
-		return reporting.FrameworkReport{}, fmt.Errorf("reporting: platform nil")
+		return reporting.FrameworkReport{}, nil, fmt.Errorf("reporting: platform nil")
 	}
 
-	var signed reporting.FrameworkReport
+	var (
+		signed           reporting.FrameworkReport
+		framework        string
+		frameworkVersion string
+	)
 	tenantCtx := storage.WithTenantID(ctx, req.TenantID)
 	if err := p.Storage.Tx(tenantCtx, func(c context.Context, tx storage.Tx) error {
 		r, err := p.Reporting.GenerateFramework(c, tx, req)
@@ -114,9 +119,29 @@ func GenerateAndSignFrameworkReport(ctx context.Context, p *Platform, req report
 			return fmt.Errorf("reporting sign framework: %w", err)
 		}
 		signed = s
+
+		// framework 메타 회수 — anchor에 박을 정보. compliance 호출은 같은 Tx 안에서.
+		profiles, err := p.Compliance.ListProfiles(c, tx)
+		if err != nil {
+			return fmt.Errorf("list profiles: %w", err)
+		}
+		for _, prof := range profiles {
+			if prof.ID == req.ProfileID {
+				framework = string(prof.Framework)
+				frameworkVersion = prof.FrameworkVersion
+				break
+			}
+		}
 		return nil
 	}); err != nil {
-		return reporting.FrameworkReport{}, err
+		return reporting.FrameworkReport{}, nil, err
 	}
-	return signed, nil
+
+	// BuildFrameworkBundle — Tx 밖에서 (pure 메모리).
+	pubKey := ed25519.PublicKey(p.ReportSigner.PublicKey())
+	bundle, err := reporting.BuildFrameworkBundle(signed, framework, frameworkVersion, pubKey)
+	if err != nil {
+		return reporting.FrameworkReport{}, nil, fmt.Errorf("framework bundle: %w", err)
+	}
+	return signed, bundle, nil
 }

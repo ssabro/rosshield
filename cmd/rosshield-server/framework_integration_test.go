@@ -78,8 +78,8 @@ func TestFrameworkReportFullFlowEndToEnd(t *testing.T) {
 		t.Fatalf("seed compliance: %v", err)
 	}
 
-	// 3) GenerateAndSignFrameworkReport — 어댑터 결선 + 서명 흐름 일괄.
-	signed, err := GenerateAndSignFrameworkReport(context.Background(), p, reporting.GenerateFrameworkRequest{
+	// 3) GenerateAndSignFrameworkReport — 어댑터 결선 + 서명 + 번들링 흐름 일괄.
+	signed, bundle, err := GenerateAndSignFrameworkReport(context.Background(), p, reporting.GenerateFrameworkRequest{
 		TenantID:    tenantID,
 		ProfileID:   profileID,
 		SnapshotID:  snapshotID,
@@ -87,6 +87,27 @@ func TestFrameworkReportFullFlowEndToEnd(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("GenerateAndSignFrameworkReport: %v", err)
+	}
+	if len(bundle) == 0 {
+		t.Fatal("bundle is empty")
+	}
+
+	// 3.5) Phase 2 Exit — 번들 외부 검증 (별도 ed25519 verify, audit DB 무관).
+	verifyResult, err := reporting.VerifyFrameworkBundle(bundle, nil)
+	if err != nil {
+		t.Fatalf("VerifyFrameworkBundle: %v", err)
+	}
+	if !verifyResult.OK {
+		t.Errorf("VerifyResult.OK = false, reason=%s", verifyResult.Reason)
+	}
+	if verifyResult.Framework != "isms-p" || verifyResult.FrameworkVersion != "2024" {
+		t.Errorf("verify framework meta mismatch: %+v", verifyResult)
+	}
+	if verifyResult.ProfileID != profileID || verifyResult.SnapshotID != snapshotID {
+		t.Errorf("verify profile/snapshot mismatch: %+v", verifyResult)
+	}
+	if verifyResult.PDFSHA256 != signed.PDFSHA256 {
+		t.Errorf("verify PDF sha mismatch")
 	}
 
 	// 4) 검증: 서명 placeholder가 갱신됐고, sha256가 일치.

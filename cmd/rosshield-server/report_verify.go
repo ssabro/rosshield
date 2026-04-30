@@ -28,20 +28,26 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 )
 
-// reportSubcommand는 `report ...` 서브커맨드를 처리합니다 (현재는 verify만).
+// reportSubcommand는 `report ...` 서브커맨드를 처리합니다.
+//
+//	verify             — session 리포트 번들 검증 (E8)
+//	verify-framework   — framework 리포트 번들 검증 (E18 후속, Phase 2 Exit)
 func reportSubcommand(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: rosshield-server report verify <bundle.tar.gz>")
+		fmt.Fprintln(os.Stderr, "usage: rosshield-server report verify|verify-framework <bundle.tar.gz>")
 		return 2
 	}
 	switch args[0] {
 	case "verify":
 		return runReportVerify(args[1:])
+	case "verify-framework":
+		return runFrameworkVerify(args[1:])
 	case "-h", "--help", "help":
 		fmt.Fprintln(os.Stderr, `report 서브커맨드 — 서명된 PDF 리포트 번들 검증
 
 사용법:
   rosshield-server report verify <bundle.tar.gz> [-public-key <key.pem>]
+  rosshield-server report verify-framework <bundle.tar.gz> [-public-key <key.pem>]
 
 옵션:
   -public-key  외부에서 받은 expected ed25519 PublicKey PEM 파일 (옵션).
@@ -58,6 +64,99 @@ exit code:
 		fmt.Fprintf(os.Stderr, "report: unknown sub-command %q\n", args[0])
 		return 2
 	}
+}
+
+// runFrameworkVerify는 framework 번들 검증 (E18 후속).
+func runFrameworkVerify(args []string) int {
+	fs := flag.NewFlagSet("report verify-framework", flag.ContinueOnError)
+	publicKeyPath := fs.String("public-key", "", "expected ed25519 PublicKey PEM 파일 (옵션)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	rest := fs.Args()
+	if len(rest) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: rosshield-server report verify-framework <bundle.tar.gz>")
+		return 1
+	}
+	bundlePath := rest[0]
+
+	bundleBytes, err := os.ReadFile(bundlePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read bundle %q: %v\n", bundlePath, err)
+		return 1
+	}
+
+	var expectedPub ed25519.PublicKey
+	if *publicKeyPath != "" {
+		pemBytes, err := os.ReadFile(*publicKeyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "read public key %q: %v\n", *publicKeyPath, err)
+			return 1
+		}
+		pub, err := decodePEMForExternal(pemBytes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "parse public key: %v\n", err)
+			return 1
+		}
+		expectedPub = pub
+	}
+
+	res, err := reporting.VerifyFrameworkBundle(bundleBytes, expectedPub)
+	if err != nil {
+		switch {
+		case errors.Is(err, reporting.ErrBundleSignatureInvalid),
+			errors.Is(err, reporting.ErrBundleSignatureSize),
+			errors.Is(err, reporting.ErrBundlePubKeyMismatch),
+			errors.Is(err, reporting.ErrBundlePubKeyMalformed):
+			emitFrameworkVerifyJSON(os.Stdout, res, err)
+			return 2
+		case errors.Is(err, reporting.ErrBundleAnchorMalformed):
+			emitFrameworkVerifyJSON(os.Stdout, res, err)
+			return 3
+		default:
+			emitFrameworkVerifyJSON(os.Stdout, res, err)
+			return 1
+		}
+	}
+	emitFrameworkVerifyJSON(os.Stdout, res, nil)
+	return 0
+}
+
+type frameworkVerifyJSONOutput struct {
+	OK               bool   `json:"ok"`
+	Reason           string `json:"reason,omitempty"`
+	Error            string `json:"error,omitempty"`
+	PDFSize          int64  `json:"pdfSize"`
+	PDFSHA256        string `json:"pdfSha256"`
+	SignerKeyID      string `json:"signerKeyId"`
+	ChainHeadSeq     int64  `json:"chainHeadSeq"`
+	ChainHeadHash    string `json:"chainHeadHash"`
+	ProfileID        string `json:"profileId"`
+	SnapshotID       string `json:"snapshotId"`
+	Framework        string `json:"framework"`
+	FrameworkVersion string `json:"frameworkVersion"`
+}
+
+func emitFrameworkVerifyJSON(w io.Writer, res reporting.FrameworkVerifyResult, err error) {
+	out := frameworkVerifyJSONOutput{
+		OK:               res.OK && err == nil,
+		Reason:           res.Reason,
+		PDFSize:          res.PDFSize,
+		PDFSHA256:        res.PDFSHA256,
+		SignerKeyID:      res.SignerKeyID,
+		ChainHeadSeq:     res.ChainHeadSeq,
+		ChainHeadHash:    res.ChainHeadHash,
+		ProfileID:        res.ProfileID,
+		SnapshotID:       res.SnapshotID,
+		Framework:        res.Framework,
+		FrameworkVersion: res.FrameworkVersion,
+	}
+	if err != nil {
+		out.Error = err.Error()
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(out)
 }
 
 // runReportVerify는 `report verify` 본 흐름입니다.
