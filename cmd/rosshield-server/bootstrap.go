@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ssabro/rosshield/internal/app/insightautorun"
 	"github.com/ssabro/rosshield/internal/app/scanrun"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
@@ -100,6 +101,8 @@ type Platform struct {
 	LLM          llm.Adapter
 
 	systemTenant storage.TenantID
+
+	insightAutorunSub eventbus.Subscription // E19 — scan.completed 구독
 
 	shutdownOnce sync.Once
 	shutdownErr  error
@@ -656,6 +659,15 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		AuditReader: &complianceAuditReaderAdapter{svc: auditSvc},
 	})
 
+	// E19 — scan.completed 이벤트 구독 → Insight.RunForFleet 자동 호출.
+	insightAutorun := insightautorun.New(insightautorun.Deps{
+		Logger:  logger,
+		Storage: store,
+		Scan:    scanSvc,
+		Insight: insightSvc,
+	})
+	insightAutorunSub := insightAutorun.Start(ctx, bus)
+
 	systemTenant := cfg.SystemTenantID
 	if systemTenant == "" {
 		systemTenant = "system"
@@ -684,27 +696,28 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"llmProvider", llmAdapter.Provider())
 
 	return &Platform{
-		Logger:       logger,
-		Clock:        clk,
-		IDGen:        ids,
-		Storage:      store,
-		EventBus:     bus,
-		Signer:       sgn,
-		Scheduler:    sch,
-		Audit:        auditSvc,
-		Tenant:       tenantSvc,
-		Benchmark:    benchmarkSvc,
-		Robot:        robotSvc,
-		Scan:         scanSvc,
-		ScanRun:      scanRun,
-		Evidence:     evidenceSvc,
-		BlobStore:    bs,
-		Reporting:    reportingSvc,
-		ReportSigner: reportSigner,
-		Insight:      insightSvc,
-		Compliance:   complianceSvc,
-		LLM:          llmAdapter,
-		systemTenant: systemTenant,
+		Logger:            logger,
+		Clock:             clk,
+		IDGen:             ids,
+		Storage:           store,
+		EventBus:          bus,
+		Signer:            sgn,
+		Scheduler:         sch,
+		Audit:             auditSvc,
+		Tenant:            tenantSvc,
+		Benchmark:         benchmarkSvc,
+		Robot:             robotSvc,
+		Scan:              scanSvc,
+		ScanRun:           scanRun,
+		Evidence:          evidenceSvc,
+		BlobStore:         bs,
+		Reporting:         reportingSvc,
+		ReportSigner:      reportSigner,
+		Insight:           insightSvc,
+		Compliance:        complianceSvc,
+		LLM:               llmAdapter,
+		systemTenant:      systemTenant,
+		insightAutorunSub: insightAutorunSub,
 	}, nil
 }
 
@@ -740,10 +753,15 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 }
 
 // Shutdown은 platform 서비스를 역순으로 정상 종료합니다 (idempotent).
-// Scheduler → EventBus → Storage 순. ctx 만료 시 ctx.Err() 반환.
+// InsightAutorun Sub → Scheduler → EventBus → Storage 순. ctx 만료 시 ctx.Err() 반환.
 func (p *Platform) Shutdown(ctx context.Context) error {
 	p.shutdownOnce.Do(func() {
 		var errs []error
+
+		// E19 — subscription 먼저 cancel하면 EventBus.Close 시 worker가 깨끗이 종료됨.
+		if p.insightAutorunSub != nil {
+			p.insightAutorunSub.Cancel()
+		}
 
 		if err := p.Scheduler.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("scheduler close: %w", err))
