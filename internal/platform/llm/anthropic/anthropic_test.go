@@ -153,7 +153,7 @@ func TestAnthropicCompleteStreamParsesSSE(t *testing.T) {
 			}
 		}
 		send := func(event, data string) {
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
 			flush()
 		}
 		send("message_start", `{"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":7,"output_tokens":0}}}`)

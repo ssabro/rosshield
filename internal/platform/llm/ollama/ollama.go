@@ -98,7 +98,7 @@ func (a *Adapter) Complete(ctx context.Context, req llm.CompleteRequest) (llm.Co
 			},
 		}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var (
 		buf      bytes.Buffer
@@ -170,7 +170,7 @@ func (a *Adapter) CompleteStream(ctx context.Context, req llm.CompleteRequest) (
 	out := make(chan llm.StreamChunk, 16)
 	go func() {
 		defer close(out)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		var gotFinal generateLine
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)

@@ -20,7 +20,7 @@ func ndjsonResponse(w http.ResponseWriter, lines []string) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.WriteHeader(http.StatusOK)
 	for _, l := range lines {
-		fmt.Fprintln(w, l)
+		_, _ = fmt.Fprintln(w, l)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}

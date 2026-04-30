@@ -115,7 +115,7 @@ func (a *Adapter) Complete(ctx context.Context, req llm.CompleteRequest) (llm.Co
 			Trace: traceErr(model, started, err),
 		}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -173,7 +173,7 @@ func (a *Adapter) CompleteStream(ctx context.Context, req llm.CompleteRequest) (
 	out := make(chan llm.StreamChunk, 16)
 	go func() {
 		defer close(out)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		var (
 			inputTokens  int

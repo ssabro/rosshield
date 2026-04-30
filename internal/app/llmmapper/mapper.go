@@ -98,14 +98,14 @@ Do not include any prose outside the JSON array. Order results by confidence des
 func buildPrompt(req compliance.SuggestRequest, candidateLimit, maxResults int) string {
 	var sb strings.Builder
 	sb.WriteString("Check to map:\n")
-	sb.WriteString(fmt.Sprintf("  code: %s\n", req.CheckCode))
+	fmt.Fprintf(&sb, "  code: %s\n", req.CheckCode)
 	if req.CheckTitle != "" {
-		sb.WriteString(fmt.Sprintf("  title: %s\n", req.CheckTitle))
+		fmt.Fprintf(&sb, "  title: %s\n", req.CheckTitle)
 	}
 	if req.CheckRationale != "" {
-		sb.WriteString(fmt.Sprintf("  rationale: %s\n", req.CheckRationale))
+		fmt.Fprintf(&sb, "  rationale: %s\n", req.CheckRationale)
 	}
-	sb.WriteString(fmt.Sprintf("\nFramework: %s\n\n", req.Framework))
+	fmt.Fprintf(&sb, "\nFramework: %s\n\n", req.Framework)
 
 	candidates := req.CandidateControls
 	if len(candidates) > candidateLimit {
@@ -114,15 +114,15 @@ func buildPrompt(req compliance.SuggestRequest, candidateLimit, maxResults int) 
 		sort.SliceStable(sortedCands, func(i, j int) bool { return sortedCands[i].ID < sortedCands[j].ID })
 		candidates = sortedCands[:candidateLimit]
 	}
-	sb.WriteString(fmt.Sprintf("Candidate controls (%d):\n", len(candidates)))
+	fmt.Fprintf(&sb, "Candidate controls (%d):\n", len(candidates))
 	for _, c := range candidates {
-		sb.WriteString(fmt.Sprintf("  - %s: %s\n", c.ID, c.Title))
+		fmt.Fprintf(&sb, "  - %s: %s\n", c.ID, c.Title)
 		if c.Summary != "" {
-			sb.WriteString(fmt.Sprintf("    %s\n", c.Summary))
+			fmt.Fprintf(&sb, "    %s\n", c.Summary)
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("\nReturn at most %d top suggestions as JSON array.\n", maxResults))
+	fmt.Fprintf(&sb, "\nReturn at most %d top suggestions as JSON array.\n", maxResults)
 	return sb.String()
 }
 

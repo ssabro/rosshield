@@ -79,16 +79,10 @@ func (r *Repo) GenerateFramework(ctx context.Context, tx storage.Tx, req reporti
 	generatedAt = generatedAt.UTC()
 
 	// 4) FrameworkPDFInput 조립 — controls는 ControlID 알파벳순 안정 정렬(결정성).
+	// FrameworkControlStatusView·FrameworkPDFControlRow는 동일 필드라 type conversion 가능 (S1016).
 	controls := make([]reporting.FrameworkPDFControlRow, 0, len(view.Snapshot.Statuses))
 	for _, st := range view.Snapshot.Statuses {
-		controls = append(controls, reporting.FrameworkPDFControlRow{
-			ControlID: st.ControlID,
-			Title:     st.Title,
-			Status:    st.Status,
-			PassCount: st.PassCount,
-			FailCount: st.FailCount,
-			Notes:     st.Notes,
-		})
+		controls = append(controls, reporting.FrameworkPDFControlRow(st))
 	}
 	sort.SliceStable(controls, func(i, j int) bool {
 		return controls[i].ControlID < controls[j].ControlID
