@@ -309,6 +309,36 @@ func (a *auditEmitterAdapter) EmitReportGenerated(ctx context.Context, tx storag
 	return err
 }
 
+// EmitFrameworkReportGenerated는 reporting.AuditEmitter 구현 (E18 — Framework Generate 후).
+func (a *auditEmitterAdapter) EmitFrameworkReportGenerated(ctx context.Context, tx storage.Tx, r reporting.FrameworkReport) error {
+	payload := fmt.Sprintf(`{"profileId":%q,"snapshotId":%q,"pdfSha256":%q,"sizeBytes":%d,"generatedBy":%q}`,
+		r.ProfileID, r.SnapshotID, r.PDFSHA256, r.PDFSizeBytes, r.GeneratedBy)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: r.GeneratedBy},
+		Action:   "reporting.framework.generate",
+		Target:   audit.Target{Type: "framework_report", ID: r.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitFrameworkReportSigned는 reporting.AuditEmitter 구현 (E18 — Framework Sign 후).
+func (a *auditEmitterAdapter) EmitFrameworkReportSigned(ctx context.Context, tx storage.Tx, r reporting.FrameworkReport) error {
+	payload := fmt.Sprintf(`{"signerKeyId":%q,"chainHeadSeq":%d,"chainHeadHash":%q}`,
+		r.Signature.SignerKeyID, r.Signature.ChainHeadSeq, r.Signature.ChainHeadHash)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "reporting.framework.sign",
+		Target:   audit.Target{Type: "framework_report", ID: r.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // EmitReportSigned는 reporting.AuditEmitter 구현 (E8 Stage A — Sign 후).
 // signer keyId + chain head anchor를 audit에 박아 향후 cross-check.
 func (a *auditEmitterAdapter) EmitReportSigned(ctx context.Context, tx storage.Tx, r reporting.Report) error {

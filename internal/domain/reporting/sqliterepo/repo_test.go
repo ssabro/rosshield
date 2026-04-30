@@ -133,6 +133,30 @@ func (a *auditAdapter) EmitReportSigned(ctx context.Context, tx storage.Tx, r re
 	return err
 }
 
+func (a *auditAdapter) EmitFrameworkReportGenerated(ctx context.Context, tx storage.Tx, r reporting.FrameworkReport) error {
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "framework_report.generated",
+		Target:   audit.Target{Type: "framework_report", ID: r.ID},
+		Payload:  []byte(`{"sha256":"` + r.PDFSHA256 + `"}`),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+func (a *auditAdapter) EmitFrameworkReportSigned(ctx context.Context, tx storage.Tx, r reporting.FrameworkReport) error {
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: r.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "framework_report.signed",
+		Target:   audit.Target{Type: "framework_report", ID: r.ID},
+		Payload:  []byte(`{"keyId":"` + r.Signature.SignerKeyID + `"}`),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // === harness ===
 
 type harness struct {

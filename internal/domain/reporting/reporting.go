@@ -167,6 +167,123 @@ type ContentBuilder interface {
 type AuditEmitter interface {
 	EmitReportGenerated(ctx context.Context, tx storage.Tx, r Report) error
 	EmitReportSigned(ctx context.Context, tx storage.Tx, r Report) error
+	// E18 Phase 2 — Framework 리포트 생성·서명 audit emit.
+	EmitFrameworkReportGenerated(ctx context.Context, tx storage.Tx, r FrameworkReport) error
+	EmitFrameworkReportSigned(ctx context.Context, tx storage.Tx, r FrameworkReport) error
+}
+
+// FrameworkReport는 ComplianceProfile/FrameworkSnapshot 기반 PDF의 메타입니다 (E18 Phase 2).
+//
+// 별도 타입(Report와 분리)인 이유:
+//   - profile/snapshot ID는 framework 전용 — Report.SessionID 자리에 넣으면 의미 혼동
+//   - 향후 프레임워크별 메타(framework·version) 첨가 가능 (현재 ProfileID/SnapshotID로 lookup)
+//   - 별도 영속 테이블(framework_reports, 마이그레이션 0016)
+type FrameworkReport struct {
+	ID           string
+	TenantID     storage.TenantID
+	ProfileID    string
+	SnapshotID   string
+	PDFSHA256    string
+	PDFSizeBytes int64
+	PDF          []byte // 본문 (Read 시에만 채움; List는 nil)
+	GeneratedAt  time.Time
+	GeneratedBy  string
+	Signature    ReportSignature
+}
+
+// FrameworkComplianceView는 ComplianceReader가 반환하는 minimal DTO 묶음입니다.
+//
+// reporting 도메인이 compliance 패키지를 직접 import하지 않도록 (P5),
+// 필요한 필드만 격리 사본으로 정의.
+type FrameworkComplianceView struct {
+	Profile  FrameworkProfileView
+	Snapshot FrameworkSnapshotView
+}
+
+// FrameworkProfileView는 PDF 표시에 필요한 profile 메타입니다.
+type FrameworkProfileView struct {
+	ID               string
+	Framework        string // "isms-p" 등
+	FrameworkVersion string
+}
+
+// FrameworkSnapshotView는 PDF에 표시할 snapshot 데이터입니다.
+type FrameworkSnapshotView struct {
+	ID                 string
+	OverallScore       float64
+	PassCount          int
+	FailCount          int
+	PartialCount       int
+	NotApplicableCount int
+	UnmappedCount      int
+	ChainHeadSeq       int64
+	ChainHeadHash      string
+	CreatedAt          time.Time
+	Statuses           []FrameworkControlStatusView
+}
+
+// FrameworkControlStatusView는 한 통제의 상태 + 표시용 메타입니다.
+type FrameworkControlStatusView struct {
+	ControlID string
+	Title     string // ControlDefinition.Title (없으면 빈 문자열)
+	Status    string // "pass"|"fail"|"partial"|"not_applicable"|"unmapped"
+	PassCount int
+	FailCount int
+	Notes     string
+}
+
+// ComplianceReader는 reporting이 필요한 compliance 도메인 read-only 표면입니다 (P5).
+//
+// bootstrap이 compliance.Service + framework YAML 로더를 어댑팅해 주입.
+type ComplianceReader interface {
+	// LoadProfileSnapshot은 profileID·snapshotID로 PDF 입력을 조립합니다.
+	// 둘 다 호출 tenant 소유여야 하며, 아니면 ErrFrameworkSnapshotNotFound.
+	LoadProfileSnapshot(ctx context.Context, tx storage.Tx, profileID, snapshotID string) (FrameworkComplianceView, error)
+}
+
+// FrameworkPDFInput은 FrameworkContentBuilder에 전달되는 결정적 입력입니다.
+//
+// 모든 시간은 UTC, 모든 list는 안정 정렬(ControlID 알파벳순).
+type FrameworkPDFInput struct {
+	TenantID         string
+	TenantName       string
+	ProfileID        string
+	Framework        string // "isms-p"
+	FrameworkVersion string
+	SnapshotID       string
+	OverallScore     float64
+	Stats            FrameworkPDFStats
+	Controls         []FrameworkPDFControlRow
+	GeneratedAt      time.Time
+	GeneratedBy      string
+	AuditAnchor      PDFAuditAnchor
+}
+
+// FrameworkPDFStats는 통제 status 분포입니다.
+type FrameworkPDFStats struct {
+	TotalControls int
+	Pass          int
+	Fail          int
+	Partial       int
+	NotApplicable int
+	Unmapped      int
+}
+
+// FrameworkPDFControlRow는 PDF 본문 한 row입니다.
+type FrameworkPDFControlRow struct {
+	ControlID string
+	Title     string
+	Status    string
+	PassCount int
+	FailCount int
+	Notes     string
+}
+
+// FrameworkContentBuilder는 FrameworkPDFInput → 결정적 PDF bytes 변환자입니다.
+//
+// pdf 패키지가 구현. 같은 입력 → byte-identical PDF (R10-5 결정성 정책 동일).
+type FrameworkContentBuilder interface {
+	BuildFramework(input FrameworkPDFInput) ([]byte, error)
 }
 
 // GenerateRequest는 Service.Generate 입력입니다.
@@ -202,6 +319,38 @@ type Service interface {
 
 	// ListReports는 tenant 내 리포트 메타(PDF nil)를 generated_at DESC로 반환.
 	ListReports(ctx context.Context, tx storage.Tx, filter ListFilter) ([]Report, error)
+
+	// E18 Phase 2 — Framework 리포트 4 메서드.
+
+	// GenerateFramework는 (profileID, snapshotID)로 FrameworkPDFInput을 조립 →
+	// FrameworkContentBuilder.BuildFramework → framework_reports INSERT + audit emit.
+	// 서명은 별도 SignFramework 단계.
+	GenerateFramework(ctx context.Context, tx storage.Tx, req GenerateFrameworkRequest) (FrameworkReport, error)
+
+	// SignFramework는 GenerateFramework된 보고서에 Ed25519 서명을 부착합니다.
+	SignFramework(ctx context.Context, tx storage.Tx, reportID, signerKeyID string, sigBytes []byte,
+		chainHeadSeq int64, chainHeadHash string, signedAt time.Time) (FrameworkReport, error)
+
+	// GetFrameworkReport는 ID로 메타 + PDF body 반환.
+	GetFrameworkReport(ctx context.Context, tx storage.Tx, reportID string) (FrameworkReport, error)
+
+	// ListFrameworkReports는 tenant 또는 profile 내 보고서 메타(PDF nil)를 generated_at DESC로 반환.
+	ListFrameworkReports(ctx context.Context, tx storage.Tx, filter FrameworkListFilter) ([]FrameworkReport, error)
+}
+
+// GenerateFrameworkRequest는 Service.GenerateFramework 입력입니다.
+type GenerateFrameworkRequest struct {
+	TenantID    storage.TenantID
+	ProfileID   string
+	SnapshotID  string
+	GeneratedBy string
+	GeneratedAt time.Time // zero이면 Service 내부 Clock.Now() 사용
+}
+
+// FrameworkListFilter는 ListFrameworkReports 필터입니다.
+type FrameworkListFilter struct {
+	ProfileID string // 옵션 — 빈 값이면 모든 profile
+	Limit     int    // 0이면 50
 }
 
 // ListFilter는 ListReports 필터입니다.
@@ -222,4 +371,12 @@ var (
 	ErrAlreadySigned       = errors.New("reporting: report already signed")
 	ErrInvalidSignature    = errors.New("reporting: invalid signature size (must be 64 bytes Ed25519)")
 	ErrBuilderNil          = errors.New("reporting: ContentBuilder not configured")
+
+	// E18 Phase 2 — Framework 리포트 sentinel.
+	ErrFrameworkProfileMissing      = errors.New("reporting: ProfileID is required")
+	ErrFrameworkSnapshotMissing     = errors.New("reporting: SnapshotID is required")
+	ErrFrameworkSnapshotNotFound    = errors.New("reporting: framework snapshot not found")
+	ErrFrameworkReportNotFound      = errors.New("reporting: framework report not found")
+	ErrFrameworkBuilderNil          = errors.New("reporting: FrameworkContentBuilder not configured")
+	ErrFrameworkComplianceReaderNil = errors.New("reporting: ComplianceReader not configured")
 )

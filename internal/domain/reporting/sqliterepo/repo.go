@@ -133,16 +133,21 @@ type RobotView struct {
 //
 // Builder는 필수 — nil이면 Generate가 ErrBuilderNil을 반환.
 // PackReader/RobotReader/Tenant는 미주입(nil) 허용 — 표시 정보만 비어남, 동작은 정상.
+//
+// E18 Phase 2: FrameworkBuilder/Compliance는 GenerateFramework 사용 시에만 필수.
+// Session 리포트만 사용하면 nil이어도 무방 (메서드 호출 시 sentinel 반환).
 type Deps struct {
-	Clock    clock.Clock
-	IDGen    idgen.IDGen
-	Audit    reporting.AuditEmitter
-	Builder  reporting.ContentBuilder
-	Scan     ScanReader
-	Evidence EvidenceReader
-	Tenant   TenantReader
-	Pack     PackReader  // 옵션
-	Robot    RobotReader // 옵션
+	Clock            clock.Clock
+	IDGen            idgen.IDGen
+	Audit            reporting.AuditEmitter
+	Builder          reporting.ContentBuilder
+	Scan             ScanReader
+	Evidence         EvidenceReader
+	Tenant           TenantReader
+	Pack             PackReader                        // 옵션
+	Robot            RobotReader                       // 옵션
+	FrameworkBuilder reporting.FrameworkContentBuilder // E18 — GenerateFramework 사용 시 필수
+	Compliance       reporting.ComplianceReader        // E18 — GenerateFramework 사용 시 필수
 }
 
 // Repo는 reporting.Service의 SQLite 구현입니다.

@@ -694,6 +694,14 @@ func (n *nullAuditEmitter) EmitReportSigned(_ context.Context, _ storage.Tx, _ r
 	return nil
 }
 
+// E18 — framework 리포트 audit emitter (no-op).
+func (n *nullAuditEmitter) EmitFrameworkReportGenerated(_ context.Context, _ storage.Tx, _ reporting.FrameworkReport) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitFrameworkReportSigned(_ context.Context, _ storage.Tx, _ reporting.FrameworkReport) error {
+	return nil
+}
+
 // E17 — insight·compliance audit emitter 메서드 (no-op).
 func (n *nullAuditEmitter) EmitInsightCreated(_ context.Context, _ storage.Tx, _ insight.Insight) error {
 	return nil
