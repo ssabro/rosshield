@@ -1,0 +1,179 @@
+# NIST SP 800-53 Rev. 5 — Security and Privacy Controls (subset)
+#
+# Source: NIST Special Publication 800-53 Revision 5 (Update 1).
+# Public reference: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+#
+# 본 YAML은 통제 ID·자체 작성 한글/영문 혼용 제목·짧은 요약(<=200자)·공식 사이트 URL만 담습니다.
+# NIST 800-53 본문은 공공저작물(미국 정부)이지만 Rosshield 정책상 본문 직접 인용 대신
+# 자체 요약 + 공식 URL 참조만 사용합니다 (R14-2 일관성).
+# 통제 ID 체계(AC-1, AU-2 등)는 NIST 공식 카탈로그 식별자.
+#
+# Phase 2 기본값: 5개 control family에서 각 6개씩, 총 30개.
+#  - AC (Access Control)
+#  - AU (Audit and Accountability)
+#  - CP (Contingency Planning)
+#  - IA (Identification and Authentication)
+#  - SC (System and Communications Protection)
+# Phase 3에서 풀 셋(20개 family, ~1000 baseline controls)으로 확장 예정.
+
+framework: nist-800-53-rev5
+version: "5.1.1"
+sourceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+controls:
+  # AC — Access Control
+  - id: "NIST:AC-1"
+    title: "Policy and Procedures (Access Control)"
+    summary: "접근통제 정책과 절차의 수립·유지·배포."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AC-2"
+    title: "Account Management"
+    summary: "사용자 계정의 생성·승인·검토·비활성화 라이프사이클 관리."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+    mappedChecks:
+      - "CIS-1.1.1.1"
+
+  - id: "NIST:AC-3"
+    title: "Access Enforcement"
+    summary: "승인된 권한에 따른 자원 접근 강제."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AC-6"
+    title: "Least Privilege"
+    summary: "최소 권한 원칙의 적용과 검증."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AC-7"
+    title: "Unsuccessful Logon Attempts"
+    summary: "로그인 실패 횟수 제한과 자동 잠금."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AC-17"
+    title: "Remote Access"
+    summary: "원격 접속의 통제·암호화·모니터링."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  # AU — Audit and Accountability
+  - id: "NIST:AU-1"
+    title: "Policy and Procedures (Audit)"
+    summary: "감사·책임추적성 정책과 절차의 수립·유지."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AU-2"
+    title: "Event Logging"
+    summary: "감사 가능한 이벤트의 식별과 기록 정책."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AU-3"
+    title: "Content of Audit Records"
+    summary: "감사 기록에 포함되어야 할 정보 항목."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AU-6"
+    title: "Audit Record Review, Analysis, and Reporting"
+    summary: "감사 기록의 검토·분석·보고 활동."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AU-9"
+    title: "Protection of Audit Information"
+    summary: "감사 정보의 무단 접근·수정·삭제 방지."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:AU-12"
+    title: "Audit Record Generation"
+    summary: "감사 가능한 이벤트의 자동 기록 생성."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  # CP — Contingency Planning
+  - id: "NIST:CP-1"
+    title: "Policy and Procedures (Contingency)"
+    summary: "비상계획 정책과 절차의 수립·유지."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:CP-2"
+    title: "Contingency Plan"
+    summary: "정보시스템의 비상계획 수립·승인·배포."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:CP-3"
+    title: "Contingency Training"
+    summary: "비상계획 역할 수행자에 대한 교육훈련."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:CP-4"
+    title: "Contingency Plan Testing"
+    summary: "비상계획의 정기적인 시험과 평가."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:CP-9"
+    title: "System Backup"
+    summary: "사용자·시스템 정보의 정기적 백업과 보호."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:CP-10"
+    title: "System Recovery and Reconstitution"
+    summary: "사고 후 시스템 복구와 재구성 절차."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  # IA — Identification and Authentication
+  - id: "NIST:IA-1"
+    title: "Policy and Procedures (Identification)"
+    summary: "식별·인증 정책과 절차의 수립·유지."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:IA-2"
+    title: "Identification and Authentication (Organizational Users)"
+    summary: "조직 사용자의 고유 식별과 다요소 인증."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:IA-3"
+    title: "Device Identification and Authentication"
+    summary: "디바이스의 식별과 인증 메커니즘."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:IA-4"
+    title: "Identifier Management"
+    summary: "식별자의 발급·재사용·제거 관리."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:IA-5"
+    title: "Authenticator Management"
+    summary: "인증자(비밀번호·키 등)의 라이프사이클 관리."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:IA-8"
+    title: "Identification and Authentication (Non-Organizational Users)"
+    summary: "외부 사용자의 식별과 인증 처리."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  # SC — System and Communications Protection
+  - id: "NIST:SC-1"
+    title: "Policy and Procedures (SC)"
+    summary: "시스템·통신 보호 정책과 절차의 수립·유지."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:SC-7"
+    title: "Boundary Protection"
+    summary: "정보시스템 경계의 모니터링과 통제."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:SC-8"
+    title: "Transmission Confidentiality and Integrity"
+    summary: "전송 중 정보의 기밀성·무결성 보호."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:SC-12"
+    title: "Cryptographic Key Establishment and Management"
+    summary: "암호 키의 생성·배포·저장·폐기 관리."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:SC-13"
+    title: "Cryptographic Protection"
+    summary: "승인된 암호 메커니즘의 사용."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+
+  - id: "NIST:SC-28"
+    title: "Protection of Information at Rest"
+    summary: "저장된 정보의 기밀성·무결성 보호."
+    referenceUrl: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final

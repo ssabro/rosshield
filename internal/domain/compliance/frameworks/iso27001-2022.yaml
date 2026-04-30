@@ -1,0 +1,174 @@
+# ISO/IEC 27001:2022 Annex A — Information security controls
+#
+# Source: ISO/IEC 27001:2022 (purchased from ISO).
+# Public reference: https://www.iso.org/standard/27001
+#
+# 본 YAML은 통제 ID·자체 작성 한글/영문 혼용 제목·짧은 요약(<=200자)·공식 사이트 URL만 담습니다.
+# 표준 본문(원문)은 복사하지 않습니다 (R14-2 저작권 안전).
+# 통제 ID 체계(A.5.1, A.8.1 등)는 ISO 공식 카탈로그의 식별자만 사용 — 코드 자체는 저작 대상이 아닙니다.
+#
+# Phase 2 기본값: Annex A 93개 통제 중 핵심 30개 selection (4 그룹 균형).
+# Phase 3에서 풀 셋(93개)으로 확장 예정.
+
+framework: iso27001-2022
+version: "2022"
+sourceUrl: https://www.iso.org/standard/27001
+
+controls:
+  # A.5 Organizational controls
+  - id: "ISO27001:A.5.1"
+    title: "Policies for information security"
+    summary: "정보보안 정책의 수립·승인·공표·검토 체계."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.2"
+    title: "Information security roles and responsibilities"
+    summary: "정보보안 역할·책임의 정의와 할당."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.3"
+    title: "Segregation of duties"
+    summary: "이해상충·오용 방지를 위한 직무 분리."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.7"
+    title: "Threat intelligence"
+    summary: "위협정보의 수집·분석·활용 체계."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.10"
+    title: "Acceptable use of information and other associated assets"
+    summary: "정보자산 사용에 관한 허용 정책 수립."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.15"
+    title: "Access control"
+    summary: "정보·자산 접근통제 정책의 수립과 적용."
+    referenceUrl: https://www.iso.org/standard/27001
+    mappedChecks:
+      - "CIS-1.1.1.1"
+
+  - id: "ISO27001:A.5.16"
+    title: "Identity management"
+    summary: "사용자·시스템 정체성 관리 라이프사이클."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.17"
+    title: "Authentication information"
+    summary: "비밀번호·키 등 인증정보의 안전한 관리."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.18"
+    title: "Access rights"
+    summary: "접근권한의 부여·검토·회수 절차."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.23"
+    title: "Information security for use of cloud services"
+    summary: "클라우드 서비스 이용 시 정보보안 요구사항."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.24"
+    title: "Information security incident management planning"
+    summary: "보안 사고 대응 계획과 책임 정의."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.5.30"
+    title: "ICT readiness for business continuity"
+    summary: "사업 연속성을 위한 ICT 준비 상태."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  # A.6 People controls
+  - id: "ISO27001:A.6.1"
+    title: "Screening"
+    summary: "채용 전 인적 사항 검증 절차."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.6.3"
+    title: "Information security awareness, education and training"
+    summary: "인식제고·교육·훈련 프로그램 운영."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.6.6"
+    title: "Confidentiality or non-disclosure agreements"
+    summary: "기밀유지·비공개 계약 체결과 관리."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  # A.7 Physical controls
+  - id: "ISO27001:A.7.1"
+    title: "Physical security perimeters"
+    summary: "물리적 보안 경계 정의와 통제."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.7.2"
+    title: "Physical entry"
+    summary: "보안 구역 출입 통제와 기록."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  # A.8 Technological controls
+  - id: "ISO27001:A.8.1"
+    title: "User end point devices"
+    summary: "사용자 단말기의 보안 구성과 관리."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.2"
+    title: "Privileged access rights"
+    summary: "관리자 등 특권 접근권한의 엄격한 관리."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.5"
+    title: "Secure authentication"
+    summary: "안전한 인증 메커니즘의 구현."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.7"
+    title: "Protection against malware"
+    summary: "악성코드 예방·탐지·복구 통제."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.8"
+    title: "Management of technical vulnerabilities"
+    summary: "기술적 취약점의 식별·평가·조치."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.9"
+    title: "Configuration management"
+    summary: "정보시스템 구성의 정의·승인·검토 체계."
+    referenceUrl: https://www.iso.org/standard/27001
+    mappedChecks:
+      - "CIS-1.1.1.2"
+
+  - id: "ISO27001:A.8.15"
+    title: "Logging"
+    summary: "활동 로그의 생성·보관·보호."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.16"
+    title: "Monitoring activities"
+    summary: "정보시스템과 네트워크의 지속적 모니터링."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.20"
+    title: "Networks security"
+    summary: "네트워크의 보안 관리와 통제."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.22"
+    title: "Segregation of networks"
+    summary: "네트워크 영역 분리와 트래픽 통제."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.23"
+    title: "Web filtering"
+    summary: "웹 접속 필터링과 위험 차단."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.24"
+    title: "Use of cryptography"
+    summary: "암호기술 사용 정책과 키 관리."
+    referenceUrl: https://www.iso.org/standard/27001
+
+  - id: "ISO27001:A.8.28"
+    title: "Secure coding"
+    summary: "안전한 코딩 원칙과 검토 절차."
+    referenceUrl: https://www.iso.org/standard/27001
