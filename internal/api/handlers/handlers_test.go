@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/handlers"
+	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
@@ -719,6 +720,17 @@ func (n *nullAuditEmitter) EmitSuggestionCreated(_ context.Context, _ storage.Tx
 	return nil
 }
 func (n *nullAuditEmitter) EmitSuggestionDecided(_ context.Context, _ storage.Tx, _ compliance.MappingSuggestion) error {
+	return nil
+}
+
+// E16 — advisor 도메인 audit emitter (no-op).
+func (n *nullAuditEmitter) EmitConversationStarted(_ context.Context, _ storage.Tx, _ advisor.Conversation) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitToolCalled(_ context.Context, _ storage.Tx, _ advisor.ToolCall) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitAdvisorResponded(_ context.Context, _ storage.Tx, _ advisor.Turn) error {
 	return nil
 }
 

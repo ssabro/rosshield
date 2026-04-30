@@ -15,6 +15,7 @@ import (
 	"github.com/ssabro/rosshield/internal/app/insightautorun"
 	"github.com/ssabro/rosshield/internal/app/llmmapper"
 	"github.com/ssabro/rosshield/internal/app/scanrun"
+	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
@@ -350,6 +351,54 @@ func (a *auditEmitterAdapter) EmitReportSigned(ctx context.Context, tx storage.T
 		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
 		Action:   "reporting.sign",
 		Target:   audit.Target{Type: "report", ID: r.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitConversationStarted는 advisor.AuditEmitter 구현 (E16 — StartConversation 시점).
+func (a *auditEmitterAdapter) EmitConversationStarted(ctx context.Context, tx storage.Tx, c advisor.Conversation) error {
+	payload := fmt.Sprintf(`{"conversationId":%q,"userId":%q,"title":%q}`, c.ID, c.UserID, c.Title)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: c.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorUser, ID: c.UserID},
+		Action:   "advisor.conversation.started",
+		Target:   audit.Target{Type: "advisor_conversation", ID: c.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitToolCalled는 advisor.AuditEmitter 구현 (E16 — 각 tool dispatch 시점).
+func (a *auditEmitterAdapter) EmitToolCalled(ctx context.Context, tx storage.Tx, c advisor.ToolCall) error {
+	outcome := audit.OutcomeSuccess
+	if c.Error != "" {
+		outcome = audit.OutcomeFailure
+	}
+	payload := fmt.Sprintf(`{"toolCallId":%q,"turnId":%q,"toolName":%q,"durationMs":%d,"error":%q}`,
+		c.ID, c.TurnID, c.ToolName, c.DurationMs, c.Error)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: c.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "advisor"},
+		Action:   "advisor.tool_called",
+		Target:   audit.Target{Type: "advisor_tool_call", ID: c.ID},
+		Payload:  []byte(payload),
+		Outcome:  outcome,
+	})
+	return err
+}
+
+// EmitAdvisorResponded는 advisor.AuditEmitter 구현 (E16 — 최종 assistant 답변 시점).
+func (a *auditEmitterAdapter) EmitAdvisorResponded(ctx context.Context, tx storage.Tx, t advisor.Turn) error {
+	payload := fmt.Sprintf(`{"turnId":%q,"conversationId":%q,"llmProvider":%q,"llmModel":%q,"inputTokens":%d,"outputTokens":%d,"costUsd":%g}`,
+		t.ID, t.ConversationID, t.LLMProvider, t.LLMModel, t.InputTokens, t.OutputTokens, t.CostUSD)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: t.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "advisor"},
+		Action:   "advisor.responded",
+		Target:   audit.Target{Type: "advisor_turn", ID: t.ID},
 		Payload:  []byte(payload),
 		Outcome:  audit.OutcomeSuccess,
 	})
