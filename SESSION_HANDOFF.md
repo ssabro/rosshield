@@ -4,11 +4,15 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-05-06 (Phase 2 — 10/10 epic + Exit 시연 + seed demo + e2e smoke 자동화)_
+_마지막 업데이트: 2026-05-06 (Phase 2 — 10/10 epic + Exit 시연 + seed demo + Vitest 16건 추가)_
 
 ---
 
 ## 현재 상태 한 줄
+
+**Phase 2 10/10 epic + Exit 시연 + seed demo + Vitest 16건 (E19.T1·T2·T3 충족)** — 7 commits ahead of origin/main. Vitest는 route 파일에 helper 함수 export 후 직접 검증(login.test.tsx 패턴) — pnpm test 6 파일 / 40 테스트 통과. backlog Phase 2 Exit 체크리스트 6개 항목 모두 ✅. **다음 후보**: C1 WebSocket scan progress (1~2일·새 dep, 사용자 합의 필요) / C2 Tauri (1주·Rust 툴체인) / Web UI 디자인 폴리시(보류) / public 전환 / remote push.
+
+### 직전 한 줄 (seed demo + e2e smoke 자동화)
 
 **Phase 2 10/10 epic + Exit 시연 + seed demo + e2e smoke 자동화** — `cmd/rosshield-server/demo_seed.go` 신규 (`seed demo` 서브커맨드, 멱등). pack stub + pack_checks 2건 + Fleet 1 + Robot 3 + Scan session 5 (4 PASS + 1 drift trigger) + Insight.RunForFleet backfill. CheckID/PackCheckID 정확 매핑(scan_results FK to pack_checks). e2e 검증 흐름: drift session → snapshot overallScore=0.5 (1 mapped control partial: 1 fail + 2 pass) → insights 2건 자동 산출(drift kind severity=high "pass→fail" + peer kind). `scripts/phase2-exit-smoke.sh` 7 단계 확장 — **PASS=9/FAIL=0** (통합 테스트 6 pkg + admin seed + healthz + login + advisor 503 + ISMS-P 활성화 + seed demo + snapshot · insights). `docs/PHASE2_EXIT_DEMO.md`에 seed demo 절차 추가. **다음 후보**: Vitest E19.T1/T2/T3 (1~2일) / C1 WebSocket (1~2일) / Web UI 디자인 폴리시(보류) / C2 Tauri (1주) / public 전환 / remote push (5 commits ahead).
 
@@ -197,6 +201,7 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 날짜 내림차순.
 
+- **2026-05-06 · Vitest E19.T1·T2·T3 단위 테스트 16건 (commit `64a26d4`)**: route 파일 마운트 비용을 피하고 helper 함수 export → 직접 검증 패턴(login.test.tsx 답습). findings.tsx에 severityVariant·buildInsightsFilter, compliance.tsx에 scoreVariant·formatScore, advisor.tsx에 roleVariant·resolveAskErrorMessage export. 16건 분포: severity 매핑 4 + filter 빌드 5 / score 매핑 3 + 퍼센트 형식 4 / role 매핑 4 + Ask 에러 분기 4. **pnpm test --run → 6 파일 / 40 테스트 통과 (이전 24 + 신규 16)**. backlog E19.T1·T2·T3 충족 (Playwright deferred 기조 유지하며 단위 커버리지로 보강). T3은 backlog 명시("LLM disabled 시 페이지 숨김")와 실제 구현(503 안내 박스) 차이를 안내 메시지 분기 검증으로 채택.
 - **2026-05-06 · seed demo 서브커맨드 + e2e smoke 자동화**: `cmd/rosshield-server/demo_seed.go` 신규 — `seed demo --email <admin> [--data-dir]` 멱등 시드 (Pack stub 1 + pack_checks 2 + Fleet 1 + Robot 3 + Scan session 5 [4 PASS + 1 drift trigger] + Insight.RunForFleet backfill). PackCheckID 정확 매핑(scan_results FK to pack_checks). admin_seed `seed help` 출력에 demo 절차 추가. **e2e 검증 결과**: drift session → snapshot overallScore=0.5 partialCount=1 unmappedCount=29 / insights 2건 자동(drift kind severity=high "pass→fail" + peer kind). smoke 스크립트 step 7 추가 → 누적 **PASS=9/FAIL=0** (통합 테스트·healthz·login·advisor 503·compliance 활성화·seed demo·snapshot·insights 모두 자동 검증). docs/PHASE2_EXIT_DEMO.md 갱신 (seed demo 절차 추가). 발견된 결정: scan.RecordResult의 CheckID는 텍스트 코드, PackCheckID는 pack_checks.id(FK 결합)로 별 의미 — 시드 코드에서 처음에 swap 실수, 정정 후 통과.
 - **2026-05-06 · Phase 2 Exit 시연 산출물 + rosshield-server LLM flag 노출**: `docs/PHASE2_EXIT_DEMO.md` 신규 — 6 Exit 항목별 시연 시나리오 (자동 검증 vs 운영 시연 분리, robot/scan 시드 한계 솔직 기술, framework 버전 정확값(isms-p=2024·iso27001-2022=2022·nist-800-53-rev5=5.1.1) 명시). `scripts/phase2-exit-smoke.sh` 신규 — 6 단계 자동 검증 (통합 테스트 6 패키지·admin seed·서버 부팅·/healthz·login·Advisor :ask 503·Compliance ISMS-P 활성화). 실행 결과 PASS=6/FAIL=0 확인. **rosshield-server에 -llm-provider/-llm-model/-llm-base-url/-llm-api-key/-llm-timeout 5 flag 노출** — 기존엔 Config 구조체만 있고 CLI에서 미노출이라 ollama/anthropic 시연 불가능했음. ANTHROPIC_API_KEY env fallback 추가. 현재 운영 e2e의 진짜 갭은 `POST /api/v1/robots`/`POST /api/v1/scans/run`의 핸들러 미구현(gen.Unimplemented 자동 501) — 후속 epic 후보 `seed demo` 서브커맨드(robot/scan/result 한 번에 시드, 1~2일).
 - **2026-05-06 · OpenAPI advisor 표면 추가 + oapi-codegen 재생성** (commit `76d3525`): chi 직접 mount로 spec drift 발생한 것을 정리. `openapi.yaml`에 advisor 3 endpoint(:ask, GET 목록, GET 상세) + 요청 body 스키마 + tag/x-status. `internal/api/gen/openapi.gen.go` v2.4.1 재생성. `web/src/api/types.ts` openapi-typescript 7.13.0 재생성. `*Handlers`는 `gen.ServerInterface` 전체 구현 강제 안 함이라 시그니처 차이 무관(chi 직접 mount가 실제 라우팅). 핸들러 리팩터링 회피.
