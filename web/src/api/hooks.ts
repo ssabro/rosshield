@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
 
 import { useAuthStore } from '@/stores/auth'
 
@@ -388,6 +389,107 @@ export const useGenerateSnapshot = () => {
       })
     },
   })
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 5-pre/4) Scan progress WebSocket (C1 carryover) — useEffect 기반 hook.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface ScanProgressMessage {
+  kind: 'progress' | 'completed' | string
+  type: string
+  sessionId: string
+  total: number
+  completed: number
+  failed: number
+  status?: string
+  reason?: string
+  occurredAt: string
+  correlationId?: string
+}
+
+export type ScanProgressStatus =
+  | 'idle'
+  | 'connecting'
+  | 'streaming'
+  | 'completed'
+  | 'error'
+
+export interface UseScanProgressResult {
+  status: ScanProgressStatus
+  latest: ScanProgressMessage | null
+  error: string | null
+}
+
+// useScanProgress는 /api/v1/scans/{sessionId}/progress WebSocket을 구독합니다.
+//
+// 디자인:
+//  - 첫 마운트 + sessionId 변경 시 새 connection.
+//  - access token은 Authorization 헤더로 보내야 하나 브라우저 WebSocket API는 헤더
+//    custom 미지원 — 일단 동일 origin + 쿠키/세션 가정. 별 인증 경로(query token)는 P2.
+//  - 메시지 도착 시 latest를 갱신, kind='completed'면 status='completed'로 전이 후 close.
+//  - sessionId가 빈 값이면 connection 안 함.
+export function useScanProgress(sessionId?: string): UseScanProgressResult {
+  const [status, setStatus] = useState<ScanProgressStatus>('idle')
+  const [latest, setLatest] = useState<ScanProgressMessage | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+
+  useEffect(() => {
+    if (!sessionId) {
+      setStatus('idle')
+      return
+    }
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const url = `${proto}://${window.location.host}${API_BASE_PATH}/scans/${encodeURIComponent(sessionId)}/progress`
+
+    setStatus('connecting')
+    setLatest(null)
+    setError(null)
+
+    let closed = false
+    const ws = new WebSocket(url)
+    wsRef.current = ws
+
+    ws.addEventListener('open', () => {
+      if (!closed) setStatus('streaming')
+    })
+    ws.addEventListener('message', (ev) => {
+      try {
+        const msg = JSON.parse(String(ev.data)) as ScanProgressMessage
+        setLatest(msg)
+        if (msg.kind === 'completed') {
+          setStatus('completed')
+        }
+      } catch {
+        /* malformed JSON 무시 */
+      }
+    })
+    ws.addEventListener('error', () => {
+      if (!closed) {
+        setError('WebSocket 연결 실패 (인증/네트워크 확인)')
+        setStatus('error')
+      }
+    })
+    ws.addEventListener('close', () => {
+      if (!closed) {
+        // completed로 인한 정상 close가 아니면 에러로 분류 안 함 (이미 completed면 status 보존).
+        setStatus((prev) => (prev === 'completed' ? prev : 'idle'))
+      }
+    })
+
+    return () => {
+      closed = true
+      try {
+        ws.close()
+      } catch {
+        /* ignore */
+      }
+      wsRef.current = null
+    }
+  }, [sessionId])
+
+  return { status, latest, error }
 }
 
 // ────────────────────────────────────────────────────────────────────────

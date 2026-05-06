@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -43,6 +44,8 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
+	"github.com/ssabro/rosshield/internal/platform/eventbus"
+	eventbusinproc "github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
 	llmnoop "github.com/ssabro/rosshield/internal/platform/llm/noop"
 	"github.com/ssabro/rosshield/internal/platform/storage"
@@ -61,6 +64,7 @@ type testFixture struct {
 	auditSvc   audit.Service
 	insight    insight.Service    // E17 Phase 2
 	compliance compliance.Service // E17 Phase 2
+	bus        eventbus.Bus       // C1 — WebSocket scan progress 테스트용
 	tenantID   storage.TenantID
 	userID     string
 	email      string
@@ -196,6 +200,13 @@ func newFixture(t *testing.T) *testFixture {
 		t.Fatalf("seed admin: %v", err)
 	}
 
+	// EventBus — C1 WebSocket 테스트용 인proc.
+	bus := eventbusinproc.New(eventbusinproc.Deps{
+		Clock:  clk,
+		IDGen:  ids,
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	})
+
 	// handlers 결선.
 	h := handlers.New(handlers.Deps{
 		Storage:    store,
@@ -207,6 +218,7 @@ func newFixture(t *testing.T) *testFixture {
 		Insight:    insightSvc,
 		Compliance: complianceSvc,
 		Advisor:    advisorSvc,
+		EventBus:   bus,
 	})
 
 	router := chi.NewRouter()
@@ -223,12 +235,16 @@ func newFixture(t *testing.T) *testFixture {
 		auditSvc:   auditSvc,
 		insight:    insightSvc,
 		compliance: complianceSvc,
+		bus:        bus,
 		tenantID:   createResult.Tenant.ID,
 		userID:     createResult.Admin.ID,
 		email:      email,
 		password:   pw,
 		closeFn: func() {
 			server.Close()
+			ctxClose, cancelClose := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = bus.Close(ctxClose)
+			cancelClose()
 			_ = store.Close()
 		},
 	}

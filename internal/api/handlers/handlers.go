@@ -33,6 +33,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/scan"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	"github.com/ssabro/rosshield/internal/platform/clock"
+	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -50,6 +51,7 @@ type Deps struct {
 	Insight    insight.Service    // E17 Phase 2
 	Compliance compliance.Service // E17 Phase 2
 	Advisor    advisor.Service    // E16 Phase 2 — LLM 옵트인
+	EventBus   eventbus.Bus       // C1 carryover — WebSocket scan progress 구독
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -143,6 +145,11 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/advisor/conversations", h.ListAdvisorConversations)
 		r.Get("/api/v1/advisor/conversations/{conversationId}", func(w http.ResponseWriter, req *http.Request) {
 			h.GetAdvisorConversation(w, req, chi.URLParam(req, "conversationId"))
+		})
+
+		// C1 carryover — WebSocket scan progress (Phase 1 deferred 회수).
+		r.Get("/api/v1/scans/{sessionId}/progress", func(w http.ResponseWriter, req *http.Request) {
+			h.ScanProgress(w, req, chi.URLParam(req, "sessionId"))
 		})
 	})
 }

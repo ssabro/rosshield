@@ -2,7 +2,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
-import { useStartScan } from '@/api/hooks'
+import { useScanProgress, useStartScan } from '@/api/hooks'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -118,32 +120,72 @@ function ScansPage(): React.ReactElement {
         </CardContent>
       </Card>
 
-      {lastSession && (
-        <Card className="max-w-xl">
-          <CardHeader>
-            <CardTitle>시작된 세션</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Session ID: </span>
-              <span className="font-mono">{lastSession.sessionId}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">상태: </span>
-              <span>{lastSession.status}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">진행: </span>
-              <span>
-                {lastSession.completed} / {lastSession.total} (실패{' '}
-                {lastSession.failed})
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {lastSession && <SessionProgressCard session={lastSession} />}
     </div>
   )
+}
+
+function SessionProgressCard({
+  session,
+}: {
+  session: ScanSession
+}): React.ReactElement {
+  // C1 — WebSocket으로 실시간 진행률 구독. 첫 수신값을 latest, 미수신은 session 초기값 사용.
+  const ws = useScanProgress(session.sessionId)
+
+  const total = ws.latest?.total ?? session.total
+  const completed = ws.latest?.completed ?? session.completed
+  const failed = ws.latest?.failed ?? session.failed
+  const status = ws.latest?.status ?? session.status
+  const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
+
+  return (
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle>시작된 세션</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div>
+          <span className="text-muted-foreground">Session ID: </span>
+          <span className="font-mono">{session.sessionId}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">상태:</span>
+          <Badge variant={statusVariant(status)}>{status}</Badge>
+          <Badge variant="outline" className="ml-auto text-xs">
+            WS {ws.status}
+          </Badge>
+        </div>
+        <div>
+          <Progress value={percent} className="h-2" />
+          <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {completed} / {total} (실패 {failed})
+            </span>
+            <span>{percent}%</span>
+          </div>
+        </div>
+        {ws.error && <p className="text-xs text-destructive">{ws.error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
+function statusVariant(
+  status: string,
+): 'default' | 'destructive' | 'secondary' | 'outline' {
+  switch (status) {
+    case 'completed':
+      return 'default'
+    case 'failed':
+    case 'cancelled':
+      return 'destructive'
+    case 'running':
+    case 'pending':
+      return 'secondary'
+    default:
+      return 'outline'
+  }
 }
 
 export const Route = createFileRoute('/_authenticated/scans')({
