@@ -4,11 +4,15 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-05-06 (Phase 2 — 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WebSocket)_
+_마지막 업데이트: 2026-05-06 (Phase 2 — 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WS + C2 Tauri 스켈레톤)_
 
 ---
 
 ## 현재 상태 한 줄
+
+**Phase 2 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WS + C2 Tauri 스켈레톤** — D3 Tauri 2.x 결정 회수. `web/src-tauri/` 스캐폴드 + tauri.conf.json + Cargo.toml + main.rs/lib.rs + README. frontendDist는 vite outDir과 일치 (`../../internal/web/dist`). pnpm scripts 추가. 첫 cargo build는 사용자 머신에서 ~10분 의존성 컴파일 필요. 10 commits ahead of origin/main. **남은 후보**: Web UI 디자인 폴리시(보류) / public 전환 / remote push / 작은 carryover (C5 i18n, C6 HttpOnly cookie).
+
+### 직전 한 줄 (C1 WebSocket scan progress)
 
 **Phase 2 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WebSocket scan progress** — Phase 1 deferred 항목 회수. `coder/websocket` dep 추가, `/api/v1/scans/{id}/progress` upgrade endpoint, EventBus 구독, frontend useScanProgress hook + Progress UI. 통합 테스트 2건 + Vitest 40건 + Go 43 패키지 모두 통과. 9 commits ahead of origin/main. **남은 후보**: C2 Tauri (1주·Rust 툴체인) / Web UI 디자인 폴리시(보류) / public 전환 / remote push.
 
@@ -205,6 +209,7 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 날짜 내림차순.
 
+- **2026-05-06 · C2 Tauri 2.x 데스크톱 셸 회수 (D3·R12-9)**: `web/src-tauri/` 신규 (Tauri CLI v2.11.0 init, frontendDist=`../../internal/web/dist` — vite outDir과 일치). identifier `io.rosshield.desktop`, productName `rosshield`, 1280×800 윈도우. Cargo.toml에 `rosshield-desktop` package + Apache-2.0. `lib.rs`는 tauri::Builder default + tauri-plugin-log (debug only). `main.rs`는 `rosshield_desktop_lib::run()` 호출 (Windows windows_subsystem 분기). web/package.json에 `tauri:dev`/`tauri:build` scripts 추가. **README.md** (web/src-tauri/) — 사전 요구사항(Rust 1.77+·WebView2 등 OS deps)·dev/build 흐름·백엔드 연결(별도 spawn 안 함, Phase 3 자동 spawn 후속)·알려진 한계(코드 서명·자동 업데이트 미설정). 이번 세션에서는 cargo check까지만 시도(첫 빌드는 의존성 컴파일로 5~10분 — 시간 의존). **신규 dep**: `@tauri-apps/cli@^2`·`@tauri-apps/api@^2` (web devDeps). Rust deps는 src-tauri/Cargo.toml (tauri 2.11.0·tauri-build·tauri-plugin-log·serde/serde_json·log).
 - **2026-05-06 · C1 WebSocket scan progress 회수 (Phase 1 deferred)**: 신규 dep `github.com/coder/websocket@v1.8.14` (MIT, 외부 SDK 0 정책 유지 — stdlib net/http만 위에 얹음). `internal/api/handlers/scan_ws.go` — `GET /api/v1/scans/{sessionId}/progress` WebSocket upgrade. EventBus `scan.progress`+`scan.completed` topic subscribe → tenant·sessionId 매칭 필터 → wsProgressMessage(kind/total/completed/failed/status/reason) JSON 송신. completed 도착 시 NormalClosure로 close. handlers Deps에 EventBus 추가, main.go 결선. **통합 테스트 2건** (`scan_ws_test.go`): RequiresAuth(401 handshake) / StreamsEvents(noise 1건 무시 + progress 2건 + completed 1건 모두 수신, sessionId·kind·status 검증, 별 topic worker race 회피용 150ms sleep). frontend: `useScanProgress(sessionId)` hook (useEffect + WebSocket API, 같은 origin ws:// auto, completed 시 status 전이) + `scans.tsx`에 SessionProgressCard(shadcn Progress + Badge + WS status 표시). 발견 사항: inproc Bus의 별 topic은 별 worker goroutine이라 publish 순서가 도착 순서를 보장하지 않음 → 테스트 sleep 또는 wildcard 필요(R2-6에서 Phase 2+ 검토 항목). **검증**: go test 43 패키지 PASS / pnpm build·test 통과 / scans chunk 4.5KB→6.5KB.
 - **2026-05-06 · Vitest E19.T1·T2·T3 단위 테스트 16건 (commit `64a26d4`)**: route 파일 마운트 비용을 피하고 helper 함수 export → 직접 검증 패턴(login.test.tsx 답습). findings.tsx에 severityVariant·buildInsightsFilter, compliance.tsx에 scoreVariant·formatScore, advisor.tsx에 roleVariant·resolveAskErrorMessage export. 16건 분포: severity 매핑 4 + filter 빌드 5 / score 매핑 3 + 퍼센트 형식 4 / role 매핑 4 + Ask 에러 분기 4. **pnpm test --run → 6 파일 / 40 테스트 통과 (이전 24 + 신규 16)**. backlog E19.T1·T2·T3 충족 (Playwright deferred 기조 유지하며 단위 커버리지로 보강). T3은 backlog 명시("LLM disabled 시 페이지 숨김")와 실제 구현(503 안내 박스) 차이를 안내 메시지 분기 검증으로 채택.
 - **2026-05-06 · seed demo 서브커맨드 + e2e smoke 자동화**: `cmd/rosshield-server/demo_seed.go` 신규 — `seed demo --email <admin> [--data-dir]` 멱등 시드 (Pack stub 1 + pack_checks 2 + Fleet 1 + Robot 3 + Scan session 5 [4 PASS + 1 drift trigger] + Insight.RunForFleet backfill). PackCheckID 정확 매핑(scan_results FK to pack_checks). admin_seed `seed help` 출력에 demo 절차 추가. **e2e 검증 결과**: drift session → snapshot overallScore=0.5 partialCount=1 unmappedCount=29 / insights 2건 자동(drift kind severity=high "pass→fail" + peer kind). smoke 스크립트 step 7 추가 → 누적 **PASS=9/FAIL=0** (통합 테스트·healthz·login·advisor 503·compliance 활성화·seed demo·snapshot·insights 모두 자동 검증). docs/PHASE2_EXIT_DEMO.md 갱신 (seed demo 절차 추가). 발견된 결정: scan.RecordResult의 CheckID는 텍스트 코드, PackCheckID는 pack_checks.id(FK 결합)로 별 의미 — 시드 코드에서 처음에 swap 실수, 정정 후 통과.
