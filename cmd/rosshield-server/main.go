@@ -175,7 +175,18 @@ func main() {
 
 	addr := flag.String("addr", "127.0.0.1:0", "bind address")
 	dataDir := flag.String("data-dir", defaultDataDir(), "data directory (SQLite DB, keys, etc.)")
+	llmProvider := flag.String("llm-provider", "", "LLM provider: noop (default) | ollama | anthropic — opt-in (R14-1)")
+	llmModel := flag.String("llm-model", "", "LLM model name (provider-specific, e.g. llama3.2 / claude-haiku-4-5-20251001)")
+	llmBaseURL := flag.String("llm-base-url", "", "LLM base URL (ollama daemon or Anthropic API base)")
+	llmAPIKey := flag.String("llm-api-key", "", "LLM API key (anthropic only — prefer env ANTHROPIC_API_KEY)")
+	llmTimeout := flag.Duration("llm-timeout", 0, "LLM request timeout (0 = adapter default)")
 	flag.Parse()
+
+	// API key fallback to env to avoid leaking on shell history.
+	apiKey := *llmAPIKey
+	if apiKey == "" {
+		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
@@ -184,8 +195,13 @@ func main() {
 	defer cancelBoot()
 
 	platform, err := Bootstrap(bootCtx, Config{
-		DataDir: *dataDir,
-		Logger:  logger,
+		DataDir:     *dataDir,
+		Logger:      logger,
+		LLMProvider: *llmProvider,
+		LLMModel:    *llmModel,
+		LLMBaseURL:  *llmBaseURL,
+		LLMAPIKey:   apiKey,
+		LLMTimeout:  *llmTimeout,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

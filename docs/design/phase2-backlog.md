@@ -316,6 +316,13 @@ Carryover(C1~C7) 추가 시 +1~2주.
 - [ ] LLM Adapter noop 기본값 + ollama/anthropic 옵트인 동작
 - [ ] Insight 3 Kind(drift·anomaly·peer) 결정론적 산출
 - [x] Web Console 추가 3 페이지(Compliance·Findings·Advisor) 동작 — E19 완료 (2026-05-06)
+
+**Exit 시연 산출물** (2026-05-06):
+- `docs/PHASE2_EXIT_DEMO.md` — 6 항목별 시나리오 + 운영 시연 가이드
+- `scripts/phase2-exit-smoke.sh` — 자동 검증 (6/6 PASS)
+- `cmd/rosshield-server/main.go` — `-llm-provider` 등 5 LLM CLI flag 노출
+
+**남은 운영 갭**: `POST /api/v1/robots`, `POST /api/v1/scans/run` 핸들러 미구현(gen.Unimplemented 자동 501) → robot/scan 시드 API 부재. 후속 epic 후보: `seed demo` 서브커맨드 (1~2일).
 - [ ] LLM 호출 모두 LlmTrace + audit chain anchor
 
 ---
