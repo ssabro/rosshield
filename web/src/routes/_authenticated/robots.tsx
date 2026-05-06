@@ -1,8 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { Server } from 'lucide-react'
+
 import { ApiError } from '@/api/errors'
 import { useRobots } from '@/api/hooks'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -79,11 +82,13 @@ function RobotsPage(): React.ReactElement {
             )}
             {robots.isSuccess && robots.data.length === 0 && (
               <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center text-muted-foreground"
-                >
-                  (로봇 없음)
+                <TableCell colSpan={5} className="p-0">
+                  <EmptyState
+                    icon={Server}
+                    title="등록된 로봇이 없습니다"
+                    description="rosshield-server seed demo로 시연 데이터를 시드하거나, robot.Service.CreateRobot으로 추가하세요."
+                    className="rounded-none border-0 bg-transparent"
+                  />
                 </TableCell>
               </TableRow>
             )}

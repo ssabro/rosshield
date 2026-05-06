@@ -1,6 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { ClipboardCheck, Inbox } from 'lucide-react'
+
 import { ApiError } from '@/api/errors'
 import {
   useComplianceProfiles,
@@ -8,10 +10,19 @@ import {
   useCreateComplianceProfile,
   useGenerateSnapshot,
 } from '@/api/hooks'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -95,8 +106,13 @@ function CompliancePage(): React.ReactElement {
               )}
               {profiles.isSuccess && profiles.data.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    (활성 프로필 없음 — 위 폼으로 추가)
+                  <TableCell colSpan={4} className="p-0">
+                    <EmptyState
+                      icon={ClipboardCheck}
+                      title="활성 프로필이 없습니다"
+                      description="위 폼에서 프레임워크와 버전을 선택해 첫 프로필을 활성화하세요."
+                      className="rounded-none border-0 bg-transparent"
+                    />
                   </TableCell>
                 </TableRow>
               )}
@@ -229,9 +245,10 @@ function SnapshotsSection({
   profile: ComplianceProfile
 }): React.ReactElement {
   const snapshots = useComplianceSnapshots(profile.id)
+  const latest = snapshots.data?.[0]
 
   return (
-    <section className="space-y-2">
+    <section className="space-y-3">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-medium">스냅샷</h2>
         <p className="text-xs text-muted-foreground">
@@ -239,6 +256,8 @@ function SnapshotsSection({
           <span className="font-mono">{profile.frameworkVersion}</span>
         </p>
       </div>
+
+      {latest && <ScoreHeroCard snapshot={latest} />}
 
       <GenerateSnapshotForm profileId={profile.id} />
 
@@ -275,8 +294,13 @@ function SnapshotsSection({
             )}
             {snapshots.isSuccess && snapshots.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  (스냅샷 없음 — 위 폼으로 생성)
+                <TableCell colSpan={8} className="p-0">
+                  <EmptyState
+                    icon={Inbox}
+                    title="스냅샷이 없습니다"
+                    description="위 폼에서 scan session ID를 입력해 첫 스냅샷을 생성하세요."
+                    className="rounded-none border-0 bg-transparent"
+                  />
                 </TableCell>
               </TableRow>
             )}
@@ -368,6 +392,64 @@ function GenerateSnapshotForm({
       )}
     </form>
   )
+}
+
+function ScoreHeroCard({
+  snapshot,
+}: {
+  snapshot: ComplianceSnapshot
+}): React.ReactElement {
+  const percent = Math.round(snapshot.overallScore * 100)
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          최근 스냅샷 점수
+        </CardTitle>
+        <CardDescription className="text-xs">
+          {new Date(snapshot.createdAt).toLocaleString('ko-KR')} · session{' '}
+          <span className="font-mono">{snapshot.sessionId || '-'}</span>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-baseline gap-3">
+          <span className="text-4xl font-semibold tracking-tight">
+            {formatScore(snapshot.overallScore)}
+          </span>
+          <Badge variant={scoreVariant(snapshot.overallScore)}>
+            {scoreLabel(snapshot.overallScore)}
+          </Badge>
+        </div>
+        <Progress value={percent} className="h-2" />
+        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-5">
+          <span>
+            <span className="text-foreground">Pass</span> {snapshot.passCount}
+          </span>
+          <span className="text-destructive">
+            <span>Fail</span> {snapshot.failCount}
+          </span>
+          <span>
+            <span className="text-foreground">Partial</span>{' '}
+            {snapshot.partialCount}
+          </span>
+          <span>
+            <span className="text-foreground">N/A</span>{' '}
+            {snapshot.notApplicableCount}
+          </span>
+          <span>
+            <span className="text-foreground">Unmapped</span>{' '}
+            {snapshot.unmappedCount}
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function scoreLabel(score: number): string {
+  if (score >= 0.9) return '우수'
+  if (score >= 0.7) return '양호'
+  return '미흡'
 }
 
 // scoreVariant는 overall_score를 shadcn Badge variant로 매핑합니다.

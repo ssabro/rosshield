@@ -4,11 +4,15 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-05-06 (Phase 2 — 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WS + C2 Tauri 스켈레톤)_
+_마지막 업데이트: 2026-05-06 (Phase 2 — 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WS + C2 Tauri + Web UI 폴리시 1차)_
 
 ---
 
 ## 현재 상태 한 줄
+
+**Phase 2 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WS + C2 Tauri + Web UI 폴리시 1차** — Header/Sidebar/Login 시각 갱신, 공통 EmptyState 컴포넌트(4 페이지 적용), Compliance ScoreHeroCard. 11 commits ahead of origin/main. 디자인 폴리시 2차 후속 항목 메모 보존(Advisor chat layout·dark mode 점검·control 트리). **남은 후보**: public 전환 / remote push / C5 i18n / C6 HttpOnly cookie / 폴리시 2차.
+
+### 직전 한 줄 (C2 Tauri 데스크톱 셸)
 
 **Phase 2 10/10 epic + Exit 시연 + seed demo + Vitest + C1 WS + C2 Tauri 스켈레톤** — D3 Tauri 2.x 결정 회수. `web/src-tauri/` 스캐폴드 + tauri.conf.json + Cargo.toml + main.rs/lib.rs + README. frontendDist는 vite outDir과 일치 (`../../internal/web/dist`). pnpm scripts 추가. 첫 cargo build는 사용자 머신에서 ~10분 의존성 컴파일 필요. 10 commits ahead of origin/main. **남은 후보**: Web UI 디자인 폴리시(보류) / public 전환 / remote push / 작은 carryover (C5 i18n, C6 HttpOnly cookie).
 
@@ -209,6 +213,7 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 
 날짜 내림차순.
 
+- **2026-05-06 · Web UI 디자인 폴리시 1차**: 사용자가 명시 보류했던 항목을 본인 선택으로 회수. **공통 EmptyState 컴포넌트** (`web/src/components/layout/EmptyState.tsx`) — 아이콘 + 타이틀 + 설명 + 옵션 액션, 4 페이지 일관 적용 (findings·compliance·robots·reports의 빈 상태). **Header 폴리시** — 좌측에 현재 라우트 한글 타이틀(PAGE_TITLES 맵), 우측 사용자 이메일 + 로그아웃. **Sidebar 폴리시** — width 56→60, 브랜드 영역에 부제 "Security Console" + primary tinted icon container, 활성 메뉴는 좌측 indicator bar(border-l-primary), 로그아웃은 Header로 이전(중복 제거), 하단 build version. **Login 페이지** — gradient bg + ShieldCheck 브랜드 hero + Card with description + 에러 박스 시각화 + 하단 버전 캡션. **Compliance ScoreHeroCard** — 최근 스냅샷의 점수를 4xl number + Badge(우수/양호/미흡 한글 라벨) + Progress bar + 5컬럼 카운트 그리드로 표현. 디자인 deferred는 부분 회수 — 2차 후속 항목: Advisor chat-like layout, Compliance control 트리, dark mode 점검, login 다크 그라데이션, robot/scan 카드 일관 스타일. **검증**: pnpm build 통과 (compliance 6.87→8.85KB, EmptyState chunk 1.17KB), pnpm test 40 PASS, tsc OK.
 - **2026-05-06 · C2 Tauri 2.x 데스크톱 셸 회수 (D3·R12-9)**: `web/src-tauri/` 신규 (Tauri CLI v2.11.0 init, frontendDist=`../../internal/web/dist` — vite outDir과 일치). identifier `io.rosshield.desktop`, productName `rosshield`, 1280×800 윈도우. Cargo.toml에 `rosshield-desktop` package + Apache-2.0. `lib.rs`는 tauri::Builder default + tauri-plugin-log (debug only). `main.rs`는 `rosshield_desktop_lib::run()` 호출 (Windows windows_subsystem 분기). web/package.json에 `tauri:dev`/`tauri:build` scripts 추가. **README.md** (web/src-tauri/) — 사전 요구사항(Rust 1.77+·WebView2 등 OS deps)·dev/build 흐름·백엔드 연결(별도 spawn 안 함, Phase 3 자동 spawn 후속)·알려진 한계(코드 서명·자동 업데이트 미설정). 이번 세션에서는 cargo check까지만 시도(첫 빌드는 의존성 컴파일로 5~10분 — 시간 의존). **신규 dep**: `@tauri-apps/cli@^2`·`@tauri-apps/api@^2` (web devDeps). Rust deps는 src-tauri/Cargo.toml (tauri 2.11.0·tauri-build·tauri-plugin-log·serde/serde_json·log).
 - **2026-05-06 · C1 WebSocket scan progress 회수 (Phase 1 deferred)**: 신규 dep `github.com/coder/websocket@v1.8.14` (MIT, 외부 SDK 0 정책 유지 — stdlib net/http만 위에 얹음). `internal/api/handlers/scan_ws.go` — `GET /api/v1/scans/{sessionId}/progress` WebSocket upgrade. EventBus `scan.progress`+`scan.completed` topic subscribe → tenant·sessionId 매칭 필터 → wsProgressMessage(kind/total/completed/failed/status/reason) JSON 송신. completed 도착 시 NormalClosure로 close. handlers Deps에 EventBus 추가, main.go 결선. **통합 테스트 2건** (`scan_ws_test.go`): RequiresAuth(401 handshake) / StreamsEvents(noise 1건 무시 + progress 2건 + completed 1건 모두 수신, sessionId·kind·status 검증, 별 topic worker race 회피용 150ms sleep). frontend: `useScanProgress(sessionId)` hook (useEffect + WebSocket API, 같은 origin ws:// auto, completed 시 status 전이) + `scans.tsx`에 SessionProgressCard(shadcn Progress + Badge + WS status 표시). 발견 사항: inproc Bus의 별 topic은 별 worker goroutine이라 publish 순서가 도착 순서를 보장하지 않음 → 테스트 sleep 또는 wildcard 필요(R2-6에서 Phase 2+ 검토 항목). **검증**: go test 43 패키지 PASS / pnpm build·test 통과 / scans chunk 4.5KB→6.5KB.
 - **2026-05-06 · Vitest E19.T1·T2·T3 단위 테스트 16건 (commit `64a26d4`)**: route 파일 마운트 비용을 피하고 helper 함수 export → 직접 검증 패턴(login.test.tsx 답습). findings.tsx에 severityVariant·buildInsightsFilter, compliance.tsx에 scoreVariant·formatScore, advisor.tsx에 roleVariant·resolveAskErrorMessage export. 16건 분포: severity 매핑 4 + filter 빌드 5 / score 매핑 3 + 퍼센트 형식 4 / role 매핑 4 + Ask 에러 분기 4. **pnpm test --run → 6 파일 / 40 테스트 통과 (이전 24 + 신규 16)**. backlog E19.T1·T2·T3 충족 (Playwright deferred 기조 유지하며 단위 커버리지로 보강). T3은 backlog 명시("LLM disabled 시 페이지 숨김")와 실제 구현(503 안내 박스) 차이를 안내 메시지 분기 검증으로 채택.

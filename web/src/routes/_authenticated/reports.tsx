@@ -1,7 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+import { FileText } from 'lucide-react'
+
 import { ApiError } from '@/api/errors'
 import { useReports } from '@/api/hooks'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -73,11 +76,13 @@ function ReportsPage(): React.ReactElement {
               )}
               {reports.isSuccess && reports.data.length === 0 && (
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="text-center text-muted-foreground"
-                  >
-                    (리포트 없음)
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      icon={FileText}
+                      title="리포트가 없습니다"
+                      description="scan 완료 후 자동 생성되거나, 별도 endpoint로 수동 생성됩니다 (Phase 3 후속)."
+                      className="rounded-none border-0 bg-transparent"
+                    />
                   </TableCell>
                 </TableRow>
               )}

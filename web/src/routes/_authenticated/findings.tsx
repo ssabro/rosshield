@@ -1,8 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { Inbox } from 'lucide-react'
+
 import { ApiError } from '@/api/errors'
 import { useDismissInsight, useInsights } from '@/api/hooks'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -127,8 +130,13 @@ function FindingsPage(): React.ReactElement {
             )}
             {insights.isSuccess && insights.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  (활성 Insight 없음)
+                <TableCell colSpan={6} className="p-0">
+                  <EmptyState
+                    icon={Inbox}
+                    title="활성 Insight가 없습니다"
+                    description="필터를 비우거나, scan 완료 후 자동 산출되거나 fleet 단위로 :run을 호출하세요."
+                    className="rounded-none border-0 bg-transparent"
+                  />
                 </TableCell>
               </TableRow>
             )}

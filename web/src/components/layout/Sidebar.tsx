@@ -1,22 +1,24 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import {
   AlertTriangle,
   ClipboardCheck,
   FileText,
-  LogOut,
   MessageSquare,
   PlayCircle,
   Server,
   ShieldCheck,
 } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth'
 
-// 좌측 사이드바 — 4 메뉴(개요는 Phase 2) + 로그아웃.
+// 좌측 사이드바 — 6 메뉴 + 하단 빌드 버전(브랜드 영역).
 // `_authenticated` 셸 안에서만 렌더링된다.
+//
+// 디자인 노트 (1차 폴리시):
+//   - 브랜드 영역에 작은 부제 ("Security Console") 추가
+//   - 활성 메뉴는 좌측 indicator bar + 강조 배경 + 아이콘 색
+//   - 로그아웃은 헤더로 이동(중복 방지) — 본 사이드바는 메뉴+브랜드만
 const items = [
   { to: '/robots', label: '로봇', icon: Server },
   { to: '/scans', label: '스캔', icon: PlayCircle },
@@ -27,31 +29,34 @@ const items = [
 ] as const
 
 export function Sidebar(): React.ReactElement {
-  const navigate = useNavigate()
-  const clearSession = useAuthStore((s) => s.clearSession)
-
-  const handleLogout = (): void => {
-    clearSession()
-    void navigate({ to: '/login' })
-  }
-
+  // 로그아웃은 Header에 통합 — 본 사이드바는 메뉴+브랜드 전용.
   return (
-    <aside className="flex w-56 flex-col border-r border-border bg-card">
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <ShieldCheck className="h-5 w-5 text-primary" aria-hidden />
-        <span className="font-semibold tracking-tight">rosshield</span>
+    <aside className="flex w-60 flex-col border-r border-border bg-card">
+      <div className="flex h-14 items-center gap-2.5 border-b border-border px-4">
+        <div className="rounded-md bg-primary/10 p-1.5">
+          <ShieldCheck className="h-5 w-5 text-primary" aria-hidden />
+        </div>
+        <div className="flex flex-col leading-tight">
+          <span className="text-sm font-semibold tracking-tight">rosshield</span>
+          <span className="text-[10px] text-muted-foreground">
+            Security Console
+          </span>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">
-        <nav aria-label="주 메뉴" className="flex flex-col gap-1 p-3">
+        <nav aria-label="주 메뉴" className="flex flex-col gap-0.5 p-3">
           {items.map((item) => (
             <Link
               key={item.to}
               to={item.to}
-              activeProps={{ className: 'bg-accent text-accent-foreground' }}
+              activeProps={{
+                className:
+                  'bg-accent text-accent-foreground border-l-2 border-l-primary pl-[10px]',
+              }}
               className={cn(
-                'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
-                'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                'group flex items-center gap-2 rounded-md border-l-2 border-l-transparent py-2 pl-3 pr-3 text-sm transition-colors',
+                'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
               )}
             >
               <item.icon className="h-4 w-4" aria-hidden />
@@ -61,16 +66,8 @@ export function Sidebar(): React.ReactElement {
         </nav>
       </ScrollArea>
 
-      <div className="border-t border-border p-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start gap-2 text-muted-foreground"
-          onClick={handleLogout}
-        >
-          <LogOut className="h-4 w-4" aria-hidden />
-          로그아웃
-        </Button>
+      <div className="border-t border-border px-4 py-3 text-[10px] text-muted-foreground">
+        v0.1.0 · Phase 2
       </div>
     </aside>
   )

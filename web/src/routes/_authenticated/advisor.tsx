@@ -88,7 +88,9 @@ function ConversationsList({
         </p>
       )}
       {!isPending && !isError && conversations.length === 0 && (
-        <p className="text-xs text-muted-foreground">(없음 — 새 대화로 시작)</p>
+        <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-xs text-muted-foreground">
+          대화가 없습니다.<br />새 대화로 시작하세요.
+        </p>
       )}
 
       <ul className="flex flex-col gap-1">
