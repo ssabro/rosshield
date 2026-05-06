@@ -464,6 +464,82 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  # E16/E19-3 (Phase 2) — Advisor 도메인 표면 (LLM 옵트인).
+  #
+  # LLM provider가 noop이면 모든 ask는 503 Service Unavailable (advisor.ErrAdvisorDisabled).
+  # 활성화 방법: 서버 시작 시 `--llm-provider=ollama|=anthropic`.
+  #
+  # 핸들러는 chi 직접 mount (gen.ServerInterface 미구현, gen.Unimplemented가 자동 501).
+  # spec은 문서·계약 목적으로만 정의.
+  /api/v1/advisor/conversations:ask:
+    post:
+      tags: [advisor]
+      operationId: askAdvisor
+      summary: Ask the advisor a natural-language question (opt-in)
+      description: |
+        Starts a new conversation (when conversationId is empty) or appends to an
+        existing one. The orchestrator runs an LLM/tool dispatch loop and returns
+        the final answer plus the turns produced in this request.
+
+        Returns 503 if the LLM provider is disabled (noop).
+      x-status: phase2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                conversationId: { type: string, description: "Empty → new conversation" }
+                question:       { type: string, minLength: 1 }
+                maxToolCalls:   { type: integer, minimum: 0, maximum: 50 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/advisor/conversations:
+    get:
+      tags: [advisor]
+      operationId: listAdvisorConversations
+      summary: List the current user's conversations (updated_at DESC)
+      x-status: phase2
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/advisor/conversations/{conversationId}:
+    parameters:
+      - { in: path, name: conversationId, required: true, schema: { type: string } }
+    get:
+      tags: [advisor]
+      operationId: getAdvisorConversation
+      summary: Get a conversation with all its turns (sequence ASC)
+      x-status: phase2
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Envelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
