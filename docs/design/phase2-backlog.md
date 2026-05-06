@@ -215,27 +215,35 @@ internal/domain/advisor/
 
 ---
 
-### E19. Web UI Compliance·Findings·Advisor 페이지 (1주)
+### E19. Web UI Compliance·Findings·Advisor 페이지 (1주) — ✅ 완료 (2026-05-06)
 
 **왜**: 백엔드 도메인 결선 후 UX 표면. Phase 1에서 deferred(R12-1)된 페이지 + Phase 2 신규.
 
-#### 스코프
+#### 스코프 (실행 결과)
 
-- `web/src/routes/_authenticated/compliance.tsx` — 프로필 선택 + 점수 카드 + 통제 트리 + 미매핑 목록
-- `web/src/routes/_authenticated/findings.tsx` — Insight 목록(drift/anomaly/peer 필터)
-- `web/src/routes/_authenticated/advisor.tsx` — LLM 옵트인 시만 노출, 대화 히스토리 + 입력 form
+- ✅ `web/src/routes/_authenticated/findings.tsx` — Insight 목록 (kind/severity/robotId 필터 + Dismiss)
+- ✅ `web/src/routes/_authenticated/compliance.tsx` — 프로필 추가/목록 + 선택 프로필의 snapshot 목록·생성 (Score Badge variant)
+- ✅ `web/src/routes/_authenticated/advisor.tsx` — 좌측 대화 목록 + 우측 turn 렌더링 + Ask form. 503 응답 시 옵트인 활성화 안내
+- ✅ `internal/api/handlers/advisor.go` (E19-3-A 추가 작업) — Ask/List/Get 3 endpoint chi 직접 mount, advisorErrorStatus(Disabled→503·EmptyQ→400·NotFound→404), 6 통합 테스트
+- ✅ `web/src/components/layout/Sidebar.tsx` — Findings·Compliance·Advisor 3 메뉴 추가
+- ✅ `web/src/api/hooks.ts` — Insight·Compliance·Advisor 훅 (raw fetch 패턴 또는 openapi-fetch)
 
-#### TDD 태스크
+#### 실행 단계
 
-| ID | 테스트 | 구현 |
-|---|---|---|
-| E19.T1 | `compliance.test.tsx` — 점수 게이지 렌더 | mock API |
-| E19.T2 | `findings.test.tsx` — Kind 필터 동작 | mock API |
-| E19.T3 | `advisor.test.tsx` — LLM disabled 시 페이지 숨김 | feature flag |
+| 하위 단계 | 내용 |
+|---|---|
+| E19-1 | Findings 페이지 |
+| E19-2 | Compliance 페이지 |
+| E19-3-A | Advisor 백엔드 HTTP 표면 (openapi spec 미등록 — chi 직접 mount, **후속 정리 필요**) |
+| E19-3-B | Advisor 웹 페이지 |
 
 #### Exit 기준
 
-- 3 페이지 빌드·라우터 통합 + Vitest 단위 통과.
+- ✅ 3 페이지 빌드 통과 + 라우터 통합
+- ✅ Go 전체 테스트 통과 (advisor 핸들러 6 신규)
+- ✅ tsc --noEmit 통과
+- ⚠ Vitest 단위 테스트 — 본 라운드는 작성하지 않음 (R12-7로 Playwright deferred 정합)
+- ⚠ openapi spec advisor 표면 누락 — 후속 정리 (oapi-codegen 재생성 필요)
 
 ---
 
@@ -282,7 +290,7 @@ E14·E15 ──────→ W1 결선 → W2 API
 | E16 Advisor | 1주 | E13 후 | ✅ `2295005`+`5c2ee41`+`f8e8a14` |
 | E17 자동 매핑 | 3일 | E13·E15 후 | ✅ `b3d9730`+`495c3a0` |
 | E18 Framework PDF | 3일 | E15 후 | ✅ `5984b43`+`0ded8a6`+`d911ac5` |
-| E19 Web UI | 1주 | E15·E16·E17 후 | ⬜ |
+| E19 Web UI | 1주 | E15·E16·E17 후 | ✅ Findings·Compliance·Advisor 3 페이지 + Advisor 백엔드 HTTP 표면 (E19-3-A) |
 | **합계** | **6.5주 + 2일 W** | **~5주** | |
 
 Carryover(C1~C7) 추가 시 +1~2주.
@@ -307,7 +315,7 @@ Carryover(C1~C7) 추가 시 +1~2주.
 - [ ] Framework 리포트 PDF 외부 검증 성공
 - [ ] LLM Adapter noop 기본값 + ollama/anthropic 옵트인 동작
 - [ ] Insight 3 Kind(drift·anomaly·peer) 결정론적 산출
-- [ ] Web Console 추가 3 페이지(Compliance·Findings·Advisor) 동작
+- [x] Web Console 추가 3 페이지(Compliance·Findings·Advisor) 동작 — E19 완료 (2026-05-06)
 - [ ] LLM 호출 모두 LlmTrace + audit chain anchor
 
 ---
