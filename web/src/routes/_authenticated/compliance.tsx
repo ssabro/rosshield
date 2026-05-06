@@ -298,7 +298,7 @@ function SnapshotRow({
     <TableRow>
       <TableCell>
         <Badge variant={scoreVariant(snapshot.overallScore)}>
-          {(snapshot.overallScore * 100).toFixed(1)}%
+          {formatScore(snapshot.overallScore)}
         </Badge>
       </TableCell>
       <TableCell className="font-mono text-xs">{snapshot.passCount}</TableCell>
@@ -370,12 +370,21 @@ function GenerateSnapshotForm({
   )
 }
 
-function scoreVariant(
+// scoreVariant는 overall_score를 shadcn Badge variant로 매핑합니다.
+// ≥0.9 default(녹색-ish), ≥0.7 secondary(중립), 그 외 destructive(빨강).
+// 단위 테스트(compliance.test.tsx) 대상으로 export.
+export function scoreVariant(
   score: number,
 ): 'default' | 'destructive' | 'secondary' | 'outline' {
   if (score >= 0.9) return 'default'
   if (score >= 0.7) return 'secondary'
   return 'destructive'
+}
+
+// formatScore는 overall_score(0~1)를 사용자 가시 문자열("83.4%")로 변환합니다.
+// 단위 테스트(compliance.test.tsx) 대상으로 export.
+export function formatScore(score: number): string {
+  return `${(score * 100).toFixed(1)}%`
 }
 
 export const Route = createFileRoute('/_authenticated/compliance')({

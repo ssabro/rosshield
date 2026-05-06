@@ -176,11 +176,7 @@ function ConversationPanel({
 
       {ask.isError && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          {ask.error instanceof ApiError && ask.error.status === 503
-            ? 'Advisor가 비활성 상태입니다. 서버를 --llm-provider=ollama 또는 =anthropic으로 재시작하세요.'
-            : ask.error instanceof ApiError
-              ? ask.error.message
-              : '질문 처리 중 오류가 발생했습니다'}
+          {resolveAskErrorMessage(ask.error)}
         </div>
       )}
 
@@ -263,7 +259,9 @@ function TurnView({ turn }: { turn: AdvisorTurn }): React.ReactElement {
   )
 }
 
-function roleVariant(
+// roleVariant는 advisor turn의 role을 shadcn Badge variant로 매핑합니다.
+// 단위 테스트(advisor.test.tsx) 대상으로 export.
+export function roleVariant(
   role: string,
 ): 'default' | 'destructive' | 'secondary' | 'outline' {
   switch (role) {
@@ -276,6 +274,21 @@ function roleVariant(
     default:
       return 'outline'
   }
+}
+
+// resolveAskErrorMessage는 useAskAdvisor의 에러를 사용자 가시 메시지로 매핑합니다.
+//   ApiError 503  → 옵트인 활성화 안내 (LLM disabled)
+//   ApiError 그 외 → 서버 메시지 노출
+//   비-ApiError    → 일반 fallback
+// 단위 테스트(advisor.test.tsx) 대상으로 export.
+export function resolveAskErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.status === 503) {
+    return 'Advisor가 비활성 상태입니다. 서버를 --llm-provider=ollama 또는 =anthropic으로 재시작하세요.'
+  }
+  if (err instanceof ApiError) {
+    return err.message
+  }
+  return '질문 처리 중 오류가 발생했습니다'
 }
 
 export const Route = createFileRoute('/_authenticated/advisor')({

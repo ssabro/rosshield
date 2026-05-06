@@ -242,7 +242,11 @@ internal/domain/advisor/
 - ✅ 3 페이지 빌드 통과 + 라우터 통합
 - ✅ Go 전체 테스트 통과 (advisor 핸들러 6 신규)
 - ✅ tsc --noEmit 통과
-- ⚠ Vitest 단위 테스트 — 본 라운드는 작성하지 않음 (R12-7로 Playwright deferred 정합)
+- ✅ Vitest 단위 테스트 16건 (E19.T1·T2·T3 충족 — 2026-05-06):
+  - findings.test.tsx: severityVariant 4건 + buildInsightsFilter 5건
+  - compliance.test.tsx: scoreVariant 3건 + formatScore 4건
+  - advisor.test.tsx: roleVariant 4건 + resolveAskErrorMessage 4건
+  - route 파일은 createFileRoute 의존이라 RTL 마운트 회피, helper 함수 export 후 직접 검증 (login.test.tsx 패턴)
 - ⚠ openapi spec advisor 표면 누락 — 후속 정리 (oapi-codegen 재생성 필요)
 
 ---

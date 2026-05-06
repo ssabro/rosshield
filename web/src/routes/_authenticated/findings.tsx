@@ -37,11 +37,7 @@ function FindingsPage(): React.ReactElement {
   const [severity, setSeverity] = useState<string>('')
   const [robotId, setRobotId] = useState<string>('')
 
-  const filter = {
-    ...(kind ? { kind } : {}),
-    ...(severity ? { severity } : {}),
-    ...(robotId.trim() ? { robotId: robotId.trim() } : {}),
-  }
+  const filter = buildInsightsFilter({ kind, severity, robotId })
   const insights = useInsights(filter)
 
   return (
@@ -190,7 +186,9 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
   )
 }
 
-function severityVariant(
+// severityVariant는 Insight severity(5-값)를 shadcn Badge variant로 매핑합니다.
+// 단위 테스트(findings.test.tsx) 대상으로 export.
+export function severityVariant(
   s: string,
 ): 'default' | 'destructive' | 'secondary' | 'outline' {
   switch (s) {
@@ -203,6 +201,21 @@ function severityVariant(
     case 'info':
     default:
       return 'secondary'
+  }
+}
+
+// buildInsightsFilter는 페이지의 3개 입력 상태를 useInsights에 넘길 filter 객체로 변환합니다.
+// 빈 값 필드는 객체에서 빠짐(서버 측에서 filter 미적용으로 해석).
+// 단위 테스트(findings.test.tsx) 대상으로 export.
+export function buildInsightsFilter(input: {
+  kind: string
+  severity: string
+  robotId: string
+}): { kind?: string; severity?: string; robotId?: string } {
+  return {
+    ...(input.kind ? { kind: input.kind } : {}),
+    ...(input.severity ? { severity: input.severity } : {}),
+    ...(input.robotId.trim() ? { robotId: input.robotId.trim() } : {}),
   }
 }
 
