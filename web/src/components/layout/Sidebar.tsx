@@ -1,5 +1,14 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { FileText, LogOut, PlayCircle, Server, ShieldCheck } from 'lucide-react'
+import {
+  AlertTriangle,
+  ClipboardCheck,
+  FileText,
+  LogOut,
+  MessageSquare,
+  PlayCircle,
+  Server,
+  ShieldCheck,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -11,6 +20,9 @@ import { useAuthStore } from '@/stores/auth'
 const items = [
   { to: '/robots', label: '로봇', icon: Server },
   { to: '/scans', label: '스캔', icon: PlayCircle },
+  { to: '/findings', label: 'Findings', icon: AlertTriangle },
+  { to: '/compliance', label: 'Compliance', icon: ClipboardCheck },
+  { to: '/advisor', label: 'Advisor', icon: MessageSquare },
   { to: '/reports', label: '리포트', icon: FileText },
 ] as const
 

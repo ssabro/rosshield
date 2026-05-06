@@ -13,6 +13,8 @@ export default defineConfig({
       routesDirectory: './src/routes',
       generatedRouteTree: './src/routeTree.gen.ts',
       autoCodeSplitting: true,
+      // *.test.tsx 등 Vitest 파일이 routes/ 안에 있어도 route로 취급하지 않음.
+      routeFileIgnorePattern: '\\.test\\.[jt]sx?$',
     }),
     react(),
     tailwindcss(),

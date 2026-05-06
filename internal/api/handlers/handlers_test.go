@@ -25,7 +25,9 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/handlers"
+	"github.com/ssabro/rosshield/internal/app/advisorrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
+	advisorrepo "github.com/ssabro/rosshield/internal/domain/advisor/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
@@ -42,6 +44,7 @@ import (
 	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
+	llmnoop "github.com/ssabro/rosshield/internal/platform/llm/noop"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	"github.com/ssabro/rosshield/internal/platform/storage/sqlite"
 )
@@ -153,6 +156,21 @@ func newFixture(t *testing.T) *testFixture {
 		AuditReader: &testComplianceAuditReaderAdapter{svc: auditSvc},
 	})
 
+	// E16/E19-3 — Advisor 결선 (옵트인 — noop LLM이라 모든 Ask는 ErrAdvisorDisabled).
+	advisorRepoSvc := advisorrepo.New(advisorrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: &nullAuditEmitter{},
+	})
+	// dispatcher는 LLM이 noop이라 호출되지 않음 — evidence는 nil 허용.
+	advisorDispatcher := advisorrun.NewDispatcher(scanSvc, nil, clk)
+	advisorLLMClient := advisorrun.NewLLMClient(llmnoop.New())
+	advisorSvc := advisorrun.NewOrchestrator(advisorrun.OrchestratorDeps{
+		Repo:       advisorRepoSvc,
+		LLM:        advisorLLMClient,
+		Dispatcher: advisorDispatcher,
+	})
+
 	// admin 시드.
 	const (
 		email = "admin@example.com"
@@ -188,6 +206,7 @@ func newFixture(t *testing.T) *testFixture {
 		Reporting:  reportingSvc,
 		Insight:    insightSvc,
 		Compliance: complianceSvc,
+		Advisor:    advisorSvc,
 	})
 
 	router := chi.NewRouter()

@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/gen"
+	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
@@ -48,6 +49,7 @@ type Deps struct {
 	Reporting  reporting.Service
 	Insight    insight.Service    // E17 Phase 2
 	Compliance compliance.Service // E17 Phase 2
+	Advisor    advisor.Service    // E16 Phase 2 — LLM 옵트인
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -133,6 +135,14 @@ func (h *Handlers) Mount(r chi.Router) {
 		})
 		r.Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
 			h.GenerateComplianceSnapshot(w, req, chi.URLParam(req, "profileId"))
+		})
+
+		// E16 Phase 2 / E19-3 — Advisor 도메인 표면 (옵트인).
+		// chi 직접 mount — openapi spec(advisor) 후속 정리 (SESSION_HANDOFF 메모).
+		r.Post("/api/v1/advisor/conversations:ask", h.AskAdvisor)
+		r.Get("/api/v1/advisor/conversations", h.ListAdvisorConversations)
+		r.Get("/api/v1/advisor/conversations/{conversationId}", func(w http.ResponseWriter, req *http.Request) {
+			h.GetAdvisorConversation(w, req, chi.URLParam(req, "conversationId"))
 		})
 	})
 }

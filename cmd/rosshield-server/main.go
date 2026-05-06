@@ -130,6 +130,7 @@ func newMux(p *Platform) http.Handler {
 		Reporting:  p.Reporting,
 		Insight:    p.Insight,
 		Compliance: p.Compliance,
+		Advisor:    p.Advisor,
 	})
 	h.Mount(apiRouter)
 	mux.Handle("/api/v1/", apiRouter)
