@@ -45,14 +45,17 @@ func seedSubcommand(args []string) int {
 	switch args[0] {
 	case "admin":
 		return runSeedAdmin(args[1:])
+	case "demo":
+		return runSeedDemo(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stderr, `seed 서브커맨드 — 부팅 직후 system tenant + admin user 시드
+		fmt.Fprintln(os.Stderr, `seed 서브커맨드 — system tenant + admin user / 시연 데이터 시드
 
 사용법:
   rosshield-server seed admin --email <addr> --password <pw> [options]
   rosshield-server seed admin --email <addr> --password-stdin [options]
+  rosshield-server seed demo  --email <addr> [--data-dir <path>]
 
-옵션:
+admin 옵션:
   --email          관리자 이메일 (필수)
   --password       관리자 패스워드 (필수, ≥12 chars 강제, --password-stdin과 상호 배타)
   --password-stdin stdin에서 패스워드 읽기 (보안 권장 — 명령행 노출 방지)
@@ -61,11 +64,15 @@ func seedSubcommand(args []string) int {
   --data-dir       데이터 디렉터리 (기본 ~/.rosshield, 부팅 시와 동일)
   --tenant-id      향후 명시 ID 시드용 placeholder (Phase 1에서는 무시 — IDGen이 결정)
 
+demo 옵션 (Phase 2 Exit 시연 데이터 — 멱등):
+  --email          시드 대상 tenant의 admin email (필수, 사전에 admin 시드 필요)
+  --data-dir       데이터 디렉터리 (기본 ~/.rosshield)
+
 exit code:
   0  성공
   1  bootstrap·storage 오류
   2  CLI args / validation 오류
-  3  중복 시드 시도`)
+  3  admin 중복 시드 / demo tenant 미발견`)
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "seed: unknown sub-command %q\n", args[0])

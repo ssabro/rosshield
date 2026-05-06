@@ -8,9 +8,8 @@
 #  4. admin seed → login (HTTP)
 #  5. POST /advisor/conversations:ask → 503 검증 (LLM noop 기본값, R14-1)
 #  6. POST /compliance/profiles → 201 Created (ISMS-P 활성화)
-#  7. cleanup
-#
-# 운영 데이터 시드(robot/scan)는 본 스크립트 범위 밖 — `docs/PHASE2_EXIT_DEMO.md` 참조.
+#  7. seed demo 후 e2e: drift session → snapshot 생성·overallScore 검증·insight 자동 생성
+#  8. cleanup
 
 set -euo pipefail
 
@@ -45,7 +44,7 @@ step() {
 # ──────────────────────────────────────────────────────────────────────────
 # Step 1 — 핵심 통합 테스트
 # ──────────────────────────────────────────────────────────────────────────
-echo "[smoke] (1/6) 핵심 통합 테스트"
+echo "[smoke] (1/7) 핵심 통합 테스트"
 if go test -count=1 -short \
         ./internal/api/handlers/... \
         ./internal/domain/insight/... \
@@ -62,7 +61,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # Step 2 — 임시 data-dir + admin seed + 서버 부팅
 # ──────────────────────────────────────────────────────────────────────────
-echo "[smoke] (2/6) 임시 데이터 디렉터리 + admin seed"
+echo "[smoke] (2/7) 임시 데이터 디렉터리 + admin seed"
 TMPDIR=$(mktemp -d)
 trap 'cleanup' EXIT
 
@@ -100,7 +99,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # Step 3 — 서버 부팅 + /healthz
 # ──────────────────────────────────────────────────────────────────────────
-echo "[smoke] (3/6) 서버 부팅"
+echo "[smoke] (3/7) 서버 부팅"
 PORT=18080
 "$SERVER_BIN" -addr "127.0.0.1:$PORT" -data-dir "$TMPDIR" \
     > "$TMPDIR/server.log" 2>&1 &
@@ -129,7 +128,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # Step 4 — login (HTTP)
 # ──────────────────────────────────────────────────────────────────────────
-echo "[smoke] (4/6) login + accessToken 확보"
+echo "[smoke] (4/7) login + accessToken 확보"
 LOGIN_RESPONSE=$(curl -fsS -X POST "http://127.0.0.1:$PORT/api/v1/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}")
@@ -145,7 +144,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # Step 5 — Advisor :ask LLM disabled 503 (R14-1 옵트인 증거)
 # ──────────────────────────────────────────────────────────────────────────
-echo "[smoke] (5/6) Advisor :ask → 503 (LLM noop 기본값)"
+echo "[smoke] (5/7) Advisor :ask → 503 (LLM noop 기본값)"
 ASK_STATUS=$(curl -s -o "$TMPDIR/ask.json" -w "%{http_code}" \
     -X POST "http://127.0.0.1:$PORT/api/v1/advisor/conversations:ask" \
     -H "Authorization: Bearer $TOKEN" \
@@ -162,7 +161,7 @@ fi
 # ──────────────────────────────────────────────────────────────────────────
 # Step 6 — Compliance profile 활성화 (ISMS-P)
 # ──────────────────────────────────────────────────────────────────────────
-echo "[smoke] (6/6) Compliance — ISMS-P 프로필 활성화"
+echo "[smoke] (6/7) Compliance — ISMS-P 프로필 활성화"
 PROF_STATUS=$(curl -s -o "$TMPDIR/profile.json" -w "%{http_code}" \
     -X POST "http://127.0.0.1:$PORT/api/v1/compliance/profiles" \
     -H "Authorization: Bearer $TOKEN" \
@@ -178,6 +177,39 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
+# Step 7 — seed demo + e2e (snapshot + insights 자동 생성)
+# ──────────────────────────────────────────────────────────────────────────
+echo "[smoke] (7/7) seed demo + e2e (snapshot · insights)"
+SEED_OUT=$("$SERVER_BIN" seed demo --email "$ADMIN_EMAIL" --data-dir "$TMPDIR" 2>/dev/null)
+DRIFT_SESSION=$(echo "$SEED_OUT" | grep -oE 'scan_[A-Z0-9]+' | tail -1)
+if [ -z "$DRIFT_SESSION" ]; then
+    step "seed demo" fail "scan session 미시드"
+    exit 1
+fi
+step "seed demo" pass "drift session=$DRIFT_SESSION"
+
+# Drift session 기준 snapshot 생성 — overallScore < 1.0이어야 (FAIL 1건 반영).
+SNAP_BODY=$(curl -fsS -X POST "http://127.0.0.1:$PORT/api/v1/compliance/profiles/$PROF_ID/snapshots" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d "{\"sessionId\":\"$DRIFT_SESSION\"}")
+SCORE=$(echo "$SNAP_BODY" | sed -n 's/.*"overallScore":\([0-9.]*\).*/\1/p')
+if [ -z "$SCORE" ]; then
+    step "snapshot 생성" fail "응답=$SNAP_BODY"
+    exit 1
+fi
+step "snapshot 생성" pass "overallScore=$SCORE"
+
+# Insight 목록 — drift detector가 1건 이상 산출했는지.
+INSIGHTS_BODY=$(curl -fsS "http://127.0.0.1:$PORT/api/v1/insights" -H "Authorization: Bearer $TOKEN")
+INSIGHT_COUNT=$(echo "$INSIGHTS_BODY" | grep -oE '"id":"ins_' | wc -l)
+if [ "$INSIGHT_COUNT" -ge 1 ]; then
+    step "insights backfill" pass "$INSIGHT_COUNT 건 산출"
+else
+    step "insights backfill" fail "0건 — body=$(echo "$INSIGHTS_BODY" | head -c 200)"
+    exit 1
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
 # 결과 요약
 # ──────────────────────────────────────────────────────────────────────────
 echo ""
@@ -186,4 +218,4 @@ if [ "$FAIL" -gt 0 ]; then
     exit 1
 fi
 echo "[smoke] Phase 2 Exit 자동 검증 OK"
-echo "[smoke] 운영 시연(robot/scan 시드 포함)은 docs/PHASE2_EXIT_DEMO.md 참조"
+echo "[smoke] 운영 시연 가이드는 docs/PHASE2_EXIT_DEMO.md 참조"

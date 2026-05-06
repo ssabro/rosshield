@@ -71,15 +71,41 @@ curl -fsS http://localhost:8080/healthz
 
 ---
 
-## ⚠ 데이터 시드 한계 (현재 상태)
+## 0-E. 시연 데이터 시드 (rosshield-server seed demo)
 
-운영 e2e 시연은 **robot/scan 데이터 시드 부재**가 가장 큰 제약입니다.
+운영 e2e 시연을 위해 `seed demo` 서브커맨드로 fleet/robot/scan/result를 한 번에 시드합니다 (멱등):
 
-- `POST /api/v1/robots`는 `gen.Unimplemented`로 자동 501 (CreateRobot 핸들러 미구현 — 후속 epic).
-- 실제 robot은 SSH 접근 가능한 호스트가 있어야 scan 실행 가능.
-- 따라서 1·2·4·6 항목의 **종단 검증은 통합 테스트 의존**입니다.
+```bash
+./bin/rosshield-server seed demo --email demo@example.com --data-dir ./demo-data
+```
 
-후속 epic 후보: `rosshield-server seed demo` 서브커맨드 (fleet/robot/scan/result 한 번에 시드, fakesshd 통합 또는 fixture 데이터 주입). 추정 1~2일.
+stdout JSON 예시:
+
+```json
+{
+  "tenantId": "tn_01...",
+  "fleetId": "fl_01...",
+  "packId": "pk_DEMO_PACK",
+  "robotIds": ["ro_01... × 3"],
+  "sessionIds": ["scan_01... × 5"],
+  "driftRobot": "demo-robot-1",
+  "driftCheck": "CIS-1.1.1.1",
+  "wasExisting": false
+}
+```
+
+**시드 내용**:
+- Fleet "demo-fleet" 1개
+- Robot "demo-robot-{1,2,3}" 3개 (dummy password credential, 비활성 호스트)
+- Pack stub (`pk_DEMO_PACK`) + pack_checks 2건 (CIS-1.1.1.1·CIS-1.2.1.1)
+- Scan session 5개 (모두 status=completed):
+  - 1~4 sessions: 모든 PASS (baseline)
+  - 5번째 (drift session): demo-robot-1의 CIS-1.1.1.1만 FAIL
+- W3 EventBus는 실 orchestrator 경유라 seed에서 publish 안 됨 → seed가 `Insight.RunForFleet`을 명시 호출(backfill).
+
+**한계**:
+- `POST /api/v1/robots`는 여전히 미구현(501). seed는 도메인 service 직접 호출 — API 노출은 별 epic.
+- 실 SSH 실행은 없음 — scan 결과는 fixture. 진짜 Pack 검증·SSH 흐름은 통합 테스트(`internal/app/scanrun/integration_test.go`)에서.
 
 ---
 
@@ -102,11 +128,15 @@ go test -count=1 -v -run 'TestGenerateSnapshotISMS|TestGenerateSnapshotISO|TestG
 - **peer**: fleet 평균 - 1σ 미만 robot 감지
 - **compliance scorer**: ControlStatus 5-값(pass/fail/partial/not_applicable/unmapped) → overall_score 0~1
 
-### 운영 시연 (데이터 시드 후)
+### 운영 시연 (`seed demo` 후)
 
 ```bash
 # 프로필 활성화
 TOKEN=$(cat ~/.rosshield/config.yaml | yq -r '.accessToken')
+
+# seed demo 출력의 마지막 sessionId가 drift trigger session
+SESSION_ID=<seed demo 출력의 sessionIds 배열 마지막>
+FLEET_ID=<seed demo 출력의 fleetId>
 
 curl -s -X POST http://localhost:8080/api/v1/compliance/profiles \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
