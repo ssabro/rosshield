@@ -182,12 +182,23 @@ func main() {
 	llmBaseURL := flag.String("llm-base-url", "", "LLM base URL (ollama daemon or Anthropic API base)")
 	llmAPIKey := flag.String("llm-api-key", "", "LLM API key (anthropic only — prefer env ANTHROPIC_API_KEY)")
 	llmTimeout := flag.Duration("llm-timeout", 0, "LLM request timeout (0 = adapter default)")
+	licenseToken := flag.String("license-token", "", "Enterprise license token (E24 — opt-in). Prefer env ROSSHIELD_LICENSE_TOKEN.")
+	licensePubHex := flag.String("license-pubkey-hex", "", "Ed25519 public key (32B hex) for license verification. Prefer env ROSSHIELD_LICENSE_PUBKEY_HEX.")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
 	apiKey := *llmAPIKey
 	if apiKey == "" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	// License token/pubkey도 env fallback (운영에선 secret manager 권장).
+	licTok := *licenseToken
+	if licTok == "" {
+		licTok = os.Getenv("ROSSHIELD_LICENSE_TOKEN")
+	}
+	licPub := *licensePubHex
+	if licPub == "" {
+		licPub = os.Getenv("ROSSHIELD_LICENSE_PUBKEY_HEX")
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -197,13 +208,15 @@ func main() {
 	defer cancelBoot()
 
 	platform, err := Bootstrap(bootCtx, Config{
-		DataDir:     *dataDir,
-		Logger:      logger,
-		LLMProvider: *llmProvider,
-		LLMModel:    *llmModel,
-		LLMBaseURL:  *llmBaseURL,
-		LLMAPIKey:   apiKey,
-		LLMTimeout:  *llmTimeout,
+		DataDir:             *dataDir,
+		Logger:              logger,
+		LLMProvider:         *llmProvider,
+		LLMModel:            *llmModel,
+		LLMBaseURL:          *llmBaseURL,
+		LLMAPIKey:           apiKey,
+		LLMTimeout:          *llmTimeout,
+		LicenseToken:        licTok,
+		LicensePublicKeyHex: licPub,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

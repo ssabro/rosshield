@@ -43,6 +43,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
+	"github.com/ssabro/rosshield/internal/platform/license"
 	"github.com/ssabro/rosshield/internal/platform/llm"
 	llmanthropic "github.com/ssabro/rosshield/internal/platform/llm/anthropic"
 	llmnoop "github.com/ssabro/rosshield/internal/platform/llm/noop"
@@ -78,6 +79,13 @@ type Config struct {
 	LLMBaseURL  string        // ollama daemon URL 또는 anthropic API base
 	LLMAPIKey   string        // anthropic 전용
 	LLMTimeout  time.Duration // 0이면 어댑터 기본값
+
+	// E24 — License 옵션 (옵트인).
+	// LicenseToken: 빈 값이면 community SKU (enterprise feature 모두 비활성).
+	// LicensePublicKeyHex: 토큰 검증용 Ed25519 public key (32B hex). 빈 값이면 license 검증 skip.
+	// 두 값이 모두 있으면 Verify → Enforcer 결선. 검증 실패 시 부트스트랩 에러.
+	LicenseToken        string
+	LicensePublicKeyHex string
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -103,7 +111,8 @@ type Platform struct {
 	Insight      insight.Service
 	Compliance   compliance.Service
 	LLM          llm.Adapter
-	Advisor      advisor.Service // E16
+	Advisor      advisor.Service   // E16
+	License      *license.Enforcer // E24 — Open-core enterprise feature 게이트 + 쿼터
 
 	systemTenant storage.TenantID
 
@@ -827,6 +836,15 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
 	}
 
+	// E24 — License 결선 (옵트인). 토큰 + public key 둘 다 있어야 검증 진입.
+	// UsageReader는 후속 stage(E24-D)에서 도메인 결선 — 현재는 nil로 두고 CheckFeature만 사용 가능.
+	licenseEnforcer, licenseEdition, err := buildLicenseEnforcer(cfg, clk)
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: build license enforcer: %w", err)
+	}
+
 	logger.Info("platform bootstrap complete",
 		"dataDir", cfg.DataDir,
 		"dbPath", dbPath,
@@ -837,7 +855,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"reportSignerKeyId", reportSigner.KeyID(),
 		"systemTenant", string(systemTenant),
 		"checkpointSpec", checkpointSpec,
-		"llmProvider", llmAdapter.Provider())
+		"llmProvider", llmAdapter.Provider(),
+		"licenseEdition", licenseEdition)
 
 	return &Platform{
 		Logger:            logger,
@@ -861,6 +880,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Compliance:        complianceSvc,
 		LLM:               llmAdapter,
 		Advisor:           advisorSvc,
+		License:           licenseEnforcer,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}, nil
@@ -932,4 +952,35 @@ func (p *Platform) Shutdown(ctx context.Context) error {
 // IsShutdown은 Shutdown이 호출되었는지 반환합니다 (healthz에서 사용).
 func (p *Platform) IsShutdown() bool {
 	return p.shutdown
+}
+
+// buildLicenseEnforcer는 cfg.LicenseToken + cfg.LicensePublicKeyHex로 license.Enforcer를 만듭니다.
+//
+// 두 값이 모두 비면 community SKU (nil enforcer 반환 — 호출 측 nil-safe).
+// 하나라도 비면 에러 — 부분 설정은 운영 실수 의심으로 빠른 실패.
+// 검증 실패(서명/만료/포맷)는 부트스트랩 에러로 즉시 보고.
+func buildLicenseEnforcer(cfg Config, clk clock.Clock) (*license.Enforcer, license.Edition, error) {
+	if cfg.LicenseToken == "" && cfg.LicensePublicKeyHex == "" {
+		return nil, license.EditionCommunity, nil
+	}
+	if cfg.LicenseToken == "" || cfg.LicensePublicKeyHex == "" {
+		return nil, "", errors.New("license: token and public key must be both set or both empty")
+	}
+	pubBytes, err := hex.DecodeString(cfg.LicensePublicKeyHex)
+	if err != nil {
+		return nil, "", fmt.Errorf("license: decode public key hex: %w", err)
+	}
+	if len(pubBytes) != ed25519.PublicKeySize {
+		return nil, "", fmt.Errorf("license: public key size %d, want %d", len(pubBytes), ed25519.PublicKeySize)
+	}
+	payload, err := license.Verify(ed25519.PublicKey(pubBytes), cfg.LicenseToken)
+	if err != nil {
+		return nil, "", fmt.Errorf("license: verify token: %w", err)
+	}
+	if payload.IsExpired(clk.Now()) {
+		return nil, "", fmt.Errorf("license: token expired (expires=%s)", payload.ExpiresAt.Format(time.RFC3339))
+	}
+	// UsageReader는 후속 stage(E24-D)에서 도메인 결선 — 현재는 nil로 둠 (CheckFeature만 사용).
+	enforcer := license.NewEnforcer(payload, nil, clk.Now)
+	return enforcer, payload.Edition, nil
 }
