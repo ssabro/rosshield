@@ -157,17 +157,6 @@ func (m *mockIdP) handleToken(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// signIDTokenDirect는 mock 서버를 거치지 않고 직접 id_token을 서명 — 잘못된 시그너 시나리오 주입용.
-func (m *mockIdP) signIDTokenDirect(claims jwt.MapClaims, alg jwt.SigningMethod) string {
-	tok := jwt.NewWithClaims(alg, claims)
-	tok.Header["kid"] = m.kid
-	signed, err := tok.SignedString(m.priv)
-	if err != nil {
-		m.t.Fatalf("sign: %v", err)
-	}
-	return signed
-}
-
 // === fixture helper ===
 
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
