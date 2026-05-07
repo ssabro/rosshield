@@ -1,3 +1,6 @@
+# ─── Claude Code (worktree·tasks·local meta) ────────────
+.claude/
+
 # ─── OS ─────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
