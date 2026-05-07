@@ -482,6 +482,20 @@ func TestRunPublishesProgressAndCompleted(t *testing.T) {
 		t.Fatal("scan.completed event not received in 2s")
 	}
 
+	// progress·completed는 별개 subscription·별개 worker goroutine.
+	// completed handler가 먼저 깨어날 수 있으므로 progress 6개가 채워질 때까지 짧게 polling
+	// (race mode 보호 — 운영에서 progress publish 순서·완료성은 별개 보장).
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(progresses)
+		mu.Unlock()
+		if n >= 6 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	mu.Lock()
 	defer mu.Unlock()
 
