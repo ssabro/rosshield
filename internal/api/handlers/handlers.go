@@ -35,6 +35,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
+	"github.com/ssabro/rosshield/internal/platform/license"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -54,6 +55,7 @@ type Deps struct {
 	Advisor    advisor.Service    // E16 Phase 2 — LLM 옵트인
 	Audit      audit.Service      // B1 — Web UI Audit 페이지 (GET /audit/head)
 	EventBus   eventbus.Bus       // C1 carryover — WebSocket scan progress 구독
+	License    *license.Enforcer  // E24-C — Open-core enterprise feature 게이트
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -155,6 +157,9 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/scans/{sessionId}/progress", func(w http.ResponseWriter, req *http.Request) {
 			h.ScanProgress(w, req, chi.URLParam(req, "sessionId"))
 		})
+
+		// E24 — License info (B5 Web Console 지원).
+		r.Get("/api/v1/license", h.GetLicenseInfo)
 	})
 }
 

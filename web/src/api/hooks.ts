@@ -169,6 +169,42 @@ export interface CreateRobotResponse {
   credentialId: string
 }
 
+// useLicenseInfo — E24 Settings License 카드. 모든 인증 사용자 read-only.
+export interface LicenseInfo {
+  edition: 'community' | 'enterprise'
+  issuedTo?: string
+  issuedAt?: string
+  expiresAt?: string
+  expired: boolean
+  features?: string[]
+  quotas: {
+    robotsMax: number
+    scansPerDay: number
+    llmTokensPerDay: number
+  }
+}
+
+export const useLicenseInfo = () => {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery({
+    queryKey: ['license', 'info'],
+    queryFn: async (): Promise<LicenseInfo> => {
+      const r = await fetch(`${API_BASE_PATH}/license`, {
+        credentials: 'include',
+        headers: {
+          'X-Cookie-Auth': 'true',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+      })
+      if (!r.ok) {
+        throw new ApiError(r.status, `license: ${r.statusText}`)
+      }
+      return (await r.json()) as LicenseInfo
+    },
+    enabled: !!accessToken,
+  })
+}
+
 // useAuditHead — B1 Web UI Audit 페이지. tenant scope chain head.
 export interface AuditHead {
   tenantId: string

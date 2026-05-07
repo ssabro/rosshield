@@ -1,15 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { useMe } from '@/api/hooks'
+import { ApiError } from '@/api/errors'
+import { useLicenseInfo, useMe } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { useAuthStore } from '@/stores/auth'
+import { Badge } from '@/components/ui/badge'
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+
+import type { DictKey } from '@/i18n/dict'
 
 // `/settings` — 사용자/테넌트/클라이언트 설정 + 빌드 정보 (B1).
 //   - 토글(테마·언어)은 헤더에서 — 본 페이지는 위치 안내만.
@@ -59,6 +63,8 @@ function SettingsPage(): React.ReactElement {
         </CardContent>
       </Card>
 
+      <LicenseCard />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -75,6 +81,126 @@ function SettingsPage(): React.ReactElement {
       </Card>
     </div>
   )
+}
+
+// LicenseCard — E24 라이선스 메타 표시 카드 (B5 첫 노출).
+//   community 에디션이면 활성 안내, enterprise면 만료/feature/quota 표시.
+function LicenseCard(): React.ReactElement {
+  const t = useT()
+  const license = useLicenseInfo()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          {t('settings.license.section')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {license.isPending && (
+          <p className="text-muted-foreground">{t('common.loading')}</p>
+        )}
+        {license.isError && (
+          <p className="text-destructive">
+            {license.error instanceof ApiError
+              ? license.error.message
+              : t('settings.license.error')}
+          </p>
+        )}
+        {license.isSuccess && (
+          <>
+            <div className="flex items-center gap-2">
+              <Badge variant={license.data.edition === 'enterprise' ? 'default' : 'secondary'}>
+                {t(editionLabelKey(license.data.edition))}
+              </Badge>
+              {license.data.expired && (
+                <Badge variant="destructive" className="text-[10px]">
+                  {t('settings.license.expired')}
+                </Badge>
+              )}
+            </div>
+
+            {license.data.edition === 'community' ? (
+              <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                {t('settings.license.community.note')}
+              </p>
+            ) : (
+              <>
+                {license.data.issuedTo && (
+                  <Row label={t('settings.license.issuedTo')} value={license.data.issuedTo} />
+                )}
+                {license.data.issuedAt && (
+                  <Row
+                    label={t('settings.license.issuedAt')}
+                    value={new Date(license.data.issuedAt).toLocaleString()}
+                  />
+                )}
+                {license.data.expiresAt && (
+                  <Row
+                    label={t('settings.license.expiresAt')}
+                    value={new Date(license.data.expiresAt).toLocaleString()}
+                  />
+                )}
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">{t('settings.license.features')}</p>
+                  {license.data.features && license.data.features.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {license.data.features.map((f) => (
+                        <Badge key={f} variant="outline" className="text-[10px]">
+                          {f}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t('settings.license.features.empty')}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">{t('settings.license.quotas.title')}</p>
+              <Row
+                label={t('settings.license.quotas.robotsMax')}
+                value={
+                  license.data.quotas.robotsMax > 0
+                    ? String(license.data.quotas.robotsMax)
+                    : t('settings.license.quotas.unlimited')
+                }
+                mono
+              />
+              <Row
+                label={t('settings.license.quotas.scansPerDay')}
+                value={
+                  license.data.quotas.scansPerDay > 0
+                    ? String(license.data.quotas.scansPerDay)
+                    : t('settings.license.quotas.unlimited')
+                }
+                mono
+              />
+              <Row
+                label={t('settings.license.quotas.llmTokensPerDay')}
+                value={
+                  license.data.quotas.llmTokensPerDay > 0
+                    ? String(license.data.quotas.llmTokensPerDay)
+                    : t('settings.license.quotas.unlimited')
+                }
+                mono
+              />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function editionLabelKey(edition: 'community' | 'enterprise'): DictKey {
+  return edition === 'enterprise'
+    ? 'settings.license.edition.enterprise'
+    : 'settings.license.edition.community'
 }
 
 function Row({
