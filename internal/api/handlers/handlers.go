@@ -26,6 +26,7 @@ import (
 
 	"github.com/ssabro/rosshield/internal/api/gen"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
+	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
@@ -51,6 +52,7 @@ type Deps struct {
 	Insight    insight.Service    // E17 Phase 2
 	Compliance compliance.Service // E17 Phase 2
 	Advisor    advisor.Service    // E16 Phase 2 — LLM 옵트인
+	Audit      audit.Service      // B1 — Web UI Audit 페이지 (GET /audit/head)
 	EventBus   eventbus.Bus       // C1 carryover — WebSocket scan progress 구독
 }
 

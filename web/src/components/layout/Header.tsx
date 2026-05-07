@@ -14,12 +14,15 @@ import type { DictKey, Locale } from '@/i18n/dict'
 //
 // 라우트별 타이틀 키는 PAGE_TITLE_KEYS 맵으로 관리. Sidebar의 메뉴 라벨과 같은 dict 사용.
 const PAGE_TITLE_KEYS: Record<string, DictKey> = {
+  '/overview': 'nav.overview',
   '/robots': 'nav.robots',
   '/scans': 'nav.scans',
   '/findings': 'nav.findings',
   '/compliance': 'nav.compliance',
   '/advisor': 'nav.advisor',
   '/reports': 'nav.reports',
+  '/audit': 'nav.audit',
+  '/settings': 'nav.settings',
 }
 
 export function Header(): React.ReactElement {

@@ -167,6 +167,30 @@ export interface CreateRobotResponse {
   credentialId: string
 }
 
+// useAuditHead — B1 Web UI Audit 페이지. tenant scope chain head.
+export interface AuditHead {
+  tenantId: string
+  seq: number
+  hashHex: string
+  updatedAt?: string
+}
+
+export const useAuditHead = () => {
+  return useQuery({
+    queryKey: ['audit', 'head'],
+    queryFn: async (): Promise<AuditHead> => {
+      const { data, error, response } = await apiClient.GET('/api/v1/audit/head')
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as AuditHead
+    },
+  })
+}
+
 // useCreateRobot — POST /api/v1/robots. 성공 시 robots 캐시 무효화.
 //   에러 매핑: 400(검증)·401(인증)·409(name·host:port 중복).
 export const useCreateRobot = () => {

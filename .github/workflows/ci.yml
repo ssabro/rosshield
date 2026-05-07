@@ -66,11 +66,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
-        run: pnpm tsc --noEmit
+      - name: Build (vite build + tsc -b --noEmit)
+        run: pnpm build
 
       - name: Vitest
         run: pnpm exec vitest run
-
-      - name: Build
-        run: pnpm build

@@ -131,6 +131,7 @@ func newMux(p *Platform) http.Handler {
 		Insight:    p.Insight,
 		Compliance: p.Compliance,
 		Advisor:    p.Advisor,
+		Audit:      p.Audit,
 		EventBus:   p.EventBus,
 	})
 	h.Mount(apiRouter)

@@ -218,6 +218,7 @@ func newFixture(t *testing.T) *testFixture {
 		Insight:    insightSvc,
 		Compliance: complianceSvc,
 		Advisor:    advisorSvc,
+		Audit:      auditSvc,
 		EventBus:   bus,
 	})
 
@@ -602,12 +603,55 @@ func TestUnimplementedEndpointReturns501(t *testing.T) {
 	defer f.closeFn()
 
 	token := f.loginAndGetToken(t)
-	// /api/v1/audit/head는 gen.Unimplemented가 자동 501.
-	resp := f.doRequest(t, "GET", "/api/v1/audit/head", token, nil)
+	// /api/v1/audit/verify는 gen.Unimplemented가 자동 501 (Phase 2 Web UI는 head만 표시).
+	resp := f.doRequest(t, "POST", "/api/v1/audit/verify", token, []byte(`{}`))
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotImplemented {
 		raw, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status=%d body=%s, want 501", resp.StatusCode, string(raw))
+	}
+}
+
+func TestGetAuditHeadReturnsGenesisForFreshTenant(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	resp := f.doRequest(t, "GET", "/api/v1/audit/head", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var out struct {
+		TenantID string `json:"tenantId"`
+		Seq      int64  `json:"seq"`
+		HashHex  string `json:"hashHex"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.TenantID != string(f.tenantID) {
+		t.Errorf("tenantId=%q, want %q", out.TenantID, string(f.tenantID))
+	}
+	// genesis: tenant 생성 시 audit emit이 실행되므로 Seq >= 1.
+	if out.Seq < 0 {
+		t.Errorf("seq=%d, want >= 0", out.Seq)
+	}
+	// Hash는 64 hex chars (32B).
+	if len(out.HashHex) != 64 {
+		t.Errorf("hashHex length=%d, want 64", len(out.HashHex))
+	}
+}
+
+func TestGetAuditHead401WithoutAuth(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	resp := f.doRequest(t, "GET", "/api/v1/audit/head", "", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want 401", resp.StatusCode)
 	}
 }
 

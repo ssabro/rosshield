@@ -3,9 +3,12 @@ import {
   AlertTriangle,
   ClipboardCheck,
   FileText,
+  LayoutDashboard,
   MessageSquare,
   PlayCircle,
+  ScrollText,
   Server,
+  Settings as SettingsIcon,
   ShieldCheck,
 } from 'lucide-react'
 
@@ -23,16 +26,28 @@ import type { DictKey } from '@/i18n/dict'
 //   - 활성 메뉴는 좌측 indicator bar + 강조 배경 + 아이콘 색
 //   - 로그아웃은 헤더로 이동(중복 방지) — 본 사이드바는 메뉴+브랜드만
 const items: ReadonlyArray<{
-  to: '/robots' | '/scans' | '/findings' | '/compliance' | '/advisor' | '/reports'
+  to:
+    | '/overview'
+    | '/robots'
+    | '/scans'
+    | '/findings'
+    | '/compliance'
+    | '/advisor'
+    | '/reports'
+    | '/audit'
+    | '/settings'
   labelKey: DictKey
   icon: typeof Server
 }> = [
+  { to: '/overview', labelKey: 'nav.overview', icon: LayoutDashboard },
   { to: '/robots', labelKey: 'nav.robots', icon: Server },
   { to: '/scans', labelKey: 'nav.scans', icon: PlayCircle },
   { to: '/findings', labelKey: 'nav.findings', icon: AlertTriangle },
   { to: '/compliance', labelKey: 'nav.compliance', icon: ClipboardCheck },
   { to: '/advisor', labelKey: 'nav.advisor', icon: MessageSquare },
   { to: '/reports', labelKey: 'nav.reports', icon: FileText },
+  { to: '/audit', labelKey: 'nav.audit', icon: ScrollText },
+  { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ]
 
 export function Sidebar(): React.ReactElement {

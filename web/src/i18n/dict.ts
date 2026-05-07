@@ -13,12 +13,15 @@ export const ko = {
   'app.brand.subtitle': 'Security Console',
   'app.version': 'v0.1.0 · Phase 2',
 
+  'nav.overview': '개요',
   'nav.robots': '로봇',
   'nav.scans': '스캔',
   'nav.findings': 'Findings',
   'nav.compliance': 'Compliance',
   'nav.advisor': 'Advisor',
   'nav.reports': '리포트',
+  'nav.audit': '감사',
+  'nav.settings': '설정',
 
   'header.theme.light': '라이트',
   'header.theme.dark': '다크',
@@ -218,6 +221,49 @@ export const ko = {
 
   'pages.reports.title': '리포트',
   'pages.reports.description': '생성된 리포트 목록과 서명 상태를 확인합니다.',
+
+  'pages.overview.title': '개요',
+  'pages.overview.description':
+    '플릿·Insight·컴플라이언스 핵심 지표를 한 화면에 요약합니다.',
+  'overview.card.robots': '등록 로봇',
+  'overview.card.robots.cta': '관리',
+  'overview.card.findings': '활성 Insight',
+  'overview.card.findings.cta': '확인',
+  'overview.card.compliance': '컴플라이언스 프로필',
+  'overview.card.compliance.cta': '관리',
+  'overview.card.score': '최근 컴플라이언스 점수',
+  'overview.card.score.empty': '활성 프로필이 없습니다',
+  'overview.card.score.cta': '프로필 활성화',
+
+  'pages.audit.title': '감사',
+  'pages.audit.description':
+    '감사 체인의 현재 head(seq + sha256)를 확인합니다. 외부 검증은 CLI(rosshield report verify)에서.',
+  'audit.head.seq': 'Sequence',
+  'audit.head.hash': 'Hash (sha256)',
+  'audit.head.updated': '최종 업데이트',
+  'audit.head.empty': '아직 audit 엔트리가 없습니다 (genesis).',
+  'audit.verify.title': '체인 검증',
+  'audit.verify.description':
+    'Phase 3 후속 — Web Console에서 직접 verify 호출. 현재는 CLI 명령으로 가능합니다.',
+  'audit.error.fallback': '감사 head를 불러올 수 없습니다',
+
+  'pages.settings.title': '설정',
+  'pages.settings.description':
+    '현재 사용자·테넌트 정보와 클라이언트 설정 위치를 확인합니다.',
+  'settings.user.section': '사용자',
+  'settings.user.id': 'ID',
+  'settings.user.email': '이메일',
+  'settings.user.displayName': '표시 이름',
+  'settings.user.tenantId': '테넌트 ID',
+  'settings.preferences.section': '클라이언트 설정',
+  'settings.preferences.theme':
+    '테마는 상단 헤더의 사인/달/모니터 아이콘으로 토글합니다 (라이트/다크/시스템).',
+  'settings.preferences.locale':
+    '언어는 상단 헤더의 지구본 아이콘으로 토글합니다 (한국어/영어).',
+  'settings.about.section': '정보',
+  'settings.about.version': '버전',
+  'settings.about.codename': '코드네임',
+  'settings.about.codename.value': 'rosshield (제품 브랜드는 미확정)',
   'reports.table.id': 'ID',
   'reports.table.session': 'Session',
   'reports.table.created': '생성일',
@@ -239,12 +285,15 @@ export const en: Record<keyof typeof ko, string> = {
   'app.brand.subtitle': 'Security Console',
   'app.version': 'v0.1.0 · Phase 2',
 
+  'nav.overview': 'Overview',
   'nav.robots': 'Robots',
   'nav.scans': 'Scans',
   'nav.findings': 'Findings',
   'nav.compliance': 'Compliance',
   'nav.advisor': 'Advisor',
   'nav.reports': 'Reports',
+  'nav.audit': 'Audit',
+  'nav.settings': 'Settings',
 
   'header.theme.light': 'Light',
   'header.theme.dark': 'Dark',
@@ -446,6 +495,49 @@ export const en: Record<keyof typeof ko, string> = {
   'pages.reports.title': 'Reports',
   'pages.reports.description':
     'Generated reports and their signature status.',
+
+  'pages.overview.title': 'Overview',
+  'pages.overview.description':
+    'Headline metrics for fleet, insights, and compliance at a glance.',
+  'overview.card.robots': 'Registered robots',
+  'overview.card.robots.cta': 'Manage',
+  'overview.card.findings': 'Active insights',
+  'overview.card.findings.cta': 'Review',
+  'overview.card.compliance': 'Compliance profiles',
+  'overview.card.compliance.cta': 'Manage',
+  'overview.card.score': 'Latest compliance score',
+  'overview.card.score.empty': 'No active profile',
+  'overview.card.score.cta': 'Activate profile',
+
+  'pages.audit.title': 'Audit',
+  'pages.audit.description':
+    'Current head (seq + sha256) of the audit chain. External verify via the CLI (`rosshield report verify`).',
+  'audit.head.seq': 'Sequence',
+  'audit.head.hash': 'Hash (sha256)',
+  'audit.head.updated': 'Last updated',
+  'audit.head.empty': 'No audit entries yet (genesis).',
+  'audit.verify.title': 'Chain verification',
+  'audit.verify.description':
+    'Phase 3 follow-up — direct verify from Web Console. Today, use the CLI.',
+  'audit.error.fallback': 'Failed to read audit head',
+
+  'pages.settings.title': 'Settings',
+  'pages.settings.description':
+    'View the current user/tenant context and where to change client preferences.',
+  'settings.user.section': 'User',
+  'settings.user.id': 'ID',
+  'settings.user.email': 'Email',
+  'settings.user.displayName': 'Display name',
+  'settings.user.tenantId': 'Tenant ID',
+  'settings.preferences.section': 'Client preferences',
+  'settings.preferences.theme':
+    'Toggle theme via the sun/moon/monitor icon in the header (light/dark/system).',
+  'settings.preferences.locale':
+    'Toggle language via the globe icon in the header (Korean/English).',
+  'settings.about.section': 'About',
+  'settings.about.version': 'Version',
+  'settings.about.codename': 'Codename',
+  'settings.about.codename.value': 'rosshield (product brand TBD)',
   'reports.table.id': 'ID',
   'reports.table.session': 'Session',
   'reports.table.created': 'Created',
