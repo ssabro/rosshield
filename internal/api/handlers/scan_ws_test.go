@@ -62,7 +62,7 @@ func TestScanProgressWSStreamsEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 
 	// 백그라운드에서 publish 3건 (잡음 1건 + 본 session 2건 + completed 1건).
 	publishCtx, publishCancel := context.WithTimeout(context.Background(), 3*time.Second)

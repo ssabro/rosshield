@@ -72,7 +72,7 @@ func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request, sessionI
 		// AcceptError가 이미 응답을 마무리했음.
 		return
 	}
-	defer conn.Close(websocket.StatusInternalError, "internal error")
+	defer func() { _ = conn.Close(websocket.StatusInternalError, "internal error") }()
 
 	// 본 ctx는 클라이언트 disconnect까지 살아있음.
 	ctx, cancel := context.WithCancel(r.Context())

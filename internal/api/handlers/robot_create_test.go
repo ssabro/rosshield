@@ -181,4 +181,3 @@ func TestCreateRobot409ForDuplicateNameInFleet(t *testing.T) {
 		t.Fatalf("second create status=%d, want 409; body=%s", resp2.StatusCode, string(raw))
 	}
 }
-
