@@ -331,6 +331,86 @@ ORDER BY created_at DESC LIMIT ?`,
 	return out, rows.Err()
 }
 
+// ListDueDeliveries는 dispatch 대상 delivery를 cross-tenant로 반환합니다 (E23-B Process worker).
+//
+// 조건: succeeded = 0 AND attempt_count < MaxRetryAttempts AND next_attempt_at <= now.
+// 정렬: next_attempt_at ASC — 가장 오래 대기한 것부터 처리.
+// limit <= 0이면 default 50. tx.TenantID()는 무시 — worker는 cross-tenant 잡 (Bootstrap Tx 사용).
+func (r *Repo) ListDueDeliveries(ctx context.Context, tx storage.Tx, now time.Time, limit int) ([]webhook.WebhookDelivery, error) {
+	if limit <= 0 {
+		limit = defaultListLimit
+	}
+	rows, err := tx.Query(ctx, `SELECT id, endpoint_id, tenant_id, event_type, event_id, payload,
+       attempt_count, last_attempted_at, next_attempt_at,
+       succeeded, last_response_status, last_error, created_at
+FROM webhook_deliveries
+WHERE succeeded = 0 AND attempt_count < ? AND next_attempt_at <= ?
+ORDER BY next_attempt_at ASC LIMIT ?`,
+		webhook.MaxRetryAttempts, now.UTC().Format(rfc3339Nano), limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("webhook: list due deliveries: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []webhook.WebhookDelivery
+	for rows.Next() {
+		d, err := scanDelivery(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// MarkDeliverySucceeded는 succeeded=1·last_response_status·attempt_count·last_attempted_at·last_error 갱신합니다.
+//
+// 본 메서드는 cross-tenant write — Bootstrap Tx 또는 system worker에서 호출. tx.TenantID()는 무시.
+func (r *Repo) MarkDeliverySucceeded(ctx context.Context, tx storage.Tx, deliveryID string, attemptCount, responseStatus int, attemptedAt time.Time) error {
+	res, err := tx.Exec(ctx, `UPDATE webhook_deliveries SET
+    succeeded = 1, attempt_count = ?, last_response_status = ?, last_attempted_at = ?, last_error = ''
+WHERE id = ?`,
+		attemptCount, responseStatus, attemptedAt.UTC().Format(rfc3339Nano), deliveryID,
+	)
+	if err != nil {
+		return fmt.Errorf("webhook: mark delivery succeeded: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("webhook: rows affected: %w", err)
+	}
+	if rows == 0 {
+		return webhook.ErrDeliveryNotFound
+	}
+	return nil
+}
+
+// MarkDeliveryFailed는 attempt_count·next_attempt_at·last_response_status·last_error·last_attempted_at을 갱신합니다.
+//
+// dead-letter 진입(attemptCount >= MaxRetryAttempts)이면 호출자가 nextAttemptAt을 attemptedAt 그대로 전달 —
+// ListDueDeliveries가 attempt_count 조건으로 자동 제외.
+// 본 메서드는 cross-tenant write — Bootstrap Tx 또는 system worker에서 호출.
+func (r *Repo) MarkDeliveryFailed(ctx context.Context, tx storage.Tx, deliveryID string, attemptCount int, nextAttemptAt time.Time, responseStatus int, errMsg string, attemptedAt time.Time) error {
+	res, err := tx.Exec(ctx, `UPDATE webhook_deliveries SET
+    attempt_count = ?, next_attempt_at = ?, last_response_status = ?, last_error = ?, last_attempted_at = ?
+WHERE id = ?`,
+		attemptCount, nextAttemptAt.UTC().Format(rfc3339Nano), responseStatus, errMsg,
+		attemptedAt.UTC().Format(rfc3339Nano), deliveryID,
+	)
+	if err != nil {
+		return fmt.Errorf("webhook: mark delivery failed: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("webhook: rows affected: %w", err)
+	}
+	if rows == 0 {
+		return webhook.ErrDeliveryNotFound
+	}
+	return nil
+}
+
 // === scanner helpers ===
 
 // rowScanner는 *sql.Row와 *sql.Rows를 같은 인터페이스로 처리합니다.

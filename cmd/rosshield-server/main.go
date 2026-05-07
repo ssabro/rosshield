@@ -185,6 +185,7 @@ func main() {
 	llmTimeout := flag.Duration("llm-timeout", 0, "LLM request timeout (0 = adapter default)")
 	licenseToken := flag.String("license-token", "", "Enterprise license token (E24 — opt-in). Prefer env ROSSHIELD_LICENSE_TOKEN.")
 	licensePubHex := flag.String("license-pubkey-hex", "", "Ed25519 public key (32B hex) for license verification. Prefer env ROSSHIELD_LICENSE_PUBKEY_HEX.")
+	webhookTick := flag.Duration("webhook-tick-interval", 0, "Webhook dispatcher polling interval (E23-B). 0 = default 30s.")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
@@ -218,6 +219,7 @@ func main() {
 		LLMTimeout:          *llmTimeout,
 		LicenseToken:        licTok,
 		LicensePublicKeyHex: licPub,
+		WebhookTickInterval: *webhookTick,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

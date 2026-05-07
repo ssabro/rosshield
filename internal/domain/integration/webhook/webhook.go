@@ -137,6 +137,29 @@ type Service interface {
 	// ListDeliveries는 endpoint별 delivery를 created_at DESC로 반환합니다.
 	// limit <= 0이면 default 50.
 	ListDeliveries(ctx context.Context, tx storage.Tx, endpointID string, limit int) ([]WebhookDelivery, error)
+
+	// ListDueDeliveries는 dispatch 대상 delivery를 cross-tenant로 반환합니다 (E23-B Process worker).
+	//
+	// 조건: succeeded = 0 AND attempt_count < MaxRetryAttempts AND next_attempt_at <= now.
+	// 정렬: next_attempt_at ASC — 가장 오래 대기한 것부터.
+	// 본 메서드는 Bootstrap Tx(tenant-less)로만 호출되어야 함 — worker는 system 잡.
+	// limit <= 0이면 default 50.
+	ListDueDeliveries(ctx context.Context, tx storage.Tx, now time.Time, limit int) ([]WebhookDelivery, error)
+
+	// MarkDeliverySucceeded는 succeeded=1·last_response_status·last_attempted_at·attempt_count 갱신합니다.
+	//
+	// 호출자: dispatch 후 응답이 2xx인 경우. 본 메서드는 cross-tenant write — Bootstrap Tx만 허용.
+	// attemptCount는 이번 시도 후 증가된 값 (예: 첫 시도면 1).
+	// 미존재 시 ErrDeliveryNotFound.
+	MarkDeliverySucceeded(ctx context.Context, tx storage.Tx, deliveryID string, attemptCount, responseStatus int, attemptedAt time.Time) error
+
+	// MarkDeliveryFailed는 attempt_count·next_attempt_at·last_response_status·last_error·last_attempted_at 갱신합니다.
+	//
+	// 호출자: dispatch 후 응답이 non-2xx 또는 network error. 본 메서드는 cross-tenant write — Bootstrap Tx만 허용.
+	// nextAttemptAt zero 또는 attemptCount >= MaxRetryAttempts면 dead-letter
+	// (next_attempt_at은 attemptedAt 그대로 — ListDueDeliveries는 attempt_count 조건으로 자동 제외).
+	// 미존재 시 ErrDeliveryNotFound.
+	MarkDeliveryFailed(ctx context.Context, tx storage.Tx, deliveryID string, attemptCount int, nextAttemptAt time.Time, responseStatus int, errMsg string, attemptedAt time.Time) error
 }
 
 // DomainEvent는 webhook이 받는 도메인 이벤트의 minimal DTO입니다 (P5 — 원천 도메인 직접 import 회피).

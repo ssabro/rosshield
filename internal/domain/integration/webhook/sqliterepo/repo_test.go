@@ -457,3 +457,214 @@ func TestGetDeliveryCrossTenantIsolated(t *testing.T) {
 		t.Errorf("cross-tenant Get err = %v, want ErrDeliveryNotFound", err)
 	}
 }
+
+// === E23-B Process worker — ListDueDeliveries / Mark* ===
+
+// enqueueOne은 testTenant의 endpoint(default sample) + delivery 1건을 INSERT한 뒤 반환합니다.
+func enqueueOne(t *testing.T, repo *sqliterepo.Repo, store storage.Storage, evtType webhook.EventType) webhook.WebhookDelivery {
+	t.Helper()
+	var d webhook.WebhookDelivery
+	if err := store.Tx(tenantCtx(testTenant), func(ctx context.Context, tx storage.Tx) error {
+		if _, e := repo.CreateEndpoint(ctx, tx, sampleEndpoint()); e != nil {
+			return e
+		}
+		ds, e := repo.Enqueue(ctx, tx, webhook.DomainEvent{
+			EventID:    "evt_due_" + string(evtType),
+			TenantID:   testTenant,
+			Type:       evtType,
+			OccurredAt: time.Now().UTC(),
+			Payload:    []byte(`{"x":1}`),
+		})
+		if e != nil {
+			return e
+		}
+		if len(ds) > 0 {
+			d = ds[0]
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("enqueueOne: %v", err)
+	}
+	if d.ID == "" {
+		t.Fatalf("no delivery created")
+	}
+	return d
+}
+
+// ListDueDeliveries는 next_attempt_at <= now AND succeeded = 0 AND attempt_count < Max인 row만 반환.
+func TestListDueDeliveriesReturnsPendingOnly(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	// 1개 endpoint + 1개 delivery — 즉시 due (Enqueue 시점 next_attempt_at = now).
+	d1 := enqueueOne(t, repo, store, webhook.EventScanCompleted)
+
+	// d1을 미래로 push (next_attempt_at = now+1h).
+	future := time.Now().Add(1 * time.Hour).UTC()
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		return repo.MarkDeliveryFailed(ctx, tx, d1.ID, 1, future, 500, "boom", time.Now().UTC())
+	}); err != nil {
+		t.Fatalf("MarkDeliveryFailed: %v", err)
+	}
+
+	// 즉시 due 비교 — now 시점에서 due 0건이어야 함 (d1은 1h 후).
+	now := time.Now().UTC().Add(1 * time.Second)
+	var due []webhook.WebhookDelivery
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		out, e := repo.ListDueDeliveries(ctx, tx, now, 50)
+		due = out
+		return e
+	}); err != nil {
+		t.Fatalf("ListDueDeliveries: %v", err)
+	}
+	if len(due) != 0 {
+		t.Fatalf("len due = %d, want 0 (d1 pushed to +1h)", len(due))
+	}
+
+	// 1h 후 시점에서는 d1 due.
+	farFuture := future.Add(time.Second)
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		out, _ := repo.ListDueDeliveries(ctx, tx, farFuture, 50)
+		due = out
+		return nil
+	})
+	if len(due) != 1 {
+		t.Fatalf("len due (far future) = %d, want 1", len(due))
+	}
+	if due[0].ID != d1.ID {
+		t.Errorf("due[0].ID = %q, want d1 %q", due[0].ID, d1.ID)
+	}
+}
+
+// MaxRetryAttempts 도달한 row는 ListDueDeliveries에서 제외 (dead-letter).
+func TestListDueDeliveriesExcludesDeadLetter(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	d := enqueueOne(t, repo, store, webhook.EventScanCompleted)
+
+	// attempt_count = MaxRetryAttempts → 더 이상 dispatch 안 함.
+	now := time.Now().UTC()
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		return repo.MarkDeliveryFailed(ctx, tx, d.ID, webhook.MaxRetryAttempts, now, 500, "max", now)
+	}); err != nil {
+		t.Fatalf("MarkDeliveryFailed: %v", err)
+	}
+
+	var due []webhook.WebhookDelivery
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		out, _ := repo.ListDueDeliveries(ctx, tx, now.Add(time.Second), 50)
+		due = out
+		return nil
+	})
+	if len(due) != 0 {
+		t.Errorf("dead-letter still returned by ListDueDeliveries: %d rows", len(due))
+	}
+}
+
+// MarkDeliverySucceeded는 succeeded·last_response_status·attempt_count·last_attempted_at·last_error 갱신.
+func TestMarkDeliverySucceededUpdatesFields(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	d := enqueueOne(t, repo, store, webhook.EventScanCompleted)
+
+	when := time.Now().UTC().Truncate(time.Second)
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		return repo.MarkDeliverySucceeded(ctx, tx, d.ID, 1, 200, when)
+	}); err != nil {
+		t.Fatalf("MarkDeliverySucceeded: %v", err)
+	}
+
+	var got webhook.WebhookDelivery
+	_ = store.Tx(tenantCtx(testTenant), func(ctx context.Context, tx storage.Tx) error {
+		out, _ := repo.GetDelivery(ctx, tx, d.ID)
+		got = out
+		return nil
+	})
+	if !got.Succeeded {
+		t.Errorf("Succeeded = false, want true")
+	}
+	if got.LastResponseStatus != 200 {
+		t.Errorf("LastResponseStatus = %d, want 200", got.LastResponseStatus)
+	}
+	if got.AttemptCount != 1 {
+		t.Errorf("AttemptCount = %d, want 1", got.AttemptCount)
+	}
+	if got.LastAttemptedAt == nil || !got.LastAttemptedAt.Equal(when) {
+		t.Errorf("LastAttemptedAt = %v, want %v", got.LastAttemptedAt, when)
+	}
+	if got.LastError != "" {
+		t.Errorf("LastError = %q, want empty (success clears)", got.LastError)
+	}
+
+	// succeeded=1이면 ListDueDeliveries에서 제외.
+	var due []webhook.WebhookDelivery
+	_ = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		out, _ := repo.ListDueDeliveries(ctx, tx, when.Add(time.Hour), 50)
+		due = out
+		return nil
+	})
+	if len(due) != 0 {
+		t.Errorf("succeeded delivery still due: %d", len(due))
+	}
+}
+
+// MarkDeliveryFailed는 attempt_count·next_attempt_at·last_response_status·last_error 갱신.
+func TestMarkDeliveryFailedUpdatesFields(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	d := enqueueOne(t, repo, store, webhook.EventScanCompleted)
+
+	when := time.Now().UTC().Truncate(time.Second)
+	next := when.Add(1 * time.Minute)
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		return repo.MarkDeliveryFailed(ctx, tx, d.ID, 1, next, 502, "bad gateway", when)
+	}); err != nil {
+		t.Fatalf("MarkDeliveryFailed: %v", err)
+	}
+
+	var got webhook.WebhookDelivery
+	_ = store.Tx(tenantCtx(testTenant), func(ctx context.Context, tx storage.Tx) error {
+		out, _ := repo.GetDelivery(ctx, tx, d.ID)
+		got = out
+		return nil
+	})
+	if got.Succeeded {
+		t.Errorf("Succeeded = true after failure")
+	}
+	if got.AttemptCount != 1 {
+		t.Errorf("AttemptCount = %d, want 1", got.AttemptCount)
+	}
+	if !got.NextAttemptAt.Equal(next) {
+		t.Errorf("NextAttemptAt = %v, want %v", got.NextAttemptAt, next)
+	}
+	if got.LastResponseStatus != 502 {
+		t.Errorf("LastResponseStatus = %d, want 502", got.LastResponseStatus)
+	}
+	if got.LastError != "bad gateway" {
+		t.Errorf("LastError = %q, want %q", got.LastError, "bad gateway")
+	}
+}
+
+// 미존재 delivery → ErrDeliveryNotFound (양쪽 mark 메서드).
+func TestMarkDeliveryMissingReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	now := time.Now().UTC()
+	err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		return repo.MarkDeliverySucceeded(ctx, tx, "whd_doesnotexist", 1, 200, now)
+	})
+	if !errors.Is(err, webhook.ErrDeliveryNotFound) {
+		t.Errorf("Succeeded missing err = %v, want ErrDeliveryNotFound", err)
+	}
+
+	err = store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		return repo.MarkDeliveryFailed(ctx, tx, "whd_doesnotexist", 1, now, 500, "x", now)
+	})
+	if !errors.Is(err, webhook.ErrDeliveryNotFound) {
+		t.Errorf("Failed missing err = %v, want ErrDeliveryNotFound", err)
+	}
+}

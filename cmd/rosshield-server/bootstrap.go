@@ -16,6 +16,7 @@ import (
 	"github.com/ssabro/rosshield/internal/app/insightautorun"
 	"github.com/ssabro/rosshield/internal/app/llmmapper"
 	"github.com/ssabro/rosshield/internal/app/scanrun"
+	"github.com/ssabro/rosshield/internal/app/webhookrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	advisorrepo "github.com/ssabro/rosshield/internal/domain/advisor/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/audit"
@@ -28,6 +29,8 @@ import (
 	evidencerepo "github.com/ssabro/rosshield/internal/domain/evidence/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	insightrepo "github.com/ssabro/rosshield/internal/domain/insight/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
+	webhookrepo "github.com/ssabro/rosshield/internal/domain/integration/webhook/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 	"github.com/ssabro/rosshield/internal/domain/reporting/pdf"
 	reportingrepo "github.com/ssabro/rosshield/internal/domain/reporting/sqliterepo"
@@ -86,33 +89,39 @@ type Config struct {
 	// 두 값이 모두 있으면 Verify → Enforcer 결선. 검증 실패 시 부트스트랩 에러.
 	LicenseToken        string
 	LicensePublicKeyHex string
+
+	// E23-B — Webhook dispatcher tick 주기. 0이면 webhookrun.DefaultTickInterval (30s).
+	// 테스트에서 짧게 설정 가능.
+	WebhookTickInterval time.Duration
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
 // 도메인 서비스는 이 구조체에서 필요한 의존성만 주입받습니다 (§03.4 시작 시퀀스).
 type Platform struct {
-	Logger       *slog.Logger
-	Clock        clock.Clock
-	IDGen        idgen.IDGen
-	Storage      storage.Storage
-	EventBus     eventbus.Bus
-	Signer       signer.Signer
-	Scheduler    scheduler.Scheduler
-	Audit        audit.Service
-	Tenant       tenant.Service
-	Benchmark    benchmark.Service
-	Robot        robot.Service
-	Scan         scan.Service
-	ScanRun      *scanrun.Orchestrator
-	Evidence     evidence.Service
-	BlobStore    blobstore.Store
-	Reporting    reporting.Service
-	ReportSigner signer.Signer // R10-7: report 키 ↔ audit checkpoint 키 분리
-	Insight      insight.Service
-	Compliance   compliance.Service
-	LLM          llm.Adapter
-	Advisor      advisor.Service   // E16
-	License      *license.Enforcer // E24 — Open-core enterprise feature 게이트 + 쿼터
+	Logger            *slog.Logger
+	Clock             clock.Clock
+	IDGen             idgen.IDGen
+	Storage           storage.Storage
+	EventBus          eventbus.Bus
+	Signer            signer.Signer
+	Scheduler         scheduler.Scheduler
+	Audit             audit.Service
+	Tenant            tenant.Service
+	Benchmark         benchmark.Service
+	Robot             robot.Service
+	Scan              scan.Service
+	ScanRun           *scanrun.Orchestrator
+	Evidence          evidence.Service
+	BlobStore         blobstore.Store
+	Reporting         reporting.Service
+	ReportSigner      signer.Signer // R10-7: report 키 ↔ audit checkpoint 키 분리
+	Insight           insight.Service
+	Compliance        compliance.Service
+	LLM               llm.Adapter
+	Advisor           advisor.Service        // E16
+	License           *license.Enforcer      // E24 — Open-core enterprise feature 게이트 + 쿼터
+	Webhook           webhook.Service        // E23 — webhook + SIEM 통합 도메인
+	WebhookDispatcher *webhookrun.Dispatcher // E23-B — Process worker
 
 	systemTenant storage.TenantID
 
@@ -836,6 +845,23 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
 	}
 
+	// E23 — Webhook 도메인 결선 (sqliterepo 어댑터).
+	webhookSvc := webhookrepo.New(webhookrepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+	})
+
+	// E23-B — Webhook dispatcher (Process worker) 결선 + 백그라운드 시작.
+	// EventBus 구독(scan.completed → Enqueue)은 후속 stage E23-D.
+	webhookDispatcher := webhookrun.New(webhookrun.Deps{
+		Logger:       logger,
+		Storage:      store,
+		Clock:        clk,
+		Webhook:      webhookSvc,
+		TickInterval: cfg.WebhookTickInterval,
+	})
+	go webhookDispatcher.Run(context.Background())
+
 	// E24 — License 결선 (옵트인). 토큰 + public key 둘 다 있어야 검증 진입.
 	// UsageReader는 후속 stage(E24-D)에서 도메인 결선 — 현재는 nil로 두고 CheckFeature만 사용 가능.
 	licenseEnforcer, licenseEdition, err := buildLicenseEnforcer(cfg, clk)
@@ -881,6 +907,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		LLM:               llmAdapter,
 		Advisor:           advisorSvc,
 		License:           licenseEnforcer,
+		Webhook:           webhookSvc,
+		WebhookDispatcher: webhookDispatcher,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}, nil
@@ -918,10 +946,21 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 }
 
 // Shutdown은 platform 서비스를 역순으로 정상 종료합니다 (idempotent).
-// InsightAutorun Sub → Scheduler → EventBus → Storage 순. ctx 만료 시 ctx.Err() 반환.
+// WebhookDispatcher Stop → InsightAutorun Sub → Scheduler → EventBus → Storage 순.
+// ctx 만료 시 ctx.Err() 반환.
 func (p *Platform) Shutdown(ctx context.Context) error {
 	p.shutdownOnce.Do(func() {
 		var errs []error
+
+		// E23-B — webhook dispatcher 먼저 종료 (in-flight POST는 ctx 통해 cancel).
+		if p.WebhookDispatcher != nil {
+			p.WebhookDispatcher.Stop()
+			select {
+			case <-p.WebhookDispatcher.Done():
+			case <-ctx.Done():
+				errs = append(errs, fmt.Errorf("webhook dispatcher: %w", ctx.Err()))
+			}
+		}
 
 		// E19 — subscription 먼저 cancel하면 EventBus.Close 시 worker가 깨끗이 종료됨.
 		if p.insightAutorunSub != nil {
