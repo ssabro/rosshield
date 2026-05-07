@@ -143,6 +143,56 @@ export const useRobots = (fleetId?: string) => {
   })
 }
 
+// CreateRobotVars — 평문 자격증명을 본문으로 보냄. 메모리 전용 처리 후 백엔드가 KEK→DEK로 wrap.
+//   응답에는 평문 자격증명 미포함 (Robot 메타 + credentialId).
+export interface CreateRobotVars {
+  fleetId: string
+  name: string
+  host: string
+  port?: number
+  authType: 'password' | 'privateKey'
+  username: string
+  password?: string
+  privateKeyPem?: string
+  privateKeyPassphrase?: string
+  osDistro?: string
+  rosDistro?: string
+  tags?: string[]
+  role?: string
+  criticality?: 'low' | 'medium' | 'high' | 'critical'
+}
+
+export interface CreateRobotResponse {
+  robot: Robot
+  credentialId: string
+}
+
+// useCreateRobot — POST /api/v1/robots. 성공 시 robots 캐시 무효화.
+//   에러 매핑: 400(검증)·401(인증)·409(name·host:port 중복).
+export const useCreateRobot = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: CreateRobotVars): Promise<CreateRobotResponse> => {
+      // openapi spec의 createRobot body는 빈 객체로만 정의됨 — 실제 서버는 평탄 객체.
+      // openapi-fetch 타입 좁힘으로 body가 Record<string, never>가 되어 전달 불가 →
+      // never로 단언 후 unknown 경유로 우회 (서버는 JSON body를 그대로 디코드).
+      const { data, error, response } = await apiClient.POST('/api/v1/robots', {
+        body: vars as unknown as never,
+      })
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as CreateRobotResponse
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['robots'] })
+    },
+  })
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // 4) Start scan
 // ────────────────────────────────────────────────────────────────────────
