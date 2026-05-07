@@ -33,10 +33,37 @@ import (
 const rfc3339Nano = time.RFC3339Nano
 
 // Deps는 어댑터 의존성입니다.
+//
+// OIDC (E20-B):
+//
+//	OIDC == nil이면 본 어댑터는 OIDC provider에 대해 AuthURL을 빌드/검증하지 않고
+//	이전 stage(E20-A)의 stub 동작을 유지합니다 — 테스트 호환성·옵트인(P10).
+//	실제 IdP 통합은 OIDC=NewOIDCClient() 또는 mock client를 주입.
+//
+// IdentityResolver (E20-B):
+//
+//	CompleteLogin이 id_token에서 sub/email을 추출한 후, 이 sub를 내부 user.id로 매핑하는 책임은
+//	tenant 도메인(또는 application service)에 위임합니다. nil이면 sso.UpsertExternalIdentity의
+//	UserID는 빈 값 유지 — handler가 후속 처리 또는 200 응답으로 우회.
 type Deps struct {
-	Clock clock.Clock
-	IDGen idgen.IDGen
-	Audit sso.AuditEmitter
+	Clock            clock.Clock
+	IDGen            idgen.IDGen
+	Audit            sso.AuditEmitter
+	OIDC             *sso.OIDCClient  // E20-B — nil이면 OIDC 통합 비활성(stub 흐름 유지).
+	IdentityResolver IdentityResolver // E20-B — nil이면 user 매핑 X(외부 identity 영속만).
+}
+
+// IdentityResolver는 id_token claims를 받아 내부 user.ID를 반환합니다 (E20-B).
+//
+// 구현 가이드(후속 stage·application layer):
+//
+//  1. (tenant, externalSubject) → users.external_subject 일치 user 조회.
+//  2. 없으면 (tenant, email) → 기존 user 매칭(이메일 기준 link).
+//  3. 그래도 없으면 자동 프로비저닝(R20 정책 결정 후) — 본 stage는 NOT FOUND 시 빈 ID 허용.
+//
+// nil 반환 또는 빈 ID는 "user 매핑 X — external identity만 영속" 의미.
+type IdentityResolver interface {
+	ResolveOIDCIdentity(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, providerID string, claims sso.IDTokenClaims) (userID string, err error)
 }
 
 // Repo는 sso.Service의 SQLite 구현입니다.
@@ -230,7 +257,16 @@ FROM sso_providers WHERE tenant_id = ? ORDER BY created_at ASC`, string(tenantID
 	return out, nil
 }
 
-// StartLogin은 sso.Service.StartLogin 구현입니다 (E20-A 단계 — IdP 호출 없이 state 영속만).
+// StartLogin은 sso.Service.StartLogin 구현입니다.
+//
+// E20-B 흐름 (OIDC):
+//
+//  1. provider 검증 + state·PKCE·nonce 생성.
+//  2. login_attempt INSERT.
+//  3. OIDC client(주입돼 있으면)로 BuildAuthURL → AuthURL 채워 반환.
+//  4. OIDC client nil이거나 SAML이면 AuthURL은 빈 값(stub) — 후속 stage(E20-C)에서 SAML AuthnRequest.
+//
+// IdP HTTP 실패는 sso.ErrIdPHTTP로 감싸 전파 — handler에서 502 매핑.
 func (r *Repo) StartLogin(ctx context.Context, tx storage.Tx, req sso.StartLoginRequest) (sso.StartLoginResult, error) {
 	tenantID := tx.TenantID()
 	if tenantID == "" {
@@ -286,14 +322,41 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 	if err := r.deps.Audit.EmitLoginStarted(ctx, tx, attempt); err != nil {
 		return sso.StartLoginResult{}, fmt.Errorf("sso: emit login.started: %w", err)
 	}
+
+	// E20-B — OIDC client가 주입되어 있고 provider가 OIDC면 IdP discovery + AuthURL 빌드.
+	authURL := ""
+	if p.Type == sso.TypeOIDC && r.deps.OIDC != nil {
+		cfg, perr := sso.ParseOIDCConfig(p.Config)
+		if perr != nil {
+			return sso.StartLoginResult{}, perr
+		}
+		u, berr := r.deps.OIDC.BuildAuthURL(ctx, cfg, attempt.State, attempt.PKCEVerifier, attempt.Nonce)
+		if berr != nil {
+			return sso.StartLoginResult{}, berr
+		}
+		authURL = u
+	}
+
 	return sso.StartLoginResult{
-		AuthURL: "", // E20-B/C에서 IdP 호출 후 채움
+		AuthURL: authURL,
 		State:   state,
 		Attempt: attempt,
 	}, nil
 }
 
-// CompleteLogin은 sso.Service.CompleteLogin 구현입니다 (E20-A 단계 — state 검증 + 마킹만).
+// CompleteLogin은 sso.Service.CompleteLogin 구현입니다.
+//
+// E20-B 흐름 (OIDC):
+//
+//  1. state 검증 + 만료/재사용 체크 + completed_at 마킹.
+//  2. provider 조회 → OIDC client 주입돼 있으면 ExchangeCode + VerifyIDToken.
+//  3. id_token claims에서 sub/email 추출 → ExternalIdentity 빌드.
+//  4. IdentityResolver 주입돼 있으면 user.ID 매핑 → UpsertExternalIdentity 호출.
+//  5. audit emit + Identity 반환.
+//
+// OIDC client·IdentityResolver 미주입 시 (E20-A 호환):
+//
+//	state 검증 + completed_at 마킹만 수행, Identity 빈 채로 반환.
 func (r *Repo) CompleteLogin(ctx context.Context, tx storage.Tx, req sso.CompleteLoginRequest) (sso.CompleteLoginResult, error) {
 	tenantID := tx.TenantID()
 	if tenantID == "" {
@@ -326,12 +389,74 @@ WHERE id = ? AND tenant_id = ? AND completed_at IS NULL`,
 	completed := now
 	attempt.CompletedAt = &completed
 
-	// E20-A 단계는 IdP 토큰 교환 X — Identity 빈 채로 audit emit.
 	identity := sso.ExternalIdentity{}
+
+	// E20-B — OIDC client + provider type OIDC + code 입력 → token 교환 + id_token 검증.
+	if r.deps.OIDC != nil && req.Code != "" {
+		p, perr := r.GetProvider(ctx, tx, attempt.ProviderID)
+		if perr != nil {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, perr
+		}
+		if p.Type != sso.TypeOIDC {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, sso.ErrIdPMismatch
+		}
+		cfg, cerr := sso.ParseOIDCConfig(p.Config)
+		if cerr != nil {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, cerr
+		}
+		idToken, _, xerr := r.deps.OIDC.ExchangeCode(ctx, cfg, req.Code, attempt.PKCEVerifier)
+		if xerr != nil {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, xerr
+		}
+		claims, verr := r.deps.OIDC.VerifyIDToken(ctx, cfg, idToken, attempt.Nonce)
+		if verr != nil {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, verr
+		}
+
+		// IdentityResolver 주입 시 → user.ID 매핑.
+		userID := ""
+		if r.deps.IdentityResolver != nil {
+			uid, rerr := r.deps.IdentityResolver.ResolveOIDCIdentity(ctx, tx, tenantID, p.ID, claims)
+			if rerr != nil {
+				r.emitCompleted(ctx, tx, attempt, identity, false)
+				return sso.CompleteLoginResult{}, rerr
+			}
+			userID = uid
+		}
+
+		identity = sso.ExternalIdentity{
+			ProviderID:      p.ID,
+			ExternalSubject: claims.Subject,
+			TenantID:        tenantID,
+			UserID:          userID,
+			Email:           claims.Email,
+		}
+		// userID가 비어 있으면 FK 제약(users.id) 때문에 UpsertExternalIdentity는 실패 가능 —
+		// 본 stage는 안전하게 user 매핑이 결정된 경우만 영속.
+		if userID != "" {
+			persisted, uerr := r.UpsertExternalIdentity(ctx, tx, identity)
+			if uerr != nil {
+				r.emitCompleted(ctx, tx, attempt, identity, false)
+				return sso.CompleteLoginResult{}, uerr
+			}
+			identity = persisted
+		}
+	}
+
 	if err := r.deps.Audit.EmitLoginCompleted(ctx, tx, attempt, identity, true); err != nil {
 		return sso.CompleteLoginResult{}, fmt.Errorf("sso: emit login.completed: %w", err)
 	}
 	return sso.CompleteLoginResult{Identity: identity}, nil
+}
+
+// emitCompleted는 실패 경로 audit emit helper입니다 (errors는 무시 — 실패 propagation 우선).
+func (r *Repo) emitCompleted(ctx context.Context, tx storage.Tx, a sso.LoginAttempt, id sso.ExternalIdentity, ok bool) {
+	_ = r.deps.Audit.EmitLoginCompleted(ctx, tx, a, id, ok)
 }
 
 // UpsertExternalIdentity는 sso.Service.UpsertExternalIdentity 구현입니다.

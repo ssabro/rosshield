@@ -30,6 +30,11 @@ import (
 //
 // 본 E20-A scaffold는 IdP 호출 전이라 redirectUrl은 빈 값 — 후속 stage에서
 // 302 redirect로 응답 형식이 바뀔 수 있음(클라이언트 호환성 검토 필요).
+//
+// E20-B 정책:
+//
+//	OIDC client가 주입돼 있고 result.AuthURL이 채워지면 302 redirect로 응답 — JSON 미사용.
+//	OIDC client 미주입(stub) 또는 SAML이면 본 JSON으로 응답.
 type startSSOLoginResponse struct {
 	State       string `json:"state"`
 	RedirectURL string `json:"redirectUrl,omitempty"`
@@ -37,10 +42,16 @@ type startSSOLoginResponse struct {
 	Stub        bool   `json:"stub,omitempty"` // 본 stage scaffold임을 명시
 }
 
-// ssoCallbackResponse는 OIDC callback의 stub 응답입니다.
+// ssoCallbackResponse는 OIDC callback 응답입니다.
+//
+// E20-B: 외부 identity의 sub/email을 노출 — 이후 token issue·user 매핑은 후속 stage(E20-D)에서
+// 본 응답에 access_token/refresh_token 추가 예정.
 type ssoCallbackResponse struct {
-	State string `json:"state"`
-	Stub  bool   `json:"stub"`
+	State   string `json:"state"`
+	Subject string `json:"subject,omitempty"`
+	Email   string `json:"email,omitempty"`
+	UserID  string `json:"userId,omitempty"`
+	Stub    bool   `json:"stub,omitempty"`
 }
 
 // StartSSOLogin은 GET /api/v1/auth/sso/{providerId}/login 핸들러입니다.
@@ -83,9 +94,15 @@ func (h *Handlers) StartSSOLogin(w http.ResponseWriter, r *http.Request, provide
 		writeError(w, ssoErrorStatus(err), err.Error())
 		return
 	}
+	// E20-B — OIDC client가 주입되어 AuthURL이 채워지면 302 redirect.
+	if result.AuthURL != "" {
+		http.Redirect(w, r, result.AuthURL, http.StatusFound)
+		return
+	}
+	// stub 흐름 (E20-A 호환 또는 SAML 미구현 단계).
 	writeJSON(w, http.StatusOK, startSSOLoginResponse{
 		State:       result.State,
-		RedirectURL: result.AuthURL, // 본 stage는 빈 값
+		RedirectURL: result.AuthURL,
 		ProviderID:  providerID,
 		Stub:        true,
 	})
@@ -114,20 +131,34 @@ func (h *Handlers) CompleteSSOLoginOIDC(w http.ResponseWriter, r *http.Request, 
 	}
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-	_ = providerID // E20-B에서 provider type 분기 시 사용 (OIDC vs SAML)
+	_ = providerID // path scope는 sso.Service가 state로 attempt를 lookup하므로 직접 미사용.
 
+	var result sso.CompleteLoginResult
 	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
-		_, e := h.deps.SSO.CompleteLogin(ctx, tx, sso.CompleteLoginRequest{
+		out, e := h.deps.SSO.CompleteLogin(ctx, tx, sso.CompleteLoginRequest{
 			State: state,
 			Code:  code,
 		})
-		return e
+		if e != nil {
+			return e
+		}
+		result = out
+		return nil
 	})
 	if err != nil {
 		writeError(w, ssoErrorStatus(err), err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ssoCallbackResponse{State: state, Stub: true})
+	resp := ssoCallbackResponse{
+		State:   state,
+		Subject: result.Identity.ExternalSubject,
+		Email:   result.Identity.Email,
+		UserID:  result.Identity.UserID,
+	}
+	if result.Identity.ExternalSubject == "" {
+		resp.Stub = true // OIDC client 미주입 — E20-A 호환 흐름.
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // CompleteSSOLoginSAML은 POST /api/v1/auth/sso/{providerId}/saml/acs 핸들러입니다 (SAML POST binding).
@@ -174,21 +205,39 @@ func (h *Handlers) CompleteSSOLoginSAML(w http.ResponseWriter, r *http.Request, 
 
 // ssoErrorStatus는 sso 도메인 sentinel을 HTTP status로 매핑합니다.
 //
+// E20-A 매핑:
+//
 //	ErrProviderNotFound      → 404
-//	ErrProviderDisabled      → 409 (정책상 사용 불가)
+//	ErrProviderDisabled      → 403 (정책상 사용 불가 — R20-2 ENT 게이트)
 //	ErrProviderNameExists    → 409
 //	ErrInvalidState          → 400 (CSRF/재사용 의심)
 //	ErrStateExpired          → 400
 //	ErrIdPMismatch           → 400
 //	ErrUnsupportedType       → 400
 //	ErrEmptyName/Config/...  → 400
+//
+// E20-B 추가:
+//
+//	ErrInvalidOIDCConfig     → 500 (서버 misconfig)
+//	ErrInvalidOIDCArgs       → 400
+//	ErrIdPHTTP               → 502 (외부 IdP HTTP 실패)
+//	ErrIDTokenInvalid        → 400 (id_token 검증 실패)
+//	ErrNonceMismatch         → 400
+//	ErrUnsupportedAlg        → 400
+//	ErrJWKNotFound           → 502 (IdP가 키 회전 미알림)
 func ssoErrorStatus(err error) int {
 	switch {
 	case errors.Is(err, sso.ErrProviderNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, sso.ErrProviderDisabled),
-		errors.Is(err, sso.ErrProviderNameExists):
+	case errors.Is(err, sso.ErrProviderDisabled):
+		return http.StatusForbidden
+	case errors.Is(err, sso.ErrProviderNameExists):
 		return http.StatusConflict
+	case errors.Is(err, sso.ErrIdPHTTP),
+		errors.Is(err, sso.ErrJWKNotFound):
+		return http.StatusBadGateway
+	case errors.Is(err, sso.ErrInvalidOIDCConfig):
+		return http.StatusInternalServerError
 	case errors.Is(err, sso.ErrInvalidState),
 		errors.Is(err, sso.ErrStateExpired),
 		errors.Is(err, sso.ErrIdPMismatch),
@@ -196,7 +245,11 @@ func ssoErrorStatus(err error) int {
 		errors.Is(err, sso.ErrEmptyName),
 		errors.Is(err, sso.ErrEmptyConfig),
 		errors.Is(err, sso.ErrEmptyState),
-		errors.Is(err, sso.ErrEmptySubject):
+		errors.Is(err, sso.ErrEmptySubject),
+		errors.Is(err, sso.ErrInvalidOIDCArgs),
+		errors.Is(err, sso.ErrIDTokenInvalid),
+		errors.Is(err, sso.ErrNonceMismatch),
+		errors.Is(err, sso.ErrUnsupportedAlg):
 		return http.StatusBadRequest
 	default:
 		return errorStatusFor(err)

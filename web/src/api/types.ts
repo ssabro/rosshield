@@ -495,6 +495,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List webhook endpoints for the current tenant */
+        get: operations["listWebhookEndpoints"];
+        put?: never;
+        /**
+         * Register a new webhook endpoint
+         * @description Validates URL (absolute http/https), secret (non-empty for HMAC), and event
+         *     types (must be in known set: scan.completed, insight.created, audit.checkpoint).
+         */
+        post: operations["createWebhookEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{endpointId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a webhook endpoint */
+        get: operations["getWebhookEndpoint"];
+        /** Update a webhook endpoint (URL · secret · events · format · enabled) */
+        put: operations["updateWebhookEndpoint"];
+        post?: never;
+        /** Delete a webhook endpoint (deliveries are preserved — append-only) */
+        delete: operations["deleteWebhookEndpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{endpointId}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List delivery attempts for a webhook endpoint (created_at DESC) */
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -771,6 +831,93 @@ export interface components {
         AdvisorConversationDetail: {
             conversation: components["schemas"]["AdvisorConversation"];
             turns: components["schemas"]["AdvisorTurn"][];
+        };
+        /**
+         * @description Domain event type subscribed by the webhook. Empty `events` means all known
+         *     events. Add new types only after operator agreement (signed pack).
+         * @enum {string}
+         */
+        WebhookEventType: "scan.completed" | "insight.created" | "audit.checkpoint";
+        /**
+         * @description Payload serialization format.
+         *       - json (default): rosshield raw JSON envelope.
+         *       - cef: ArcSight Common Event Format (Splunk OOTB).
+         *       - ecs: Elastic Common Schema.
+         * @enum {string}
+         */
+        WebhookFormat: "json" | "cef" | "ecs";
+        WebhookEndpoint: {
+            id: string;
+            tenantId: string;
+            /**
+             * Format: uri
+             * @description Absolute http/https URL
+             */
+            url: string;
+            /**
+             * @description Last 4 chars of the HMAC-SHA256 signing secret (`****` if shorter than 4).
+             *     Full secret is never returned — operator must manage rotation via the
+             *     UPDATE endpoint or external secret manager.
+             */
+            secretLast4: string;
+            /** @description Empty array → subscribes to all known event types. */
+            events: components["schemas"]["WebhookEventType"][];
+            format: components["schemas"]["WebhookFormat"];
+            enabled: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        WebhookEndpointCreate: {
+            /** Format: uri */
+            url: string;
+            /** @description HMAC-SHA256 signing key */
+            secret: string;
+            events?: components["schemas"]["WebhookEventType"][];
+            format?: components["schemas"]["WebhookFormat"];
+            /** @default true */
+            enabled: boolean;
+        };
+        /**
+         * @description Full replacement — caller must supply current values for fields that should
+         *     not change (URL, secret, events, format, enabled).
+         */
+        WebhookEndpointUpdate: {
+            /** Format: uri */
+            url: string;
+            secret: string;
+            events?: components["schemas"]["WebhookEventType"][];
+            format?: components["schemas"]["WebhookFormat"];
+            enabled?: boolean;
+        };
+        ListWebhookEndpointsResponse: {
+            endpoints: components["schemas"]["WebhookEndpoint"][];
+        };
+        WebhookDelivery: {
+            id: string;
+            endpointId: string;
+            tenantId: string;
+            eventType: components["schemas"]["WebhookEventType"];
+            /** @description Source EventBus.Event.ID for cross-reference. */
+            eventId: string;
+            /** @description Serialized body (CEF/ECS/JSON), base64-encoded. */
+            payloadBase64?: string;
+            /** @description 0=enqueued, 1..5=actual attempts. */
+            attemptCount: number;
+            /** Format: date-time */
+            lastAttemptedAt?: string;
+            /** Format: date-time */
+            nextAttemptAt: string;
+            succeeded: boolean;
+            /** @description HTTP status of last attempt (0 if never attempted). */
+            lastResponseStatus: number;
+            lastError?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ListWebhookDeliveriesResponse: {
+            deliveries: components["schemas"]["WebhookDelivery"][];
         };
     };
     responses: {
@@ -1567,6 +1714,151 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdvisorConversationDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listWebhookEndpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListWebhookEndpointsResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookEndpointUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                endpointId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListWebhookDeliveriesResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

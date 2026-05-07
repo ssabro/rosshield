@@ -10,6 +10,7 @@ import {
   Server,
   Settings as SettingsIcon,
   ShieldCheck,
+  Webhook,
 } from 'lucide-react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -35,6 +36,7 @@ const items: ReadonlyArray<{
     | '/advisor'
     | '/reports'
     | '/audit'
+    | '/integrations'
     | '/settings'
   labelKey: DictKey
   icon: typeof Server
@@ -47,6 +49,7 @@ const items: ReadonlyArray<{
   { to: '/advisor', labelKey: 'nav.advisor', icon: MessageSquare },
   { to: '/reports', labelKey: 'nav.reports', icon: FileText },
   { to: '/audit', labelKey: 'nav.audit', icon: ScrollText },
+  { to: '/integrations', labelKey: 'nav.integrations', icon: Webhook },
   { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ]
 

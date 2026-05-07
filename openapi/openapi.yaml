@@ -37,6 +37,7 @@ tags:
   - { name: compliance, description: Framework mappings and scores }
   - { name: reporting,  description: Signed reports }
   - { name: audit,      description: Hash-chained audit log }
+  - { name: webhook,    description: Outbound webhook endpoints + delivery log (E23) }
 
 security:
   - bearerAuth: []
@@ -738,6 +739,120 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  # E23-C (Phase 3) — Webhook CRUD HTTP 표면.
+  # Secret은 응답에서 마지막 4자만 노출 (`secretLast4`). 평문 secret은 PUT/POST 입력 전용.
+  /api/v1/webhooks:
+    get:
+      tags: [webhook]
+      operationId: listWebhookEndpoints
+      summary: List webhook endpoints for the current tenant
+      x-status: phase3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWebhookEndpointsResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [webhook]
+      operationId: createWebhookEndpoint
+      summary: Register a new webhook endpoint
+      description: |
+        Validates URL (absolute http/https), secret (non-empty for HMAC), and event
+        types (must be in known set: scan.completed, insight.created, audit.checkpoint).
+      x-status: phase3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/webhooks/{endpointId}:
+    parameters:
+      - { in: path, name: endpointId, required: true, schema: { type: string, pattern: "^wh_[A-Z0-9]+$" } }
+    get:
+      tags: [webhook]
+      operationId: getWebhookEndpoint
+      summary: Get a webhook endpoint
+      x-status: phase3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    put:
+      tags: [webhook]
+      operationId: updateWebhookEndpoint
+      summary: Update a webhook endpoint (URL · secret · events · format · enabled)
+      x-status: phase3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEndpointUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      tags: [webhook]
+      operationId: deleteWebhookEndpoint
+      summary: Delete a webhook endpoint (deliveries are preserved — append-only)
+      x-status: phase3
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/webhooks/{endpointId}/deliveries:
+    get:
+      tags: [webhook]
+      operationId: listWebhookDeliveries
+      summary: List delivery attempts for a webhook endpoint (created_at DESC)
+      x-status: phase3
+      parameters:
+        - { in: path, name: endpointId, required: true, schema: { type: string, pattern: "^wh_[A-Z0-9]+$" } }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWebhookDeliveriesResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1144,3 +1259,103 @@ components:
         turns:
           type: array
           items: { $ref: "#/components/schemas/AdvisorTurn" }
+
+    # ─── Webhook (E23-C) ──────────────────────────────────────────────────
+    WebhookEventType:
+      type: string
+      description: |
+        Domain event type subscribed by the webhook. Empty `events` means all known
+        events. Add new types only after operator agreement (signed pack).
+      enum: [scan.completed, insight.created, audit.checkpoint]
+
+    WebhookFormat:
+      type: string
+      description: |
+        Payload serialization format.
+          - json (default): rosshield raw JSON envelope.
+          - cef: ArcSight Common Event Format (Splunk OOTB).
+          - ecs: Elastic Common Schema.
+      enum: [json, cef, ecs]
+
+    WebhookEndpoint:
+      type: object
+      required: [id, tenantId, url, secretLast4, events, format, enabled, createdAt, updatedAt]
+      properties:
+        id:          { type: string, pattern: "^wh_[A-Z0-9]+$" }
+        tenantId:    { type: string }
+        url:         { type: string, format: uri, description: "Absolute http/https URL" }
+        secretLast4:
+          type: string
+          description: |
+            Last 4 chars of the HMAC-SHA256 signing secret (`****` if shorter than 4).
+            Full secret is never returned — operator must manage rotation via the
+            UPDATE endpoint or external secret manager.
+        events:
+          type: array
+          description: "Empty array → subscribes to all known event types."
+          items: { $ref: "#/components/schemas/WebhookEventType" }
+        format:      { $ref: "#/components/schemas/WebhookFormat" }
+        enabled:     { type: boolean }
+        createdAt:   { type: string, format: date-time }
+        updatedAt:   { type: string, format: date-time }
+
+    WebhookEndpointCreate:
+      type: object
+      required: [url, secret]
+      properties:
+        url:     { type: string, format: uri }
+        secret:  { type: string, minLength: 1, description: "HMAC-SHA256 signing key" }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/WebhookEventType" }
+        format:  { $ref: "#/components/schemas/WebhookFormat" }
+        enabled: { type: boolean, default: true }
+
+    WebhookEndpointUpdate:
+      type: object
+      required: [url, secret]
+      description: |
+        Full replacement — caller must supply current values for fields that should
+        not change (URL, secret, events, format, enabled).
+      properties:
+        url:     { type: string, format: uri }
+        secret:  { type: string, minLength: 1 }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/WebhookEventType" }
+        format:  { $ref: "#/components/schemas/WebhookFormat" }
+        enabled: { type: boolean }
+
+    ListWebhookEndpointsResponse:
+      type: object
+      required: [endpoints]
+      properties:
+        endpoints:
+          type: array
+          items: { $ref: "#/components/schemas/WebhookEndpoint" }
+
+    WebhookDelivery:
+      type: object
+      required: [id, endpointId, tenantId, eventType, eventId, attemptCount, nextAttemptAt, succeeded, lastResponseStatus, createdAt]
+      properties:
+        id:                  { type: string, pattern: "^whd_[A-Z0-9]+$" }
+        endpointId:          { type: string }
+        tenantId:            { type: string }
+        eventType:           { $ref: "#/components/schemas/WebhookEventType" }
+        eventId:             { type: string, description: "Source EventBus.Event.ID for cross-reference." }
+        payloadBase64:       { type: string, description: "Serialized body (CEF/ECS/JSON), base64-encoded." }
+        attemptCount:        { type: integer, description: "0=enqueued, 1..5=actual attempts." }
+        lastAttemptedAt:     { type: string, format: date-time }
+        nextAttemptAt:       { type: string, format: date-time }
+        succeeded:           { type: boolean }
+        lastResponseStatus:  { type: integer, description: "HTTP status of last attempt (0 if never attempted)." }
+        lastError:           { type: string }
+        createdAt:           { type: string, format: date-time }
+
+    ListWebhookDeliveriesResponse:
+      type: object
+      required: [deliveries]
+      properties:
+        deliveries:
+          type: array
+          items: { $ref: "#/components/schemas/WebhookDelivery" }

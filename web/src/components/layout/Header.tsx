@@ -22,6 +22,7 @@ const PAGE_TITLE_KEYS: Record<string, DictKey> = {
   '/advisor': 'nav.advisor',
   '/reports': 'nav.reports',
   '/audit': 'nav.audit',
+  '/integrations': 'nav.integrations',
   '/settings': 'nav.settings',
 }
 

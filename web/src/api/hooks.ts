@@ -819,3 +819,209 @@ export const useReports = (sessionId?: string) => {
     },
   })
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// 6) Webhook (E23-C) — endpoint CRUD + delivery 조회.
+//
+// Spec drift 회피를 위해 hooks 측은 inline interface로 좁힘. 응답 schema는
+// `WebhookEndpoint`/`WebhookDelivery` (openapi.yaml §components.schemas).
+// secret 본문은 응답에서 마스킹(`secretLast4`) — 회전은 PUT 본문으로만 수행.
+// ────────────────────────────────────────────────────────────────────────
+
+export type WebhookEventType = 'scan.completed' | 'insight.created' | 'audit.checkpoint'
+export type WebhookFormat = 'json' | 'cef' | 'ecs'
+
+export interface WebhookEndpoint {
+  id: string
+  tenantId: string
+  url: string
+  secretLast4: string
+  events: WebhookEventType[]
+  format: WebhookFormat
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WebhookDelivery {
+  id: string
+  endpointId: string
+  tenantId: string
+  eventType: WebhookEventType
+  eventId: string
+  payloadBase64?: string
+  attemptCount: number
+  lastAttemptedAt?: string
+  nextAttemptAt: string
+  succeeded: boolean
+  lastResponseStatus: number
+  lastError?: string
+  createdAt: string
+}
+
+export interface CreateWebhookEndpointVars {
+  url: string
+  secret: string
+  events?: WebhookEventType[]
+  format?: WebhookFormat
+  enabled?: boolean
+}
+
+export interface UpdateWebhookEndpointVars {
+  endpointId: string
+  url: string
+  secret: string
+  events?: WebhookEventType[]
+  format?: WebhookFormat
+  enabled?: boolean
+}
+
+// webhookFetch는 Bearer 인증 + JSON 헤더를 포함한 fetch wrapper입니다.
+//
+// advisorFetch와 동일 패턴 — 401 시 세션 클리어, 비-OK는 ApiError throw.
+// 별도 함수로 두는 이유: openapi-fetch typed client는 path param + body 결합 시
+// 매번 cast가 필요해 hooks 측 호출이 verbose해짐. webhook은 6 endpoint 단순 CRUD.
+async function webhookFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const accessToken = useAuthStore.getState().accessToken
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  }
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`
+  }
+  const res = await fetch(path, { ...init, headers })
+  if (res.status === 401) {
+    useAuthStore.getState().clearSession()
+  }
+  if (res.status === 204) {
+    return undefined as unknown as T
+  }
+  if (!res.ok) {
+    let message = res.statusText
+    try {
+      const body: unknown = await res.json()
+      message = extractErrorMessage(body, res.statusText)
+    } catch {
+      /* JSON 파싱 실패 시 statusText fallback */
+    }
+    throw new ApiError(res.status, message)
+  }
+  return (await res.json()) as T
+}
+
+export const useWebhookEndpoints = () => {
+  return useQuery({
+    queryKey: ['webhooks'],
+    queryFn: async (): Promise<WebhookEndpoint[]> => {
+      const body = await webhookFetch<{ endpoints: WebhookEndpoint[] }>(
+        `${API_BASE_PATH}/webhooks`,
+      )
+      return body.endpoints ?? []
+    },
+  })
+}
+
+export const useCreateWebhook = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: CreateWebhookEndpointVars): Promise<WebhookEndpoint> => {
+      return webhookFetch<WebhookEndpoint>(`${API_BASE_PATH}/webhooks`, {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['webhooks'] })
+    },
+  })
+}
+
+export const useUpdateWebhook = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: UpdateWebhookEndpointVars): Promise<WebhookEndpoint> => {
+      const { endpointId, ...body } = vars
+      return webhookFetch<WebhookEndpoint>(
+        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      )
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['webhooks'] })
+      qc.invalidateQueries({ queryKey: ['webhooks', data.id] })
+    },
+  })
+}
+
+export const useDeleteWebhook = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (endpointId: string): Promise<void> => {
+      await webhookFetch<void>(
+        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}`,
+        { method: 'DELETE' },
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['webhooks'] })
+    },
+  })
+}
+
+export const useWebhookDeliveries = (endpointId?: string) => {
+  return useQuery({
+    queryKey: ['webhooks', endpointId ?? null, 'deliveries'],
+    queryFn: async (): Promise<WebhookDelivery[]> => {
+      if (!endpointId) {
+        return []
+      }
+      const body = await webhookFetch<{ deliveries: WebhookDelivery[] }>(
+        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}/deliveries`,
+      )
+      return body.deliveries ?? []
+    },
+    enabled: !!endpointId,
+  })
+}
+
+// formatWebhookEvent — UI 표기용 EventType 짧은 라벨 매핑 (단위 테스트 가능).
+//   알 수 없는 값은 그대로 반환.
+export function formatWebhookEvent(event: string): string {
+  switch (event) {
+    case 'scan.completed':
+      return 'scan'
+    case 'insight.created':
+      return 'insight'
+    case 'audit.checkpoint':
+      return 'audit'
+    default:
+      return event
+  }
+}
+
+// webhookDeliveryStatus — delivery row의 status 분류 (B3 단위 테스트 가능).
+//   - succeeded=true → 'success'
+//   - attemptCount>=5 && !succeeded → 'dead'
+//   - attemptCount>0 → 'retrying'
+//   - 그 외 → 'pending'
+export type WebhookDeliveryStatus = 'success' | 'dead' | 'retrying' | 'pending'
+
+export function webhookDeliveryStatus(
+  d: Pick<WebhookDelivery, 'succeeded' | 'attemptCount'>,
+): WebhookDeliveryStatus {
+  if (d.succeeded) return 'success'
+  if (d.attemptCount >= 5) return 'dead'
+  if (d.attemptCount > 0) return 'retrying'
+  return 'pending'
+}
+
+// KNOWN_WEBHOOK_EVENTS — UI에서 multi-select 옵션으로 사용 (B3 페이지에서 import).
+export const KNOWN_WEBHOOK_EVENTS: ReadonlyArray<WebhookEventType> = [
+  'scan.completed',
+  'insight.created',
+  'audit.checkpoint',
+]

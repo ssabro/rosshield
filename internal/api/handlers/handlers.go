@@ -29,6 +29,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	"github.com/ssabro/rosshield/internal/domain/insight"
+	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	"github.com/ssabro/rosshield/internal/domain/scan"
@@ -58,6 +59,7 @@ type Deps struct {
 	EventBus   eventbus.Bus       // C1 carryover — WebSocket scan progress 구독
 	License    *license.Enforcer  // E24-C — Open-core enterprise feature 게이트
 	SSO        sso.Service        // E20-A Phase 3 — SSO scaffold (옵트인, nil이면 503)
+	Webhook    webhook.Service    // E23-C Phase 3 — Webhook CRUD HTTP 표면
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -175,6 +177,15 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Post("/api/v1/auth/sso/{providerId}/saml/acs", func(w http.ResponseWriter, req *http.Request) {
 			h.CompleteSSOLoginSAML(w, req, chi.URLParam(req, "providerId"))
 		})
+
+		// E23-C Phase 3 — Webhook CRUD HTTP 표면.
+		// chi 직접 mount — gen 래퍼 없이 path param/query 직접 추출.
+		r.Post("/api/v1/webhooks", h.CreateWebhookEndpoint)
+		r.Get("/api/v1/webhooks", h.ListWebhookEndpoints)
+		r.Get("/api/v1/webhooks/{endpointId}", h.getWebhookEndpointFromChi)
+		r.Put("/api/v1/webhooks/{endpointId}", h.updateWebhookEndpointFromChi)
+		r.Delete("/api/v1/webhooks/{endpointId}", h.deleteWebhookEndpointFromChi)
+		r.Get("/api/v1/webhooks/{endpointId}/deliveries", h.listWebhookDeliveriesFromChi)
 	})
 }
 
