@@ -101,16 +101,19 @@ func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request, sessionI
 	subDone := h.deps.EventBus.Subscribe(ctx, scan.EventTypeCompleted, handler)
 	defer subDone.Cancel()
 
-	// CloseRead — 클라이언트가 close frame 보내면 ctx cancel. read loop는 무시.
-	ctx = conn.CloseRead(ctx)
+	// CloseRead는 새 ctx를 반환합니다 — main loop만 이 새 ctx를 사용하고,
+	// handler closure는 위에서 캡처한 원본 ctx를 그대로 사용해야 race를 피할 수 있습니다.
+	// (ctx 변수 자체에 재할당하면 handler goroutine이 동시에 읽고 main goroutine이
+	// 쓰는 data race 발생 — 2026-05-07 CI -race 검출.)
+	readCtx := conn.CloseRead(ctx)
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-readCtx.Done():
 			_ = conn.Close(websocket.StatusNormalClosure, "context done")
 			return
 		case msg := <-msgCh:
-			writeCtx, writeCancel := context.WithTimeout(ctx, 5*time.Second)
+			writeCtx, writeCancel := context.WithTimeout(readCtx, 5*time.Second)
 			err := wsjsonWrite(writeCtx, conn, msg)
 			writeCancel()
 			if err != nil {
