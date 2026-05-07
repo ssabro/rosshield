@@ -19,6 +19,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	"github.com/ssabro/rosshield/internal/platform/storage"
@@ -39,10 +40,115 @@ type userResponse struct {
 }
 
 // loginResponse는 POST /api/v1/auth/login 성공 응답 본문입니다.
+//
+// Cookie 모드(`X-Cookie-Auth: true` 헤더)일 때 RefreshToken은 빈 문자열 — Set-Cookie로 송출.
+// 그 외(legacy CLI 모드)는 본문에 그대로 포함 (호환성 유지 — C6 dual mode).
 type loginResponse struct {
 	AccessToken  string       `json:"accessToken"`
-	RefreshToken string       `json:"refreshToken"`
+	RefreshToken string       `json:"refreshToken,omitempty"`
 	User         userResponse `json:"user"`
+}
+
+// refreshRequest는 POST /api/v1/auth/refresh 요청 본문입니다 (legacy 모드 — 본문에서 토큰).
+//
+// Cookie 모드는 본 필드 비워두면 됨 — 핸들러가 cookie에서 자동 추출.
+type refreshRequest struct {
+	RefreshToken string `json:"refreshToken,omitempty"`
+}
+
+// refreshResponse는 POST /api/v1/auth/refresh 성공 응답 본문입니다.
+type refreshResponse struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken,omitempty"`
+}
+
+// logoutRequest는 POST /api/v1/auth/logout 요청 본문입니다 (legacy 모드).
+type logoutRequest struct {
+	RefreshToken string `json:"refreshToken,omitempty"`
+}
+
+// refreshCookieName은 HttpOnly cookie의 이름입니다 (C6 — Web Console 보안 강화).
+const refreshCookieName = "rosshield_refresh"
+
+// cookieHeader는 클라이언트가 cookie 모드를 요청할 때 송신하는 헤더입니다.
+//
+// `X-Cookie-Auth: true` 일 때 — refresh token은 본문에서 제거되고 Set-Cookie로 송출.
+// CLI 같은 legacy 클라이언트는 헤더 없이 호출 → 본문에 둘 다 포함 (호환성 유지).
+const cookieAuthHeader = "X-Cookie-Auth"
+
+// isCookieAuth는 클라이언트가 cookie 모드를 요청했는지 검사합니다.
+func isCookieAuth(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get(cookieAuthHeader), "true")
+}
+
+// setRefreshCookie는 refresh 토큰을 HttpOnly cookie로 응답에 부착합니다.
+//
+// SameSite=Lax — POST /auth/refresh 같은 동일 origin 요청에 자동 전송, CSRF 위험 완화.
+// Secure — TLS 환경에서만 true (개발 http://localhost는 false). r.TLS != nil 또는
+// X-Forwarded-Proto: https 검사로 결정.
+// Path=/api/v1/auth — refresh·logout 엔드포인트에만 동봉되도록 좁힘.
+func setRefreshCookie(w http.ResponseWriter, r *http.Request, token string, expiresAt time.Time) {
+	maxAge := int(time.Until(expiresAt).Seconds())
+	if maxAge < 0 {
+		maxAge = 0
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    token,
+		Path:     "/api/v1/auth",
+		HttpOnly: true,
+		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   maxAge,
+	})
+}
+
+// clearRefreshCookie는 refresh cookie를 즉시 만료시킵니다 (logout).
+func clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     "/api/v1/auth",
+		HttpOnly: true,
+		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+}
+
+// isHTTPS는 요청이 TLS인지 추정합니다 (직접 TLS 또는 reverse proxy X-Forwarded-Proto).
+func isHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// readRefreshFromRequest는 cookie 우선 → 본문 fallback 순으로 refresh 토큰을 추출합니다.
+//
+// dual mode 지원 — Web Console은 cookie, CLI/legacy는 본문.
+func readRefreshFromRequest(r *http.Request) string {
+	if c, err := r.Cookie(refreshCookieName); err == nil && c.Value != "" {
+		return c.Value
+	}
+	// 본문 fallback — JSON decode 실패는 무시 (빈 문자열 반환).
+	var body refreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+		return body.RefreshToken
+	}
+	return ""
+}
+
+// readRefreshFromLogoutRequest는 logoutRequest 본문을 처리합니다 (refreshRequest와 키 동일이지만 분리 의도 명확).
+func readRefreshFromLogoutRequest(r *http.Request) string {
+	if c, err := r.Cookie(refreshCookieName); err == nil && c.Value != "" {
+		return c.Value
+	}
+	var body logoutRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+		return body.RefreshToken
+	}
+	return ""
 }
 
 // Login은 POST /api/v1/auth/login 핸들러입니다 (gen.ServerInterface override).
@@ -98,16 +204,93 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, loginResponse{
-		AccessToken:  result.AccessToken,
-		RefreshToken: result.RefreshToken,
+	resp := loginResponse{
+		AccessToken: result.AccessToken,
 		User: userResponse{
 			ID:          result.User.ID,
 			Email:       result.User.Email,
 			DisplayName: result.User.DisplayName,
 			TenantID:    string(result.User.TenantID),
 		},
-	})
+	}
+	if isCookieAuth(r) {
+		// Cookie 모드: refresh를 HttpOnly cookie로만 송출, 본문에서 제외 (XSS 노출 차단).
+		setRefreshCookie(w, r, result.RefreshToken, result.RefreshExpiresAt)
+	} else {
+		// Legacy 모드 (CLI 등): 본문에 refreshToken 포함 (호환성 유지).
+		resp.RefreshToken = result.RefreshToken
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// RefreshAuth는 POST /api/v1/auth/refresh 핸들러입니다 (C6 — 새 access·refresh 발급).
+//
+// dual mode: cookie 우선 → 본문 fallback. cookie 모드면 새 refresh를 cookie로,
+// 본문에 access만 반환. legacy는 본문에 둘 다.
+//
+// 401 매핑: ErrInvalidToken / ErrTokenExpired / ErrRefreshNotFound / ErrRefreshRevoked /
+// ErrRefreshReuseDetected / ErrRefreshExpired 모두 401 (탈취 의심 → 클라이언트는 재로그인).
+func (h *Handlers) RefreshAuth(w http.ResponseWriter, r *http.Request) {
+	token := readRefreshFromRequest(r)
+	if token == "" {
+		writeError(w, http.StatusUnauthorized, "refresh token missing")
+		return
+	}
+
+	// Bootstrap Tx로 진입 — Refresh 구현은 tx.TenantID() == "" 일 때 토큰의 tid를 그대로 사용.
+	// multi-tenant 강화 시 token claims에서 tid 추출 후 ctx.WithTenantID로 좁힘 (R12-12 후속).
+	var result tenant.LoginResult
+	err := h.deps.Storage.Bootstrap(r.Context(),
+		func(ctx context.Context, tx storage.Tx) error {
+			res, e := h.deps.Tenant.Refresh(ctx, tx, token)
+			if e != nil {
+				return e
+			}
+			result = res
+			return nil
+		})
+	if err != nil {
+		switch {
+		case errors.Is(err, tenant.ErrInvalidToken),
+			errors.Is(err, tenant.ErrTokenExpired),
+			errors.Is(err, tenant.ErrTokenSignatureInvalid),
+			errors.Is(err, tenant.ErrRefreshNotFound),
+			errors.Is(err, tenant.ErrRefreshRevoked),
+			errors.Is(err, tenant.ErrRefreshReuseDetected),
+			errors.Is(err, tenant.ErrRefreshExpired):
+			// 탈취 의심·만료 모두 클라이언트 재로그인 필요 — cookie도 비움.
+			clearRefreshCookie(w, r)
+			writeError(w, http.StatusUnauthorized, "refresh failed")
+		default:
+			writeError(w, http.StatusInternalServerError, "refresh failed")
+		}
+		return
+	}
+
+	resp := refreshResponse{AccessToken: result.AccessToken}
+	if isCookieAuth(r) {
+		setRefreshCookie(w, r, result.RefreshToken, result.RefreshExpiresAt)
+	} else {
+		resp.RefreshToken = result.RefreshToken
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// LogoutAuth는 POST /api/v1/auth/logout 핸들러입니다 (C6 — refresh revoke + cookie clear).
+//
+// 멱등 — refresh가 없거나 이미 revoked여도 200. cookie는 항상 비움.
+func (h *Handlers) LogoutAuth(w http.ResponseWriter, r *http.Request) {
+	token := readRefreshFromLogoutRequest(r)
+	// 토큰 부재여도 cookie clear는 진행 — 사용자 경험상 logout은 항상 성공으로 보이게.
+	if token != "" {
+		_ = h.deps.Storage.Bootstrap(r.Context(),
+			func(ctx context.Context, tx storage.Tx) error {
+				return h.deps.Tenant.Logout(ctx, tx, token)
+			})
+		// 도메인 에러는 무시 — 멱등 보장. 단, 향후 audit emit이 필요하면 분리 분기.
+	}
+	clearRefreshCookie(w, r)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GetCurrentSession은 GET /api/v1/auth/me 핸들러입니다.

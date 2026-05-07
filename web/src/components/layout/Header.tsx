@@ -1,7 +1,7 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { Globe, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 
-import { useMe } from '@/api/hooks'
+import { useLogout, useMe } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
 import { useT } from '@/i18n/t'
 import { nextLocale, useLocaleStore } from '@/i18n/store'
@@ -25,8 +25,8 @@ const PAGE_TITLE_KEYS: Record<string, DictKey> = {
 export function Header(): React.ReactElement {
   const navigate = useNavigate()
   const storeUser = useAuthStore((s) => s.user)
-  const clearSession = useAuthStore((s) => s.clearSession)
   const me = useMe()
+  const logout = useLogout()
   const matches = useRouterState({ select: (s) => s.matches })
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
@@ -39,8 +39,8 @@ export function Header(): React.ReactElement {
   const titleKey = PAGE_TITLE_KEYS[pathname]
   const title = titleKey ? t(titleKey) : ''
 
-  const handleLogout = (): void => {
-    clearSession()
+  const handleLogout = async (): Promise<void> => {
+    await logout.mutateAsync()
     void navigate({ to: '/login' })
   }
 
@@ -87,7 +87,8 @@ export function Header(): React.ReactElement {
           variant="ghost"
           size="sm"
           className="gap-2"
-          onClick={handleLogout}
+          onClick={() => void handleLogout()}
+          disabled={logout.isPending}
           aria-label={t('header.logout')}
         >
           <LogOut className="h-4 w-4" aria-hidden />

@@ -1,10 +1,12 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
 // rosshield Web Console 인증 스토어.
-// - localStorage 영속(Phase 1 단순화 — R12-12). XSS 노출 트레이드오프는
-//   Phase 2에서 HttpOnly cookie + CSRF 이중 방식으로 재검토.
-// - 토큰 만료/401 회신 시 client.ts middleware가 clearSession을 호출한다.
+//
+// C6 — refresh token은 서버가 HttpOnly cookie로 관리 (XSS 노출 차단).
+// access token만 메모리/localStorage에 유지. 401 시 client middleware가 자동 refresh.
+// 호환 메모: 이전 버전(C5 이전)에서 localStorage에 저장됐던 refreshToken 키는 hydration
+// 시점에 무시되고 다음 setSession에서 사라진다.
 
 export interface User {
   id: string
@@ -15,13 +17,9 @@ export interface User {
 
 interface AuthState {
   accessToken: string | null
-  refreshToken: string | null
   user: User | null
-  setSession: (data: {
-    accessToken: string
-    refreshToken: string
-    user: User
-  }) => void
+  setSession: (data: { accessToken: string; user: User }) => void
+  setAccessToken: (token: string) => void
   clearSession: () => void
 }
 
@@ -29,15 +27,16 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       accessToken: null,
-      refreshToken: null,
       user: null,
-      setSession: ({ accessToken, refreshToken, user }) =>
-        set({ accessToken, refreshToken, user }),
-      clearSession: () =>
-        set({ accessToken: null, refreshToken: null, user: null }),
+      setSession: ({ accessToken, user }) => set({ accessToken, user }),
+      setAccessToken: (accessToken) => set({ accessToken }),
+      clearSession: () => set({ accessToken: null, user: null }),
     }),
     {
-      name: 'rosshield-auth', // localStorage key
+      name: 'rosshield-auth', // localStorage key (C5 이전 형식과 동일 — 추가 마이그레이션 불필요)
+      storage: createJSONStorage(() => localStorage),
+      // accessToken·user만 영속. refreshToken 등 의도치 않은 필드는 hydration에서 drop.
+      partialize: (s) => ({ accessToken: s.accessToken, user: s.user }),
     },
   ),
 )

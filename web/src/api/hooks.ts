@@ -29,7 +29,9 @@ export interface LoginVars {
 
 export interface LoginResponse {
   accessToken: string
-  refreshToken: string
+  // C6 — refreshToken은 cookie 모드(X-Cookie-Auth: true)에서 응답 본문에 포함되지 않는다.
+  // legacy 모드(CLI)는 본문에 있지만 web 클라이언트는 cookie를 사용하므로 무시.
+  refreshToken?: string
   user: User
 }
 
@@ -48,19 +50,36 @@ export const useLogin = () => {
         )
       }
       // 방어: backend ECONNREFUSED 등 비정상 응답에서 data가 undefined일 수 있음.
-      // 그대로 setSession에 넘기면 destructure가 폭발 → user에게 의미 없는 에러.
-      // openapi-fetch 타입 좁힘으로 이 분기에서 response가 `never`가 되어 status 0을 사용한다.
       if (!data) {
         throw new ApiError(
           0,
           '서버 응답이 비어 있습니다. 백엔드 서버(8080)가 떠있는지 확인하세요.',
         )
       }
-      // 서버 합의 응답 형식(envelope 없음) — spec과의 차이는 의도된 것.
       return data as unknown as LoginResponse
     },
     onSuccess: (data) => {
-      setSession(data)
+      setSession({ accessToken: data.accessToken, user: data.user })
+    },
+  })
+}
+
+// useLogout은 /auth/logout을 호출해 서버 측 refresh를 revoke + cookie를 만료시킵니다.
+//   네트워크 실패에도 클라이언트 세션은 항상 비움 (UX — 사용자 의도는 로그아웃).
+export const useLogout = () => {
+  const clearSession = useAuthStore((s) => s.clearSession)
+  return useMutation({
+    mutationFn: async (): Promise<void> => {
+      try {
+        await fetch(`${API_BASE_PATH}/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-Cookie-Auth': 'true' },
+        })
+      } catch {
+        // ignore — 클라이언트 세션은 항상 클리어.
+      }
+      clearSession()
     },
   })
 }

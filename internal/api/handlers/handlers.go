@@ -84,6 +84,8 @@ func New(deps Deps) *Handlers {
 func (h *Handlers) Mount(r chi.Router) {
 	// 1. Public endpoints — auth 미적용
 	r.Post("/api/v1/auth/login", h.Login)
+	r.Post("/api/v1/auth/refresh", h.RefreshAuth) // C6 — refresh token rotation
+	r.Post("/api/v1/auth/logout", h.LogoutAuth)   // C6 — refresh revoke + cookie clear
 
 	// 2. Protected endpoints — AuthMiddleware 통과 후 진입
 	r.Group(func(r chi.Router) {
