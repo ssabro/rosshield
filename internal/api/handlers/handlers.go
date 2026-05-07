@@ -33,6 +33,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	"github.com/ssabro/rosshield/internal/domain/scan"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
+	"github.com/ssabro/rosshield/internal/domain/tenant/sso"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/license"
@@ -56,6 +57,7 @@ type Deps struct {
 	Audit      audit.Service      // B1 — Web UI Audit 페이지 (GET /audit/head)
 	EventBus   eventbus.Bus       // C1 carryover — WebSocket scan progress 구독
 	License    *license.Enforcer  // E24-C — Open-core enterprise feature 게이트
+	SSO        sso.Service        // E20-A Phase 3 — SSO scaffold (옵트인, nil이면 503)
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -160,6 +162,19 @@ func (h *Handlers) Mount(r chi.Router) {
 
 		// E24 — License info (B5 Web Console 지원).
 		r.Get("/api/v1/license", h.GetLicenseInfo)
+
+		// E20-A Phase 3 — SSO scaffold (OIDC + SAML, 옵트인).
+		// 본 stage는 protected group에 mount — 후속 stage에서 비인증 진입(사용자가 패스워드 모름)
+		// 위해 별 group으로 이동 + tenant 결정 path 정리(서브도메인·헤더·설정 file 중 택일).
+		r.Get("/api/v1/auth/sso/{providerId}/login", func(w http.ResponseWriter, req *http.Request) {
+			h.StartSSOLogin(w, req, chi.URLParam(req, "providerId"))
+		})
+		r.Get("/api/v1/auth/sso/{providerId}/callback", func(w http.ResponseWriter, req *http.Request) {
+			h.CompleteSSOLoginOIDC(w, req, chi.URLParam(req, "providerId"))
+		})
+		r.Post("/api/v1/auth/sso/{providerId}/saml/acs", func(w http.ResponseWriter, req *http.Request) {
+			h.CompleteSSOLoginSAML(w, req, chi.URLParam(req, "providerId"))
+		})
 	})
 }
 
