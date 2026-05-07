@@ -10,7 +10,10 @@ import {
 } from 'lucide-react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useT } from '@/i18n/t'
 import { cn } from '@/lib/utils'
+
+import type { DictKey } from '@/i18n/dict'
 
 // 좌측 사이드바 — 6 메뉴 + 하단 빌드 버전(브랜드 영역).
 // `_authenticated` 셸 안에서만 렌더링된다.
@@ -19,16 +22,21 @@ import { cn } from '@/lib/utils'
 //   - 브랜드 영역에 작은 부제 ("Security Console") 추가
 //   - 활성 메뉴는 좌측 indicator bar + 강조 배경 + 아이콘 색
 //   - 로그아웃은 헤더로 이동(중복 방지) — 본 사이드바는 메뉴+브랜드만
-const items = [
-  { to: '/robots', label: '로봇', icon: Server },
-  { to: '/scans', label: '스캔', icon: PlayCircle },
-  { to: '/findings', label: 'Findings', icon: AlertTriangle },
-  { to: '/compliance', label: 'Compliance', icon: ClipboardCheck },
-  { to: '/advisor', label: 'Advisor', icon: MessageSquare },
-  { to: '/reports', label: '리포트', icon: FileText },
-] as const
+const items: ReadonlyArray<{
+  to: '/robots' | '/scans' | '/findings' | '/compliance' | '/advisor' | '/reports'
+  labelKey: DictKey
+  icon: typeof Server
+}> = [
+  { to: '/robots', labelKey: 'nav.robots', icon: Server },
+  { to: '/scans', labelKey: 'nav.scans', icon: PlayCircle },
+  { to: '/findings', labelKey: 'nav.findings', icon: AlertTriangle },
+  { to: '/compliance', labelKey: 'nav.compliance', icon: ClipboardCheck },
+  { to: '/advisor', labelKey: 'nav.advisor', icon: MessageSquare },
+  { to: '/reports', labelKey: 'nav.reports', icon: FileText },
+]
 
 export function Sidebar(): React.ReactElement {
+  const t = useT()
   // 로그아웃은 Header에 통합 — 본 사이드바는 메뉴+브랜드 전용.
   return (
     <aside className="flex w-60 flex-col border-r border-border bg-card">
@@ -37,15 +45,15 @@ export function Sidebar(): React.ReactElement {
           <ShieldCheck className="h-5 w-5 text-primary" aria-hidden />
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-sm font-semibold tracking-tight">rosshield</span>
+          <span className="text-sm font-semibold tracking-tight">{t('app.brand')}</span>
           <span className="text-[10px] text-muted-foreground">
-            Security Console
+            {t('app.brand.subtitle')}
           </span>
         </div>
       </div>
 
       <ScrollArea className="flex-1">
-        <nav aria-label="주 메뉴" className="flex flex-col gap-0.5 p-3">
+        <nav aria-label={t('app.brand')} className="flex flex-col gap-0.5 p-3">
           {items.map((item) => (
             <Link
               key={item.to}
@@ -60,14 +68,14 @@ export function Sidebar(): React.ReactElement {
               )}
             >
               <item.icon className="h-4 w-4" aria-hidden />
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </Link>
           ))}
         </nav>
       </ScrollArea>
 
       <div className="border-t border-border px-4 py-3 text-[10px] text-muted-foreground">
-        v0.1.0 · Phase 2
+        {t('app.version')}
       </div>
     </aside>
   )

@@ -7,6 +7,7 @@ import { ApiError } from '@/api/errors'
 import { useDismissInsight, useInsights } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +41,7 @@ function FindingsPage(): React.ReactElement {
   const [kind, setKind] = useState<string>('')
   const [severity, setSeverity] = useState<string>('')
   const [robotId, setRobotId] = useState<string>('')
+  const t = useT()
 
   const filter = buildInsightsFilter({ kind, severity, robotId })
   const insights = useInsights(filter)
@@ -47,8 +49,8 @@ function FindingsPage(): React.ReactElement {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Findings"
-        description="drift·anomaly·peer detector가 산출한 활성 Insight입니다. 자동 생성은 scan 완료 시 일어나며, 수동으로 dismiss하면 활성 목록에서 사라집니다."
+        title={t('pages.findings.title')}
+        description={t('pages.findings.description')}
       />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">

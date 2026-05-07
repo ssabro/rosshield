@@ -5,6 +5,7 @@ import { MessageSquare } from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useT } from '@/i18n/t'
 import {
   useAdvisorConversation,
   useAdvisorConversations,
@@ -30,10 +31,11 @@ const EXAMPLE_PROMPTS = [
 function AdvisorPage(): React.ReactElement {
   const conversations = useAdvisorConversations()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const t = useT()
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Advisor" />
+      <PageHeader title={t('pages.advisor.title')} />
       <p className="text-sm text-muted-foreground">
         자연어 질문 → LLM이 read-only tool로 컨텍스트 수집 → 설명 생성. 옵트인
         기능이라 서버 시작 시{' '}

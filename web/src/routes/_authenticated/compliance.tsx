@@ -12,6 +12,7 @@ import {
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -63,14 +64,15 @@ const FRAMEWORKS: Array<{
 function CompliancePage(): React.ReactElement {
   const profiles = useComplianceProfiles()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const t = useT()
 
   const selected = profiles.data?.find((p) => p.id === selectedId) ?? null
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Compliance"
-        description="프레임워크별 프로필을 활성화하고, 스캔 세션 결과로부터 스냅샷을 생성합니다."
+        title={t('pages.compliance.title')}
+        description={t('pages.compliance.description')}
       />
 
       <CreateProfileForm />

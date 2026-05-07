@@ -6,6 +6,7 @@ import { ApiError } from '@/api/errors'
 import { useReports } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useT } from '@/i18n/t'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -29,12 +30,13 @@ import type { Report } from '@/api/hooks'
 // 컬럼: ID·session·생성일·서명 여부·SHA256(앞 16자)
 function ReportsPage(): React.ReactElement {
   const reports = useReports()
+  const t = useT()
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="리포트"
-        description="생성된 리포트 목록과 서명 상태를 확인합니다."
+        title={t('pages.reports.title')}
+        description={t('pages.reports.description')}
       />
 
       <div className="rounded-md border">

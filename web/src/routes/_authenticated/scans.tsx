@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ApiError } from '@/api/errors'
 import { useScanProgress, useStartScan } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -37,6 +38,7 @@ function ScansPage(): React.ReactElement {
   const [trigger, setTrigger] = useState<string>('manual')
   const [lastSession, setLastSession] = useState<ScanSession | null>(null)
   const [error, setError] = useState('')
+  const t = useT()
 
   const startScan = useStartScan()
 
@@ -62,8 +64,8 @@ function ScansPage(): React.ReactElement {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="스캔"
-        description="플릿과 벤치마크 팩을 선택해 새 스캔 세션을 시작합니다."
+        title={t('pages.scans.title')}
+        description={t('pages.scans.description')}
       />
 
       <Card className="max-w-xl">

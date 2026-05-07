@@ -7,6 +7,7 @@ import { ApiError } from '@/api/errors'
 import { useRobots } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,12 +31,13 @@ function RobotsPage(): React.ReactElement {
   const [fleetId, setFleetId] = useState('')
   const trimmed = fleetId.trim()
   const robots = useRobots(trimmed.length > 0 ? trimmed : undefined)
+  const t = useT()
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="로봇"
-        description="테넌트에 등록된 로봇 목록입니다."
+        title={t('pages.robots.title')}
+        description={t('pages.robots.description')}
       />
 
       <div className="flex max-w-sm flex-col gap-2">

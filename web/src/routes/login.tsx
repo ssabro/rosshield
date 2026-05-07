@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
 import { useLogin } from '@/api/hooks'
+import { useT } from '@/i18n/t'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -24,6 +25,7 @@ import type { FormEvent } from 'react'
 function LoginPage(): React.ReactElement {
   const navigate = useNavigate()
   const login = useLogin()
+  const t = useT()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -39,9 +41,9 @@ function LoginPage(): React.ReactElement {
         },
         onError: (err) => {
           if (err instanceof ApiError && err.isUnauthorized()) {
-            setError('이메일 또는 패스워드가 올바르지 않습니다')
+            setError(t('login.error.invalid'))
           } else {
-            setError(err instanceof Error ? err.message : '로그인 실패')
+            setError(err instanceof Error ? err.message : t('login.error.invalid'))
           }
         },
       },
@@ -56,7 +58,7 @@ function LoginPage(): React.ReactElement {
             <ShieldCheck className="h-8 w-8 text-primary" aria-hidden />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">rosshield</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{t('app.brand')}</h1>
             <p className="text-sm text-muted-foreground">
               ROS2 Fleet Security Console
             </p>
@@ -65,15 +67,13 @@ function LoginPage(): React.ReactElement {
 
         <Card>
           <CardHeader>
-            <CardTitle>로그인</CardTitle>
-            <CardDescription>
-              관리자 자격으로 콘솔에 진입합니다.
-            </CardDescription>
+            <CardTitle>{t('login.title')}</CardTitle>
+            <CardDescription>{t('login.description')}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">이메일</Label>
+                <Label htmlFor="email">{t('login.email')}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -86,7 +86,7 @@ function LoginPage(): React.ReactElement {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">패스워드</Label>
+                <Label htmlFor="password">{t('login.password')}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -109,14 +109,14 @@ function LoginPage(): React.ReactElement {
                 className="w-full"
                 disabled={login.isPending}
               >
-                {login.isPending ? '로그인 중…' : '로그인'}
+                {login.isPending ? t('login.submitting') : t('login.submit')}
               </Button>
             </form>
           </CardContent>
         </Card>
 
         <p className="text-center text-xs text-muted-foreground">
-          rosshield · v0.1.0 · Phase 2
+          {t('login.footer')}
         </p>
       </div>
     </div>
