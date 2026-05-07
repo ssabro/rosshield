@@ -54,7 +54,7 @@ function ScansPage(): React.ReactElement {
           if (err instanceof ApiError) {
             setError(err.message)
           } else {
-            setError(err instanceof Error ? err.message : '스캔 시작 실패')
+            setError(err instanceof Error ? err.message : t('scans.form.error.fallback'))
           }
         },
       },
@@ -70,40 +70,40 @@ function ScansPage(): React.ReactElement {
 
       <Card className="max-w-xl">
         <CardHeader>
-          <CardTitle>새 스캔 시작</CardTitle>
+          <CardTitle>{t('scans.form.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="fleetId">Fleet ID</Label>
+              <Label htmlFor="fleetId">{t('scans.form.fleet')}</Label>
               <Input
                 id="fleetId"
                 required
                 value={fleetId}
                 onChange={(e) => setFleetId(e.target.value)}
-                placeholder="예: production"
+                placeholder={t('scans.form.fleet.placeholder')}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="packId">Pack ID</Label>
+              <Label htmlFor="packId">{t('scans.form.pack')}</Label>
               <Input
                 id="packId"
                 required
                 value={packId}
                 onChange={(e) => setPackId(e.target.value)}
-                placeholder="예: cis-ubuntu-24.04"
+                placeholder={t('scans.form.pack.placeholder')}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="trigger">트리거</Label>
+              <Label htmlFor="trigger">{t('scans.form.trigger')}</Label>
               <Select value={trigger} onValueChange={setTrigger}>
                 <SelectTrigger id="trigger">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TRIGGERS.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
+                  {TRIGGERS.map((tr) => (
+                    <SelectItem key={tr} value={tr}>
+                      {tr}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -115,7 +115,9 @@ function ScansPage(): React.ReactElement {
               </p>
             )}
             <Button type="submit" disabled={startScan.isPending}>
-              {startScan.isPending ? '시작 중…' : '스캔 시작'}
+              {startScan.isPending
+                ? t('scans.form.submitting')
+                : t('scans.form.submit')}
             </Button>
           </form>
         </CardContent>
@@ -133,6 +135,7 @@ function SessionProgressCard({
 }): React.ReactElement {
   // C1 — WebSocket으로 실시간 진행률 구독. 첫 수신값을 latest, 미수신은 session 초기값 사용.
   const ws = useScanProgress(session.sessionId)
+  const t = useT()
 
   const total = ws.latest?.total ?? session.total
   const completed = ws.latest?.completed ?? session.completed
@@ -143,15 +146,15 @@ function SessionProgressCard({
   return (
     <Card className="max-w-xl">
       <CardHeader>
-        <CardTitle>시작된 세션</CardTitle>
+        <CardTitle>{t('scans.session.title')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div>
-          <span className="text-muted-foreground">Session ID: </span>
+          <span className="text-muted-foreground">{t('scans.session.id')}: </span>
           <span className="font-mono">{session.sessionId}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">상태:</span>
+          <span className="text-muted-foreground">{t('scans.session.status')}:</span>
           <Badge variant={statusVariant(status)}>{status}</Badge>
           <Badge variant="outline" className="ml-auto text-xs">
             WS {ws.status}
@@ -161,7 +164,7 @@ function SessionProgressCard({
           <Progress value={percent} className="h-2" />
           <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              {completed} / {total} (실패 {failed})
+              {completed} / {total} ({t('scans.session.failed', { count: failed })})
             </span>
             <span>{percent}%</span>
           </div>

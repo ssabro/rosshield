@@ -41,10 +41,10 @@ function RobotsPage(): React.ReactElement {
       />
 
       <div className="flex max-w-sm flex-col gap-2">
-        <Label htmlFor="fleet-filter">Fleet ID 필터</Label>
+        <Label htmlFor="fleet-filter">{t('robots.filter.fleet')}</Label>
         <Input
           id="fleet-filter"
-          placeholder="예: production"
+          placeholder={t('robots.filter.fleet.placeholder')}
           value={fleetId}
           onChange={(e) => setFleetId(e.target.value)}
         />
@@ -54,11 +54,11 @@ function RobotsPage(): React.ReactElement {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>이름</TableHead>
-              <TableHead>호스트:포트</TableHead>
-              <TableHead>인증</TableHead>
-              <TableHead>심각도</TableHead>
-              <TableHead>태그</TableHead>
+              <TableHead>{t('robots.table.name')}</TableHead>
+              <TableHead>{t('robots.table.host')}</TableHead>
+              <TableHead>{t('robots.table.auth')}</TableHead>
+              <TableHead>{t('robots.table.criticality')}</TableHead>
+              <TableHead>{t('robots.table.tags')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -68,7 +68,7 @@ function RobotsPage(): React.ReactElement {
                   colSpan={5}
                   className="text-center text-muted-foreground"
                 >
-                  불러오는 중…
+                  {t('common.loading')}
                 </TableCell>
               </TableRow>
             )}
@@ -77,7 +77,7 @@ function RobotsPage(): React.ReactElement {
                 <TableCell colSpan={5} className="text-center text-destructive">
                   {robots.error instanceof ApiError
                     ? robots.error.message
-                    : '로봇 목록을 불러올 수 없습니다'}
+                    : t('robots.error.fallback')}
                 </TableCell>
               </TableRow>
             )}
@@ -86,8 +86,8 @@ function RobotsPage(): React.ReactElement {
                 <TableCell colSpan={5} className="p-0">
                   <EmptyState
                     icon={Server}
-                    title="등록된 로봇이 없습니다"
-                    description="rosshield-server seed demo로 시연 데이터를 시드하거나, robot.Service.CreateRobot으로 추가하세요."
+                    title={t('robots.empty.title')}
+                    description={t('robots.empty.description')}
                     className="rounded-none border-0 bg-transparent"
                   />
                 </TableCell>

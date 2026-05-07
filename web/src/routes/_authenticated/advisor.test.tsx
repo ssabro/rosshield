@@ -7,8 +7,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { ApiError } from '@/api/errors'
+import { translate } from '@/i18n/t'
 
 import { resolveAskErrorMessage, roleVariant } from './advisor'
+
+import type { DictKey } from '@/i18n/dict'
+
+// Helper: 한국어 dict 기준으로 t를 평가 (테스트 fixture).
+const tKo = (k: DictKey): string => translate('ko', k)
 
 describe('roleVariant', () => {
   it('user → default', () => {
@@ -32,25 +38,29 @@ describe('roleVariant', () => {
 describe('resolveAskErrorMessage', () => {
   it('ApiError 503 → 옵트인 활성화 안내 (LLM disabled)', () => {
     const err = new ApiError(503, 'service unavailable')
-    expect(resolveAskErrorMessage(err)).toMatch(/Advisor가 비활성 상태/)
-    expect(resolveAskErrorMessage(err)).toMatch(/--llm-provider/)
+    expect(resolveAskErrorMessage(err, tKo)).toMatch(/Advisor가 비활성 상태/)
+    expect(resolveAskErrorMessage(err, tKo)).toMatch(/--llm-provider/)
   })
 
   it('ApiError 그 외 status → 서버 메시지 노출', () => {
     const err = new ApiError(401, '인증 만료됨')
-    expect(resolveAskErrorMessage(err)).toBe('인증 만료됨')
+    expect(resolveAskErrorMessage(err, tKo)).toBe('인증 만료됨')
   })
 
   it('ApiError 400 → 서버 메시지 노출 (empty question 등)', () => {
     const err = new ApiError(400, 'advisor: question is required')
-    expect(resolveAskErrorMessage(err)).toBe('advisor: question is required')
+    expect(resolveAskErrorMessage(err, tKo)).toBe('advisor: question is required')
   })
 
   it('비-ApiError → 일반 fallback 메시지', () => {
-    expect(resolveAskErrorMessage(new Error('네트워크 단절'))).toBe(
+    expect(resolveAskErrorMessage(new Error('네트워크 단절'), tKo)).toBe(
       '질문 처리 중 오류가 발생했습니다',
     )
-    expect(resolveAskErrorMessage(undefined)).toBe('질문 처리 중 오류가 발생했습니다')
-    expect(resolveAskErrorMessage(null)).toBe('질문 처리 중 오류가 발생했습니다')
+    expect(resolveAskErrorMessage(undefined, tKo)).toBe(
+      '질문 처리 중 오류가 발생했습니다',
+    )
+    expect(resolveAskErrorMessage(null, tKo)).toBe(
+      '질문 처리 중 오류가 발생했습니다',
+    )
   })
 })

@@ -17,12 +17,13 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
 import type { AdvisorConversation, AdvisorTurn } from '@/api/hooks'
+import type { DictKey } from '@/i18n/dict'
 
-const EXAMPLE_PROMPTS = [
-  '최근 scan에서 fail한 check 요약해줘',
-  '활성 robot 중 critical 등급은?',
-  '오늘의 compliance 점수 변화는?',
-] as const
+const EXAMPLE_PROMPT_KEYS: ReadonlyArray<DictKey> = [
+  'advisor.example.recent_fail',
+  'advisor.example.critical_robots',
+  'advisor.example.score_change',
+]
 
 // `/advisor` — LLM 옵트인 대화 (E19-3-B).
 // - 좌: 대화 목록 (클릭 → 선택)
@@ -37,10 +38,11 @@ function AdvisorPage(): React.ReactElement {
     <div className="space-y-4">
       <PageHeader title={t('pages.advisor.title')} />
       <p className="text-sm text-muted-foreground">
-        자연어 질문 → LLM이 read-only tool로 컨텍스트 수집 → 설명 생성. 옵트인
-        기능이라 서버 시작 시{' '}
-        <code className="rounded bg-muted px-1">--llm-provider=ollama</code> 또는{' '}
-        <code className="rounded bg-muted px-1">=anthropic</code> 활성화가 필요합니다.
+        {t('advisor.subtitle.intro')}
+        <code className="rounded bg-muted px-1">--llm-provider=ollama</code>
+        {t('advisor.subtitle.or')}
+        <code className="rounded bg-muted px-1">=anthropic</code>
+        {t('advisor.subtitle.suffix')}
       </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[18rem_1fr]">
@@ -79,26 +81,33 @@ function ConversationsList({
   onSelect: (id: string) => void
   onNew: () => void
 }): React.ReactElement {
+  const t = useT()
   return (
     <aside className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">대화</h2>
+        <h2 className="text-sm font-medium">{t('advisor.conversations.title')}</h2>
         <Button size="sm" variant="outline" onClick={onNew}>
-          새 대화
+          {t('advisor.conversations.new')}
         </Button>
       </div>
 
       {isPending && (
-        <p className="text-xs text-muted-foreground">불러오는 중…</p>
+        <p className="text-xs text-muted-foreground">
+          {t('advisor.conversations.loading')}
+        </p>
       )}
       {isError && (
         <p className="text-xs text-destructive">
-          {error instanceof ApiError ? error.message : '대화 목록을 불러올 수 없습니다'}
+          {error instanceof ApiError
+            ? error.message
+            : t('advisor.conversations.list.error')}
         </p>
       )}
       {!isPending && !isError && conversations.length === 0 && (
         <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-xs text-muted-foreground">
-          대화가 없습니다.<br />새 대화로 시작하세요.
+          {t('advisor.conversations.empty')}
+          <br />
+          {t('advisor.conversations.empty.cta')}
         </p>
       )}
 
@@ -115,10 +124,10 @@ function ConversationsList({
               }
             >
               <div className="truncate font-medium" title={c.title}>
-                {c.title || '(제목 없음)'}
+                {c.title || t('advisor.conversations.untitled')}
               </div>
               <div className="text-[10px] text-muted-foreground">
-                {new Date(c.updatedAt).toLocaleString('ko-KR')}
+                {new Date(c.updatedAt).toLocaleString()}
               </div>
             </button>
           </li>
@@ -138,6 +147,7 @@ function ConversationPanel({
   const detail = useAdvisorConversation(conversationId ?? undefined)
   const ask = useAskAdvisor()
   const [question, setQuestion] = useState('')
+  const t = useT()
 
   const turns: AdvisorTurn[] = detail.data?.turns ?? []
 
@@ -166,13 +176,15 @@ function ConversationPanel({
   return (
     <section className="flex min-h-[28rem] flex-col gap-3 rounded-md border bg-card p-4">
       {detail.isPending && conversationId && (
-        <p className="text-xs text-muted-foreground">대화 불러오는 중…</p>
+        <p className="text-xs text-muted-foreground">
+          {t('advisor.panel.detail.loading')}
+        </p>
       )}
       {detail.isError && (
         <p className="text-sm text-destructive">
           {detail.error instanceof ApiError
             ? detail.error.message
-            : '대화를 불러올 수 없습니다'}
+            : t('advisor.panel.detail.error')}
         </p>
       )}
 
@@ -183,43 +195,46 @@ function ConversationPanel({
               <MessageSquare className="h-6 w-6" aria-hidden />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium">새 대화를 시작하세요</p>
+              <p className="text-sm font-medium">{t('advisor.panel.empty.title')}</p>
               <p className="text-xs text-muted-foreground">
-                아래 질문 입력란에 자연어로 묻고 Ask 버튼을 누릅니다.
+                {t('advisor.panel.empty.description')}
               </p>
             </div>
             <div className="flex flex-wrap justify-center gap-1.5 pt-1">
-              {EXAMPLE_PROMPTS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setQuestion(p)}
-                  className="rounded-full border border-dashed border-border bg-muted/30 px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
-                >
-                  {p}
-                </button>
-              ))}
+              {EXAMPLE_PROMPT_KEYS.map((k) => {
+                const text = t(k)
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setQuestion(text)}
+                    className="rounded-full border border-dashed border-border bg-muted/30 px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
+                  >
+                    {text}
+                  </button>
+                )
+              })}
             </div>
           </li>
         )}
-        {turns.map((t) => (
-          <TurnView key={t.id} turn={t} />
+        {turns.map((tn) => (
+          <TurnView key={tn.id} turn={tn} />
         ))}
       </ol>
 
       {ask.isError && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          {resolveAskErrorMessage(ask.error)}
+          {resolveAskErrorMessage(ask.error, t)}
         </div>
       )}
 
       <form onSubmit={onSubmit} className="flex flex-col gap-2 border-t pt-3">
         <Label htmlFor="ask-input" className="text-xs">
-          질문
+          {t('advisor.input.label')}
         </Label>
         <Textarea
           id="ask-input"
-          placeholder="예: 이 robot의 마지막 scan에서 ros1_no_password_node check가 왜 fail했나요?"
+          placeholder={t('advisor.input.placeholder')}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           rows={3}
@@ -227,7 +242,9 @@ function ConversationPanel({
         />
         <div className="flex justify-end">
           <Button type="submit" disabled={!question.trim() || ask.isPending}>
-            {ask.isPending ? 'Ask 중…' : 'Ask'}
+            {ask.isPending
+              ? t('advisor.input.submitting')
+              : t('advisor.input.submit')}
           </Button>
         </div>
       </form>
@@ -238,6 +255,7 @@ function ConversationPanel({
 function TurnView({ turn }: { turn: AdvisorTurn }): React.ReactElement {
   const isUser = turn.role === 'user'
   const isTool = turn.role === 'tool'
+  const t = useT()
 
   // chat-like 정렬: user는 우측, assistant/tool은 좌측.
   const align = isUser ? 'items-end' : 'items-start'
@@ -266,11 +284,12 @@ function TurnView({ turn }: { turn: AdvisorTurn }): React.ReactElement {
           </span>
         )}
         <span className="font-mono">
-          {new Date(turn.createdAt).toLocaleString('ko-KR')}
+          {new Date(turn.createdAt).toLocaleString()}
         </span>
       </div>
       <div className={`max-w-[85%] ${bubble}`}>
-        {turn.content || (isTool ? '(tool result)' : '(no content)')}
+        {turn.content ||
+          (isTool ? t('advisor.turn.tool_result') : t('advisor.turn.no_content'))}
       </div>
       {turn.toolCalls && turn.toolCalls.length > 0 && (
         <div className="flex max-w-[85%] flex-col gap-0.5 rounded-md border border-dashed border-border bg-muted/30 px-2 py-1.5">
@@ -309,18 +328,21 @@ export function roleVariant(
 }
 
 // resolveAskErrorMessage는 useAskAdvisor의 에러를 사용자 가시 메시지로 매핑합니다.
-//   ApiError 503  → 옵트인 활성화 안내 (LLM disabled)
+//   ApiError 503  → 옵트인 활성화 안내 (LLM disabled, dict key)
 //   ApiError 그 외 → 서버 메시지 노출
-//   비-ApiError    → 일반 fallback
-// 단위 테스트(advisor.test.tsx) 대상으로 export.
-export function resolveAskErrorMessage(err: unknown): string {
+//   비-ApiError    → 일반 fallback (dict key)
+// 단위 테스트(advisor.test.tsx) 대상으로 export — t는 dict 키를 문자열로 푸는 함수.
+export function resolveAskErrorMessage(
+  err: unknown,
+  t: (key: DictKey) => string,
+): string {
   if (err instanceof ApiError && err.status === 503) {
-    return 'Advisor가 비활성 상태입니다. 서버를 --llm-provider=ollama 또는 =anthropic으로 재시작하세요.'
+    return t('advisor.error.disabled')
   }
   if (err instanceof ApiError) {
     return err.message
   }
-  return '질문 처리 중 오류가 발생했습니다'
+  return t('advisor.error.fallback')
 }
 
 export const Route = createFileRoute('/_authenticated/advisor')({

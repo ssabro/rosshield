@@ -55,13 +55,13 @@ function FindingsPage(): React.ReactElement {
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="kind-filter">Kind</Label>
+          <Label htmlFor="kind-filter">{t('findings.filter.kind')}</Label>
           <Select value={kind || 'all'} onValueChange={(v) => setKind(v === 'all' ? '' : v)}>
             <SelectTrigger id="kind-filter">
-              <SelectValue placeholder="전체" />
+              <SelectValue placeholder={t('findings.filter.all')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">전체</SelectItem>
+              <SelectItem value="all">{t('findings.filter.all')}</SelectItem>
               {KIND_OPTIONS.map((k) => (
                 <SelectItem key={k} value={k}>
                   {k}
@@ -72,13 +72,13 @@ function FindingsPage(): React.ReactElement {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="severity-filter">Severity</Label>
+          <Label htmlFor="severity-filter">{t('findings.filter.severity')}</Label>
           <Select value={severity || 'all'} onValueChange={(v) => setSeverity(v === 'all' ? '' : v)}>
             <SelectTrigger id="severity-filter">
-              <SelectValue placeholder="전체" />
+              <SelectValue placeholder={t('findings.filter.all')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">전체</SelectItem>
+              <SelectItem value="all">{t('findings.filter.all')}</SelectItem>
               {SEVERITY_OPTIONS.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
@@ -89,10 +89,10 @@ function FindingsPage(): React.ReactElement {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="robot-filter">Robot ID</Label>
+          <Label htmlFor="robot-filter">{t('findings.filter.robot')}</Label>
           <Input
             id="robot-filter"
-            placeholder="예: ro_ABC..."
+            placeholder={t('findings.filter.robot.placeholder')}
             value={robotId}
             onChange={(e) => setRobotId(e.target.value)}
           />
@@ -103,19 +103,19 @@ function FindingsPage(): React.ReactElement {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kind</TableHead>
-              <TableHead>Severity</TableHead>
-              <TableHead>Summary</TableHead>
-              <TableHead>Scope</TableHead>
-              <TableHead>생성</TableHead>
-              <TableHead className="text-right">조치</TableHead>
+              <TableHead>{t('findings.table.kind')}</TableHead>
+              <TableHead>{t('findings.table.severity')}</TableHead>
+              <TableHead>{t('findings.table.summary')}</TableHead>
+              <TableHead>{t('findings.table.scope')}</TableHead>
+              <TableHead>{t('findings.table.created')}</TableHead>
+              <TableHead className="text-right">{t('findings.table.action')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {insights.isPending && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  불러오는 중…
+                  {t('common.loading')}
                 </TableCell>
               </TableRow>
             )}
@@ -124,7 +124,7 @@ function FindingsPage(): React.ReactElement {
                 <TableCell colSpan={6} className="text-center text-destructive">
                   {insights.error instanceof ApiError
                     ? insights.error.message
-                    : 'Insight 목록을 불러올 수 없습니다'}
+                    : t('findings.error.fallback')}
                 </TableCell>
               </TableRow>
             )}
@@ -133,8 +133,8 @@ function FindingsPage(): React.ReactElement {
                 <TableCell colSpan={6} className="p-0">
                   <EmptyState
                     icon={Inbox}
-                    title="활성 Insight가 없습니다"
-                    description="필터를 비우거나, scan 완료 후 자동 산출되거나 fleet 단위로 :run을 호출하세요."
+                    title={t('findings.empty.title')}
+                    description={t('findings.empty.description')}
                     className="rounded-none border-0 bg-transparent"
                   />
                 </TableCell>
@@ -151,9 +151,13 @@ function FindingsPage(): React.ReactElement {
 
 function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
   const dismiss = useDismissInsight()
+  const t = useT()
 
   const onDismiss = (): void => {
-    const reason = window.prompt('Dismiss 사유를 입력하세요', 'manual review')
+    const reason = window.prompt(
+      t('findings.prompt.dismiss'),
+      t('findings.prompt.dismiss.default'),
+    )
     if (!reason || reason.trim().length === 0) return
     dismiss.mutate({ insightId: insight.id, reason: reason.trim() })
   }
@@ -178,7 +182,7 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
         {scope.length === 0 ? '-' : scope.join(' · ')}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {new Date(insight.createdAt).toLocaleString('ko-KR')}
+        {new Date(insight.createdAt).toLocaleString()}
       </TableCell>
       <TableCell className="text-right">
         <Button
@@ -187,7 +191,9 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
           onClick={onDismiss}
           disabled={dismiss.isPending}
         >
-          {dismiss.isPending ? '처리 중…' : 'Dismiss'}
+          {dismiss.isPending
+            ? t('findings.action.dismissing')
+            : t('findings.action.dismiss')}
         </Button>
       </TableCell>
     </TableRow>

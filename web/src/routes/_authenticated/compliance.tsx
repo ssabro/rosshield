@@ -54,11 +54,14 @@ import type {
 // - 하단: 선택 프로필의 snapshot 목록 + "스냅샷 생성" 폼 (sessionId)
 const FRAMEWORKS: Array<{
   value: CreateComplianceProfileVars['framework']
-  label: string
+  labelKey:
+    | 'compliance.framework.isms-p'
+    | 'compliance.framework.iso27001-2022'
+    | 'compliance.framework.nist-800-53-rev5'
 }> = [
-  { value: 'isms-p', label: 'ISMS-P' },
-  { value: 'iso27001-2022', label: 'ISO 27001:2022' },
-  { value: 'nist-800-53-rev5', label: 'NIST 800-53 Rev.5' },
+  { value: 'isms-p', labelKey: 'compliance.framework.isms-p' },
+  { value: 'iso27001-2022', labelKey: 'compliance.framework.iso27001-2022' },
+  { value: 'nist-800-53-rev5', labelKey: 'compliance.framework.nist-800-53-rev5' },
 ]
 
 function CompliancePage(): React.ReactElement {
@@ -78,22 +81,22 @@ function CompliancePage(): React.ReactElement {
       <CreateProfileForm />
 
       <section className="space-y-2">
-        <h2 className="text-lg font-medium">프로필</h2>
+        <h2 className="text-lg font-medium">{t('compliance.profile.section')}</h2>
         <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Framework</TableHead>
-                <TableHead>버전</TableHead>
-                <TableHead>상태</TableHead>
-                <TableHead>생성</TableHead>
+                <TableHead>{t('compliance.profile.table.framework')}</TableHead>
+                <TableHead>{t('compliance.profile.table.version')}</TableHead>
+                <TableHead>{t('compliance.profile.table.status')}</TableHead>
+                <TableHead>{t('compliance.profile.table.created')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {profiles.isPending && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    불러오는 중…
+                    {t('common.loading')}
                   </TableCell>
                 </TableRow>
               )}
@@ -102,7 +105,7 @@ function CompliancePage(): React.ReactElement {
                   <TableCell colSpan={4} className="text-center text-destructive">
                     {profiles.error instanceof ApiError
                       ? profiles.error.message
-                      : '프로필 목록을 불러올 수 없습니다'}
+                      : t('compliance.profile.list.error')}
                   </TableCell>
                 </TableRow>
               )}
@@ -111,8 +114,8 @@ function CompliancePage(): React.ReactElement {
                   <TableCell colSpan={4} className="p-0">
                     <EmptyState
                       icon={ClipboardCheck}
-                      title="활성 프로필이 없습니다"
-                      description="위 폼에서 프레임워크와 버전을 선택해 첫 프로필을 활성화하세요."
+                      title={t('compliance.profile.empty.title')}
+                      description={t('compliance.profile.empty.description')}
                       className="rounded-none border-0 bg-transparent"
                     />
                   </TableCell>
@@ -146,6 +149,7 @@ function ProfileRow({
   selected: boolean
   onSelect: () => void
 }): React.ReactElement {
+  const t = useT()
   return (
     <TableRow
       onClick={onSelect}
@@ -159,11 +163,13 @@ function ProfileRow({
       <TableCell className="font-mono text-xs">{profile.frameworkVersion}</TableCell>
       <TableCell>
         <Badge variant={profile.enabled ? 'default' : 'secondary'}>
-          {profile.enabled ? 'enabled' : 'disabled'}
+          {profile.enabled
+            ? t('compliance.profile.status.enabled')
+            : t('compliance.profile.status.disabled')}
         </Badge>
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {new Date(profile.createdAt).toLocaleString('ko-KR')}
+        {new Date(profile.createdAt).toLocaleString()}
       </TableCell>
     </TableRow>
   )
@@ -175,6 +181,7 @@ function CreateProfileForm(): React.ReactElement {
   >('')
   const [version, setVersion] = useState('')
   const create = useCreateComplianceProfile()
+  const t = useT()
 
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
@@ -196,7 +203,7 @@ function CreateProfileForm(): React.ReactElement {
       className="grid grid-cols-1 items-end gap-3 rounded-md border p-4 md:grid-cols-[1fr_1fr_auto]"
     >
       <div className="flex flex-col gap-2">
-        <Label htmlFor="framework">Framework</Label>
+        <Label htmlFor="framework">{t('compliance.profile.framework')}</Label>
         <Select
           value={framework}
           onValueChange={(v) =>
@@ -204,22 +211,22 @@ function CreateProfileForm(): React.ReactElement {
           }
         >
           <SelectTrigger id="framework">
-            <SelectValue placeholder="선택" />
+            <SelectValue placeholder={t('compliance.profile.framework.placeholder')} />
           </SelectTrigger>
           <SelectContent>
             {FRAMEWORKS.map((f) => (
               <SelectItem key={f.value} value={f.value}>
-                {f.label}
+                {t(f.labelKey)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="version">Framework 버전</Label>
+        <Label htmlFor="version">{t('compliance.profile.version')}</Label>
         <Input
           id="version"
-          placeholder="예: 2023.1"
+          placeholder={t('compliance.profile.version.placeholder')}
           value={version}
           onChange={(e) => setVersion(e.target.value)}
         />
@@ -228,13 +235,15 @@ function CreateProfileForm(): React.ReactElement {
         type="submit"
         disabled={!framework || !version.trim() || create.isPending}
       >
-        {create.isPending ? '추가 중…' : '프로필 추가'}
+        {create.isPending
+          ? t('compliance.profile.adding')
+          : t('compliance.profile.add')}
       </Button>
       {create.isError && (
         <p className="text-sm text-destructive md:col-span-3">
           {create.error instanceof ApiError
             ? create.error.message
-            : '프로필 추가에 실패했습니다'}
+            : t('compliance.profile.error.fallback')}
         </p>
       )}
     </form>
@@ -248,13 +257,15 @@ function SnapshotsSection({
 }): React.ReactElement {
   const snapshots = useComplianceSnapshots(profile.id)
   const latest = snapshots.data?.[0]
+  const t = useT()
 
   return (
     <section className="space-y-3">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-medium">스냅샷</h2>
+        <h2 className="text-lg font-medium">{t('compliance.snapshot.section')}</h2>
         <p className="text-xs text-muted-foreground">
-          선택: <span className="font-mono">{profile.framework}</span>{' '}
+          {t('compliance.snapshot.selected')}{' '}
+          <span className="font-mono">{profile.framework}</span>{' '}
           <span className="font-mono">{profile.frameworkVersion}</span>
         </p>
       </div>
@@ -268,21 +279,21 @@ function SnapshotsSection({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Score</TableHead>
-              <TableHead>Pass</TableHead>
-              <TableHead>Fail</TableHead>
-              <TableHead>Partial</TableHead>
-              <TableHead>N/A</TableHead>
-              <TableHead>Unmapped</TableHead>
-              <TableHead>Session</TableHead>
-              <TableHead>생성</TableHead>
+              <TableHead>{t('compliance.snapshot.table.score')}</TableHead>
+              <TableHead>{t('compliance.snapshot.table.pass')}</TableHead>
+              <TableHead>{t('compliance.snapshot.table.fail')}</TableHead>
+              <TableHead>{t('compliance.snapshot.table.partial')}</TableHead>
+              <TableHead>{t('compliance.snapshot.table.na')}</TableHead>
+              <TableHead>{t('compliance.snapshot.table.unmapped')}</TableHead>
+              <TableHead>{t('compliance.snapshot.table.session')}</TableHead>
+              <TableHead>{t('compliance.snapshot.table.created')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {snapshots.isPending && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  불러오는 중…
+                  {t('common.loading')}
                 </TableCell>
               </TableRow>
             )}
@@ -291,7 +302,7 @@ function SnapshotsSection({
                 <TableCell colSpan={8} className="text-center text-destructive">
                   {snapshots.error instanceof ApiError
                     ? snapshots.error.message
-                    : '스냅샷 목록을 불러올 수 없습니다'}
+                    : t('compliance.snapshot.list.error')}
                 </TableCell>
               </TableRow>
             )}
@@ -300,8 +311,8 @@ function SnapshotsSection({
                 <TableCell colSpan={8} className="p-0">
                   <EmptyState
                     icon={Inbox}
-                    title="스냅샷이 없습니다"
-                    description="위 폼에서 scan session ID를 입력해 첫 스냅샷을 생성하세요."
+                    title={t('compliance.snapshot.empty.title')}
+                    description={t('compliance.snapshot.empty.description')}
                     className="rounded-none border-0 bg-transparent"
                   />
                 </TableCell>
@@ -346,7 +357,7 @@ function SnapshotRow({
         {snapshot.sessionId || '-'}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {new Date(snapshot.createdAt).toLocaleString('ko-KR')}
+        {new Date(snapshot.createdAt).toLocaleString()}
       </TableCell>
     </TableRow>
   )
@@ -359,6 +370,7 @@ function GenerateSnapshotForm({
 }): React.ReactElement {
   const [sessionId, setSessionId] = useState('')
   const generate = useGenerateSnapshot()
+  const t = useT()
 
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
@@ -375,22 +387,24 @@ function GenerateSnapshotForm({
       className="grid grid-cols-1 items-end gap-3 rounded-md border p-4 md:grid-cols-[1fr_auto]"
     >
       <div className="flex flex-col gap-2">
-        <Label htmlFor="session-id">스캔 Session ID</Label>
+        <Label htmlFor="session-id">{t('compliance.snapshot.session')}</Label>
         <Input
           id="session-id"
-          placeholder="예: ss_..."
+          placeholder={t('compliance.snapshot.session.placeholder')}
           value={sessionId}
           onChange={(e) => setSessionId(e.target.value)}
         />
       </div>
       <Button type="submit" disabled={!sessionId.trim() || generate.isPending}>
-        {generate.isPending ? '생성 중…' : '스냅샷 생성'}
+        {generate.isPending
+          ? t('compliance.snapshot.generating')
+          : t('compliance.snapshot.generate')}
       </Button>
       {generate.isError && (
         <p className="text-sm text-destructive md:col-span-2">
           {generate.error instanceof ApiError
             ? generate.error.message
-            : '스냅샷 생성에 실패했습니다'}
+            : t('compliance.snapshot.error.fallback')}
         </p>
       )}
     </form>
@@ -403,14 +417,15 @@ function ScoreHeroCard({
   snapshot: ComplianceSnapshot
 }): React.ReactElement {
   const percent = Math.round(snapshot.overallScore * 100)
+  const t = useT()
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
-          최근 스냅샷 점수
+          {t('compliance.score.hero.title')}
         </CardTitle>
         <CardDescription className="text-xs">
-          {new Date(snapshot.createdAt).toLocaleString('ko-KR')} · session{' '}
+          {new Date(snapshot.createdAt).toLocaleString()} · session{' '}
           <span className="font-mono">{snapshot.sessionId || '-'}</span>
         </CardDescription>
       </CardHeader>
@@ -420,27 +435,28 @@ function ScoreHeroCard({
             {formatScore(snapshot.overallScore)}
           </span>
           <Badge variant={scoreVariant(snapshot.overallScore)}>
-            {scoreLabel(snapshot.overallScore)}
+            {t(scoreLabelKey(snapshot.overallScore))}
           </Badge>
         </div>
         <Progress value={percent} className="h-2" />
         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground sm:grid-cols-5">
           <span>
-            <span className="text-foreground">Pass</span> {snapshot.passCount}
+            <span className="text-foreground">{t('compliance.snapshot.table.pass')}</span>{' '}
+            {snapshot.passCount}
           </span>
           <span className="text-destructive">
-            <span>Fail</span> {snapshot.failCount}
+            <span>{t('compliance.snapshot.table.fail')}</span> {snapshot.failCount}
           </span>
           <span>
-            <span className="text-foreground">Partial</span>{' '}
+            <span className="text-foreground">{t('compliance.snapshot.table.partial')}</span>{' '}
             {snapshot.partialCount}
           </span>
           <span>
-            <span className="text-foreground">N/A</span>{' '}
+            <span className="text-foreground">{t('compliance.snapshot.table.na')}</span>{' '}
             {snapshot.notApplicableCount}
           </span>
           <span>
-            <span className="text-foreground">Unmapped</span>{' '}
+            <span className="text-foreground">{t('compliance.snapshot.table.unmapped')}</span>{' '}
             {snapshot.unmappedCount}
           </span>
         </div>
@@ -457,12 +473,20 @@ type StatusFilter =
   | 'not_applicable'
   | 'unmapped'
 
-const STATUS_LABELS: Record<Exclude<StatusFilter, 'all'>, string> = {
-  pass: 'Pass',
-  fail: 'Fail',
-  partial: 'Partial',
-  not_applicable: 'N/A',
-  unmapped: 'Unmapped',
+// STATUS_FILTER_KEYS는 control status를 i18n dict 키로 매핑한다 (필터 pill + Badge 라벨 공통).
+const STATUS_FILTER_KEYS: Record<
+  Exclude<StatusFilter, 'all'>,
+  | 'compliance.controls.filter.pass'
+  | 'compliance.controls.filter.fail'
+  | 'compliance.controls.filter.partial'
+  | 'compliance.controls.filter.na'
+  | 'compliance.controls.filter.unmapped'
+> = {
+  pass: 'compliance.controls.filter.pass',
+  fail: 'compliance.controls.filter.fail',
+  partial: 'compliance.controls.filter.partial',
+  not_applicable: 'compliance.controls.filter.na',
+  unmapped: 'compliance.controls.filter.unmapped',
 }
 
 function ControlsBreakdown({
@@ -472,20 +496,21 @@ function ControlsBreakdown({
 }): React.ReactElement {
   const [filter, setFilter] = useState<StatusFilter>('all')
   const statuses = snapshot.statuses ?? []
+  const t = useT()
 
   if (statuses.length === 0) {
     return (
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            통제별 결과
+            {t('compliance.controls.title')}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <EmptyState
             icon={Inbox}
-            title="통제별 결과가 없습니다"
-            description="이 스냅샷은 control 단위 데이터를 포함하지 않습니다."
+            title={t('compliance.controls.empty.title')}
+            description={t('compliance.controls.empty.description')}
             className="bg-transparent"
           />
         </CardContent>
@@ -502,10 +527,13 @@ function ControlsBreakdown({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium text-muted-foreground">
-          통제별 결과
+          {t('compliance.controls.title')}
         </CardTitle>
         <CardDescription className="text-xs">
-          총 {statuses.length}개 통제, 카테고리 {Object.keys(grouped).length}개
+          {t('compliance.controls.subtitle', {
+            total: statuses.length,
+            groups: Object.keys(grouped).length,
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -513,25 +541,29 @@ function ControlsBreakdown({
           <FilterPill
             active={filter === 'all'}
             onClick={() => setFilter('all')}
-            label="전체"
+            label={t('compliance.controls.filter.all')}
             count={statuses.length}
           />
-          {(Object.keys(STATUS_LABELS) as Array<keyof typeof STATUS_LABELS>).map(
-            (s) => (
-              <FilterPill
-                key={s}
-                active={filter === s}
-                onClick={() => setFilter(s)}
-                label={STATUS_LABELS[s]}
-                count={counts[s] ?? 0}
-                tone={s}
-              />
-            ),
-          )}
+          {(
+            Object.keys(STATUS_FILTER_KEYS) as Array<
+              keyof typeof STATUS_FILTER_KEYS
+            >
+          ).map((s) => (
+            <FilterPill
+              key={s}
+              active={filter === s}
+              onClick={() => setFilter(s)}
+              label={t(STATUS_FILTER_KEYS[s])}
+              count={counts[s] ?? 0}
+              tone={s}
+            />
+          ))}
         </div>
 
         {Object.keys(grouped).length === 0 ? (
-          <p className="text-xs text-muted-foreground">필터 조건에 맞는 통제가 없습니다.</p>
+          <p className="text-xs text-muted-foreground">
+            {t('compliance.controls.no_match')}
+          </p>
         ) : (
           <div className="space-y-3">
             {Object.entries(grouped).map(([category, items]) => (
@@ -559,13 +591,16 @@ function ControlRow({
 }: {
   status: ComplianceControlStatus
 }): React.ReactElement {
+  const t = useT()
+  const labelKey = STATUS_FILTER_KEYS[status.status as keyof typeof STATUS_FILTER_KEYS]
+  const label = labelKey ? t(labelKey) : status.status
   return (
     <li className="flex items-center gap-3 px-3 py-2 text-xs">
       <Badge
         variant={statusBadgeVariant(status.status)}
         className="shrink-0 text-[10px]"
       >
-        {STATUS_LABELS[status.status as keyof typeof STATUS_LABELS] ?? status.status}
+        {label}
       </Badge>
       <span className="font-mono text-foreground">{status.controlId}</span>
       <span className="ml-auto flex items-center gap-3 font-mono text-muted-foreground">
@@ -592,7 +627,7 @@ function FilterPill({
   onClick: () => void
   label: string
   count: number
-  tone?: keyof typeof STATUS_LABELS
+  tone?: keyof typeof STATUS_FILTER_KEYS
 }): React.ReactElement {
   const toneClass = tone === 'fail' ? 'text-destructive' : 'text-foreground'
   return (
@@ -668,10 +703,17 @@ function countByStatus(
   return out
 }
 
-function scoreLabel(score: number): string {
-  if (score >= 0.9) return '우수'
-  if (score >= 0.7) return '양호'
-  return '미흡'
+// scoreLabelKey는 점수에 대응하는 i18n dict 키를 반환한다.
+// ≥0.9 우수 / ≥0.7 양호 / else 미흡. 호출자가 t()로 번역.
+export function scoreLabelKey(
+  score: number,
+):
+  | 'compliance.score.label.excellent'
+  | 'compliance.score.label.good'
+  | 'compliance.score.label.poor' {
+  if (score >= 0.9) return 'compliance.score.label.excellent'
+  if (score >= 0.7) return 'compliance.score.label.good'
+  return 'compliance.score.label.poor'
 }
 
 // scoreVariant는 overall_score를 shadcn Badge variant로 매핑합니다.

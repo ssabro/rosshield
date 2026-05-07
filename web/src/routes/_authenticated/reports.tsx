@@ -44,12 +44,14 @@ function ReportsPage(): React.ReactElement {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Session</TableHead>
-                <TableHead>생성일</TableHead>
-                <TableHead>서명</TableHead>
-                <TableHead>SHA256</TableHead>
-                <TableHead className="text-right">다운로드</TableHead>
+                <TableHead>{t('reports.table.id')}</TableHead>
+                <TableHead>{t('reports.table.session')}</TableHead>
+                <TableHead>{t('reports.table.created')}</TableHead>
+                <TableHead>{t('reports.table.signed')}</TableHead>
+                <TableHead>{t('reports.table.sha256')}</TableHead>
+                <TableHead className="text-right">
+                  {t('reports.table.download')}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -59,7 +61,7 @@ function ReportsPage(): React.ReactElement {
                     colSpan={6}
                     className="text-center text-muted-foreground"
                   >
-                    불러오는 중…
+                    {t('common.loading')}
                   </TableCell>
                 </TableRow>
               )}
@@ -71,7 +73,7 @@ function ReportsPage(): React.ReactElement {
                   >
                     {reports.error instanceof ApiError
                       ? reports.error.message
-                      : '리포트 목록을 불러올 수 없습니다'}
+                      : t('reports.error.fallback')}
                   </TableCell>
                 </TableRow>
               )}
@@ -80,8 +82,8 @@ function ReportsPage(): React.ReactElement {
                   <TableCell colSpan={6} className="p-0">
                     <EmptyState
                       icon={FileText}
-                      title="리포트가 없습니다"
-                      description="scan 완료 후 자동 생성되거나, 별도 endpoint로 수동 생성됩니다 (Phase 3 후속)."
+                      title={t('reports.empty.title')}
+                      description={t('reports.empty.description')}
                       className="rounded-none border-0 bg-transparent"
                     />
                   </TableCell>
@@ -100,6 +102,7 @@ function ReportsPage(): React.ReactElement {
 }
 
 function ReportRow({ report }: { report: Report }): React.ReactElement {
+  const t = useT()
   const sha = report.pdfSha256 ? report.pdfSha256.slice(0, 16) : '-'
   const generated = formatDate(report.generatedAt)
   return (
@@ -107,7 +110,11 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
       <TableCell className="font-mono text-xs">{report.id}</TableCell>
       <TableCell className="font-mono text-xs">{report.sessionId}</TableCell>
       <TableCell className="text-xs">{generated}</TableCell>
-      <TableCell aria-label={report.signed ? '서명됨' : '미서명'}>
+      <TableCell
+        aria-label={
+          report.signed ? t('reports.signed.yes.aria') : t('reports.signed.no.aria')
+        }
+      >
         {report.signed ? (
           <span className="text-emerald-600" aria-hidden>
             ✓
@@ -125,11 +132,11 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
             {/* disabled 버튼은 pointer events가 없어 tooltip이 안 뜸 → span으로 감싼다 */}
             <span tabIndex={0}>
               <Button size="sm" variant="outline" disabled>
-                다운로드
+                {t('reports.action.download')}
               </Button>
             </span>
           </TooltipTrigger>
-          <TooltipContent>Phase 2 추가 예정</TooltipContent>
+          <TooltipContent>{t('reports.action.download.tooltip')}</TooltipContent>
         </Tooltip>
       </TableCell>
     </TableRow>
@@ -139,7 +146,7 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
 function formatDate(iso: string): string {
   if (!iso) return '-'
   try {
-    return new Date(iso).toLocaleString('ko-KR')
+    return new Date(iso).toLocaleString()
   } catch {
     return iso
   }
