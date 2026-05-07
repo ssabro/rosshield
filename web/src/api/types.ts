@@ -50,8 +50,59 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Local credential login */
+        /**
+         * Local credential login
+         * @description Dual mode (C6):
+         *       - `X-Cookie-Auth: true` → refresh token은 응답 본문에서 제외되고
+         *         HttpOnly `rosshield_refresh` cookie로 송출 (Web Console).
+         *       - 헤더 부재 → 본문에 refresh token 포함 (CLI legacy 호환).
+         */
         post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate access token using refresh token
+         * @description Dual mode (C6): cookie 우선 → 본문 fallback.
+         *       - Web Console (`X-Cookie-Auth: true`) → HttpOnly cookie에서 refresh 추출,
+         *         새 refresh를 다시 cookie로 송출(rotation), 본문에는 access만.
+         *       - CLI → 본문 `refreshToken` 사용, 본문에 새 refresh 포함.
+         *     실패(만료/취소/재사용 탐지)는 모두 401 + cookie clear.
+         */
+        post: operations["refreshAuth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke refresh token and clear cookie
+         * @description Idempotent. Clears `rosshield_refresh` cookie regardless of token presence.
+         *     Cookie 또는 본문 `refreshToken`에서 토큰을 추출해 도메인 layer가 revoke.
+         */
+        post: operations["logoutAuth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -473,7 +524,10 @@ export interface operations {
     login: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Set to `true` to receive refresh token via HttpOnly cookie. */
+                "X-Cookie-Auth"?: "true";
+            };
             path?: never;
             cookie?: never;
         };
@@ -491,18 +545,99 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    /** @description HttpOnly refresh cookie (only when X-Cookie-Auth is true). */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"] & {
-                        value?: {
-                            accessToken?: string;
-                            refreshToken?: string;
-                            /** Format: date-time */
-                            expiresAt?: string;
+                    "application/json": {
+                        accessToken?: string;
+                        /** @description Omitted in cookie mode. */
+                        refreshToken?: string;
+                        user?: {
+                            id?: string;
+                            email?: string;
+                            displayName?: string;
+                            tenantId?: string;
                         };
                     };
                 };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    refreshAuth: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Cookie-Auth"?: "true";
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Legacy mode (CLI). */
+                    refreshToken?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description New HttpOnly refresh cookie (cookie mode only). */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        accessToken?: string;
+                        /** @description Omitted in cookie mode. */
+                        refreshToken?: string;
+                    };
+                };
+            };
+            /** @description Refresh failed (expired/revoked/reuse-detected) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                    };
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    logoutAuth: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Cookie-Auth"?: "true";
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    refreshToken?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description No Content (cookie cleared) */
+            204: {
+                headers: {
+                    /** @description Empty/expired refresh cookie. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["ErrorResponse"];
         };

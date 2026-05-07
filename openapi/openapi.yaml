@@ -83,7 +83,17 @@ paths:
       operationId: login
       security: []
       summary: Local credential login
+      description: |
+        Dual mode (C6):
+          - `X-Cookie-Auth: true` → refresh token은 응답 본문에서 제외되고
+            HttpOnly `rosshield_refresh` cookie로 송출 (Web Console).
+          - 헤더 부재 → 본문에 refresh token 포함 (CLI legacy 호환).
       x-status: todo
+      parameters:
+        - in: header
+          name: X-Cookie-Auth
+          schema: { type: string, enum: ["true"] }
+          description: Set to `true` to receive refresh token via HttpOnly cookie.
       requestBody:
         required: true
         content:
@@ -97,19 +107,106 @@ paths:
       responses:
         "200":
           description: OK
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: HttpOnly refresh cookie (only when X-Cookie-Auth is true).
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/Envelope"
-                  - type: object
+                type: object
+                properties:
+                  accessToken:  { type: string }
+                  refreshToken: { type: string, description: "Omitted in cookie mode." }
+                  user:
+                    type: object
                     properties:
-                      value:
-                        type: object
-                        properties:
-                          accessToken:  { type: string }
-                          refreshToken: { type: string }
-                          expiresAt:    { type: string, format: date-time }
+                      id:          { type: string }
+                      email:       { type: string }
+                      displayName: { type: string }
+                      tenantId:    { type: string }
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshAuth
+      security: []
+      summary: Rotate access token using refresh token
+      description: |
+        Dual mode (C6): cookie 우선 → 본문 fallback.
+          - Web Console (`X-Cookie-Auth: true`) → HttpOnly cookie에서 refresh 추출,
+            새 refresh를 다시 cookie로 송출(rotation), 본문에는 access만.
+          - CLI → 본문 `refreshToken` 사용, 본문에 새 refresh 포함.
+        실패(만료/취소/재사용 탐지)는 모두 401 + cookie clear.
+      x-status: todo
+      parameters:
+        - in: header
+          name: X-Cookie-Auth
+          schema: { type: string, enum: ["true"] }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string, description: "Legacy mode (CLI)." }
+      responses:
+        "200":
+          description: OK
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: New HttpOnly refresh cookie (cookie mode only).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:  { type: string }
+                  refreshToken: { type: string, description: "Omitted in cookie mode." }
+        "401":
+          description: Refresh failed (expired/revoked/reuse-detected)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logoutAuth
+      security: []
+      summary: Revoke refresh token and clear cookie
+      description: |
+        Idempotent. Clears `rosshield_refresh` cookie regardless of token presence.
+        Cookie 또는 본문 `refreshToken`에서 토큰을 추출해 도메인 layer가 revoke.
+      x-status: todo
+      parameters:
+        - in: header
+          name: X-Cookie-Auth
+          schema: { type: string, enum: ["true"] }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "204":
+          description: No Content (cookie cleared)
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Empty/expired refresh cookie.
         default:
           $ref: "#/components/responses/ErrorResponse"
 

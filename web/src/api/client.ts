@@ -16,13 +16,10 @@ export const API_BASE_PATH = '/api/v1'
 
 const baseUrl = ''
 
-// refreshPromise는 동시 401에서 refresh를 한 번만 호출하기 위한 dedupe.
-//   여러 요청이 동시에 401을 받아도 동일 Promise를 await — 토큰 1회 갱신.
-let refreshPromise: Promise<string | null> | null = null
-
 // callRefresh는 /auth/refresh를 호출하고 새 access token을 반환합니다.
 //   실패 시 null 반환 — 호출자(middleware)가 세션 클리어를 결정.
-async function callRefresh(): Promise<string | null> {
+//   exported for unit testing (vitest fetch mock).
+export async function callRefresh(): Promise<string | null> {
   try {
     const r = await fetch(`${API_BASE_PATH}/auth/refresh`, {
       method: 'POST',
@@ -43,14 +40,21 @@ async function callRefresh(): Promise<string | null> {
   }
 }
 
-// dedupedRefresh는 동시 401 흐름에서 refresh 호출을 1회만 실행합니다.
-function dedupedRefresh(): Promise<string | null> {
-  if (refreshPromise) return refreshPromise
-  refreshPromise = callRefresh().finally(() => {
-    refreshPromise = null
-  })
-  return refreshPromise
+// makeDedupe는 동시 호출 시 in-flight Promise를 공유하는 factory입니다.
+//   호출이 끝나면 state를 reset해 다음 호출은 새로 시작.
+//   exported for unit testing — production 인스턴스(`dedupedRefresh`)는 본 파일에서만 사용.
+export function makeDedupe<T>(call: () => Promise<T>): () => Promise<T> {
+  let inFlight: Promise<T> | null = null
+  return () => {
+    if (inFlight) return inFlight
+    inFlight = call().finally(() => {
+      inFlight = null
+    })
+    return inFlight
+  }
 }
+
+const dedupedRefresh = makeDedupe(callRefresh)
 
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
