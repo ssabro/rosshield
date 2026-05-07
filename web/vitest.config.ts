@@ -17,5 +17,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Vitest는 src/만 — playwright/는 별도 runner (C4).
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["node_modules", "dist", "playwright/**", "../internal/web/dist/**"],
   },
 });

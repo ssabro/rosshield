@@ -2,7 +2,7 @@ GO ?= go
 BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
 
-.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
+.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
 
 all: ci
 
@@ -54,6 +54,13 @@ web-build:
 # E10 Stage D — Vitest 단위 테스트 (jsdom + RTL).
 web-test:
 	cd web && pnpm test
+
+# C4 — Playwright E2E (smoke).
+web-e2e-install:
+	cd web && pnpm exec playwright install --with-deps chromium
+
+web-e2e:
+	cd web && pnpm exec playwright test
 
 # OpenAPI spec → TS 타입 자동 생성 (Stage B). 결과물은 git 커밋 대상.
 web-types:
