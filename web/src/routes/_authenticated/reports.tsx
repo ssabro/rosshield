@@ -5,6 +5,7 @@ import { FileText } from 'lucide-react'
 import { ApiError } from '@/api/errors'
 import { useReports } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -31,12 +32,10 @@ function ReportsPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">리포트</h1>
-        <p className="text-sm text-muted-foreground">
-          생성된 리포트 목록과 서명 상태를 확인합니다.
-        </p>
-      </div>
+      <PageHeader
+        title="리포트"
+        description="생성된 리포트 목록과 서명 상태를 확인합니다."
+      />
 
       <div className="rounded-md border">
         <TooltipProvider>

@@ -6,6 +6,7 @@ import { Server } from 'lucide-react'
 import { ApiError } from '@/api/errors'
 import { useRobots } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,12 +33,10 @@ function RobotsPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">로봇</h1>
-        <p className="text-sm text-muted-foreground">
-          테넌트에 등록된 로봇 목록입니다.
-        </p>
-      </div>
+      <PageHeader
+        title="로봇"
+        description="테넌트에 등록된 로봇 목록입니다."
+      />
 
       <div className="flex max-w-sm flex-col gap-2">
         <Label htmlFor="fleet-filter">Fleet ID 필터</Label>

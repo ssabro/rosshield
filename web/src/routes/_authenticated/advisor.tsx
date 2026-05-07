@@ -1,7 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
+import { MessageSquare } from 'lucide-react'
+
 import { ApiError } from '@/api/errors'
+import { PageHeader } from '@/components/layout/PageHeader'
 import {
   useAdvisorConversation,
   useAdvisorConversations,
@@ -14,6 +17,12 @@ import { Textarea } from '@/components/ui/textarea'
 
 import type { AdvisorConversation, AdvisorTurn } from '@/api/hooks'
 
+const EXAMPLE_PROMPTS = [
+  '최근 scan에서 fail한 check 요약해줘',
+  '활성 robot 중 critical 등급은?',
+  '오늘의 compliance 점수 변화는?',
+] as const
+
 // `/advisor` — LLM 옵트인 대화 (E19-3-B).
 // - 좌: 대화 목록 (클릭 → 선택)
 // - 우: 선택 대화의 turn 렌더링 + 새 질문 입력 (Ask)
@@ -24,15 +33,13 @@ function AdvisorPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Advisor</h1>
-        <p className="text-sm text-muted-foreground">
-          자연어 질문 → LLM이 read-only tool로 컨텍스트 수집 → 설명 생성. 옵트인
-          기능이라 서버 시작 시{' '}
-          <code className="rounded bg-muted px-1">--llm-provider=ollama</code> 또는{' '}
-          <code className="rounded bg-muted px-1">=anthropic</code> 활성화가 필요합니다.
-        </p>
-      </div>
+      <PageHeader title="Advisor" />
+      <p className="text-sm text-muted-foreground">
+        자연어 질문 → LLM이 read-only tool로 컨텍스트 수집 → 설명 생성. 옵트인
+        기능이라 서버 시작 시{' '}
+        <code className="rounded bg-muted px-1">--llm-provider=ollama</code> 또는{' '}
+        <code className="rounded bg-muted px-1">=anthropic</code> 활성화가 필요합니다.
+      </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[18rem_1fr]">
         <ConversationsList
@@ -151,14 +158,11 @@ function ConversationPanel({
     )
   }
 
-  return (
-    <section className="flex min-h-[24rem] flex-col gap-3 rounded-md border p-4">
-      {!conversationId && turns.length === 0 && !ask.isPending && (
-        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-          새 대화를 시작하려면 아래에 질문을 입력하세요.
-        </div>
-      )}
+  const showEmpty =
+    !conversationId && turns.length === 0 && !ask.isPending && !detail.isPending
 
+  return (
+    <section className="flex min-h-[28rem] flex-col gap-3 rounded-md border bg-card p-4">
       {detail.isPending && conversationId && (
         <p className="text-xs text-muted-foreground">대화 불러오는 중…</p>
       )}
@@ -170,7 +174,32 @@ function ConversationPanel({
         </p>
       )}
 
-      <ol className="flex flex-1 flex-col gap-3 overflow-y-auto">
+      <ol className="flex flex-1 flex-col gap-4 overflow-y-auto">
+        {showEmpty && (
+          <li className="m-auto flex flex-col items-center gap-3 text-center">
+            <div className="rounded-full bg-muted p-3 text-muted-foreground">
+              <MessageSquare className="h-6 w-6" aria-hidden />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">새 대화를 시작하세요</p>
+              <p className="text-xs text-muted-foreground">
+                아래 질문 입력란에 자연어로 묻고 Ask 버튼을 누릅니다.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5 pt-1">
+              {EXAMPLE_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setQuestion(p)}
+                  className="rounded-full border border-dashed border-border bg-muted/30 px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </li>
+        )}
         {turns.map((t) => (
           <TurnView key={t.id} turn={t} />
         ))}
@@ -208,42 +237,41 @@ function TurnView({ turn }: { turn: AdvisorTurn }): React.ReactElement {
   const isUser = turn.role === 'user'
   const isTool = turn.role === 'tool'
 
+  // chat-like 정렬: user는 우측, assistant/tool은 좌측.
+  const align = isUser ? 'items-end' : 'items-start'
+  const bubble = isUser
+    ? 'rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground whitespace-pre-wrap'
+    : isTool
+      ? 'rounded-2xl rounded-tl-sm bg-muted px-3 py-2 font-mono text-xs text-muted-foreground whitespace-pre-wrap'
+      : 'rounded-2xl rounded-tl-sm border bg-card px-4 py-2.5 text-sm whitespace-pre-wrap'
+
   return (
-    <li className="flex flex-col gap-1">
-      <div className="flex items-center gap-2">
-        <Badge variant={roleVariant(turn.role)}>{turn.role}</Badge>
+    <li className={`flex flex-col gap-1 ${align}`}>
+      <div className="flex max-w-[85%] items-center gap-2 px-1 text-[10px] text-muted-foreground">
+        <Badge variant={roleVariant(turn.role)} className="text-[10px]">
+          {turn.role}
+        </Badge>
         {turn.llmProvider && (
-          <span className="font-mono text-[10px] text-muted-foreground">
+          <span className="font-mono">
             {turn.llmProvider}/{turn.llmModel}
             {typeof turn.inputTokens === 'number' &&
               typeof turn.outputTokens === 'number' && (
-                <>
-                  {' '}
-                  · {turn.inputTokens}+{turn.outputTokens} tok
-                </>
+                <> · {turn.inputTokens}+{turn.outputTokens} tok</>
               )}
             {typeof turn.costUsd === 'number' && turn.costUsd > 0 && (
               <> · ${turn.costUsd.toFixed(4)}</>
             )}
           </span>
         )}
-        <span className="ml-auto text-[10px] text-muted-foreground">
+        <span className="font-mono">
           {new Date(turn.createdAt).toLocaleString('ko-KR')}
         </span>
       </div>
-      <div
-        className={
-          isUser
-            ? 'rounded-md bg-primary/10 p-3 text-sm whitespace-pre-wrap'
-            : isTool
-              ? 'rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap'
-              : 'rounded-md border p-3 text-sm whitespace-pre-wrap'
-        }
-      >
+      <div className={`max-w-[85%] ${bubble}`}>
         {turn.content || (isTool ? '(tool result)' : '(no content)')}
       </div>
       {turn.toolCalls && turn.toolCalls.length > 0 && (
-        <div className="ml-3 flex flex-col gap-1 border-l-2 border-muted pl-3">
+        <div className="flex max-w-[85%] flex-col gap-0.5 rounded-md border border-dashed border-border bg-muted/30 px-2 py-1.5">
           {turn.toolCalls.map((tc) => (
             <div key={tc.id} className="text-xs">
               <span className="font-mono font-medium">→ {tc.toolName}</span>

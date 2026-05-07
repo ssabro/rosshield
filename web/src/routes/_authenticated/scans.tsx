@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
 import { useScanProgress, useStartScan } from '@/api/hooks'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -60,12 +61,10 @@ function ScansPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">스캔</h1>
-        <p className="text-sm text-muted-foreground">
-          플릿과 벤치마크 팩을 선택해 새 스캔 세션을 시작합니다.
-        </p>
-      </div>
+      <PageHeader
+        title="스캔"
+        description="플릿과 벤치마크 팩을 선택해 새 스캔 세션을 시작합니다."
+      />
 
       <Card className="max-w-xl">
         <CardHeader>

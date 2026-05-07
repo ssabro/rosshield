@@ -11,6 +11,7 @@ import {
   useGenerateSnapshot,
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -40,6 +41,7 @@ import {
 } from '@/components/ui/table'
 
 import type {
+  ComplianceControlStatus,
   ComplianceProfile,
   ComplianceSnapshot,
   CreateComplianceProfileVars,
@@ -66,12 +68,10 @@ function CompliancePage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Compliance</h1>
-        <p className="text-sm text-muted-foreground">
-          프레임워크별 프로필을 활성화하고, 스캔 세션 결과로부터 스냅샷을 생성합니다.
-        </p>
-      </div>
+      <PageHeader
+        title="Compliance"
+        description="프레임워크별 프로필을 활성화하고, 스캔 세션 결과로부터 스냅샷을 생성합니다."
+      />
 
       <CreateProfileForm />
 
@@ -258,6 +258,7 @@ function SnapshotsSection({
       </div>
 
       {latest && <ScoreHeroCard snapshot={latest} />}
+      {latest && <ControlsBreakdown snapshot={latest} />}
 
       <GenerateSnapshotForm profileId={profile.id} />
 
@@ -444,6 +445,225 @@ function ScoreHeroCard({
       </CardContent>
     </Card>
   )
+}
+
+type StatusFilter =
+  | 'all'
+  | 'pass'
+  | 'fail'
+  | 'partial'
+  | 'not_applicable'
+  | 'unmapped'
+
+const STATUS_LABELS: Record<Exclude<StatusFilter, 'all'>, string> = {
+  pass: 'Pass',
+  fail: 'Fail',
+  partial: 'Partial',
+  not_applicable: 'N/A',
+  unmapped: 'Unmapped',
+}
+
+function ControlsBreakdown({
+  snapshot,
+}: {
+  snapshot: ComplianceSnapshot
+}): React.ReactElement {
+  const [filter, setFilter] = useState<StatusFilter>('all')
+  const statuses = snapshot.statuses ?? []
+
+  if (statuses.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            통제별 결과
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyState
+            icon={Inbox}
+            title="통제별 결과가 없습니다"
+            description="이 스냅샷은 control 단위 데이터를 포함하지 않습니다."
+            className="bg-transparent"
+          />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const filtered =
+    filter === 'all' ? statuses : statuses.filter((s) => s.status === filter)
+  const grouped = groupByCategory(filtered)
+  const counts = countByStatus(statuses)
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          통제별 결과
+        </CardTitle>
+        <CardDescription className="text-xs">
+          총 {statuses.length}개 통제, 카테고리 {Object.keys(grouped).length}개
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-1.5">
+          <FilterPill
+            active={filter === 'all'}
+            onClick={() => setFilter('all')}
+            label="전체"
+            count={statuses.length}
+          />
+          {(Object.keys(STATUS_LABELS) as Array<keyof typeof STATUS_LABELS>).map(
+            (s) => (
+              <FilterPill
+                key={s}
+                active={filter === s}
+                onClick={() => setFilter(s)}
+                label={STATUS_LABELS[s]}
+                count={counts[s] ?? 0}
+                tone={s}
+              />
+            ),
+          )}
+        </div>
+
+        {Object.keys(grouped).length === 0 ? (
+          <p className="text-xs text-muted-foreground">필터 조건에 맞는 통제가 없습니다.</p>
+        ) : (
+          <div className="space-y-3">
+            {Object.entries(grouped).map(([category, items]) => (
+              <div key={category} className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <span>{category}</span>
+                  <span className="text-[10px] font-normal">{items.length}</span>
+                </div>
+                <ul className="divide-y divide-border rounded-md border">
+                  {items.map((s) => (
+                    <ControlRow key={s.controlId} status={s} />
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ControlRow({
+  status,
+}: {
+  status: ComplianceControlStatus
+}): React.ReactElement {
+  return (
+    <li className="flex items-center gap-3 px-3 py-2 text-xs">
+      <Badge
+        variant={statusBadgeVariant(status.status)}
+        className="shrink-0 text-[10px]"
+      >
+        {STATUS_LABELS[status.status as keyof typeof STATUS_LABELS] ?? status.status}
+      </Badge>
+      <span className="font-mono text-foreground">{status.controlId}</span>
+      <span className="ml-auto flex items-center gap-3 font-mono text-muted-foreground">
+        <span className="text-foreground">P {status.passCount}</span>
+        <span className="text-destructive">F {status.failCount}</span>
+      </span>
+      {status.notes && (
+        <span className="max-w-[16rem] truncate text-muted-foreground" title={status.notes}>
+          {status.notes}
+        </span>
+      )}
+    </li>
+  )
+}
+
+function FilterPill({
+  active,
+  onClick,
+  label,
+  count,
+  tone,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  count: number
+  tone?: keyof typeof STATUS_LABELS
+}): React.ReactElement {
+  const toneClass = tone === 'fail' ? 'text-destructive' : 'text-foreground'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? 'rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground'
+          : 'rounded-full border border-border bg-transparent px-3 py-1 text-xs hover:bg-muted'
+      }
+    >
+      <span className={active ? '' : toneClass}>{label}</span>
+      <span className="ml-1.5 text-[10px] opacity-80">{count}</span>
+    </button>
+  )
+}
+
+// statusBadgeVariant는 control status를 shadcn Badge variant로 매핑합니다.
+// 단위 테스트(compliance.test.tsx) 대상으로 export.
+export function statusBadgeVariant(
+  status: string,
+): 'default' | 'destructive' | 'secondary' | 'outline' {
+  switch (status) {
+    case 'pass':
+      return 'default'
+    case 'fail':
+      return 'destructive'
+    case 'partial':
+      return 'secondary'
+    default:
+      return 'outline'
+  }
+}
+
+// groupByCategory는 controlId의 첫 카테고리 prefix로 통제를 그룹화합니다.
+// 예: "ISMS-P:1.1.1" → 카테고리 "ISMS-P:1", "CIS-1.1.1.1" → 카테고리 "CIS-1".
+// 단위 테스트(compliance.test.tsx) 대상으로 export.
+export function groupByCategory(
+  statuses: ComplianceControlStatus[],
+): Record<string, ComplianceControlStatus[]> {
+  const out: Record<string, ComplianceControlStatus[]> = {}
+  for (const s of statuses) {
+    const key = categoryOf(s.controlId)
+    if (!out[key]) out[key] = []
+    out[key].push(s)
+  }
+  return out
+}
+
+function categoryOf(controlId: string): string {
+  // "ISMS-P:1.1.1" → "ISMS-P:1"; "CIS-1.1.1.1" → "CIS-1"; "X" → "X"
+  const colonIdx = controlId.indexOf(':')
+  if (colonIdx >= 0) {
+    const prefix = controlId.slice(0, colonIdx)
+    const rest = controlId.slice(colonIdx + 1)
+    const dotIdx = rest.indexOf('.')
+    if (dotIdx > 0) return `${prefix}:${rest.slice(0, dotIdx)}`
+    return controlId
+  }
+  const dotIdx = controlId.indexOf('.')
+  if (dotIdx > 0) return controlId.slice(0, dotIdx)
+  return controlId
+}
+
+function countByStatus(
+  statuses: ComplianceControlStatus[],
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const s of statuses) {
+    out[s.status] = (out[s.status] ?? 0) + 1
+  }
+  return out
 }
 
 function scoreLabel(score: number): string {

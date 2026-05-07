@@ -6,6 +6,7 @@ import { Inbox } from 'lucide-react'
 import { ApiError } from '@/api/errors'
 import { useDismissInsight, useInsights } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,13 +46,10 @@ function FindingsPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Findings</h1>
-        <p className="text-sm text-muted-foreground">
-          drift·anomaly·peer detector가 산출한 활성 Insight입니다. 자동 생성은 scan 완료
-          시 일어나며, 수동으로 dismiss하면 활성 목록에서 사라집니다.
-        </p>
-      </div>
+      <PageHeader
+        title="Findings"
+        description="drift·anomaly·peer detector가 산출한 활성 Insight입니다. 자동 생성은 scan 완료 시 일어나며, 수동으로 dismiss하면 활성 목록에서 사라집니다."
+      />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="flex flex-col gap-2">

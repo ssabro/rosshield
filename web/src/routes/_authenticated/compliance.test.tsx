@@ -5,7 +5,14 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { formatScore, scoreVariant } from './compliance'
+import {
+  formatScore,
+  groupByCategory,
+  scoreVariant,
+  statusBadgeVariant,
+} from './compliance'
+
+import type { ComplianceControlStatus } from '@/api/hooks'
 
 describe('scoreVariant', () => {
   it('≥0.9 → default (높은 점수)', () => {
@@ -42,5 +49,59 @@ describe('formatScore', () => {
 
   it('0 → 0.0%', () => {
     expect(formatScore(0)).toBe('0.0%')
+  })
+})
+
+describe('statusBadgeVariant', () => {
+  it('pass → default', () => {
+    expect(statusBadgeVariant('pass')).toBe('default')
+  })
+  it('fail → destructive', () => {
+    expect(statusBadgeVariant('fail')).toBe('destructive')
+  })
+  it('partial → secondary', () => {
+    expect(statusBadgeVariant('partial')).toBe('secondary')
+  })
+  it('not_applicable·unmapped·기타 → outline', () => {
+    expect(statusBadgeVariant('not_applicable')).toBe('outline')
+    expect(statusBadgeVariant('unmapped')).toBe('outline')
+    expect(statusBadgeVariant('xxx')).toBe('outline')
+  })
+})
+
+describe('groupByCategory', () => {
+  const make = (id: string): ComplianceControlStatus => ({
+    controlId: id,
+    status: 'pass',
+    passCount: 1,
+    failCount: 0,
+  })
+
+  it('ISMS-P:1.1.1·1.1.2·1.2.1 → ISMS-P:1로 모두 묶임', () => {
+    const out = groupByCategory([
+      make('ISMS-P:1.1.1'),
+      make('ISMS-P:1.1.2'),
+      make('ISMS-P:1.2.1'),
+    ])
+    expect(Object.keys(out)).toEqual(['ISMS-P:1'])
+    expect(out['ISMS-P:1']).toHaveLength(3)
+  })
+
+  it('서로 다른 prefix는 별도 그룹', () => {
+    const out = groupByCategory([
+      make('ISMS-P:1.1.1'),
+      make('ISMS-P:2.1.1'),
+      make('CIS-1.1.1.1'),
+    ])
+    expect(Object.keys(out).sort()).toEqual([
+      'CIS-1',
+      'ISMS-P:1',
+      'ISMS-P:2',
+    ])
+  })
+
+  it('점이 없는 ID는 자기 자신이 키', () => {
+    const out = groupByCategory([make('FOO'), make('BAR')])
+    expect(Object.keys(out).sort()).toEqual(['BAR', 'FOO'])
   })
 })

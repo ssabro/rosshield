@@ -1,9 +1,10 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { LogOut } from 'lucide-react'
+import { LogOut, Monitor, Moon, Sun } from 'lucide-react'
 
 import { useMe } from '@/api/hooks'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore, type Theme } from '@/stores/theme'
 
 // 상단 헤더 — 좌측 페이지 컨텍스트(현재 라우트 라벨) + 우측 사용자 이메일 + 로그아웃.
 //
@@ -23,6 +24,8 @@ export function Header(): React.ReactElement {
   const clearSession = useAuthStore((s) => s.clearSession)
   const me = useMe()
   const matches = useRouterState({ select: (s) => s.matches })
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
 
   const email = me.data?.email ?? storeUser?.email ?? ''
   const pathname = matches[matches.length - 1]?.pathname ?? '/'
@@ -53,6 +56,16 @@ export function Header(): React.ReactElement {
         <Button
           variant="ghost"
           size="sm"
+          className="h-8 w-8 px-0"
+          onClick={() => setTheme(nextTheme(theme))}
+          aria-label={`테마 (${themeLabel(theme)})`}
+          title={`테마: ${themeLabel(theme)} (클릭으로 전환)`}
+        >
+          <ThemeIcon theme={theme} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           className="gap-2"
           onClick={handleLogout}
           aria-label="로그아웃"
@@ -63,4 +76,23 @@ export function Header(): React.ReactElement {
       </div>
     </header>
   )
+}
+
+// nextTheme — 토글 순서: light → dark → system → light
+export function nextTheme(theme: Theme): Theme {
+  if (theme === 'light') return 'dark'
+  if (theme === 'dark') return 'system'
+  return 'light'
+}
+
+function themeLabel(theme: Theme): string {
+  if (theme === 'light') return '라이트'
+  if (theme === 'dark') return '다크'
+  return '시스템'
+}
+
+function ThemeIcon({ theme }: { theme: Theme }): React.ReactElement {
+  if (theme === 'light') return <Sun className="h-4 w-4" aria-hidden />
+  if (theme === 'dark') return <Moon className="h-4 w-4" aria-hidden />
+  return <Monitor className="h-4 w-4" aria-hidden />
 }
