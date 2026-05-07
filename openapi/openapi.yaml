@@ -261,13 +261,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ListRobotsResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
     post:
       tags: [robot]
       operationId: createRobot
       summary: Register a robot
+      description: |
+        Accepts plaintext credentials (memory-only) — domain layer wraps via KEK→DEK.
+        Response excludes plaintext credentials (Robot meta + credentialId only).
+        Conflicts (409): duplicate name within fleet, duplicate host:port.
       x-status: todo
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -275,14 +279,15 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object }
+            schema:
+              $ref: "#/components/schemas/CreateRobotRequest"
       responses:
         "201":
           description: Created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/CreateRobotResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -328,6 +333,10 @@ paths:
       tags: [scan]
       operationId: createScan
       summary: Start a new scan session
+      description: |
+        Phase 1 Stage B: inserts session in `pending` state — Orchestrator(scanrun)
+        start is deferred to a later Stage. `total` is optional (orchestrator computes
+        it; current Stage accepts external value).
       x-status: todo
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -335,14 +344,70 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object }
+            schema:
+              $ref: "#/components/schemas/StartScanRequest"
       responses:
-        "202":
-          description: Accepted
+        "201":
+          description: Created (pending session)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ScanSession"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/scans/{sessionId}/progress:
+    parameters:
+      - { in: path, name: sessionId, required: true, schema: { type: string } }
+    get:
+      tags: [scan]
+      operationId: streamScanProgress
+      summary: Stream scan progress (WebSocket upgrade)
+      description: |
+        WebSocket upgrade endpoint — OpenAPI 3.0/3.1 has no first-class WebSocket
+        modeling, so this entry is documentation-only. The HTTP GET handler upgrades
+        the connection (`coder/websocket.Accept`) and pushes JSON frames matching
+        `ScanProgressMessage` schema (see `components/schemas/ScanProgressMessage`).
+        See `internal/api/handlers/scan_ws.go` for the wire protocol.
+
+        Subscribes to `scan.progress` and `scan.completed` events for the given
+        sessionId within the caller tenant scope. Emits one `completed` frame
+        (status=completed/failed/cancelled) and closes.
+
+        Auth: Authorization Bearer is required; browser WebSocket API cannot set
+        custom headers — Phase 1 assumes same-origin. Phase 2 will explore
+        `?access_token=` query token or session cookie.
+      x-status: phase1
+      x-protocol: websocket
+      responses:
+        "101":
+          description: Switching Protocols (WebSocket upgrade)
+        "401":
+          description: Missing/invalid bearer token
+        "503":
+          description: Event bus not configured
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/reports:
+    get:
+      tags: [reporting]
+      operationId: listReports
+      summary: List reports
+      description: |
+        Lists generated reports for the current tenant. PDF body is not included —
+        only metadata + signature presence flag. Filter by `sessionId` to scope to a
+        single scan.
+      x-status: phase1
+      parameters:
+        - { in: query, name: sessionId, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListReportsResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -369,14 +434,17 @@ paths:
       tags: [audit]
       operationId: getAuditHead
       summary: Current hash-chain head
-      x-status: todo
+      description: |
+        Returns tenant-scoped chain head (Seq + Hash). When no audit entries exist,
+        returns genesis head (Seq=0, Hash=zero) — Web UI renders "초기 상태".
+      x-status: phase1
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/AuditHead"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -423,7 +491,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ListInsightsResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -450,7 +518,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/Insight"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -472,7 +540,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/RunInsightsResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -489,7 +557,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ListComplianceProfilesResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
     post:
@@ -514,7 +582,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ComplianceProfile"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -534,7 +602,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ListComplianceSnapshotsResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
     post:
@@ -557,7 +625,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ComplianceSnapshot"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -597,7 +665,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/AdvisorAskResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -615,7 +683,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ListAdvisorConversationsResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -633,7 +701,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/AdvisorConversationDetail"
         default:
           $ref: "#/components/responses/ErrorResponse"
 
@@ -742,3 +810,304 @@ components:
         ok:    { type: boolean, const: false }
         error: { $ref: "#/components/schemas/Error" }
         meta:  { $ref: "#/components/schemas/Meta" }
+
+    # ─── Robot ────────────────────────────────────────────────────────────
+    Robot:
+      type: object
+      required: [id, tenantId, fleetId, name, host, port, authType, criticality]
+      properties:
+        id:          { type: string }
+        tenantId:    { type: string }
+        fleetId:     { type: string }
+        name:        { type: string }
+        host:        { type: string }
+        port:        { type: integer }
+        authType:    { type: string, enum: [password, privateKey] }
+        osDistro:    { type: string }
+        rosDistro:   { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        role:        { type: string }
+        criticality: { type: string, enum: [low, medium, high, critical] }
+
+    ListRobotsResponse:
+      type: object
+      required: [robots]
+      properties:
+        robots:
+          type: array
+          items: { $ref: "#/components/schemas/Robot" }
+
+    CreateRobotRequest:
+      type: object
+      required: [fleetId, name, host, authType, username]
+      properties:
+        fleetId:              { type: string }
+        name:                 { type: string }
+        host:                 { type: string }
+        port:                 { type: integer, description: "0 → domain default (22)" }
+        authType:             { type: string, enum: [password, privateKey] }
+        username:             { type: string }
+        password:             { type: string, format: password }
+        privateKeyPem:        { type: string }
+        privateKeyPassphrase: { type: string, format: password }
+        osDistro:             { type: string }
+        rosDistro:            { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        role:                 { type: string }
+        criticality:          { type: string, enum: [low, medium, high, critical], description: "Empty → domain default (medium)" }
+
+    CreateRobotResponse:
+      type: object
+      required: [robot, credentialId]
+      properties:
+        robot:        { $ref: "#/components/schemas/Robot" }
+        credentialId: { type: string }
+
+    # ─── Scan ─────────────────────────────────────────────────────────────
+    StartScanRequest:
+      type: object
+      required: [fleetId, packId]
+      properties:
+        fleetId: { type: string }
+        packId:  { type: string }
+        trigger: { type: string, description: "Empty → manual" }
+        total:   { type: integer, description: "Optional — orchestrator will compute" }
+
+    ScanSession:
+      type: object
+      required: [sessionId, tenantId, fleetId, packId, trigger, status, total, completed, failed]
+      properties:
+        sessionId: { type: string }
+        tenantId:  { type: string }
+        fleetId:   { type: string }
+        packId:    { type: string }
+        trigger:   { type: string }
+        status:    { type: string }
+        total:     { type: integer }
+        completed: { type: integer }
+        failed:    { type: integer }
+
+    # ─── Scan progress (WebSocket frame) ─────────────────────────────────
+    ScanProgressMessage:
+      type: object
+      description: |
+        Single frame pushed via WebSocket on `/api/v1/scans/{sessionId}/progress`.
+        kind="progress" → progress payload; kind="completed" → final frame.
+      required: [kind, type, sessionId, total, completed, failed, occurredAt]
+      properties:
+        kind:          { type: string, enum: [progress, completed] }
+        type:          { type: string, description: "Original EventBus type (e.g. scan.progress)" }
+        sessionId:     { type: string }
+        total:         { type: integer }
+        completed:     { type: integer }
+        failed:        { type: integer }
+        status:        { type: string, description: "completed/failed/cancelled — only on completed frame" }
+        reason:        { type: string, description: "failed/cancelled reason — only on completed frame" }
+        occurredAt:    { type: string, format: date-time }
+        correlationId: { type: string }
+
+    # ─── Audit ────────────────────────────────────────────────────────────
+    AuditHead:
+      type: object
+      required: [tenantId, seq, hashHex]
+      properties:
+        tenantId:  { type: string }
+        seq:       { type: integer, format: int64 }
+        hashHex:   { type: string, description: "Hash bytes (32B) hex-encoded — 64 chars" }
+        updatedAt: { type: string, format: date-time }
+
+    # ─── Reporting ────────────────────────────────────────────────────────
+    Report:
+      type: object
+      required: [id, tenantId, sessionId, format, pdfSha256, pdfSizeBytes, generatedAt, generatedBy, signed]
+      properties:
+        id:           { type: string }
+        tenantId:     { type: string }
+        sessionId:    { type: string }
+        format:       { type: string }
+        pdfSha256:    { type: string }
+        pdfSizeBytes: { type: integer, format: int64 }
+        generatedAt:  { type: string, format: date-time }
+        generatedBy:  { type: string }
+        signed:       { type: boolean }
+
+    ListReportsResponse:
+      type: object
+      required: [reports]
+      properties:
+        reports:
+          type: array
+          items: { $ref: "#/components/schemas/Report" }
+
+    # ─── Insight ──────────────────────────────────────────────────────────
+    Insight:
+      type: object
+      required: [id, tenantId, kind, severity, summary, confidence, producedBy, createdAt]
+      properties:
+        id:           { type: string }
+        tenantId:     { type: string }
+        kind:         { type: string }
+        severity:     { type: string }
+        robotId:      { type: string }
+        fleetId:      { type: string }
+        checkId:      { type: string }
+        summary:      { type: string }
+        reasoning:    { type: string }
+        rulesApplied:
+          type: array
+          items: { type: string }
+        confidence:   { type: number, format: double }
+        producedBy:   { type: string }
+        createdAt:    { type: string, format: date-time }
+        dismissedAt:  { type: string, format: date-time }
+        dismissedBy:  { type: string }
+
+    ListInsightsResponse:
+      type: object
+      required: [insights]
+      properties:
+        insights:
+          type: array
+          items: { $ref: "#/components/schemas/Insight" }
+
+    RunInsightsResponse:
+      type: object
+      required: [produced, count]
+      properties:
+        produced:
+          type: array
+          items: { $ref: "#/components/schemas/Insight" }
+        count: { type: integer }
+
+    # ─── Compliance ───────────────────────────────────────────────────────
+    ComplianceProfile:
+      type: object
+      required: [id, tenantId, framework, frameworkVersion, enabled, createdAt, updatedAt]
+      properties:
+        id:               { type: string }
+        tenantId:         { type: string }
+        framework:        { type: string }
+        frameworkVersion: { type: string }
+        enabled:          { type: boolean }
+        createdAt:        { type: string, format: date-time }
+        updatedAt:        { type: string, format: date-time }
+
+    ListComplianceProfilesResponse:
+      type: object
+      required: [profiles]
+      properties:
+        profiles:
+          type: array
+          items: { $ref: "#/components/schemas/ComplianceProfile" }
+
+    ComplianceControlStatus:
+      type: object
+      required: [controlId, status, passCount, failCount]
+      properties:
+        controlId: { type: string }
+        status:    { type: string, description: "pass/fail/partial/not_applicable/unmapped" }
+        passCount: { type: integer }
+        failCount: { type: integer }
+        notes:     { type: string }
+
+    ComplianceSnapshot:
+      type: object
+      required: [id, tenantId, profileId, overallScore, passCount, failCount, partialCount, notApplicableCount, unmappedCount, chainHeadSeq, chainHeadHash, createdAt]
+      properties:
+        id:                 { type: string }
+        tenantId:           { type: string }
+        profileId:          { type: string }
+        sessionId:          { type: string }
+        overallScore:       { type: number, format: double }
+        passCount:          { type: integer }
+        failCount:          { type: integer }
+        partialCount:       { type: integer }
+        notApplicableCount: { type: integer }
+        unmappedCount:      { type: integer }
+        chainHeadSeq:       { type: integer, format: int64 }
+        chainHeadHash:      { type: string }
+        statuses:
+          type: array
+          items: { $ref: "#/components/schemas/ComplianceControlStatus" }
+        createdAt:          { type: string, format: date-time }
+
+    ListComplianceSnapshotsResponse:
+      type: object
+      required: [snapshots]
+      properties:
+        snapshots:
+          type: array
+          items: { $ref: "#/components/schemas/ComplianceSnapshot" }
+
+    # ─── Advisor ──────────────────────────────────────────────────────────
+    AdvisorToolCall:
+      type: object
+      required: [id, toolName, durationMs]
+      properties:
+        id:         { type: string }
+        toolName:   { type: string }
+        argsJson:   { type: string }
+        resultJson: { type: string }
+        error:      { type: string }
+        durationMs: { type: integer, format: int64 }
+
+    AdvisorTurn:
+      type: object
+      required: [id, conversationId, role, content, sequence, createdAt]
+      properties:
+        id:             { type: string }
+        conversationId: { type: string }
+        role:           { type: string, description: "user/assistant/tool/system" }
+        content:        { type: string }
+        sequence:       { type: integer }
+        llmProvider:    { type: string }
+        llmModel:       { type: string }
+        inputTokens:    { type: integer }
+        outputTokens:   { type: integer }
+        costUsd:        { type: number, format: double }
+        createdAt:      { type: string, format: date-time }
+        toolCalls:
+          type: array
+          items: { $ref: "#/components/schemas/AdvisorToolCall" }
+
+    AdvisorConversation:
+      type: object
+      required: [id, tenantId, userId, title, createdAt, updatedAt]
+      properties:
+        id:        { type: string }
+        tenantId:  { type: string }
+        userId:    { type: string }
+        title:     { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdvisorAskResponse:
+      type: object
+      required: [conversationId, finalAnswer, turns]
+      properties:
+        conversationId: { type: string }
+        finalAnswer:    { type: string }
+        turns:
+          type: array
+          items: { $ref: "#/components/schemas/AdvisorTurn" }
+
+    ListAdvisorConversationsResponse:
+      type: object
+      required: [conversations]
+      properties:
+        conversations:
+          type: array
+          items: { $ref: "#/components/schemas/AdvisorConversation" }
+
+    AdvisorConversationDetail:
+      type: object
+      required: [conversation, turns]
+      properties:
+        conversation: { $ref: "#/components/schemas/AdvisorConversation" }
+        turns:
+          type: array
+          items: { $ref: "#/components/schemas/AdvisorTurn" }

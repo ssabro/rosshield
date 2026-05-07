@@ -153,7 +153,12 @@ export interface paths {
         /** List robots */
         get: operations["listRobots"];
         put?: never;
-        /** Register a robot */
+        /**
+         * Register a robot
+         * @description Accepts plaintext credentials (memory-only) — domain layer wraps via KEK→DEK.
+         *     Response excludes plaintext credentials (Robot meta + credentialId only).
+         *     Conflicts (409): duplicate name within fleet, duplicate host:port.
+         */
         post: operations["createRobot"];
         delete?: never;
         options?: never;
@@ -190,8 +195,69 @@ export interface paths {
         /** List scan sessions */
         get: operations["listScans"];
         put?: never;
-        /** Start a new scan session */
+        /**
+         * Start a new scan session
+         * @description Phase 1 Stage B: inserts session in `pending` state — Orchestrator(scanrun)
+         *     start is deferred to a later Stage. `total` is optional (orchestrator computes
+         *     it; current Stage accepts external value).
+         */
         post: operations["createScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scans/{sessionId}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Stream scan progress (WebSocket upgrade)
+         * @description WebSocket upgrade endpoint — OpenAPI 3.0/3.1 has no first-class WebSocket
+         *     modeling, so this entry is documentation-only. The HTTP GET handler upgrades
+         *     the connection (`coder/websocket.Accept`) and pushes JSON frames matching
+         *     `ScanProgressMessage` schema (see `components/schemas/ScanProgressMessage`).
+         *     See `internal/api/handlers/scan_ws.go` for the wire protocol.
+         *
+         *     Subscribes to `scan.progress` and `scan.completed` events for the given
+         *     sessionId within the caller tenant scope. Emits one `completed` frame
+         *     (status=completed/failed/cancelled) and closes.
+         *
+         *     Auth: Authorization Bearer is required; browser WebSocket API cannot set
+         *     custom headers — Phase 1 assumes same-origin. Phase 2 will explore
+         *     `?access_token=` query token or session cookie.
+         */
+        get: operations["streamScanProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List reports
+         * @description Lists generated reports for the current tenant. PDF body is not included —
+         *     only metadata + signature presence flag. Filter by `sessionId` to scope to a
+         *     single scan.
+         */
+        get: operations["listReports"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -222,7 +288,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Current hash-chain head */
+        /**
+         * Current hash-chain head
+         * @description Returns tenant-scoped chain head (Seq + Hash). When no audit entries exist,
+         *     returns genesis head (Seq=0, Hash=zero) — Web UI renders "초기 상태".
+         */
         get: operations["getAuditHead"];
         put?: never;
         post?: never;
@@ -448,6 +518,237 @@ export interface components {
             ok: false;
             error: components["schemas"]["Error"];
             meta?: components["schemas"]["Meta"];
+        };
+        Robot: {
+            id: string;
+            tenantId: string;
+            fleetId: string;
+            name: string;
+            host: string;
+            port: number;
+            /** @enum {string} */
+            authType: "password" | "privateKey";
+            osDistro?: string;
+            rosDistro?: string;
+            tags?: string[];
+            role?: string;
+            /** @enum {string} */
+            criticality: "low" | "medium" | "high" | "critical";
+        };
+        ListRobotsResponse: {
+            robots: components["schemas"]["Robot"][];
+        };
+        CreateRobotRequest: {
+            fleetId: string;
+            name: string;
+            host: string;
+            /** @description 0 → domain default (22) */
+            port?: number;
+            /** @enum {string} */
+            authType: "password" | "privateKey";
+            username: string;
+            /** Format: password */
+            password?: string;
+            privateKeyPem?: string;
+            /** Format: password */
+            privateKeyPassphrase?: string;
+            osDistro?: string;
+            rosDistro?: string;
+            tags?: string[];
+            role?: string;
+            /**
+             * @description Empty → domain default (medium)
+             * @enum {string}
+             */
+            criticality?: "low" | "medium" | "high" | "critical";
+        };
+        CreateRobotResponse: {
+            robot: components["schemas"]["Robot"];
+            credentialId: string;
+        };
+        StartScanRequest: {
+            fleetId: string;
+            packId: string;
+            /** @description Empty → manual */
+            trigger?: string;
+            /** @description Optional — orchestrator will compute */
+            total?: number;
+        };
+        ScanSession: {
+            sessionId: string;
+            tenantId: string;
+            fleetId: string;
+            packId: string;
+            trigger: string;
+            status: string;
+            total: number;
+            completed: number;
+            failed: number;
+        };
+        /**
+         * @description Single frame pushed via WebSocket on `/api/v1/scans/{sessionId}/progress`.
+         *     kind="progress" → progress payload; kind="completed" → final frame.
+         */
+        ScanProgressMessage: {
+            /** @enum {string} */
+            kind: "progress" | "completed";
+            /** @description Original EventBus type (e.g. scan.progress) */
+            type: string;
+            sessionId: string;
+            total: number;
+            completed: number;
+            failed: number;
+            /** @description completed/failed/cancelled — only on completed frame */
+            status?: string;
+            /** @description failed/cancelled reason — only on completed frame */
+            reason?: string;
+            /** Format: date-time */
+            occurredAt: string;
+            correlationId?: string;
+        };
+        AuditHead: {
+            tenantId: string;
+            /** Format: int64 */
+            seq: number;
+            /** @description Hash bytes (32B) hex-encoded — 64 chars */
+            hashHex: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        Report: {
+            id: string;
+            tenantId: string;
+            sessionId: string;
+            format: string;
+            pdfSha256: string;
+            /** Format: int64 */
+            pdfSizeBytes: number;
+            /** Format: date-time */
+            generatedAt: string;
+            generatedBy: string;
+            signed: boolean;
+        };
+        ListReportsResponse: {
+            reports: components["schemas"]["Report"][];
+        };
+        Insight: {
+            id: string;
+            tenantId: string;
+            kind: string;
+            severity: string;
+            robotId?: string;
+            fleetId?: string;
+            checkId?: string;
+            summary: string;
+            reasoning?: string;
+            rulesApplied?: string[];
+            /** Format: double */
+            confidence: number;
+            producedBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            dismissedAt?: string;
+            dismissedBy?: string;
+        };
+        ListInsightsResponse: {
+            insights: components["schemas"]["Insight"][];
+        };
+        RunInsightsResponse: {
+            produced: components["schemas"]["Insight"][];
+            count: number;
+        };
+        ComplianceProfile: {
+            id: string;
+            tenantId: string;
+            framework: string;
+            frameworkVersion: string;
+            enabled: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ListComplianceProfilesResponse: {
+            profiles: components["schemas"]["ComplianceProfile"][];
+        };
+        ComplianceControlStatus: {
+            controlId: string;
+            /** @description pass/fail/partial/not_applicable/unmapped */
+            status: string;
+            passCount: number;
+            failCount: number;
+            notes?: string;
+        };
+        ComplianceSnapshot: {
+            id: string;
+            tenantId: string;
+            profileId: string;
+            sessionId?: string;
+            /** Format: double */
+            overallScore: number;
+            passCount: number;
+            failCount: number;
+            partialCount: number;
+            notApplicableCount: number;
+            unmappedCount: number;
+            /** Format: int64 */
+            chainHeadSeq: number;
+            chainHeadHash: string;
+            statuses?: components["schemas"]["ComplianceControlStatus"][];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ListComplianceSnapshotsResponse: {
+            snapshots: components["schemas"]["ComplianceSnapshot"][];
+        };
+        AdvisorToolCall: {
+            id: string;
+            toolName: string;
+            argsJson?: string;
+            resultJson?: string;
+            error?: string;
+            /** Format: int64 */
+            durationMs: number;
+        };
+        AdvisorTurn: {
+            id: string;
+            conversationId: string;
+            /** @description user/assistant/tool/system */
+            role: string;
+            content: string;
+            sequence: number;
+            llmProvider?: string;
+            llmModel?: string;
+            inputTokens?: number;
+            outputTokens?: number;
+            /** Format: double */
+            costUsd?: number;
+            /** Format: date-time */
+            createdAt: string;
+            toolCalls?: components["schemas"]["AdvisorToolCall"][];
+        };
+        AdvisorConversation: {
+            id: string;
+            tenantId: string;
+            userId: string;
+            title: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AdvisorAskResponse: {
+            conversationId: string;
+            finalAnswer: string;
+            turns: components["schemas"]["AdvisorTurn"][];
+        };
+        ListAdvisorConversationsResponse: {
+            conversations: components["schemas"]["AdvisorConversation"][];
+        };
+        AdvisorConversationDetail: {
+            conversation: components["schemas"]["AdvisorConversation"];
+            turns: components["schemas"]["AdvisorTurn"][];
         };
     };
     responses: {
@@ -707,7 +1008,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ListRobotsResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -725,7 +1026,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["CreateRobotRequest"];
             };
         };
         responses: {
@@ -735,7 +1036,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["CreateRobotResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -802,17 +1103,75 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["StartScanRequest"];
             };
         };
         responses: {
-            /** @description Accepted */
-            202: {
+            /** @description Created (pending session) */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ScanSession"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    streamScanProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching Protocols (WebSocket upgrade) */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing/invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Event bus not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listReports: {
+        parameters: {
+            query?: {
+                sessionId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListReportsResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -856,7 +1215,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["AuditHead"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -912,7 +1271,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ListInsightsResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -941,7 +1300,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["Insight"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -964,7 +1323,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["RunInsightsResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -985,7 +1344,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ListComplianceProfilesResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -1016,7 +1375,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ComplianceProfile"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -1041,7 +1400,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ListComplianceSnapshotsResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -1070,7 +1429,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ComplianceSnapshot"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -1100,7 +1459,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["AdvisorAskResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -1123,7 +1482,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ListAdvisorConversationsResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -1146,7 +1505,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["AdvisorConversationDetail"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

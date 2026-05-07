@@ -11,10 +11,12 @@ import type { User } from '@/stores/auth'
 // rosshield Web Console TanStack Query 훅.
 //
 // 설계 메모:
-// - openapi-fetch가 spec의 `Envelope` 형태를 반환하지만, 실제 서버 응답은
-//   사용자 합의 형식(envelope 없는 평탄 객체). Stage B는 spec 변경 금지(R12)
-//   범위라, 응답 본문은 inline 타입으로 단언(cast)한다.
-// - reports endpoint는 spec에 미정의 — 직접 fetch 사용.
+// - O3 spec drift 정리(2026-05-07) 이후 대부분 endpoint는 정확한 schema를 가진다.
+//   request body·response 타입은 가능한 곳에서 generated `components["schemas"]`로
+//   직접 좁힐 수 있지만, 본 hooks는 호출자가 다루기 쉬운 평탄 interface를 노출한다.
+//   (gen schema는 nullable·optional 표현이 강해 호출 측 매핑 부담이 큼.)
+// - 응답 본문은 좁힌 inline 타입으로 cast한다 — openapi-fetch는 union을 wrap하므로
+//   one-shot cast가 가장 깔끔.
 // - 401은 client.ts middleware가 세션을 클리어하지만, 호출 측의 throw는
 //   여전히 ApiError로 전달돼야 React Query가 isError로 인식한다.
 
@@ -137,7 +139,7 @@ export const useRobots = (fleetId?: string) => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      const payload = data as unknown as { robots: Robot[] }
+      const payload = data as { robots: Robot[] }
       return payload.robots
     },
   })
@@ -186,22 +188,20 @@ export const useAuditHead = () => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      return data as unknown as AuditHead
+      return data as AuditHead
     },
   })
 }
 
 // useCreateRobot — POST /api/v1/robots. 성공 시 robots 캐시 무효화.
 //   에러 매핑: 400(검증)·401(인증)·409(name·host:port 중복).
+//   O3 spec drift 정리 후(2026-05-07) — body·response가 명시 schema로 갱신됨.
 export const useCreateRobot = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: CreateRobotVars): Promise<CreateRobotResponse> => {
-      // openapi spec의 createRobot body는 빈 객체로만 정의됨 — 실제 서버는 평탄 객체.
-      // openapi-fetch 타입 좁힘으로 body가 Record<string, never>가 되어 전달 불가 →
-      // never로 단언 후 unknown 경유로 우회 (서버는 JSON body를 그대로 디코드).
       const { data, error, response } = await apiClient.POST('/api/v1/robots', {
-        body: vars as unknown as never,
+        body: vars,
       })
       if (error) {
         throw new ApiError(
@@ -209,7 +209,7 @@ export const useCreateRobot = () => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      return data as unknown as CreateRobotResponse
+      return data as CreateRobotResponse
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['robots'] })
@@ -224,7 +224,8 @@ export const useCreateRobot = () => {
 export interface StartScanVars {
   fleetId: string
   packId: string
-  trigger?: string
+  trigger?: 'manual' | 'schedule' | 'event'
+  total?: number
 }
 
 export interface ScanSession {
@@ -243,10 +244,14 @@ export const useStartScan = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: StartScanVars): Promise<ScanSession> => {
-      // spec의 `/api/v1/scans` requestBody는 `{type: object}`로만 정의돼
-      // 생성 타입이 `Record<string, never>` — 실제 합의된 body로 cast.
+      // O3 spec drift 정리 후(2026-05-07) — body 타입이 명시적 객체로 갱신됨.
       const { data, error, response } = await apiClient.POST('/api/v1/scans', {
-        body: vars as unknown as Record<string, never>,
+        body: {
+          fleetId: vars.fleetId,
+          packId: vars.packId,
+          trigger: vars.trigger ?? 'manual',
+          total: vars.total,
+        },
       })
       if (error) {
         throw new ApiError(
@@ -254,7 +259,7 @@ export const useStartScan = () => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      return data as unknown as ScanSession
+      return data as ScanSession
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['scans'] })
@@ -304,7 +309,7 @@ export const useInsights = (filter?: InsightsFilter) => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      const payload = data as unknown as { insights: Insight[] }
+      const payload = data as { insights: Insight[] }
       return payload.insights ?? []
     },
   })
@@ -332,7 +337,7 @@ export const useDismissInsight = () => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      return data as unknown as Insight
+      return data as Insight
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['insights'] })
@@ -392,7 +397,7 @@ export const useComplianceProfiles = () => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      const payload = data as unknown as { profiles: ComplianceProfile[] }
+      const payload = data as { profiles: ComplianceProfile[] }
       return payload.profiles ?? []
     },
   })
@@ -413,7 +418,7 @@ export const useComplianceSnapshots = (profileId?: string) => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      const payload = data as unknown as { snapshots: ComplianceSnapshot[] }
+      const payload = data as { snapshots: ComplianceSnapshot[] }
       return payload.snapshots ?? []
     },
     enabled: !!profileId,
@@ -442,7 +447,7 @@ export const useCreateComplianceProfile = () => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      return data as unknown as ComplianceProfile
+      return data as ComplianceProfile
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['compliance', 'profiles'] })
@@ -474,7 +479,7 @@ export const useGenerateSnapshot = () => {
           extractErrorMessage(error, response.statusText),
         )
       }
-      return data as unknown as ComplianceSnapshot
+      return data as ComplianceSnapshot
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({

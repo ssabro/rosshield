@@ -26,6 +26,20 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for CreateRobotRequestAuthType.
+const (
+	CreateRobotRequestAuthTypePassword   CreateRobotRequestAuthType = "password"
+	CreateRobotRequestAuthTypePrivateKey CreateRobotRequestAuthType = "privateKey"
+)
+
+// Defines values for CreateRobotRequestCriticality.
+const (
+	CreateRobotRequestCriticalityCritical CreateRobotRequestCriticality = "critical"
+	CreateRobotRequestCriticalityHigh     CreateRobotRequestCriticality = "high"
+	CreateRobotRequestCriticalityLow      CreateRobotRequestCriticality = "low"
+	CreateRobotRequestCriticalityMedium   CreateRobotRequestCriticality = "medium"
+)
+
 // Defines values for ErrorCategory.
 const (
 	Conflict        ErrorCategory = "conflict"
@@ -43,6 +57,20 @@ const (
 	Degraded    HealthStatusStatus = "degraded"
 	Ok          HealthStatusStatus = "ok"
 	Unavailable HealthStatusStatus = "unavailable"
+)
+
+// Defines values for RobotAuthType.
+const (
+	RobotAuthTypePassword   RobotAuthType = "password"
+	RobotAuthTypePrivateKey RobotAuthType = "privateKey"
+)
+
+// Defines values for RobotCriticality.
+const (
+	RobotCriticalityCritical RobotCriticality = "critical"
+	RobotCriticalityHigh     RobotCriticality = "high"
+	RobotCriticalityLow      RobotCriticality = "low"
+	RobotCriticalityMedium   RobotCriticality = "medium"
 )
 
 // Defines values for LoginParamsXCookieAuth.
@@ -85,6 +113,140 @@ const (
 	Medium   ListInsightsParamsSeverity = "medium"
 )
 
+// AdvisorAskResponse defines model for AdvisorAskResponse.
+type AdvisorAskResponse struct {
+	ConversationId string        `json:"conversationId"`
+	FinalAnswer    string        `json:"finalAnswer"`
+	Turns          []AdvisorTurn `json:"turns"`
+}
+
+// AdvisorConversation defines model for AdvisorConversation.
+type AdvisorConversation struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Id        string    `json:"id"`
+	TenantId  string    `json:"tenantId"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	UserId    string    `json:"userId"`
+}
+
+// AdvisorConversationDetail defines model for AdvisorConversationDetail.
+type AdvisorConversationDetail struct {
+	Conversation AdvisorConversation `json:"conversation"`
+	Turns        []AdvisorTurn       `json:"turns"`
+}
+
+// AdvisorToolCall defines model for AdvisorToolCall.
+type AdvisorToolCall struct {
+	ArgsJson   *string `json:"argsJson,omitempty"`
+	DurationMs int64   `json:"durationMs"`
+	Error      *string `json:"error,omitempty"`
+	Id         string  `json:"id"`
+	ResultJson *string `json:"resultJson,omitempty"`
+	ToolName   string  `json:"toolName"`
+}
+
+// AdvisorTurn defines model for AdvisorTurn.
+type AdvisorTurn struct {
+	Content        string    `json:"content"`
+	ConversationId string    `json:"conversationId"`
+	CostUsd        *float64  `json:"costUsd,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	Id             string    `json:"id"`
+	InputTokens    *int      `json:"inputTokens,omitempty"`
+	LlmModel       *string   `json:"llmModel,omitempty"`
+	LlmProvider    *string   `json:"llmProvider,omitempty"`
+	OutputTokens   *int      `json:"outputTokens,omitempty"`
+
+	// Role user/assistant/tool/system
+	Role      string             `json:"role"`
+	Sequence  int                `json:"sequence"`
+	ToolCalls *[]AdvisorToolCall `json:"toolCalls,omitempty"`
+}
+
+// AuditHead defines model for AuditHead.
+type AuditHead struct {
+	// HashHex Hash bytes (32B) hex-encoded — 64 chars
+	HashHex   string     `json:"hashHex"`
+	Seq       int64      `json:"seq"`
+	TenantId  string     `json:"tenantId"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
+// ComplianceControlStatus defines model for ComplianceControlStatus.
+type ComplianceControlStatus struct {
+	ControlId string  `json:"controlId"`
+	FailCount int     `json:"failCount"`
+	Notes     *string `json:"notes,omitempty"`
+	PassCount int     `json:"passCount"`
+
+	// Status pass/fail/partial/not_applicable/unmapped
+	Status string `json:"status"`
+}
+
+// ComplianceProfile defines model for ComplianceProfile.
+type ComplianceProfile struct {
+	CreatedAt        time.Time `json:"createdAt"`
+	Enabled          bool      `json:"enabled"`
+	Framework        string    `json:"framework"`
+	FrameworkVersion string    `json:"frameworkVersion"`
+	Id               string    `json:"id"`
+	TenantId         string    `json:"tenantId"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+}
+
+// ComplianceSnapshot defines model for ComplianceSnapshot.
+type ComplianceSnapshot struct {
+	ChainHeadHash      string                     `json:"chainHeadHash"`
+	ChainHeadSeq       int64                      `json:"chainHeadSeq"`
+	CreatedAt          time.Time                  `json:"createdAt"`
+	FailCount          int                        `json:"failCount"`
+	Id                 string                     `json:"id"`
+	NotApplicableCount int                        `json:"notApplicableCount"`
+	OverallScore       float64                    `json:"overallScore"`
+	PartialCount       int                        `json:"partialCount"`
+	PassCount          int                        `json:"passCount"`
+	ProfileId          string                     `json:"profileId"`
+	SessionId          *string                    `json:"sessionId,omitempty"`
+	Statuses           *[]ComplianceControlStatus `json:"statuses,omitempty"`
+	TenantId           string                     `json:"tenantId"`
+	UnmappedCount      int                        `json:"unmappedCount"`
+}
+
+// CreateRobotRequest defines model for CreateRobotRequest.
+type CreateRobotRequest struct {
+	AuthType CreateRobotRequestAuthType `json:"authType"`
+
+	// Criticality Empty → domain default (medium)
+	Criticality *CreateRobotRequestCriticality `json:"criticality,omitempty"`
+	FleetId     string                         `json:"fleetId"`
+	Host        string                         `json:"host"`
+	Name        string                         `json:"name"`
+	OsDistro    *string                        `json:"osDistro,omitempty"`
+	Password    *string                        `json:"password,omitempty"`
+
+	// Port 0 → domain default (22)
+	Port                 *int      `json:"port,omitempty"`
+	PrivateKeyPassphrase *string   `json:"privateKeyPassphrase,omitempty"`
+	PrivateKeyPem        *string   `json:"privateKeyPem,omitempty"`
+	Role                 *string   `json:"role,omitempty"`
+	RosDistro            *string   `json:"rosDistro,omitempty"`
+	Tags                 *[]string `json:"tags,omitempty"`
+	Username             string    `json:"username"`
+}
+
+// CreateRobotRequestAuthType defines model for CreateRobotRequest.AuthType.
+type CreateRobotRequestAuthType string
+
+// CreateRobotRequestCriticality Empty → domain default (medium)
+type CreateRobotRequestCriticality string
+
+// CreateRobotResponse defines model for CreateRobotResponse.
+type CreateRobotResponse struct {
+	CredentialId string `json:"credentialId"`
+	Robot        Robot  `json:"robot"`
+}
+
 // Envelope defines model for Envelope.
 type Envelope struct {
 	Meta  *Meta        `json:"meta,omitempty"`
@@ -124,11 +286,126 @@ type HealthStatus struct {
 // HealthStatusStatus defines model for HealthStatus.Status.
 type HealthStatusStatus string
 
+// Insight defines model for Insight.
+type Insight struct {
+	CheckId      *string    `json:"checkId,omitempty"`
+	Confidence   float64    `json:"confidence"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	DismissedAt  *time.Time `json:"dismissedAt,omitempty"`
+	DismissedBy  *string    `json:"dismissedBy,omitempty"`
+	FleetId      *string    `json:"fleetId,omitempty"`
+	Id           string     `json:"id"`
+	Kind         string     `json:"kind"`
+	ProducedBy   string     `json:"producedBy"`
+	Reasoning    *string    `json:"reasoning,omitempty"`
+	RobotId      *string    `json:"robotId,omitempty"`
+	RulesApplied *[]string  `json:"rulesApplied,omitempty"`
+	Severity     string     `json:"severity"`
+	Summary      string     `json:"summary"`
+	TenantId     string     `json:"tenantId"`
+}
+
+// ListAdvisorConversationsResponse defines model for ListAdvisorConversationsResponse.
+type ListAdvisorConversationsResponse struct {
+	Conversations []AdvisorConversation `json:"conversations"`
+}
+
+// ListComplianceProfilesResponse defines model for ListComplianceProfilesResponse.
+type ListComplianceProfilesResponse struct {
+	Profiles []ComplianceProfile `json:"profiles"`
+}
+
+// ListComplianceSnapshotsResponse defines model for ListComplianceSnapshotsResponse.
+type ListComplianceSnapshotsResponse struct {
+	Snapshots []ComplianceSnapshot `json:"snapshots"`
+}
+
+// ListInsightsResponse defines model for ListInsightsResponse.
+type ListInsightsResponse struct {
+	Insights []Insight `json:"insights"`
+}
+
+// ListReportsResponse defines model for ListReportsResponse.
+type ListReportsResponse struct {
+	Reports []Report `json:"reports"`
+}
+
+// ListRobotsResponse defines model for ListRobotsResponse.
+type ListRobotsResponse struct {
+	Robots []Robot `json:"robots"`
+}
+
 // Meta defines model for Meta.
 type Meta struct {
 	RequestId     string     `json:"requestId"`
 	ResponseAt    *time.Time `json:"responseAt,omitempty"`
 	ServerVersion *string    `json:"serverVersion,omitempty"`
+}
+
+// Report defines model for Report.
+type Report struct {
+	Format       string    `json:"format"`
+	GeneratedAt  time.Time `json:"generatedAt"`
+	GeneratedBy  string    `json:"generatedBy"`
+	Id           string    `json:"id"`
+	PdfSha256    string    `json:"pdfSha256"`
+	PdfSizeBytes int64     `json:"pdfSizeBytes"`
+	SessionId    string    `json:"sessionId"`
+	Signed       bool      `json:"signed"`
+	TenantId     string    `json:"tenantId"`
+}
+
+// Robot defines model for Robot.
+type Robot struct {
+	AuthType    RobotAuthType    `json:"authType"`
+	Criticality RobotCriticality `json:"criticality"`
+	FleetId     string           `json:"fleetId"`
+	Host        string           `json:"host"`
+	Id          string           `json:"id"`
+	Name        string           `json:"name"`
+	OsDistro    *string          `json:"osDistro,omitempty"`
+	Port        int              `json:"port"`
+	Role        *string          `json:"role,omitempty"`
+	RosDistro   *string          `json:"rosDistro,omitempty"`
+	Tags        *[]string        `json:"tags,omitempty"`
+	TenantId    string           `json:"tenantId"`
+}
+
+// RobotAuthType defines model for Robot.AuthType.
+type RobotAuthType string
+
+// RobotCriticality defines model for Robot.Criticality.
+type RobotCriticality string
+
+// RunInsightsResponse defines model for RunInsightsResponse.
+type RunInsightsResponse struct {
+	Count    int       `json:"count"`
+	Produced []Insight `json:"produced"`
+}
+
+// ScanSession defines model for ScanSession.
+type ScanSession struct {
+	Completed int    `json:"completed"`
+	Failed    int    `json:"failed"`
+	FleetId   string `json:"fleetId"`
+	PackId    string `json:"packId"`
+	SessionId string `json:"sessionId"`
+	Status    string `json:"status"`
+	TenantId  string `json:"tenantId"`
+	Total     int    `json:"total"`
+	Trigger   string `json:"trigger"`
+}
+
+// StartScanRequest defines model for StartScanRequest.
+type StartScanRequest struct {
+	FleetId string `json:"fleetId"`
+	PackId  string `json:"packId"`
+
+	// Total Optional — orchestrator will compute
+	Total *int `json:"total,omitempty"`
+
+	// Trigger Empty → manual
+	Trigger *string `json:"trigger,omitempty"`
 }
 
 // Cursor defines model for Cursor.
@@ -246,6 +523,11 @@ type DismissInsightJSONBody struct {
 	Reason string `json:"reason"`
 }
 
+// ListReportsParams defines parameters for ListReports.
+type ListReportsParams struct {
+	SessionId *string `form:"sessionId,omitempty" json:"sessionId,omitempty"`
+}
+
 // ListRobotsParams defines parameters for ListRobots.
 type ListRobotsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -257,9 +539,6 @@ type ListRobotsParams struct {
 	Tag     *string `form:"tag,omitempty" json:"tag,omitempty"`
 	Q       *string `form:"q,omitempty" json:"q,omitempty"`
 }
-
-// CreateRobotJSONBody defines parameters for CreateRobot.
-type CreateRobotJSONBody = map[string]interface{}
 
 // CreateRobotParams defines parameters for CreateRobot.
 type CreateRobotParams struct {
@@ -274,9 +553,6 @@ type ListScansParams struct {
 	Status  *string `form:"status,omitempty" json:"status,omitempty"`
 	FleetId *string `form:"fleetId,omitempty" json:"fleetId,omitempty"`
 }
-
-// CreateScanJSONBody defines parameters for CreateScan.
-type CreateScanJSONBody = map[string]interface{}
 
 // CreateScanParams defines parameters for CreateScan.
 type CreateScanParams struct {
@@ -309,10 +585,10 @@ type GenerateComplianceSnapshotJSONRequestBody GenerateComplianceSnapshotJSONBod
 type DismissInsightJSONRequestBody DismissInsightJSONBody
 
 // CreateRobotJSONRequestBody defines body for CreateRobot for application/json ContentType.
-type CreateRobotJSONRequestBody = CreateRobotJSONBody
+type CreateRobotJSONRequestBody = CreateRobotRequest
 
 // CreateScanJSONRequestBody defines body for CreateScan for application/json ContentType.
-type CreateScanJSONRequestBody = CreateScanJSONBody
+type CreateScanJSONRequestBody = StartScanRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -364,6 +640,9 @@ type ServerInterface interface {
 	// Mark an insight as dismissed
 	// (POST /api/v1/insights/{insightId}:dismiss)
 	DismissInsight(w http.ResponseWriter, r *http.Request, insightId string)
+	// List reports
+	// (GET /api/v1/reports)
+	ListReports(w http.ResponseWriter, r *http.Request, params ListReportsParams)
 	// Verify the signature of a report
 	// (POST /api/v1/reports/{reportId}:verify)
 	VerifyReport(w http.ResponseWriter, r *http.Request, reportId string)
@@ -382,6 +661,9 @@ type ServerInterface interface {
 	// Start a new scan session
 	// (POST /api/v1/scans)
 	CreateScan(w http.ResponseWriter, r *http.Request, params CreateScanParams)
+	// Stream scan progress (WebSocket upgrade)
+	// (GET /api/v1/scans/{sessionId}/progress)
+	StreamScanProgress(w http.ResponseWriter, r *http.Request, sessionId string)
 	// Current tenant
 	// (GET /api/v1/tenants/current)
 	GetCurrentTenant(w http.ResponseWriter, r *http.Request)
@@ -493,6 +775,12 @@ func (_ Unimplemented) DismissInsight(w http.ResponseWriter, r *http.Request, in
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List reports
+// (GET /api/v1/reports)
+func (_ Unimplemented) ListReports(w http.ResponseWriter, r *http.Request, params ListReportsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Verify the signature of a report
 // (POST /api/v1/reports/{reportId}:verify)
 func (_ Unimplemented) VerifyReport(w http.ResponseWriter, r *http.Request, reportId string) {
@@ -526,6 +814,12 @@ func (_ Unimplemented) ListScans(w http.ResponseWriter, r *http.Request, params 
 // Start a new scan session
 // (POST /api/v1/scans)
 func (_ Unimplemented) CreateScan(w http.ResponseWriter, r *http.Request, params CreateScanParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Stream scan progress (WebSocket upgrade)
+// (GET /api/v1/scans/{sessionId}/progress)
+func (_ Unimplemented) StreamScanProgress(w http.ResponseWriter, r *http.Request, sessionId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1078,6 +1372,41 @@ func (siw *ServerInterfaceWrapper) DismissInsight(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListReports operation middleware
+func (siw *ServerInterfaceWrapper) ListReports(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListReportsParams
+
+	// ------------- Optional query parameter "sessionId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sessionId", r.URL.Query(), &params.SessionId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListReports(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // VerifyReport operation middleware
 func (siw *ServerInterfaceWrapper) VerifyReport(w http.ResponseWriter, r *http.Request) {
 
@@ -1374,6 +1703,39 @@ func (siw *ServerInterfaceWrapper) CreateScan(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// StreamScanProgress operation middleware
+func (siw *ServerInterfaceWrapper) StreamScanProgress(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", chi.URLParam(r, "sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	ctx = context.WithValue(ctx, ApiKeyAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamScanProgress(w, r, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetCurrentTenant operation middleware
 func (siw *ServerInterfaceWrapper) GetCurrentTenant(w http.ResponseWriter, r *http.Request) {
 
@@ -1586,6 +1948,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/insights/{insightId}:dismiss", wrapper.DismissInsight)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/reports", wrapper.ListReports)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/reports/{reportId}:verify", wrapper.VerifyReport)
 	})
 	r.Group(func(r chi.Router) {
@@ -1604,6 +1969,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/scans", wrapper.CreateScan)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/scans/{sessionId}/progress", wrapper.StreamScanProgress)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/tenants/current", wrapper.GetCurrentTenant)
 	})
 	r.Group(func(r chi.Router) {
@@ -1619,74 +1987,110 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"AAA=",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

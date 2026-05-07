@@ -35,7 +35,7 @@ const TRIGGERS = ['manual', 'schedule', 'event'] as const
 function ScansPage(): React.ReactElement {
   const [fleetId, setFleetId] = useState('')
   const [packId, setPackId] = useState('')
-  const [trigger, setTrigger] = useState<string>('manual')
+  const [trigger, setTrigger] = useState<'manual' | 'schedule' | 'event'>('manual')
   const [lastSession, setLastSession] = useState<ScanSession | null>(null)
   const [error, setError] = useState('')
   const t = useT()
@@ -96,7 +96,10 @@ function ScansPage(): React.ReactElement {
             </div>
             <div className="space-y-2">
               <Label htmlFor="trigger">{t('scans.form.trigger')}</Label>
-              <Select value={trigger} onValueChange={setTrigger}>
+              <Select
+                value={trigger}
+                onValueChange={(v) => setTrigger(v as 'manual' | 'schedule' | 'event')}
+              >
                 <SelectTrigger id="trigger">
                   <SelectValue />
                 </SelectTrigger>
