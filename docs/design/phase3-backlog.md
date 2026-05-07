@@ -274,8 +274,8 @@ Carryover C4 Playwright (independent)
 - [ ] **R20-1** 라이선스 모델 — Apache-2.0(현 D5) 유지 vs BSL/Elastic License/SSPL 같은 보호 라이선스로 변경. 결정 트리거: D6(public 전환) 직전. 시장 전례: HashiCorp Vault MPL→BSL(2023), Elastic Apache→SSPL/Elastic License, Sentry BSL, Grafana·GitLab open-core 분리. 우려: AWS·대형 SaaS 기업의 같은 코드 그대로 SaaS화.
 - [ ] **R20-2** 코어/엔터프라이즈 코드 분리 — open-core 모델(D5) 실현. 별 repo로 분리할지(`rosshield-core` Apache + `rosshield-enterprise` closed) vs 단일 repo + 빌드 플래그(`-tags=enterprise`). 영향 범위: SSO·MT·webhook·라이선스(E20~E24)는 모두 enterprise 후보.
 - [ ] **R20-3** GitHub repo visibility (D6 재논의) — R20-1 결정 후 수행. private 유지 vs public(보호 라이선스 동봉).
-- [ ] R20-4 SSO IdP 선택 우선순위 (Google Workspace · Okta · Azure AD · Auth0 — 첫 PoC 고객 합의)
-- [ ] R20-5 PG 마이그레이션 자동화 도구 (golang-migrate · atlasgo · pure-Go schema YAML → SQL 변환 자체)
+- [x] **R20-4** SSO IdP 선택 우선순위 — **Google Workspace + Okta 둘 다**(2026-05-07 결정). 보편성(Google) + Enterprise 표준(Okta·SAML도 가능). E20 fixture 다양성 확보.
+- [x] **R20-5** PG 마이그레이션 자동화 도구 — **golang-migrate**(2026-05-07 결정). 가장 표준, NNNN_name.up.sql/.down.sql 파일 규칙 + Go API. 외부 dep 1개.
 - [ ] Carryover C4 우선순위 사용자 합의
 - [ ] 운영 갭 후속(O3 spec drift) 정리 합의
 
