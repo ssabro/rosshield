@@ -186,13 +186,13 @@ func (d *Dispatcher) processOne(ctx context.Context, del webhook.WebhookDelivery
 		// endpoint가 사라졌으면 dead-letter로 진입시켜 다시 시도하지 않도록 함.
 		d.deps.Logger.Warn("webhookrun: get endpoint failed — dead-letter",
 			"deliveryId", del.ID, "endpointId", del.EndpointID, "err", err.Error())
-		d.markFailed(ctx, del.ID, webhook.MaxRetryAttempts, now, 0, "endpoint unavailable: "+err.Error(), now)
+		_ = d.markFailed(ctx, del.ID, webhook.MaxRetryAttempts, now, 0, "endpoint unavailable: "+err.Error(), now)
 		return
 	}
 	if !ep.Enabled {
 		d.deps.Logger.Info("webhookrun: endpoint disabled — dead-letter",
 			"deliveryId", del.ID, "endpointId", del.EndpointID)
-		d.markFailed(ctx, del.ID, webhook.MaxRetryAttempts, now, 0, "endpoint disabled", now)
+		_ = d.markFailed(ctx, del.ID, webhook.MaxRetryAttempts, now, 0, "endpoint disabled", now)
 		return
 	}
 

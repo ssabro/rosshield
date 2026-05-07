@@ -1,10 +1,10 @@
 // E22-B — 0002~0019 PostgreSQL 마이그레이션 변환 검증.
 //
 // 본 테스트는 실제 PG 인스턴스 없이 정적 sanity check 만 수행합니다.
-//   * 모든 0002~0019 파일이 embed 되었는지
-//   * up/down 짝이 맞는지 (동일 시퀀스로 .up.sql / .down.sql 둘 다 존재)
-//   * 각 SQL 파일이 PG 변환 마커(JSONB / TIMESTAMPTZ / BYTEA)를 적어도 하나 이상 보유 (NO-OP 제외)
-//   * 괄호 짝, 세미콜론 종결, SQLite 잔재 토큰(WITHOUT ROWID, RAISE(ABORT, PRAGMA, AUTOINCREMENT, BLOB) 부재
+//   - 모든 0002~0019 파일이 embed 되었는지
+//   - up/down 짝이 맞는지 (동일 시퀀스로 .up.sql / .down.sql 둘 다 존재)
+//   - 각 SQL 파일이 PG 변환 마커(JSONB / TIMESTAMPTZ / BYTEA)를 적어도 하나 이상 보유 (NO-OP 제외)
+//   - 괄호 짝, 세미콜론 종결, SQLite 잔재 토큰(WITHOUT ROWID, RAISE(ABORT, PRAGMA, AUTOINCREMENT, BLOB) 부재
 //
 // 실 PG 인스턴스 통합 검증은 후속 stage E22-E (testcontainers-go).
 package postgres_test

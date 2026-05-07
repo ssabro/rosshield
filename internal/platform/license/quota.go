@@ -3,7 +3,6 @@ package license
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -35,10 +34,6 @@ type Enforcer struct {
 	payload Payload
 	usage   UsageReader
 	now     func() time.Time
-
-	// memo는 같은 ctx 내 반복 검사 비용을 줄이는 짧은 캐시.
-	mu     sync.Mutex
-	memoTS time.Time
 }
 
 // NewEnforcer는 검증된 Payload + UsageReader로 Enforcer를 만듭니다.
