@@ -429,6 +429,39 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/license:
+    get:
+      tags: [tenant]
+      operationId: getLicenseInfo
+      summary: License metadata (E24)
+      description: |
+        Returns the active license edition (community|enterprise), expiry, active
+        features, and quotas. Token and signature are NEVER exposed — only metadata
+        the operator needs. License unset → community defaults.
+      x-status: phase3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  edition:    { type: string, enum: [community, enterprise] }
+                  issuedTo:   { type: string }
+                  issuedAt:   { type: string, format: date-time }
+                  expiresAt:  { type: string, format: date-time }
+                  expired:    { type: boolean }
+                  features:   { type: array, items: { type: string } }
+                  quotas:
+                    type: object
+                    properties:
+                      robotsMax:       { type: integer, description: "0 = unlimited" }
+                      scansPerDay:     { type: integer, description: "0 = unlimited" }
+                      llmTokensPerDay: { type: integer, description: "0 = unlimited" }
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/audit/head:
     get:
       tags: [audit]

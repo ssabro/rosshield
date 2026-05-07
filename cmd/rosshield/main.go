@@ -41,6 +41,8 @@ func run(args []string) int {
 		return runRobot(args[1:])
 	case "scan":
 		return runScan(args[1:])
+	case "license":
+		return runLicense(args[1:])
 	case "help", "--help", "-h":
 		usage()
 		return 0
@@ -70,6 +72,7 @@ Online 서브커맨드 (Stage C — config 토큰 사용):
   robot list [--fleet ID] [-o ...]
   scan run --fleet ID --pack ID [--trigger T] [--total N] [-o ...]
   report list [--session ID] [-o ...]
+  license info [-o ...]                        Open-core 라이선스 메타 (E24)
 
 Online 서브커맨드 (Stage D — 합류 예정):
   scan status <id> / audit verify

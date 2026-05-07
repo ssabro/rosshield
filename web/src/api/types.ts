@@ -281,6 +281,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/license": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * License metadata (E24)
+         * @description Returns the active license edition (community|enterprise), expiry, active
+         *     features, and quotas. Token and signature are NEVER exposed — only metadata
+         *     the operator needs. License unset → community defaults.
+         */
+        get: operations["getLicenseInfo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/head": {
         parameters: {
             query?: never;
@@ -1195,6 +1217,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getLicenseInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        edition?: "community" | "enterprise";
+                        issuedTo?: string;
+                        /** Format: date-time */
+                        issuedAt?: string;
+                        /** Format: date-time */
+                        expiresAt?: string;
+                        expired?: boolean;
+                        features?: string[];
+                        quotas?: {
+                            /** @description 0 = unlimited */
+                            robotsMax?: number;
+                            /** @description 0 = unlimited */
+                            scansPerDay?: number;
+                            /** @description 0 = unlimited */
+                            llmTokensPerDay?: number;
+                        };
+                    };
                 };
             };
             default: components["responses"]["ErrorResponse"];
