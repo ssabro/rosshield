@@ -2,7 +2,7 @@ GO ?= go
 BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
 
-.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types compose-build compose-up compose-down compose-smoke
+.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
 
 all: ci
 
@@ -76,3 +76,31 @@ compose-smoke:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+# E22-A — PostgreSQL 마이그레이션 (golang-migrate CLI 사용).
+# 설치: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+# 사용:
+#   make pg-migrate-up   PG_DSN='postgres://user:pass@host:5432/db?sslmode=disable'
+#   make pg-migrate-down PG_DSN='postgres://...'
+#   make pg-migrate-status PG_DSN='postgres://...'
+#   make pg-migrate-create NAME=add_widgets
+#
+# 주의: PG 마이그레이션 본격 적용은 후속 stage(E22-B 이상). 현재는 0001 만 존재.
+PG_MIGRATIONS_DIR := internal/platform/storage/postgres/migrations
+PG_DSN ?=
+
+pg-migrate-up:
+	@test -n "$(PG_DSN)" || { echo "PG_DSN required (e.g. PG_DSN='postgres://...?sslmode=disable')"; exit 1; }
+	migrate -path $(PG_MIGRATIONS_DIR) -database "$(PG_DSN)" up
+
+pg-migrate-down:
+	@test -n "$(PG_DSN)" || { echo "PG_DSN required"; exit 1; }
+	migrate -path $(PG_MIGRATIONS_DIR) -database "$(PG_DSN)" down 1
+
+pg-migrate-status:
+	@test -n "$(PG_DSN)" || { echo "PG_DSN required"; exit 1; }
+	migrate -path $(PG_MIGRATIONS_DIR) -database "$(PG_DSN)" version
+
+pg-migrate-create:
+	@test -n "$(NAME)" || { echo "NAME required (e.g. NAME=add_widgets)"; exit 1; }
+	migrate create -ext sql -dir $(PG_MIGRATIONS_DIR) -seq $(NAME)
