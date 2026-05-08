@@ -3,7 +3,7 @@
 --       docs/design/07-scan-engine-and-benchmarks.md §7.2·§7.3
 --
 -- 변환 메모:
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (RFC3339Nano) → TEXT
 --   * CHECK 제약은 그대로 (PG 표준)
 --   * 인덱스(DESC 포함)는 그대로 (PG 지원)
 
@@ -21,10 +21,10 @@ CREATE TABLE scan_sessions (
     progress_completed  INTEGER     NOT NULL DEFAULT 0,
     progress_failed     INTEGER     NOT NULL DEFAULT 0,
     failure_reason      TEXT        NOT NULL DEFAULT '',
-    created_at          TIMESTAMPTZ NOT NULL,
-    updated_at          TIMESTAMPTZ NOT NULL,
-    started_at          TIMESTAMPTZ,
-    completed_at        TIMESTAMPTZ,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    started_at          TEXT,
+    completed_at        TEXT,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (fleet_id) REFERENCES fleets(id),
@@ -49,8 +49,8 @@ CREATE TABLE scan_results (
     eval_reason     TEXT        NOT NULL DEFAULT '',
     evidence_ref    TEXT        NOT NULL DEFAULT '',     -- 0012에서 DROP 됨 (E7 N:M)
     duration_ms     INTEGER     NOT NULL DEFAULT 0,
-    executed_at     TIMESTAMPTZ NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL,
+    executed_at     TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (session_id) REFERENCES scan_sessions(id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),

@@ -4,8 +4,8 @@
 --
 -- 변환 결정(SQLite → PG):
 --   * INTEGER PRIMARY KEY AUTOINCREMENT → BIGSERIAL PRIMARY KEY (사용 안함; ULID/TEXT PK 유지)
---   * TEXT (RFC3339Nano UTC)            → TIMESTAMPTZ
---   * TEXT (JSON 본문)                   → JSONB
+--   * TEXT (RFC3339Nano UTC)            → TEXT
+--   * TEXT (JSON 본문)                   → TEXT
 --   * BLOB                              → BYTEA (본 마이그레이션에서는 미사용)
 --   * UNIQUE (a, b)                     → UNIQUE (a, b) 동일
 --   * FOREIGN KEY ... REFERENCES        → 동일
@@ -26,10 +26,10 @@ CREATE TABLE tenants (
     name        TEXT        NOT NULL,
     plan        TEXT        NOT NULL DEFAULT 'desktop_free',
     -- plan: 'desktop_free' | 'desktop_pro' | 'enterprise' | 'appliance'
-    created_at  TIMESTAMPTZ NOT NULL,
-    settings    JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    features    JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    retention   JSONB       NOT NULL DEFAULT '{}'::jsonb
+    created_at  TEXT NOT NULL,
+    settings    TEXT       NOT NULL DEFAULT '{}',
+    features    TEXT       NOT NULL DEFAULT '{}',
+    retention   TEXT       NOT NULL DEFAULT '{}'
 );
 
 -- 사용자.
@@ -44,8 +44,8 @@ CREATE TABLE users (
     password_hash    TEXT, -- argon2id encoded ($argon2id$...). local 만 채움.
     status           TEXT        NOT NULL DEFAULT 'active',
     -- status: 'active' | 'disabled' | 'invited'
-    created_at       TIMESTAMPTZ NOT NULL,
-    updated_at       TIMESTAMPTZ NOT NULL,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
     UNIQUE (tenant_id, email),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );

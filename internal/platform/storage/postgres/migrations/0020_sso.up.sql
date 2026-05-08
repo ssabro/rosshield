@@ -1,5 +1,5 @@
 -- E20-A Phase 3 — SSO (OIDC + SAML) PG 버전.
--- SQLite 0020_sso 변환: INTEGER enabled → BOOLEAN, INTEGER bool 그대로 SMALLINT.
+-- SQLite 0020_sso 변환: INTEGER enabled → SMALLINT, INTEGER bool 그대로 SMALLINT.
 
 CREATE TABLE sso_providers (
     id           TEXT NOT NULL,

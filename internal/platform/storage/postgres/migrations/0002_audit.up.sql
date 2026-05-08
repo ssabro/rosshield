@@ -4,14 +4,14 @@
 --
 -- 변환 메모:
 --   * BLOB                 → BYTEA (sha256 32B / Ed25519 64B)
---   * TEXT (RFC3339Nano)   → TIMESTAMPTZ
+--   * TEXT (RFC3339Nano)   → TEXT
 --   * SQLite RAISE(ABORT)  → PL/pgSQL RAISE EXCEPTION (P9 immutability)
 
 -- 감사 엔트리: 테넌트당 단조 증가 seq, 해시 체인 연결.
 CREATE TABLE audit_entries (
     tenant_id      TEXT        NOT NULL,
     seq            BIGINT      NOT NULL,
-    occurred_at    TIMESTAMPTZ NOT NULL,
+    occurred_at    TEXT NOT NULL,
     actor_type     TEXT        NOT NULL, -- 'user' | 'api' | 'system' | 'anonymous'
     actor_id       TEXT        NOT NULL, -- us_... | ak_... | 'system' | '0.0.0.0'
     actor_ip       TEXT,
@@ -36,7 +36,7 @@ CREATE TABLE audit_chain_heads (
     tenant_id  TEXT        PRIMARY KEY,
     seq        BIGINT      NOT NULL,
     hash       BYTEA       NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
+    updated_at TEXT NOT NULL
 );
 
 -- Checkpoint 서명: 매시간 또는 중요 이벤트마다 head를 Ed25519로 서명.
@@ -44,7 +44,7 @@ CREATE TABLE audit_checkpoints (
     tenant_id     TEXT        NOT NULL,
     seq           BIGINT      NOT NULL,
     hash          BYTEA       NOT NULL, -- 서명 시점 head hash
-    signed_at     TIMESTAMPTZ NOT NULL,
+    signed_at     TEXT NOT NULL,
     signer_key_id TEXT        NOT NULL,
     signature     BYTEA       NOT NULL, -- Ed25519 서명 (64B)
     PRIMARY KEY (tenant_id, seq)

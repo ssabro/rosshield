@@ -82,8 +82,6 @@ func TestFirstMigrationContainsExpectedTables(t *testing.T) {
 		"CREATE TABLE platform_info",
 		"CREATE TABLE tenants",
 		"CREATE TABLE users",
-		"JSONB",       // PG 변환 마커
-		"TIMESTAMPTZ", // PG 변환 마커
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("0001 up.sql missing token %q", want)

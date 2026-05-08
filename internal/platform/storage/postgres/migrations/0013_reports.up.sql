@@ -4,7 +4,7 @@
 --
 -- 변환 메모:
 --   * BLOB → BYTEA (pdf_blob, sig_bytes)
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (RFC3339Nano) → TEXT
 --   * sig_chain_head_seq INTEGER → BIGINT (audit chain seq와 동일 폭 유지)
 --   * size_bytes INTEGER → BIGINT (PDF는 GB 단위 가능)
 
@@ -20,13 +20,13 @@ CREATE TABLE reports (
     pdf_sha256          TEXT        NOT NULL,                 -- 64자 lowercase hex
     pdf_size_bytes      BIGINT      NOT NULL,
     pdf_blob            BYTEA       NOT NULL,                 -- PDF 본문
-    generated_at        TIMESTAMPTZ NOT NULL,
+    generated_at        TEXT NOT NULL,
     generated_by        TEXT        NOT NULL,                 -- userID 또는 'system'
     -- ReportSignature inline.
     sig_algorithm       TEXT        NOT NULL DEFAULT 'ed25519',
     sig_key_id          TEXT        NOT NULL,                 -- "key_<8B hex>"
     sig_bytes           BYTEA       NOT NULL,                 -- 64B Ed25519 signature
-    sig_signed_at       TIMESTAMPTZ NOT NULL,
+    sig_signed_at       TEXT NOT NULL,
     sig_chain_head_seq  BIGINT      NOT NULL,                 -- 서명 시점 audit chain head seq
     sig_chain_head_hash TEXT        NOT NULL,                 -- 서명 시점 audit chain head hash (hex)
     PRIMARY KEY (id),

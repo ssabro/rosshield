@@ -3,10 +3,10 @@
 --       internal/domain/integration/webhook/README.md
 --
 -- 변환 메모:
---   * TEXT (JSON events) → JSONB
---   * INTEGER (boolean enabled/succeeded) → BOOLEAN (CHECK 제거 — boolean에 0/1 강제 불필요)
+--   * TEXT (JSON events) → TEXT
+--   * INTEGER (boolean enabled/succeeded) → SMALLINT (CHECK 제거 — boolean에 0/1 강제 불필요)
 --   * BLOB → BYTEA (payload)
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (RFC3339Nano) → TEXT
 --   * INTEGER attempt_count/last_response_status → INTEGER 유지 (32비트 충분)
 
 -- webhook_endpoints: 테넌트당 등록 가능한 송출 대상.
@@ -15,12 +15,12 @@ CREATE TABLE webhook_endpoints (
     tenant_id   TEXT        NOT NULL,
     url         TEXT        NOT NULL,                -- absolute http/https URL
     secret      TEXT        NOT NULL,                -- HMAC-SHA256 키 (평문)
-    events      JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    events      TEXT       NOT NULL DEFAULT '[]',
     format      TEXT        NOT NULL DEFAULT 'json'  -- 'json'|'cef'|'ecs'
                     CHECK (format IN ('json','cef','ecs')),
-    enabled     BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at  TIMESTAMPTZ NOT NULL,
-    updated_at  TIMESTAMPTZ NOT NULL,
+    enabled     SMALLINT  NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
@@ -39,12 +39,12 @@ CREATE TABLE webhook_deliveries (
     event_id             TEXT        NOT NULL DEFAULT '',     -- EventBus.Event.ID
     payload              BYTEA       NOT NULL DEFAULT ''::bytea,
     attempt_count        INTEGER     NOT NULL DEFAULT 0,
-    last_attempted_at    TIMESTAMPTZ,                          -- NULL=시도 전
-    next_attempt_at      TIMESTAMPTZ NOT NULL,                 -- ISO 시각
-    succeeded            BOOLEAN     NOT NULL DEFAULT FALSE,
+    last_attempted_at    TEXT,                          -- NULL=시도 전
+    next_attempt_at      TEXT NOT NULL,                 -- ISO 시각
+    succeeded            SMALLINT  NOT NULL DEFAULT 0,
     last_response_status INTEGER     NOT NULL DEFAULT 0,       -- HTTP status (0=시도 전)
     last_error           TEXT        NOT NULL DEFAULT '',
-    created_at           TIMESTAMPTZ NOT NULL,
+    created_at           TEXT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (endpoint_id) REFERENCES webhook_endpoints(id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)

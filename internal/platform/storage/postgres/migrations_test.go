@@ -168,11 +168,14 @@ func TestNoSQLiteRemnants(t *testing.T) {
 	}
 }
 
-func TestPGConversionMarkersPresent(t *testing.T) {
+// TestPGConversionMarkersPresent — 폐기 (E22-E 결정).
+//
+// Phase 3 진입 후 PG 마이그레이션은 sqliterepo와의 type 호환을 위해 sqlite-equivalent
+// schema(TEXT/INTEGER/SMALLINT)로 단순화됐다. 따라서 BOOLEAN/JSONB/TIMESTAMPTZ 같은
+// PG-native marker 검사는 더 이상 의미 없음. binary fields만 BYTEA로 보존(0001·0002 등).
+// 도메인 repo 분리(E22-F 후속)에서 PG-native type 도입 시 본 테스트도 함께 부활.
+func _disabled_TestPGConversionMarkersPresent(t *testing.T) {
 	t.Parallel()
-
-	// 각 up.sql 은 적어도 한 번 PG 전용 타입을 사용해야 변환된 것으로 간주.
-	// (NO-OP 시퀀스는 제외).
 	markers := []string{"JSONB", "TIMESTAMPTZ", "BYTEA", "BOOLEAN"}
 
 	for _, seq := range expectedSequences {

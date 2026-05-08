@@ -3,17 +3,17 @@
 --       docs/design/05-api-and-auth.md §5.8
 --
 -- 변환 메모:
---   * TEXT (JSON array) → JSONB (permissions)
---   * INTEGER NOT NULL DEFAULT 0 (boolean) → BOOLEAN NOT NULL DEFAULT FALSE (is_system)
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (JSON array) → TEXT (permissions)
+--   * INTEGER NOT NULL DEFAULT 0 (boolean) → SMALLINT  NOT NULL DEFAULT 0 (is_system)
+--   * TEXT (RFC3339Nano) → TEXT
 
 CREATE TABLE roles (
     id           TEXT        PRIMARY KEY,
     tenant_id    TEXT        NOT NULL,
     name         TEXT        NOT NULL,
-    permissions  JSONB       NOT NULL DEFAULT '[]'::jsonb,
-    is_system    BOOLEAN     NOT NULL DEFAULT FALSE,
-    created_at   TIMESTAMPTZ NOT NULL,
+    permissions  TEXT       NOT NULL DEFAULT '[]',
+    is_system    SMALLINT  NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL,
     UNIQUE (tenant_id, name),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );

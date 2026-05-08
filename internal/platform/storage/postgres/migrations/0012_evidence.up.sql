@@ -3,8 +3,8 @@
 --       docs/design/07-scan-engine-and-benchmarks.md §7.8
 --
 -- 변환 메모:
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
---   * TEXT (JSON redactions) → JSONB
+--   * TEXT (RFC3339Nano) → TEXT
+--   * TEXT (JSON redactions) → TEXT
 --   * ALTER TABLE ... DROP COLUMN: PG도 동일 syntax 지원
 --   * FK ON DELETE CASCADE: 동일 (PG 표준)
 
@@ -17,8 +17,8 @@ CREATE TABLE evidence_records (
                         CHECK (content_type IN ('stdout','stderr','file','config-snapshot','screenshot')),
     size_bytes      BIGINT      NOT NULL,                -- redact 후 평문 길이
     blob_locator    TEXT        NOT NULL,                -- "fs:<sha256>" — backend prefix + key
-    redactions      JSONB       NOT NULL DEFAULT '[]'::jsonb,
-    created_at      TIMESTAMPTZ NOT NULL,
+    redactions      TEXT       NOT NULL DEFAULT '[]',
+    created_at      TEXT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
@@ -31,7 +31,7 @@ CREATE TABLE evidence_refs (
     scan_result_id  TEXT        NOT NULL,
     evidence_id     TEXT        NOT NULL,
     position        INTEGER     NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ NOT NULL,
+    created_at      TEXT NOT NULL,
     PRIMARY KEY (scan_result_id, evidence_id),
     FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE,
     FOREIGN KEY (evidence_id) REFERENCES evidence_records(id)

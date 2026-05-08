@@ -4,7 +4,7 @@
 --
 -- 변환 메모:
 --   * REAL → DOUBLE PRECISION (confidence)
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (RFC3339Nano) → TEXT
 --   * partial index → 동일 (PG 지원)
 
 CREATE TABLE mapping_suggestions (
@@ -21,8 +21,8 @@ CREATE TABLE mapping_suggestions (
                         CHECK (status IN ('pending', 'confirmed', 'rejected')),
     llm_provider    TEXT             NOT NULL DEFAULT '',
     llm_model       TEXT             NOT NULL DEFAULT '',
-    created_at      TIMESTAMPTZ      NOT NULL,
-    decided_at      TIMESTAMPTZ,
+    created_at      TEXT      NOT NULL,
+    decided_at      TEXT,
     decided_by      TEXT,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),

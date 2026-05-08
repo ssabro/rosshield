@@ -89,11 +89,11 @@ func TestIntegrationMigrationsApplyToFreshDB(t *testing.T) {
 	// 핵심 테이블 존재 확인.
 	expected := []string{
 		"platform_info", "tenants", "users", "roles", "user_roles",
-		"refresh_tokens", "api_keys", "audit_entries", "audit_checkpoints",
+		"auth_refresh_tokens", "api_keys", "audit_entries", "audit_checkpoints",
 		"packs", "fleets", "credentials", "robots",
-		"scan_sessions", "scan_results", "evidence_records", "evidence_blob_refs",
+		"scan_sessions", "scan_results", "evidence_records", "evidence_refs",
 		"reports", "framework_reports", "insights",
-		"compliance_profiles", "framework_snapshots", "framework_snapshot_results",
+		"compliance_profiles", "framework_snapshots",
 		"mapping_suggestions", "advisor_conversations", "advisor_turns",
 		"webhook_endpoints", "webhook_deliveries",
 		"sso_providers", "sso_login_attempts", "sso_external_identities",

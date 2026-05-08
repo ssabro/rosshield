@@ -3,8 +3,8 @@
 --       docs/design/notes/e5-robot-fleet-deepdive.md §10 Stage C
 --
 -- 변환 메모:
---   * TEXT (JSON array) → JSONB (tags)
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (JSON array) → TEXT (tags)
+--   * TEXT (RFC3339Nano) → TEXT
 --   * partial unique index → 동일 (PG 지원)
 
 CREATE TABLE robots (
@@ -18,13 +18,13 @@ CREATE TABLE robots (
     auth_type       TEXT        NOT NULL,            -- 'password' | 'privateKey'
     os_distro       TEXT        NOT NULL DEFAULT '',
     ros_distro      TEXT        NOT NULL DEFAULT '',
-    tags            JSONB       NOT NULL DEFAULT '[]'::jsonb,
+    tags            TEXT       NOT NULL DEFAULT '[]',
     role            TEXT        NOT NULL DEFAULT '',
     criticality     TEXT        NOT NULL DEFAULT 'medium',
-    created_at      TIMESTAMPTZ NOT NULL,
-    updated_at      TIMESTAMPTZ NOT NULL,
-    last_scan_at    TIMESTAMPTZ,
-    deleted_at      TIMESTAMPTZ,                     -- soft delete (R3-5)
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    last_scan_at    TEXT,
+    deleted_at      TEXT,                     -- soft delete (R3-5)
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (fleet_id) REFERENCES fleets(id),

@@ -3,8 +3,8 @@
 --       docs/design/08-intelligence-and-compliance.md §8.4
 --
 -- 변환 메모:
---   * TEXT (JSON evidence_json/rules_applied) → JSONB
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (JSON evidence_json/rules_applied) → TEXT
+--   * TEXT (RFC3339Nano) → TEXT
 --   * REAL → DOUBLE PRECISION (confidence)
 --   * partial index → 동일 (PG 지원)
 
@@ -20,13 +20,13 @@ CREATE TABLE insights (
     scope_check_id  TEXT,                                      -- 옵션 (pack_check_id)
     summary         TEXT             NOT NULL,
     reasoning       TEXT             NOT NULL DEFAULT '',     -- §01-11 explainability
-    evidence_json   JSONB            NOT NULL DEFAULT '[]'::jsonb,
-    rules_applied   JSONB            NOT NULL DEFAULT '[]'::jsonb,
+    evidence_json   TEXT            NOT NULL DEFAULT '[]',
+    rules_applied   TEXT            NOT NULL DEFAULT '[]',
     confidence      DOUBLE PRECISION NOT NULL DEFAULT 1.0,
     produced_by     TEXT             NOT NULL DEFAULT 'rules'
                         CHECK (produced_by IN ('rules','llm','hybrid')),
-    created_at      TIMESTAMPTZ      NOT NULL,
-    dismissed_at    TIMESTAMPTZ,
+    created_at      TEXT      NOT NULL,
+    dismissed_at    TEXT,
     dismissed_by    TEXT,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)

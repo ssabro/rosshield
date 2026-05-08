@@ -3,9 +3,9 @@
 --       docs/design/08-intelligence-and-compliance.md §8.10~§8.13
 --
 -- 변환 메모:
---   * INTEGER (boolean enabled) → BOOLEAN
---   * TEXT (JSON customizations_json/statuses_json) → JSONB
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * INTEGER (boolean enabled) → SMALLINT
+--   * TEXT (JSON customizations_json/statuses_json) → TEXT
+--   * TEXT (RFC3339Nano) → TEXT
 --   * REAL → DOUBLE PRECISION (overall_score)
 --   * INTEGER chain_head_seq → BIGINT (audit chain seq 동일)
 
@@ -15,10 +15,10 @@ CREATE TABLE compliance_profiles (
     tenant_id           TEXT        NOT NULL,
     framework           TEXT        NOT NULL,                -- "isms-p"|"iso27001-2022"|"nist-800-53-rev5"
     framework_version   TEXT        NOT NULL,
-    enabled             BOOLEAN     NOT NULL DEFAULT TRUE,
-    customizations_json JSONB       NOT NULL DEFAULT '[]'::jsonb,
-    created_at          TIMESTAMPTZ NOT NULL,
-    updated_at          TIMESTAMPTZ NOT NULL,
+    enabled             SMALLINT  NOT NULL DEFAULT 1,
+    customizations_json TEXT       NOT NULL DEFAULT '[]',
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     UNIQUE (tenant_id, framework)
@@ -38,8 +38,8 @@ CREATE TABLE framework_snapshots (
     unmapped_count       INTEGER          NOT NULL DEFAULT 0,
     chain_head_seq       BIGINT           NOT NULL,           -- audit anchor
     chain_head_hash      TEXT             NOT NULL,           -- 64자 lowercase hex
-    statuses_json        JSONB            NOT NULL DEFAULT '[]'::jsonb,
-    created_at           TIMESTAMPTZ      NOT NULL,
+    statuses_json        TEXT            NOT NULL DEFAULT '[]',
+    created_at           TEXT      NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (profile_id) REFERENCES compliance_profiles(id)

@@ -4,19 +4,19 @@
 --
 -- 변환 메모:
 --   * BLOB → BYTEA (encrypted_payload — AES-256-GCM ciphertext)
---   * TEXT (JSON encryption_meta) → JSONB
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (JSON encryption_meta) → TEXT
+--   * TEXT (RFC3339Nano) → TEXT
 
 CREATE TABLE credentials (
     id                  TEXT        NOT NULL,
     tenant_id           TEXT        NOT NULL,
     type                TEXT        NOT NULL,  -- 'password' | 'privateKey'
     encrypted_payload   BYTEA       NOT NULL,
-    encryption_meta     JSONB       NOT NULL,  -- EncryptionMeta JSON (Version·Algorithm·KEKKeyID·AAD·DEKNonce·PayloadNonce·WrappedDEK·CreatedAt)
-    rotation_due_at     TIMESTAMPTZ,
-    created_at          TIMESTAMPTZ NOT NULL,
-    updated_at          TIMESTAMPTZ NOT NULL,
-    revoked_at          TIMESTAMPTZ,           -- soft delete (R3-5)
+    encryption_meta     TEXT       NOT NULL,  -- EncryptionMeta JSON (Version·Algorithm·KEKKeyID·AAD·DEKNonce·PayloadNonce·WrappedDEK·CreatedAt)
+    rotation_due_at     TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL,
+    revoked_at          TEXT,           -- soft delete (R3-5)
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );

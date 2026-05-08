@@ -3,8 +3,8 @@
 --       docs/design/08-intelligence-and-compliance.md §8.5 Advisor
 --
 -- 변환 메모:
---   * TEXT (JSON args_json/result_json) → JSONB
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (JSON args_json/result_json) → TEXT
+--   * TEXT (RFC3339Nano) → TEXT
 --   * REAL → DOUBLE PRECISION (cost_usd)
 --   * INTEGER (sequence/tokens/duration) → INTEGER 유지 (32비트 충분)
 
@@ -13,8 +13,8 @@ CREATE TABLE advisor_conversations (
     tenant_id   TEXT        NOT NULL,
     user_id     TEXT        NOT NULL,
     title       TEXT        NOT NULL DEFAULT '',     -- 사용자 첫 메시지 첫 80자
-    created_at  TIMESTAMPTZ NOT NULL,
-    updated_at  TIMESTAMPTZ NOT NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -37,7 +37,7 @@ CREATE TABLE advisor_turns (
     input_tokens    INTEGER          NOT NULL DEFAULT 0,
     output_tokens   INTEGER          NOT NULL DEFAULT 0,
     cost_usd        DOUBLE PRECISION NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ      NOT NULL,
+    created_at      TEXT      NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (conversation_id) REFERENCES advisor_conversations(id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
@@ -52,11 +52,11 @@ CREATE TABLE advisor_tool_calls (
     turn_id       TEXT        NOT NULL,
     tenant_id     TEXT        NOT NULL,
     tool_name     TEXT        NOT NULL,                  -- "get_check", "list_evidence", ...
-    args_json     JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    result_json   JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    args_json     TEXT       NOT NULL DEFAULT '{}',
+    result_json   TEXT       NOT NULL DEFAULT '{}',
     error         TEXT        NOT NULL DEFAULT '',       -- 빈 값이면 성공
     duration_ms   INTEGER     NOT NULL DEFAULT 0,
-    created_at    TIMESTAMPTZ NOT NULL,
+    created_at    TEXT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (turn_id) REFERENCES advisor_turns(id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)

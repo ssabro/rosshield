@@ -4,8 +4,8 @@
 --
 -- 변환 메모:
 --   * BLOB → BYTEA (manifest_hash)
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
---   * TEXT (JSON AST) → JSONB (evaluation_rule)
+--   * TEXT (RFC3339Nano) → TEXT
+--   * TEXT (JSON AST) → TEXT (evaluation_rule)
 
 -- packs: 설치된 벤치마크 팩 메타. tenant_id='system'은 cross-tenant 공유 팩.
 CREATE TABLE packs (
@@ -17,7 +17,7 @@ CREATE TABLE packs (
     pack_key      TEXT        NOT NULL,    -- '<vendor>-<name>-<version>'
     manifest_hash BYTEA       NOT NULL,    -- sha256 of MANIFEST.json bytes (32B)
     signer_key_id TEXT        NOT NULL,    -- 'key_<8B hex>'
-    installed_at  TIMESTAMPTZ NOT NULL,
+    installed_at  TEXT NOT NULL,
     UNIQUE (tenant_id, pack_key),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) -- 'system'은 별도 처리
 );
@@ -32,7 +32,7 @@ CREATE TABLE pack_checks (
     description     TEXT,
     severity        TEXT  NOT NULL DEFAULT 'medium',    -- low|medium|high|critical
     audit_command   TEXT,                                -- SSH로 실행할 명령 (옵션)
-    evaluation_rule JSONB NOT NULL,                     -- AST {"op":"equals","value":"ok"} 등
+    evaluation_rule TEXT NOT NULL,                     -- AST {"op":"equals","value":"ok"} 등
     rationale       TEXT,
     fix_guidance    TEXT,
     UNIQUE (pack_id, check_id),
@@ -44,7 +44,7 @@ CREATE INDEX pack_checks_pack ON pack_checks(pack_id);
 CREATE TABLE pack_lifecycle (
     pack_id         TEXT        NOT NULL,
     state           TEXT        NOT NULL, -- installed|staged|active|inactive|archived|removed
-    transitioned_at TIMESTAMPTZ NOT NULL,
+    transitioned_at TEXT NOT NULL,
     actor_id        TEXT        NOT NULL, -- user 또는 'system'
     reason          TEXT,
     PRIMARY KEY (pack_id, transitioned_at),

@@ -3,8 +3,8 @@
 --       docs/design/notes/e5-robot-fleet-deepdive.md §4 (Fleet Policy)
 --
 -- 변환 메모:
---   * TEXT (JSON policy) → JSONB
---   * TEXT (RFC3339Nano) → TIMESTAMPTZ
+--   * TEXT (JSON policy) → TEXT
+--   * TEXT (RFC3339Nano) → TEXT
 --   * partial unique index (WHERE deleted_at IS NULL) → 동일 (PG 지원)
 
 CREATE TABLE fleets (
@@ -12,11 +12,11 @@ CREATE TABLE fleets (
     tenant_id     TEXT        NOT NULL,
     name          TEXT        NOT NULL,
     description   TEXT        NOT NULL DEFAULT '',
-    -- policy: JSONB {DefaultBaselineID, DefaultLevel, DefaultCriticality, ScanSchedule}
-    policy        JSONB       NOT NULL DEFAULT '{}'::jsonb,
-    created_at    TIMESTAMPTZ NOT NULL,
-    updated_at    TIMESTAMPTZ NOT NULL,
-    deleted_at    TIMESTAMPTZ,             -- soft delete (R3-5)
+    -- policy: TEXT {DefaultBaselineID, DefaultLevel, DefaultCriticality, ScanSchedule}
+    policy        TEXT       NOT NULL DEFAULT '{}',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    deleted_at    TEXT,             -- soft delete (R3-5)
     PRIMARY KEY (id),
     FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
