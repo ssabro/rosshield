@@ -91,18 +91,12 @@ func TestFirstMigrationContainsExpectedTables(t *testing.T) {
 	}
 }
 
-// Migrate 는 본 stage 에서 미구현임을 명시적으로 보장합니다.
-// 후속 stage 에서 이 테스트는 정상 적용 검증 테스트로 교체됩니다.
-func TestMigrateNotYetImplemented(t *testing.T) {
-	t.Parallel()
-
-	// pool 이 없는 상태에서 호출하면 panic 가능 — 대신 Open 없이 nil receiver 호출 대신
-	// 수동으로 zero-value Postgres 를 만들지 않고, 대신 pg.go 의 Migrate 가 항상 에러를
-	// 반환한다는 점을 docs 와 하나의 회귀 테스트로 잠가둡니다.
-	//
-	// 실제 호출은 pool 의존이라 unit 환경에서 어렵습니다 — 본 테스트는 의도 표시(명세).
-	t.Log("Migrate 는 명시적 미구현 에러 — README §Stage A 한계 참조.")
-}
+// Migrate 통합 검증은 PG 인스턴스가 필요해 별도 환경(testcontainers·CI service)에서 수행.
+// 본 unit 테스트 파일에서는 docs 명세만 잠가두고, 실 적용은 README §운영 절차 참조.
+//
+// E22-D: golang-migrate/v4 + iofs source + postgres database driver 결선 완료.
+//
+//	bootstrap이 store.Migrate(ctx)를 호출하면 0001~0021 마이그레이션이 순서대로 적용됨.
 
 // 내부 rebind 동작 검증 — black-box 으로는 노출되지 않으므로 export 테스트는
 // 별도 파일(rebind_test.go in package)에서 검증합니다.

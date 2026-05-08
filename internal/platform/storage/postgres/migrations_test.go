@@ -20,7 +20,7 @@ import (
 )
 
 // expectedSequences 는 본 stage 에서 작성·embed 되어야 하는 마이그레이션 시퀀스입니다.
-// 0001 은 E22-A 에서 작성됨, 0002~0019 는 본 stage 에서 변환.
+// 0001 은 E22-A 에서 작성됨, 0002~0019 는 E22-B 에서 변환, 0020·0021 는 E22-C/D 에서 추가.
 var expectedSequences = []string{
 	"0001_tenant_init",
 	"0002_audit",
@@ -41,12 +41,19 @@ var expectedSequences = []string{
 	"0017_mapping_suggestions",
 	"0018_advisor",
 	"0019_webhooks",
+	"0020_sso",
+	"0021_invitations",
 }
 
-// noopSequences 는 의도적으로 NO-OP 인 마이그레이션 — PG 변환 마커 검사에서 제외.
-// 0003 은 SQLite 0001+0003 이 PG 0001 에 통합되어 본 stage 에서 NO-OP 으로 보존.
+// noopSequences 는 의도적으로 NO-OP 또는 PG-marker 불필요 마이그레이션 — 변환 마커 검사 제외.
+//
+//   - 0003: SQLite 0001+0003 이 PG 0001 에 통합되어 NO-OP 으로 보존.
+//   - 0020: SSO. enabled SMALLINT 외 SQLite와 schema 동일.
+//   - 0021: invitations. SQLite와 schema 동일 (TEXT/INDEX만).
 var noopSequences = map[string]bool{
 	"0003_tenant_user": true,
+	"0020_sso":         true,
+	"0021_invitations": true,
 }
 
 func TestAllMigrationFilesEmbedded(t *testing.T) {

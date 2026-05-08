@@ -8,9 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	migratepg "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
@@ -24,8 +28,15 @@ import (
 // tenant 격리 전략은 SQLite와 동일: ctx 에서 tenant_id 를 꺼내 Tx.TenantID 로
 // 노출하고, repository 계층의 모든 쿼리가 WHERE tenant_id 강제를 유지합니다.
 // (RLS 전환은 후속 — 본 stage 비목표.)
+//
+// E22-C — stdlib bridge 추가:
+//
+//	pgx/v5/stdlib.OpenDBFromPool 로 *sql.DB 핸들을 동시에 보유. 이 핸들이 발급하는
+//	*sql.Tx 를 통해 storage.Tx.Query/QueryRow 가 *sql.Rows·*sql.Row 를 그대로
+//	반환할 수 있어 도메인 레포지토리(SQLite 시절 작성)가 코드 변경 없이 동작.
 type Postgres struct {
-	pool *pgxpool.Pool
+	pool  *pgxpool.Pool
+	sqlDB *sql.DB
 }
 
 // PoolConfig는 pgxpool 사이징 옵션입니다. 기본값은 보수적(1~10).
@@ -100,7 +111,12 @@ func OpenWithPool(dsn string, pc PoolConfig) (*Postgres, error) {
 		pool.Close()
 		return nil, fmt.Errorf("postgres: ping: %w", err)
 	}
-	return &Postgres{pool: pool}, nil
+
+	// E22-C — stdlib bridge: 도메인 repo가 *sql.Rows·*sql.Row를 받을 수 있게
+	// pgxpool 위에 database/sql 어댑터를 얹는다. Pool 자원은 단일 — Close 시 한 번만 닫힘.
+	sqlDB := stdlib.OpenDBFromPool(pool)
+
+	return &Postgres{pool: pool, sqlDB: sqlDB}, nil
 }
 
 // 컴파일 시점 인터페이스 매칭 보증.
@@ -119,7 +135,9 @@ func (p *Postgres) Bootstrap(ctx context.Context, fn func(ctx context.Context, t
 }
 
 func (p *Postgres) runTx(ctx context.Context, tenantID storage.TenantID, fn func(ctx context.Context, tx storage.Tx) error) (retErr error) {
-	rawTx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
+	// E22-C — stdlib bridge 사용. Tx 안에서 Query/QueryRow가 *sql.Rows·*sql.Row를
+	// 반환해야 도메인 repo(SQLite 시절 작성)와 호환.
+	rawTx, err := p.sqlDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("postgres: BeginTx: %w", err)
 	}
@@ -127,16 +145,16 @@ func (p *Postgres) runTx(ctx context.Context, tenantID storage.TenantID, fn func
 
 	defer func() {
 		if r := recover(); r != nil {
-			_ = rawTx.Rollback(context.Background())
+			_ = rawTx.Rollback()
 			panic(r)
 		}
 		if retErr != nil {
-			if rbErr := rawTx.Rollback(context.Background()); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+			if rbErr := rawTx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
 				retErr = fmt.Errorf("%w (rollback: %v)", retErr, rbErr)
 			}
 			return
 		}
-		if cmErr := rawTx.Commit(context.Background()); cmErr != nil {
+		if cmErr := rawTx.Commit(); cmErr != nil {
 			retErr = fmt.Errorf("postgres: Commit: %w", cmErr)
 		}
 	}()
@@ -144,17 +162,46 @@ func (p *Postgres) runTx(ctx context.Context, tenantID storage.TenantID, fn func
 	return fn(ctx, tx)
 }
 
-// Migrate는 PG 마이그레이션 적용 진입점입니다.
+// Migrate는 embed된 PG 마이그레이션을 적용합니다 (E22-D).
 //
-// 본 stage(E22-A) 는 scaffold 단계로, 0001 만 embed 되어 있습니다.
-// 실제 적용 로직은 후속 stage(전체 0001~0019 변환 + golang-migrate 통합)에서
-// 채워집니다. 호출 시 명시적 에러를 반환하여 "아직 미구현"임을 알립니다.
+// 사용 도구: golang-migrate/migrate/v4 (R20-5 결정).
+// source: iofs(MigrationsFS의 "migrations" 디렉터리).
+// driver: postgres (lib/pq 기반 — pgx와는 별개의 connection으로 동작).
+//
+// 멱등: 이미 적용된 마이그레이션은 건너뜀. ErrNoChange는 정상 동작.
+// 실패: 부팅 fail-fast 권장.
 func (p *Postgres) Migrate(ctx context.Context) error {
-	return errors.New("postgres: Migrate not yet implemented (E22-A scaffold). Use external golang-migrate CLI: see internal/platform/storage/postgres/README.md")
+	src, err := iofs.New(MigrationsFS, "migrations")
+	if err != nil {
+		return fmt.Errorf("postgres: open embed migrations: %w", err)
+	}
+	defer func() { _ = src.Close() }()
+
+	// stdlib bridge sqlDB를 그대로 사용 — pgx 기반 conn이지만 lib/pq 호환 driver.
+	// golang-migrate postgres driver는 *sql.DB를 받음.
+	dbDrv, err := migratepg.WithInstance(p.sqlDB, &migratepg.Config{})
+	if err != nil {
+		return fmt.Errorf("postgres: init migrate driver: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", src, "postgres", dbDrv)
+	if err != nil {
+		return fmt.Errorf("postgres: init migrate: %w", err)
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("postgres: migrate up: %w", err)
+	}
+	return nil
 }
 
 // Close 는 connection pool 을 안전하게 종료합니다.
+//
+// stdlib bridge 가 같은 pool 을 공유하므로 sqlDB.Close 만으로 자원이 정리됩니다.
+// pool.Close 는 idempotent 가 아니므로 한 번만 호출(p.sqlDB.Close 가 내부에서 처리).
 func (p *Postgres) Close() error {
+	if p.sqlDB != nil {
+		return p.sqlDB.Close()
+	}
 	p.pool.Close()
 	return nil
 }
@@ -170,7 +217,7 @@ func (p *Postgres) Pool() *pgxpool.Pool {
 // ----------------------------------------------------------------------------
 
 type postgresTx struct {
-	tx       pgx.Tx
+	tx       *sql.Tx
 	tenantID storage.TenantID
 }
 
@@ -178,42 +225,28 @@ type postgresTx struct {
 var _ storage.Tx = (*postgresTx)(nil)
 
 func (t *postgresTx) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	q := rebind(query)
-	tag, err := t.tx.Exec(ctx, q, args...)
+	res, err := t.tx.ExecContext(ctx, rebind(query), args...)
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return pgResult{tag: tag}, nil
+	return res, nil
 }
 
 func (t *postgresTx) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	// pgx.Tx.Query 는 *sql.Rows 가 아닌 pgx.Rows 를 반환합니다.
-	// storage.Tx 인터페이스는 SQLite 시절의 *sql.Rows 를 노출합니다.
-	// PG 어댑터에서 *sql.Rows 호환을 제공하려면 stdlib database/sql 어댑터
-	// (jackc/pgx/v5/stdlib) 가 필요합니다 — 본 stage 비목표(repository 계층 미사용).
-	//
-	// 실제 PG 도메인 repository 구현은 후속 stage에서 진행되며, 그 시점에
-	// 1) Tx 인터페이스를 driver-agnostic Rows 로 일반화하거나
-	// 2) pgx 전용 메서드를 별도 인터페이스로 노출하는 결정이 필요합니다.
-	// 본 stage 는 scaffold 만 수행하므로 명시적 미구현 에러를 반환합니다.
-	_ = q(query) // 정적 사용 보장 (rebind 의존성 컴파일 검증).
-	return nil, errors.New("postgres: Query returning *sql.Rows not yet supported in scaffold; see README §Limitations")
+	rows, err := t.tx.QueryContext(ctx, rebind(query), args...)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return rows, nil
 }
 
 func (t *postgresTx) QueryRow(ctx context.Context, query string, args ...any) *sql.Row {
-	// 위 Query 와 동일 사유로 본 stage 는 미구현. *sql.Row 의 zero value 는
-	// 호출 시점에 .Scan 이 에러를 반환하지 않는 위험이 있어, 안전을 위해 panic 합니다.
-	// 후속 stage 에서 Tx 인터페이스 일반화와 함께 정상 구현됩니다.
-	panic("postgres: QueryRow not yet supported in scaffold; see README §Limitations")
+	return t.tx.QueryRowContext(ctx, rebind(query), args...)
 }
 
 func (t *postgresTx) TenantID() storage.TenantID {
 	return t.tenantID
 }
-
-// q 는 컴파일 시 rebind 함수가 dead-code 로 제거되지 않도록 하는 trivial wrapper.
-// (vet/staticcheck 친화 — 향후 Query 구현 시 제거 예정.)
-func q(s string) string { return rebind(s) }
 
 // rebind 는 SQLite 의 ? placeholder 를 PG 의 $1, $2, … 로 변환합니다.
 // 따옴표 안의 ? 는 보존합니다. 매우 보수적인 구현(엣지 케이스는 후속 stage 에서 강화).
@@ -268,27 +301,14 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
-// pgResult 는 pgconn.CommandTag 를 sql.Result 로 어댑팅합니다.
-// LastInsertId 는 PG 에 존재하지 않으므로 명시적 에러.
-type pgResult struct {
-	tag pgconn.CommandTag
-}
-
-func (r pgResult) LastInsertId() (int64, error) {
-	return 0, errors.New("postgres: LastInsertId not supported (use RETURNING)")
-}
-
-func (r pgResult) RowsAffected() (int64, error) {
-	return r.tag.RowsAffected(), nil
-}
-
-// mapErr 는 pgx 에러를 storage 공통 에러로 매핑합니다.
-// 본 stage 는 최소 매핑(ErrNotFound·ErrConflict·ErrForeignKey)만 제공.
+// mapErr 는 PG 에러를 storage 공통 에러로 매핑합니다.
+//
+// stdlib bridge 가 sql.ErrNoRows 와 pgconn.PgError 둘 다 노출하므로 두 경로 모두 처리.
 func mapErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 		return storage.ErrNotFound
 	}
 	var pgErr *pgconn.PgError

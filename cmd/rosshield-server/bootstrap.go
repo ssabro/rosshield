@@ -59,9 +59,40 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/signer/soft"
 	"github.com/ssabro/rosshield/internal/platform/sshpool"
 	"github.com/ssabro/rosshield/internal/platform/storage"
+	"github.com/ssabro/rosshield/internal/platform/storage/postgres"
 	"github.com/ssabro/rosshield/internal/platform/storage/sqlite"
 	xssh "golang.org/x/crypto/ssh"
 )
+
+// openStorage는 cfg.StorageDriver 기반으로 storage 어댑터를 엽니다 (E22-D).
+//
+// "" / "sqlite": SQLite (DataDir/data.db).
+// "postgres" / "pg": PostgreSQL (StorageDSN 필수).
+//
+// 두 번째 반환값은 운영자 식별용 path 문자열 (로그용). PG는 host/db.
+func openStorage(cfg Config) (storage.Storage, string, error) {
+	switch cfg.StorageDriver {
+	case "", "sqlite":
+		dbPath := filepath.Join(cfg.DataDir, "data.db")
+		s, err := sqlite.Open(storage.Config{Driver: "sqlite", DSN: dbPath})
+		if err != nil {
+			return nil, "", err
+		}
+		return s, dbPath, nil
+	case "postgres", "pg":
+		if cfg.StorageDSN == "" {
+			return nil, "", errors.New("postgres: StorageDSN is required (set --storage-dsn or ROSSHIELD_DATABASE_URL)")
+		}
+		s, err := postgres.Open(storage.Config{Driver: "postgres", DSN: cfg.StorageDSN})
+		if err != nil {
+			return nil, "", err
+		}
+		// DSN 자체는 비밀(패스워드 포함) — 로그에는 driver 라벨만.
+		return s, "postgres", nil
+	default:
+		return nil, "", fmt.Errorf("unknown storage driver %q (allowed: sqlite|postgres)", cfg.StorageDriver)
+	}
+}
 
 // Config는 부트스트랩 입력입니다.
 type Config struct {
@@ -95,6 +126,18 @@ type Config struct {
 	// E23-B — Webhook dispatcher tick 주기. 0이면 webhookrun.DefaultTickInterval (30s).
 	// 테스트에서 짧게 설정 가능.
 	WebhookTickInterval time.Duration
+
+	// E22-D — Storage 드라이버 선택.
+	//
+	// "" 또는 "sqlite" → SQLite(데스크톱·온프렘 단일 인스턴스).
+	// "postgres" 또는 "pg" → PostgreSQL (StorageDSN 필수, SaaS·HA 배포).
+	StorageDriver string
+
+	// StorageDSN은 storage 어댑터 DSN.
+	//
+	// SQLite: 빈 값이면 DataDir/data.db (현 동작 유지).
+	// Postgres: postgres://user:pass@host:port/db?sslmode=... 형식. 빈 값이면 부트스트랩 에러.
+	StorageDSN string
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -718,11 +761,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	clk := clock.System()
 	ids := idgen.NewULID()
 
-	dbPath := filepath.Join(cfg.DataDir, "data.db")
-	store, err := sqlite.Open(storage.Config{
-		Driver: "sqlite",
-		DSN:    dbPath,
-	})
+	store, dbPath, err := openStorage(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: open storage: %w", err)
 	}

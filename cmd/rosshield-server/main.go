@@ -180,6 +180,8 @@ func main() {
 
 	addr := flag.String("addr", "127.0.0.1:0", "bind address")
 	dataDir := flag.String("data-dir", defaultDataDir(), "data directory (SQLite DB, keys, etc.)")
+	storageDriver := flag.String("storage", "sqlite", "storage driver: sqlite (default) | postgres")
+	storageDSN := flag.String("storage-dsn", "", "storage DSN. SQLite ignores (uses data-dir/data.db). Postgres requires postgres://user:pass@host:port/db")
 	llmProvider := flag.String("llm-provider", "", "LLM provider: noop (default) | ollama | anthropic — opt-in (R14-1)")
 	llmModel := flag.String("llm-model", "", "LLM model name (provider-specific, e.g. llama3.2 / claude-haiku-4-5-20251001)")
 	llmBaseURL := flag.String("llm-base-url", "", "LLM base URL (ollama daemon or Anthropic API base)")
@@ -211,9 +213,17 @@ func main() {
 	bootCtx, cancelBoot := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelBoot()
 
+	// Storage DSN — env fallback (PG: ROSSHIELD_DATABASE_URL).
+	dsn := *storageDSN
+	if dsn == "" {
+		dsn = os.Getenv("ROSSHIELD_DATABASE_URL")
+	}
+
 	platform, err := Bootstrap(bootCtx, Config{
 		DataDir:             *dataDir,
 		Logger:              logger,
+		StorageDriver:       *storageDriver,
+		StorageDSN:          dsn,
 		LLMProvider:         *llmProvider,
 		LLMModel:            *llmModel,
 		LLMBaseURL:          *llmBaseURL,
