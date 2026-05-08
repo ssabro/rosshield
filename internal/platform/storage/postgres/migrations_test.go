@@ -45,16 +45,8 @@ var expectedSequences = []string{
 	"0021_invitations",
 }
 
-// noopSequences 는 의도적으로 NO-OP 또는 PG-marker 불필요 마이그레이션 — 변환 마커 검사 제외.
-//
-//   - 0003: SQLite 0001+0003 이 PG 0001 에 통합되어 NO-OP 으로 보존.
-//   - 0020: SSO. enabled SMALLINT 외 SQLite와 schema 동일.
-//   - 0021: invitations. SQLite와 schema 동일 (TEXT/INDEX만).
-var noopSequences = map[string]bool{
-	"0003_tenant_user": true,
-	"0020_sso":         true,
-	"0021_invitations": true,
-}
+// noopSequences 는 E22-E 폐기 — TestPGConversionMarkersPresent 함께 폐기됐으므로 미사용.
+// Phase 4 PG-native repo 분리 시 함께 부활.
 
 func TestAllMigrationFilesEmbedded(t *testing.T) {
 	t.Parallel()
@@ -168,42 +160,12 @@ func TestNoSQLiteRemnants(t *testing.T) {
 	}
 }
 
-// TestPGConversionMarkersPresent — 폐기 (E22-E 결정).
+// TestPGConversionMarkersPresent는 E22-E 시점에 폐기됐습니다.
 //
-// Phase 3 진입 후 PG 마이그레이션은 sqliterepo와의 type 호환을 위해 sqlite-equivalent
-// schema(TEXT/INTEGER/SMALLINT)로 단순화됐다. 따라서 BOOLEAN/JSONB/TIMESTAMPTZ 같은
-// PG-native marker 검사는 더 이상 의미 없음. binary fields만 BYTEA로 보존(0001·0002 등).
-// 도메인 repo 분리(E22-F 후속)에서 PG-native type 도입 시 본 테스트도 함께 부활.
-func _disabled_TestPGConversionMarkersPresent(t *testing.T) {
-	t.Parallel()
-	markers := []string{"JSONB", "TIMESTAMPTZ", "BYTEA", "BOOLEAN"}
-
-	for _, seq := range expectedSequences {
-		if noopSequences[seq] {
-			continue
-		}
-		seq := seq
-		t.Run(seq, func(t *testing.T) {
-			t.Parallel()
-			path := "migrations/" + seq + ".up.sql"
-			b, err := fs.ReadFile(postgres.MigrationsFS, path)
-			if err != nil {
-				t.Fatalf("ReadFile %s: %v", path, err)
-			}
-			src := string(b)
-			found := false
-			for _, m := range markers {
-				if strings.Contains(src, m) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("%s contains no PG conversion marker (one of %v) — 미변환 의심", path, markers)
-			}
-		})
-	}
-}
+// 폐기 사유: PG 마이그레이션이 sqliterepo와의 type 호환을 위해 sqlite-equivalent schema
+// (TEXT/INTEGER/SMALLINT)로 단순화됨. BOOLEAN/JSONB/TIMESTAMPTZ marker 검사는 더 이상
+// 의미 없음. binary fields만 BYTEA로 보존. 도메인 repo 분리(E22-F 후속)에서 PG-native
+// type 도입 시 본 테스트와 noopSequences 맵을 함께 부활.
 
 func TestParenthesisBalance(t *testing.T) {
 	t.Parallel()
