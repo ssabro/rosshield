@@ -973,13 +973,14 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
 	}
 
-	// E20-D — SSO 도메인 결선 (Provider CRUD + OIDC client).
-	// IdentityResolver는 Phase 3 후속(E20-E)에서 tenant.Service에 매핑 — 본 stage는 nil(외부 identity만 영속).
+	// E20-D + E20-C — SSO 도메인 결선 (Provider CRUD + OIDC + SAML client).
+	// IdentityResolver는 Phase 3 후속(E20-E)에서 tenant.Service에 매핑 — 본 stage는 nil.
 	ssoSvc := ssorepo.New(ssorepo.Deps{
 		Clock: clk,
 		IDGen: ids,
 		Audit: emitter,
 		OIDC:  sso.NewOIDCClient(),
+		SAML:  sso.NewSAMLClient(),
 	})
 
 	// E23 — Webhook 도메인 결선 (sqliterepo 어댑터).

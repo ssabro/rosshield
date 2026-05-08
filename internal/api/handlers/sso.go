@@ -437,8 +437,11 @@ func ssoErrorStatus(err error) int {
 	case errors.Is(err, sso.ErrIdPHTTP),
 		errors.Is(err, sso.ErrJWKNotFound):
 		return http.StatusBadGateway
-	case errors.Is(err, sso.ErrInvalidOIDCConfig):
+	case errors.Is(err, sso.ErrInvalidOIDCConfig),
+		errors.Is(err, sso.ErrInvalidSAMLConfig):
 		return http.StatusInternalServerError
+	case errors.Is(err, sso.ErrSAMLInvalid):
+		return http.StatusBadRequest
 	case errors.Is(err, sso.ErrInvalidState),
 		errors.Is(err, sso.ErrStateExpired),
 		errors.Is(err, sso.ErrIdPMismatch),

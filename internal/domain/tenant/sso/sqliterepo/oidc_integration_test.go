@@ -123,6 +123,11 @@ func (f *fakeIdentityResolver) ResolveOIDCIdentity(_ context.Context, _ storage.
 	return f.uid, nil
 }
 
+func (f *fakeIdentityResolver) ResolveSAMLIdentity(_ context.Context, _ storage.Tx, _ storage.TenantID, _ string, _ sso.SAMLAssertion) (string, error) {
+	f.called = true
+	return f.uid, nil
+}
+
 // === harness with OIDC ===
 //
 // repo_test.go의 newTestHarness가 OIDC 미주입 — 본 함수는 같은 스토리지 셋업 + OIDC + Resolver 주입.

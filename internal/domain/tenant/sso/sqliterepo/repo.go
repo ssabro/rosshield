@@ -50,7 +50,8 @@ type Deps struct {
 	IDGen            idgen.IDGen
 	Audit            sso.AuditEmitter
 	OIDC             *sso.OIDCClient  // E20-B — nil이면 OIDC 통합 비활성(stub 흐름 유지).
-	IdentityResolver IdentityResolver // E20-B — nil이면 user 매핑 X(외부 identity 영속만).
+	SAML             *sso.SAMLClient  // E20-C — nil이면 SAML 통합 비활성(stub 흐름 유지).
+	IdentityResolver IdentityResolver // E20-B/C — nil이면 user 매핑 X(외부 identity 영속만).
 }
 
 // IdentityResolver는 id_token claims를 받아 내부 user.ID를 반환합니다 (E20-B).
@@ -64,6 +65,10 @@ type Deps struct {
 // nil 반환 또는 빈 ID는 "user 매핑 X — external identity만 영속" 의미.
 type IdentityResolver interface {
 	ResolveOIDCIdentity(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, providerID string, claims sso.IDTokenClaims) (userID string, err error)
+
+	// ResolveSAMLIdentity는 NameID + email + 추가 attribute로 내부 user.ID를 반환합니다 (E20-C).
+	// SAML assertion 검증 후 호출됨. OIDC와 동일 정책: 매칭 없으면 빈 ID 허용.
+	ResolveSAMLIdentity(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, providerID string, assertion sso.SAMLAssertion) (userID string, err error)
 }
 
 // Repo는 sso.Service의 SQLite 구현입니다.
@@ -323,14 +328,25 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
 		return sso.StartLoginResult{}, fmt.Errorf("sso: emit login.started: %w", err)
 	}
 
-	// E20-B — OIDC client가 주입되어 있고 provider가 OIDC면 IdP discovery + AuthURL 빌드.
+	// E20-B/C — IdP client 주입돼 있으면 AuthURL 빌드 (provider type별).
 	authURL := ""
-	if p.Type == sso.TypeOIDC && r.deps.OIDC != nil {
+	switch {
+	case p.Type == sso.TypeOIDC && r.deps.OIDC != nil:
 		cfg, perr := sso.ParseOIDCConfig(p.Config)
 		if perr != nil {
 			return sso.StartLoginResult{}, perr
 		}
 		u, berr := r.deps.OIDC.BuildAuthURL(ctx, cfg, attempt.State, attempt.PKCEVerifier, attempt.Nonce)
+		if berr != nil {
+			return sso.StartLoginResult{}, berr
+		}
+		authURL = u
+	case p.Type == sso.TypeSAML && r.deps.SAML != nil:
+		cfg, perr := sso.ParseSAMLConfig(p.Config)
+		if perr != nil {
+			return sso.StartLoginResult{}, perr
+		}
+		u, berr := r.deps.SAML.BuildSAMLAuthURL(cfg, attempt.State)
 		if berr != nil {
 			return sso.StartLoginResult{}, berr
 		}
@@ -438,6 +454,55 @@ WHERE id = ? AND tenant_id = ? AND completed_at IS NULL`,
 		}
 		// userID가 비어 있으면 FK 제약(users.id) 때문에 UpsertExternalIdentity는 실패 가능 —
 		// 본 stage는 안전하게 user 매핑이 결정된 경우만 영속.
+		if userID != "" {
+			persisted, uerr := r.UpsertExternalIdentity(ctx, tx, identity)
+			if uerr != nil {
+				r.emitCompleted(ctx, tx, attempt, identity, false)
+				return sso.CompleteLoginResult{}, uerr
+			}
+			identity = persisted
+		}
+	}
+
+	// E20-C — SAML client + provider type SAML + SAMLResponse 입력 → assertion 검증.
+	if r.deps.SAML != nil && req.SAMLResponse != "" {
+		p, perr := r.GetProvider(ctx, tx, attempt.ProviderID)
+		if perr != nil {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, perr
+		}
+		if p.Type != sso.TypeSAML {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, sso.ErrIdPMismatch
+		}
+		cfg, cerr := sso.ParseSAMLConfig(p.Config)
+		if cerr != nil {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, cerr
+		}
+		assertion, verr := r.deps.SAML.VerifySAMLAssertion(cfg, req.SAMLResponse)
+		if verr != nil {
+			r.emitCompleted(ctx, tx, attempt, identity, false)
+			return sso.CompleteLoginResult{}, verr
+		}
+
+		userID := ""
+		if r.deps.IdentityResolver != nil {
+			uid, rerr := r.deps.IdentityResolver.ResolveSAMLIdentity(ctx, tx, tenantID, p.ID, assertion)
+			if rerr != nil {
+				r.emitCompleted(ctx, tx, attempt, identity, false)
+				return sso.CompleteLoginResult{}, rerr
+			}
+			userID = uid
+		}
+
+		identity = sso.ExternalIdentity{
+			ProviderID:      p.ID,
+			ExternalSubject: assertion.NameID,
+			TenantID:        tenantID,
+			UserID:          userID,
+			Email:           assertion.Email,
+		}
 		if userID != "" {
 			persisted, uerr := r.UpsertExternalIdentity(ctx, tx, identity)
 			if uerr != nil {
