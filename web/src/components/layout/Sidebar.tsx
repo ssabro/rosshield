@@ -12,6 +12,7 @@ import {
   Server,
   Settings as SettingsIcon,
   ShieldCheck,
+  Users,
   Webhook,
 } from 'lucide-react'
 
@@ -40,6 +41,7 @@ const items: ReadonlyArray<{
     | '/audit'
     | '/integrations'
     | '/sso'
+    | '/users'
     | '/license'
     | '/settings'
   labelKey: DictKey
@@ -55,6 +57,7 @@ const items: ReadonlyArray<{
   { to: '/audit', labelKey: 'nav.audit', icon: ScrollText },
   { to: '/integrations', labelKey: 'nav.integrations', icon: Webhook },
   { to: '/sso', labelKey: 'nav.sso', icon: KeyRound },
+  { to: '/users', labelKey: 'nav.users', icon: Users },
   { to: '/license', labelKey: 'nav.license', icon: Award },
   { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ]

@@ -23,6 +23,7 @@ export const ko = {
   'nav.audit': '감사',
   'nav.integrations': '통합',
   'nav.sso': 'SSO',
+  'nav.users': '사용자',
   'nav.license': '라이선스',
   'nav.settings': '설정',
 
@@ -474,6 +475,90 @@ export const ko = {
   'sso.error.notfound': '해당 Provider를 찾을 수 없습니다.',
   'sso.error.disabled':
     '본 기능은 enterprise 라이선스에서만 활성화됩니다 (Settings > 라이선스).',
+
+  'pages.users.title': '사용자',
+  'pages.users.description':
+    '테넌트 사용자를 초대하고 활성 초대를 관리합니다. 초대 토큰은 1회만 노출되니 즉시 전달하세요.',
+  'users.invite.section': '사용자 초대',
+  'users.invite.email': '이메일',
+  'users.invite.email.placeholder': '예: alice@example.com',
+  'users.invite.role': '역할',
+  'users.invite.role.admin': 'admin',
+  'users.invite.role.auditor': 'auditor',
+  'users.invite.role.operator': 'operator',
+  'users.invite.expires': '만료 (시간)',
+  'users.invite.expires.placeholder': '예: 72',
+  'users.invite.expires.hint':
+    '비워두면 기본값(168시간 ≈ 7일)을 사용합니다.',
+  'users.invite.submit': '초대 생성',
+  'users.invite.submitting': '생성 중…',
+  'users.invite.success': '초대가 생성되었습니다. 아래 URL을 사용자에게 전달하세요.',
+  'users.invite.token.label': '초대 URL (1회 노출)',
+  'users.invite.token.copy': 'URL 복사',
+  'users.invite.token.copied': '복사됨',
+  'users.invite.token.warning':
+    '이 URL은 한 번만 표시됩니다. 다시 보려면 초대를 취소 후 새로 생성하세요.',
+  'users.invite.error.fallback': '초대 생성에 실패했습니다',
+  'users.invite.error.duplicate':
+    '이미 같은 이메일에 활성 초대가 있습니다.',
+  'users.invite.error.email_exists':
+    '이미 동일 이메일의 사용자가 존재합니다.',
+  'users.table.section': '활성 초대',
+  'users.table.id': 'ID',
+  'users.table.email': '이메일',
+  'users.table.role': '역할',
+  'users.table.status': '상태',
+  'users.table.invitedBy': '초대자',
+  'users.table.created': '생성',
+  'users.table.expires': '만료',
+  'users.table.actions': '조치',
+  'users.action.delete': '취소',
+  'users.action.deleting': '취소 중…',
+  'users.action.delete.confirm':
+    '이 초대를 취소하시겠습니까? (사용된 토큰은 무효화됩니다)',
+  'users.status.pending': '대기',
+  'users.status.accepted': '수락됨',
+  'users.status.expired': '만료',
+  'users.empty.title': '활성 초대가 없습니다',
+  'users.empty.description':
+    '위 폼에서 첫 사용자 초대를 생성하세요. 초대 URL은 한 번만 표시됩니다.',
+  'users.error.fallback': '초대 목록을 불러올 수 없습니다',
+
+  'invitations.accept.title': '초대 수락',
+  'invitations.accept.description':
+    '초대받은 사용자 정보를 확인하고 패스워드를 설정해 계정을 활성화하세요.',
+  'invitations.accept.loading': '초대 정보를 불러오는 중…',
+  'invitations.accept.preview.email': '초대된 이메일',
+  'invitations.accept.preview.role': '부여될 역할',
+  'invitations.accept.preview.expires': '만료',
+  'invitations.accept.expired.title': '초대가 만료되었습니다',
+  'invitations.accept.expired.description':
+    '관리자에게 초대 재발송을 요청하세요.',
+  'invitations.accept.used.title': '이미 사용된 초대입니다',
+  'invitations.accept.used.description':
+    '이 초대는 이미 수락되었습니다. 로그인 페이지로 이동해 로그인하세요.',
+  'invitations.accept.notfound.title': '초대를 찾을 수 없습니다',
+  'invitations.accept.notfound.description':
+    'URL이 잘못되었거나 초대가 취소되었을 수 있습니다.',
+  'invitations.accept.form.email': '이메일',
+  'invitations.accept.form.email.hint':
+    '서버에서 초대된 이메일과 일치 여부를 검증합니다.',
+  'invitations.accept.form.displayName': '표시 이름',
+  'invitations.accept.form.displayName.placeholder': '예: 홍길동',
+  'invitations.accept.form.password': '패스워드',
+  'invitations.accept.form.password.placeholder': '최소 12자 이상',
+  'invitations.accept.form.password.hint':
+    '최소 12자 이상으로 설정하세요.',
+  'invitations.accept.submit': '계정 활성화',
+  'invitations.accept.submitting': '처리 중…',
+  'invitations.accept.success':
+    '계정이 활성화되었습니다. 로그인 페이지로 이동합니다.',
+  'invitations.accept.toLogin': '로그인 페이지로 이동',
+  'invitations.accept.error.fallback': '초대 수락에 실패했습니다',
+  'invitations.accept.validation.email': '이메일을 입력하세요.',
+  'invitations.accept.validation.displayName': '표시 이름을 입력하세요.',
+  'invitations.accept.validation.password':
+    '패스워드는 최소 12자 이상이어야 합니다.',
 } as const
 
 export const en: Record<keyof typeof ko, string> = {
@@ -491,6 +576,7 @@ export const en: Record<keyof typeof ko, string> = {
   'nav.audit': 'Audit',
   'nav.integrations': 'Integrations',
   'nav.sso': 'SSO',
+  'nav.users': 'Users',
   'nav.license': 'License',
   'nav.settings': 'Settings',
 
@@ -945,6 +1031,91 @@ export const en: Record<keyof typeof ko, string> = {
   'sso.error.notfound': 'Provider not found.',
   'sso.error.disabled':
     'This feature requires an enterprise license (see Settings > License).',
+
+  'pages.users.title': 'Users',
+  'pages.users.description':
+    'Invite tenant users and manage active invitations. Tokens are shown only once — share them immediately.',
+  'users.invite.section': 'Invite a user',
+  'users.invite.email': 'Email',
+  'users.invite.email.placeholder': 'e.g. alice@example.com',
+  'users.invite.role': 'Role',
+  'users.invite.role.admin': 'admin',
+  'users.invite.role.auditor': 'auditor',
+  'users.invite.role.operator': 'operator',
+  'users.invite.expires': 'Expires (hours)',
+  'users.invite.expires.placeholder': 'e.g. 72',
+  'users.invite.expires.hint':
+    'Leave empty to use the default (168 hours ≈ 7 days).',
+  'users.invite.submit': 'Create invitation',
+  'users.invite.submitting': 'Creating…',
+  'users.invite.success':
+    'Invitation created. Share the URL below with the user.',
+  'users.invite.token.label': 'Invitation URL (shown once)',
+  'users.invite.token.copy': 'Copy URL',
+  'users.invite.token.copied': 'Copied',
+  'users.invite.token.warning':
+    'This URL is shown only once. To reveal again, revoke and create a new invitation.',
+  'users.invite.error.fallback': 'Failed to create invitation',
+  'users.invite.error.duplicate':
+    'An active invitation already exists for this email.',
+  'users.invite.error.email_exists':
+    'A user with the same email already exists.',
+  'users.table.section': 'Active invitations',
+  'users.table.id': 'ID',
+  'users.table.email': 'Email',
+  'users.table.role': 'Role',
+  'users.table.status': 'Status',
+  'users.table.invitedBy': 'Invited by',
+  'users.table.created': 'Created',
+  'users.table.expires': 'Expires',
+  'users.table.actions': 'Actions',
+  'users.action.delete': 'Revoke',
+  'users.action.deleting': 'Revoking…',
+  'users.action.delete.confirm':
+    'Revoke this invitation? (The token will be invalidated.)',
+  'users.status.pending': 'pending',
+  'users.status.accepted': 'accepted',
+  'users.status.expired': 'expired',
+  'users.empty.title': 'No active invitations',
+  'users.empty.description':
+    'Use the form above to create the first user invitation. URLs are shown only once.',
+  'users.error.fallback': 'Failed to load invitations',
+
+  'invitations.accept.title': 'Accept invitation',
+  'invitations.accept.description':
+    'Confirm your invitation details and set a password to activate your account.',
+  'invitations.accept.loading': 'Loading invitation…',
+  'invitations.accept.preview.email': 'Invited email',
+  'invitations.accept.preview.role': 'Role to be granted',
+  'invitations.accept.preview.expires': 'Expires',
+  'invitations.accept.expired.title': 'Invitation expired',
+  'invitations.accept.expired.description':
+    'Ask your administrator to send a new invitation.',
+  'invitations.accept.used.title': 'Invitation already used',
+  'invitations.accept.used.description':
+    'This invitation has already been accepted. Please go to the login page.',
+  'invitations.accept.notfound.title': 'Invitation not found',
+  'invitations.accept.notfound.description':
+    'The URL may be incorrect or the invitation has been revoked.',
+  'invitations.accept.form.email': 'Email',
+  'invitations.accept.form.email.hint':
+    'The server verifies that this matches the invited email.',
+  'invitations.accept.form.displayName': 'Display name',
+  'invitations.accept.form.displayName.placeholder': 'e.g. Alice Kim',
+  'invitations.accept.form.password': 'Password',
+  'invitations.accept.form.password.placeholder': 'At least 12 characters',
+  'invitations.accept.form.password.hint':
+    'Must be at least 12 characters.',
+  'invitations.accept.submit': 'Activate account',
+  'invitations.accept.submitting': 'Working…',
+  'invitations.accept.success':
+    'Account activated. Redirecting to login.',
+  'invitations.accept.toLogin': 'Go to login',
+  'invitations.accept.error.fallback': 'Failed to accept invitation',
+  'invitations.accept.validation.email': 'Email is required.',
+  'invitations.accept.validation.displayName': 'Display name is required.',
+  'invitations.accept.validation.password':
+    'Password must be at least 12 characters.',
 }
 
 export type DictKey = keyof typeof ko

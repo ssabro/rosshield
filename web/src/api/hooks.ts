@@ -1169,3 +1169,197 @@ export const useSSOProvider = (providerId?: string) => {
     enabled: !!providerId,
   })
 }
+
+// ────────────────────────────────────────────────────────────────────────
+// 8) Invitations (E21 / B2) — 사용자 초대·수락.
+//
+// Backend 응답 schema (handlers/invitation.go invitationView):
+//   { id, email, roleName, invitedBy, expiresAt, acceptedAt?, acceptedBy?, createdAt }
+// 인증 필요(GET/POST/DELETE 목록/생성/취소) + 비인증(by-token 미리보기·accept).
+// 에러 매핑: 400(validation·email mismatch·만료·이미 사용·short password),
+//   401(인증 누락), 404(미존재), 409(활성 초대 중복·이메일 중복).
+// openapi spec에는 미정의 — webhook/sso와 동일한 raw fetch wrapper 사용.
+// ────────────────────────────────────────────────────────────────────────
+
+export interface InvitationView {
+  id: string
+  email: string
+  roleName: string
+  invitedBy: string
+  expiresAt: string
+  acceptedAt?: string
+  acceptedBy?: string
+  createdAt: string
+}
+
+export interface CreateInvitationVars {
+  email: string
+  roleName: string
+  expiresInHours?: number
+}
+
+export interface CreateInvitationResponse extends InvitationView {
+  // 응답 본문은 invitationView를 평탄화한 후 token 1회 노출.
+  token: string
+}
+
+export interface InvitationPreview {
+  email: string
+  roleName: string
+  expiresAt: string
+  accepted: boolean
+}
+
+export interface AcceptInvitationVars {
+  token: string
+  email: string
+  password: string
+  displayName: string
+}
+
+export interface AcceptInvitationResponse {
+  userId: string
+  email: string
+  displayName: string
+  roles: string[]
+}
+
+// invitationFetch — 인증이 필요한 invitation endpoint용 fetch wrapper.
+//   ssoFetch와 동일 패턴 — 401 시 세션 클리어, 비-OK는 ApiError throw.
+async function invitationFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const accessToken = useAuthStore.getState().accessToken
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  }
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`
+  }
+  const res = await fetch(path, {
+    ...init,
+    headers,
+    credentials: 'include',
+  })
+  if (res.status === 401) {
+    useAuthStore.getState().clearSession()
+  }
+  if (res.status === 204) {
+    return undefined as unknown as T
+  }
+  if (!res.ok) {
+    let message = res.statusText
+    try {
+      const body: unknown = await res.json()
+      message = extractErrorMessage(body, res.statusText)
+    } catch {
+      /* JSON 파싱 실패 시 statusText fallback */
+    }
+    throw new ApiError(res.status, message)
+  }
+  return (await res.json()) as T
+}
+
+// publicFetch — 비인증 invitation endpoint(by-token 경로) 전용.
+//   Authorization 헤더 미부착, credentials는 'omit' 또는 default — 토큰 capability만 사용.
+async function publicFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  }
+  const res = await fetch(path, { ...init, headers })
+  if (!res.ok) {
+    let message = res.statusText
+    try {
+      const body: unknown = await res.json()
+      message = extractErrorMessage(body, res.statusText)
+    } catch {
+      /* JSON 파싱 실패 시 statusText fallback */
+    }
+    throw new ApiError(res.status, message)
+  }
+  return (await res.json()) as T
+}
+
+export const useInvitations = () => {
+  return useQuery({
+    queryKey: ['invitations'],
+    queryFn: async (): Promise<InvitationView[]> => {
+      const body = await invitationFetch<{ invitations: InvitationView[] }>(
+        `${API_BASE_PATH}/invitations`,
+      )
+      return body.invitations ?? []
+    },
+  })
+}
+
+export const useCreateInvitation = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (
+      vars: CreateInvitationVars,
+    ): Promise<CreateInvitationResponse> => {
+      return invitationFetch<CreateInvitationResponse>(
+        `${API_BASE_PATH}/invitations`,
+        {
+          method: 'POST',
+          body: JSON.stringify(vars),
+        },
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invitations'] })
+    },
+  })
+}
+
+export const useDeleteInvitation = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (invitationId: string): Promise<void> => {
+      await invitationFetch<void>(
+        `${API_BASE_PATH}/invitations/${encodeURIComponent(invitationId)}`,
+        { method: 'DELETE' },
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['invitations'] })
+    },
+  })
+}
+
+export const useInvitationByToken = (token?: string) => {
+  return useQuery({
+    queryKey: ['invitations', 'by-token', token ?? null],
+    queryFn: async (): Promise<InvitationPreview | null> => {
+      if (!token) return null
+      return publicFetch<InvitationPreview>(
+        `${API_BASE_PATH}/invitations/by-token/${encodeURIComponent(token)}`,
+      )
+    },
+    enabled: !!token,
+    retry: false,
+  })
+}
+
+export const useAcceptInvitation = () => {
+  return useMutation({
+    mutationFn: async (
+      vars: AcceptInvitationVars,
+    ): Promise<AcceptInvitationResponse> => {
+      const { token, ...body } = vars
+      return publicFetch<AcceptInvitationResponse>(
+        `${API_BASE_PATH}/invitations/by-token/${encodeURIComponent(token)}/accept`,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+      )
+    },
+  })
+}
