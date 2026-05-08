@@ -61,8 +61,8 @@ docs/design/
 | D2 | 백엔드 언어 | ✅ 2026-04-23 | **Go** + TS 프론트 | `11-*` §11.2 |
 | D3 | 데스크톱 셸 | ✅ 2026-04-23 | **Tauri 2.x** (Electron은 fallback 보류) | `11-*` §11.8 |
 | D4 | 어플라이언스 OS | 🟡 연기 | 기본 가정 Ubuntu Core 24, Phase 3 exit 재확정 | `11-*` §11.9 |
-| D5 | 라이선스 모델 | 🟡 재검토 (Phase 4 진입 시) | **Open-core 골격 유지**, 코어 라이선스(Apache-2.0 vs BSL/Elastic License) + 코어/엔터프라이즈 분리 시점은 Phase 4 첫 epic 전 재논의 (R30-4) | `12-*`, `phase4-backlog.md` R30-4 |
-| D6 | 리포지토리 호스팅 | 🟡 보류 (Phase 4 진입 시) | **GitHub private 유지** — Phase 4 진입 시 D5 결정 후 재논의 (R30-4) | `phase4-backlog.md` R30-4 |
+| D5 | 라이선스 모델 | ✅ 2026-05-08 (R30-4) | **Open-core 채택** — 코어 Apache-2.0 + enterprise는 별 라이선스 (BSL/Commercial 구체 결정은 첫 enterprise customer 직전). 코드 분리는 단일 repo + build tag(R20-2). 실제 분리 시점은 첫 paying customer 직전. | `12-*`, `phase4-backlog.md` R30-4 |
+| D6 | 리포지토리 호스팅 | ✅ 2026-05-08 (R30-4) | **GitHub private 유지** — release binary + report verify CLI(E30)로 P1 외부 검증 대체. 첫 enterprise customer 또는 Phase 5 진입 시 재논의 옵션. | `phase4-backlog.md` R30-4 |
 
 **기본 방침**: 중요한 설계 결정은 사용자와 합의 후 문서에 기록(`SESSION_HANDOFF.md` 결정 로그). 합의 없이 코드로 선결정하지 않는다.
 

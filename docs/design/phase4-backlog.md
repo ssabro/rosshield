@@ -204,12 +204,17 @@ E29 CLI ext ─────────────────┘
 
 ---
 
-## R30 결정 후보
+## R30 결정 후보 / 결정 항목
 
-- **R30-1** PG-native repo 분리 시점 — Phase 4 초입 vs 첫 customer feedback 후. 영향: storage layer 큰 변경.
-- **R30-2** HA 첫 구현 — single-writer(advisory lock) vs 무관(read replica). single-writer가 audit chain 일관성에 안전.
-- **R30-3** release signature — cosign keyless(GitHub OIDC) vs self-managed key. CI 의존도 차이.
-- **R30-4** D5/D6 (라이선스·visibility) — Phase 4 진입 시 재논의 (Phase 3 R20-1·2·3 carryover).
+- **R30-1** PG-native repo 분리 시점 — Phase 4 초입 vs 첫 customer feedback 후. 영향: storage layer 큰 변경. (보류)
+- **R30-2** HA 첫 구현 — single-writer(advisory lock) vs 무관(read replica). single-writer가 audit chain 일관성에 안전. (보류 — E25 시작 전 결정)
+- **R30-3** release signature — cosign keyless(GitHub OIDC) vs self-managed key. CI 의존도 차이. (보류 — E26 시작 전 결정)
+- **R30-4** D5/D6 라이선스·visibility — **✅ 2026-05-08 결정**:
+  - **D5**: Open-core 채택 — 코어 Apache-2.0 + enterprise 별 라이선스(BSL/Commercial 구체는 첫 paying customer 직전). 코드 분리는 단일 repo + build tag(R20-2). 실제 분리 시점은 첫 paying customer 직전.
+  - **D6**: GitHub private 유지. release binary + report verify CLI(E30)가 P1 외부 검증 대체. 첫 enterprise customer 또는 Phase 5 진입 시 재논의 옵션.
+  - **R20-1** 코어 라이선스 = Apache-2.0 (확정)
+  - **R20-2** 코드 분리 = 단일 repo + build tag (확정)
+  - **R20-3** GitHub visibility = private (확정 — D6와 동일)
 
 ---
 
@@ -217,7 +222,7 @@ E29 CLI ext ─────────────────┘
 
 - [x] phase3-backlog.md → archive로 이전
 - [x] phase4-backlog.md(본 문서) 신규 작성
-- [ ] R30-4 D5/D6 라이선스·visibility 재논의 트리거 (Phase 4 첫 epic 시작 전)
+- [x] **R30-4 D5/D6 라이선스·visibility 결정** (2026-05-08): Open-core + Apache 코어 + private repo + 단일 repo build tag
 - [ ] Carryover 우선순위 사용자 합의 (E25/E22-F/O5~O8 중)
 - [ ] 첫 customer PoC onboarding 자료 (Phase 4 시작 전 소프트 마일스톤)
 
