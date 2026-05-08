@@ -84,8 +84,15 @@ type getConversationResponse struct {
 // AskAdvisor는 POST /api/v1/advisor/conversations:ask 핸들러입니다.
 //
 // LLM 옵트인 disabled 시 503. ConversationID가 비면 신규, 채워지면 기존에 turn 추가.
+//
+// E24-D — 라이선스 LLM tokens/day quota 게이트:
+//
+//	요청 시점에 정확한 토큰 양을 알 수 없으므로 wantTokens=1로 보수적 예약 —
+//	이미 한도 도달했으면 차단, 아니면 통과 후 실제 응답이 quota를 초과하더라도
+//	본 요청은 처리 (다음 요청이 차단). post-charge 모델.
 func (h *Handlers) AskAdvisor(w http.ResponseWriter, r *http.Request) {
-	if storage.TenantIDFromContext(r.Context()) == "" {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
 		writeError(w, http.StatusUnauthorized, "no tenant in context")
 		return
 	}
@@ -99,6 +106,19 @@ func (h *Handlers) AskAdvisor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := claims.Subject
+
+	// E24-D — 라이선스 LLM tokens/day quota 게이트. enforcer nil(community)면 즉시 통과.
+	if h.deps.License != nil {
+		quotaResult, err := h.deps.License.CheckLLMTokens(r.Context(), string(tenantID), 1)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "license quota check failed")
+			return
+		}
+		if !quotaResult.Allowed {
+			writeQuotaError(w, quotaResult)
+			return
+		}
+	}
 
 	var body askRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

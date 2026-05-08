@@ -40,6 +40,8 @@ import (
 	scanrepo "github.com/ssabro/rosshield/internal/domain/scan/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	tenantrepo "github.com/ssabro/rosshield/internal/domain/tenant/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/tenant/sso"
+	ssorepo "github.com/ssabro/rosshield/internal/domain/tenant/sso/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/blobstore"
 	blobfs "github.com/ssabro/rosshield/internal/platform/blobstore/fs"
 	"github.com/ssabro/rosshield/internal/platform/clock"
@@ -118,10 +120,12 @@ type Platform struct {
 	Insight           insight.Service
 	Compliance        compliance.Service
 	LLM               llm.Adapter
-	Advisor           advisor.Service        // E16
-	License           *license.Enforcer      // E24 — Open-core enterprise feature 게이트 + 쿼터
-	Webhook           webhook.Service        // E23 — webhook + SIEM 통합 도메인
-	WebhookDispatcher *webhookrun.Dispatcher // E23-B — Process worker
+	Advisor           advisor.Service         // E16
+	License           *license.Enforcer       // E24 — Open-core enterprise feature 게이트 + 쿼터
+	Webhook           webhook.Service         // E23 — webhook + SIEM 통합 도메인
+	WebhookDispatcher *webhookrun.Dispatcher  // E23-B — Process worker
+	WebhookBridge     *webhookrun.EventBridge // E23-D — EventBus → webhook.Enqueue bridge
+	SSO               sso.Service             // E20-D — SSO Provider CRUD + IdP 호출
 
 	systemTenant storage.TenantID
 
@@ -505,6 +509,57 @@ func (a *auditEmitterAdapter) EmitSuggestionDecided(ctx context.Context, tx stor
 	return err
 }
 
+// EmitProviderChanged는 sso.AuditEmitter 구현 (E20-D — Provider CRUD).
+// action: "created"|"updated"|"deleted".
+func (a *auditEmitterAdapter) EmitProviderChanged(ctx context.Context, tx storage.Tx, p sso.Provider, action string) error {
+	payload := fmt.Sprintf(`{"providerId":%q,"type":%q,"name":%q,"enabled":%t}`,
+		p.ID, string(p.Type), p.Name, p.Enabled)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: p.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "sso.provider." + action,
+		Target:   audit.Target{Type: "sso_provider", ID: p.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitLoginStarted는 sso.AuditEmitter 구현 (E20-D — StartLogin 시점).
+func (a *auditEmitterAdapter) EmitLoginStarted(ctx context.Context, tx storage.Tx, attempt sso.LoginAttempt) error {
+	payload := fmt.Sprintf(`{"attemptId":%q,"providerId":%q,"expiresAt":%q}`,
+		attempt.ID, attempt.ProviderID, attempt.ExpiresAt.Format(time.RFC3339))
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: attempt.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "sso.login.started",
+		Target:   audit.Target{Type: "sso_login_attempt", ID: attempt.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitLoginCompleted는 sso.AuditEmitter 구현 (E20-D — CompleteLogin 시점, 성공/실패 양쪽).
+// ok=false면 outcome=failure + identity는 빈 값.
+func (a *auditEmitterAdapter) EmitLoginCompleted(ctx context.Context, tx storage.Tx, attempt sso.LoginAttempt, identity sso.ExternalIdentity, ok bool) error {
+	outcome := audit.OutcomeSuccess
+	if !ok {
+		outcome = audit.OutcomeFailure
+	}
+	payload := fmt.Sprintf(`{"attemptId":%q,"providerId":%q,"externalSubject":%q,"email":%q,"userId":%q,"ok":%t}`,
+		attempt.ID, attempt.ProviderID, identity.ExternalSubject, identity.Email, identity.UserID, ok)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: attempt.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "sso.login.completed",
+		Target:   audit.Target{Type: "sso_login_attempt", ID: attempt.ID},
+		Payload:  []byte(payload),
+		Outcome:  outcome,
+	})
+	return err
+}
+
 // EmitSnapshotGenerated는 compliance.AuditEmitter 구현 (GenerateSnapshot 시점).
 // chain anchor (head_seq, head_hash)는 snapshot 자체에 포함되어 있어 payload에 그대로 직렬화.
 func (a *auditEmitterAdapter) EmitSnapshotGenerated(ctx context.Context, tx storage.Tx, s compliance.FrameworkSnapshot) error {
@@ -845,6 +900,15 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
 	}
 
+	// E20-D — SSO 도메인 결선 (Provider CRUD + OIDC client).
+	// IdentityResolver는 Phase 3 후속(E20-E)에서 tenant.Service에 매핑 — 본 stage는 nil(외부 identity만 영속).
+	ssoSvc := ssorepo.New(ssorepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+		Audit: emitter,
+		OIDC:  sso.NewOIDCClient(),
+	})
+
 	// E23 — Webhook 도메인 결선 (sqliterepo 어댑터).
 	webhookSvc := webhookrepo.New(webhookrepo.Deps{
 		Clock: clk,
@@ -852,7 +916,6 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	})
 
 	// E23-B — Webhook dispatcher (Process worker) 결선 + 백그라운드 시작.
-	// EventBus 구독(scan.completed → Enqueue)은 후속 stage E23-D.
 	webhookDispatcher := webhookrun.New(webhookrun.Deps{
 		Logger:       logger,
 		Storage:      store,
@@ -862,9 +925,20 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	})
 	go webhookDispatcher.Run(context.Background())
 
+	// E23-D — EventBus → webhook.Enqueue bridge 결선 + 구독 시작.
+	// 본 bridge는 scan.completed·insight.created·audit.checkpoint 3종을 구독해
+	// webhook.Service.Enqueue로 전달. 실 HTTP 송출은 dispatcher 책임.
+	webhookBridge := webhookrun.NewBridge(webhookrun.BridgeDeps{
+		Logger:  logger,
+		Storage: store,
+		Webhook: webhookSvc,
+	})
+	webhookBridge.Start(ctx, bus)
+
 	// E24 — License 결선 (옵트인). 토큰 + public key 둘 다 있어야 검증 진입.
-	// UsageReader는 후속 stage(E24-D)에서 도메인 결선 — 현재는 nil로 두고 CheckFeature만 사용 가능.
-	licenseEnforcer, licenseEdition, err := buildLicenseEnforcer(cfg, clk)
+	// E24-D — UsageReader는 robot/scan/advisor SQL 집계 어댑터 (P5 격리 — license는 도메인 import 안 함).
+	licenseUsage := newLicenseUsageAdapter(store, clk)
+	licenseEnforcer, licenseEdition, err := buildLicenseEnforcer(cfg, clk, licenseUsage)
 	if err != nil {
 		_ = sch.Close(ctx)
 		_ = store.Close()
@@ -909,6 +983,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		License:           licenseEnforcer,
 		Webhook:           webhookSvc,
 		WebhookDispatcher: webhookDispatcher,
+		WebhookBridge:     webhookBridge,
+		SSO:               ssoSvc,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}, nil
@@ -951,6 +1027,11 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 func (p *Platform) Shutdown(ctx context.Context) error {
 	p.shutdownOnce.Do(func() {
 		var errs []error
+
+		// E23-D — bridge 먼저 cancel (구독 해제하면 EventBus.Close가 깨끗).
+		if p.WebhookBridge != nil {
+			p.WebhookBridge.Stop()
+		}
 
 		// E23-B — webhook dispatcher 먼저 종료 (in-flight POST는 ctx 통해 cancel).
 		if p.WebhookDispatcher != nil {
@@ -998,7 +1079,10 @@ func (p *Platform) IsShutdown() bool {
 // 두 값이 모두 비면 community SKU (nil enforcer 반환 — 호출 측 nil-safe).
 // 하나라도 비면 에러 — 부분 설정은 운영 실수 의심으로 빠른 실패.
 // 검증 실패(서명/만료/포맷)는 부트스트랩 에러로 즉시 보고.
-func buildLicenseEnforcer(cfg Config, clk clock.Clock) (*license.Enforcer, license.Edition, error) {
+//
+// E24-D — usage 인자: 라이선스 quota check 시점에 호출되는 read-only 사용량 조회 어댑터.
+// nil이면 quota check가 호출됐을 때 panic — community SKU(라이선스 nil)는 enforcer 자체가 nil이라 무관.
+func buildLicenseEnforcer(cfg Config, clk clock.Clock, usage license.UsageReader) (*license.Enforcer, license.Edition, error) {
 	if cfg.LicenseToken == "" && cfg.LicensePublicKeyHex == "" {
 		return nil, license.EditionCommunity, nil
 	}
@@ -1019,7 +1103,6 @@ func buildLicenseEnforcer(cfg Config, clk clock.Clock) (*license.Enforcer, licen
 	if payload.IsExpired(clk.Now()) {
 		return nil, "", fmt.Errorf("license: token expired (expires=%s)", payload.ExpiresAt.Format(time.RFC3339))
 	}
-	// UsageReader는 후속 stage(E24-D)에서 도메인 결선 — 현재는 nil로 둠 (CheckFeature만 사용).
-	enforcer := license.NewEnforcer(payload, nil, clk.Now)
+	enforcer := license.NewEnforcer(payload, usage, clk.Now)
 	return enforcer, payload.Edition, nil
 }

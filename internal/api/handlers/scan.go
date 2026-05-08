@@ -45,11 +45,26 @@ type scanSessionResponse struct {
 //   - fleetId 필수 → 400 "missing fleetId"
 //   - packId 필수 → 400 "missing packId"
 //   - 도메인 ErrFleetNotFound·ErrPackNotFound → 400 (FK 위반)
+//   - 라이선스 scans/day quota 초과 → 402 (E24-D)
 //   - 그 외 도메인 에러 → 500
 func (h *Handlers) CreateScan(w http.ResponseWriter, r *http.Request, _ gen.CreateScanParams) {
-	if storage.TenantIDFromContext(r.Context()) == "" {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
 		writeError(w, http.StatusUnauthorized, "no tenant in context")
 		return
+	}
+
+	// E24-D — 라이선스 scans/day quota 게이트. enforcer nil(community SKU)면 즉시 통과.
+	if h.deps.License != nil {
+		quotaResult, err := h.deps.License.CheckScansToday(r.Context(), string(tenantID))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "license quota check failed")
+			return
+		}
+		if !quotaResult.Allowed {
+			writeQuotaError(w, quotaResult)
+			return
+		}
 	}
 
 	var req startScanRequest

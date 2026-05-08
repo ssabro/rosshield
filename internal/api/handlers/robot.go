@@ -106,13 +106,28 @@ type createRobotResponse struct {
 //   - tenant 미주입 → 401
 //   - 빈 JSON / 형식 오류 → 400
 //   - 도메인 sentinel(ErrRobotEmptyName/ErrFleetNotFound 등) → 400
+//   - 라이선스 robots quota 초과 → 402 (E24-D)
 //   - 그 외 → 500
 //
 // 응답 201 — Location 헤더는 미설정 (chi 직접 mount 패턴 — 후속 표면 정리에서).
 func (h *Handlers) CreateRobot(w http.ResponseWriter, r *http.Request, _ gen.CreateRobotParams) {
-	if storage.TenantIDFromContext(r.Context()) == "" {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
 		writeError(w, http.StatusUnauthorized, "no tenant in context")
 		return
+	}
+
+	// E24-D — 라이선스 robots quota 게이트. enforcer nil(community SKU)면 즉시 통과.
+	if h.deps.License != nil {
+		quotaResult, err := h.deps.License.CheckRobotsAdd(r.Context(), string(tenantID), 1)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "license quota check failed")
+			return
+		}
+		if !quotaResult.Allowed {
+			writeQuotaError(w, quotaResult)
+			return
+		}
 	}
 
 	var req createRobotRequest

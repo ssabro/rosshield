@@ -19,6 +19,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -201,6 +202,206 @@ func (h *Handlers) CompleteSSOLoginSAML(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusOK, ssoCallbackResponse{State: relayState, Stub: true})
+}
+
+// === E20-D — Provider CRUD HTTP 표면 ===
+
+// providerView는 Provider의 클라이언트 응답 형태입니다.
+//
+// Config는 raw JSON으로 그대로 노출 (UI가 Type별 스키마 파싱).
+type providerView struct {
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Name      string          `json:"name"`
+	Enabled   bool            `json:"enabled"`
+	Config    json.RawMessage `json:"config"`
+	CreatedAt string          `json:"createdAt"`
+	UpdatedAt string          `json:"updatedAt"`
+}
+
+func toProviderView(p sso.Provider) providerView {
+	return providerView{
+		ID:        p.ID,
+		Type:      string(p.Type),
+		Name:      p.Name,
+		Enabled:   p.Enabled,
+		Config:    p.Config,
+		CreatedAt: p.CreatedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
+		UpdatedAt: p.UpdatedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
+	}
+}
+
+// listProvidersResponse는 GET /sso/providers 응답입니다.
+type listProvidersResponse struct {
+	Providers []providerView `json:"providers"`
+}
+
+// CreateSSOProvider는 POST /api/v1/sso/providers 핸들러입니다.
+//
+// body: {"type":"oidc"|"saml","name":"...","enabled":bool,"config":{...}}
+// 반환: 201 + Provider view, 400/401/409.
+func (h *Handlers) CreateSSOProvider(w http.ResponseWriter, r *http.Request) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSO == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: service not configured")
+		return
+	}
+	var body struct {
+		Type    string          `json:"type"`
+		Name    string          `json:"name"`
+		Enabled bool            `json:"enabled"`
+		Config  json.RawMessage `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	tenantID := storage.TenantIDFromContext(r.Context())
+	var created sso.Provider
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		out, e := h.deps.SSO.CreateProvider(ctx, tx, sso.CreateProviderRequest{
+			TenantID: tenantID,
+			Type:     sso.Type(body.Type),
+			Name:     body.Name,
+			Enabled:  body.Enabled,
+			Config:   body.Config,
+		})
+		if e != nil {
+			return e
+		}
+		created = out
+		return nil
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, toProviderView(created))
+}
+
+// ListSSOProviders는 GET /api/v1/sso/providers 핸들러입니다.
+func (h *Handlers) ListSSOProviders(w http.ResponseWriter, r *http.Request) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSO == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: service not configured")
+		return
+	}
+	var providers []sso.Provider
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		out, e := h.deps.SSO.ListProviders(ctx, tx)
+		if e != nil {
+			return e
+		}
+		providers = out
+		return nil
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	views := make([]providerView, 0, len(providers))
+	for _, p := range providers {
+		views = append(views, toProviderView(p))
+	}
+	writeJSON(w, http.StatusOK, listProvidersResponse{Providers: views})
+}
+
+// GetSSOProvider는 GET /api/v1/sso/providers/{providerId} 핸들러입니다.
+func (h *Handlers) GetSSOProvider(w http.ResponseWriter, r *http.Request, providerID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSO == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: service not configured")
+		return
+	}
+	var p sso.Provider
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		out, e := h.deps.SSO.GetProvider(ctx, tx, providerID)
+		if e != nil {
+			return e
+		}
+		p = out
+		return nil
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toProviderView(p))
+}
+
+// UpdateSSOProvider는 PUT /api/v1/sso/providers/{providerId} 핸들러입니다.
+//
+// body: {"name":"...?","enabled":bool?,"config":{...}?} — 모두 옵션, nil이면 변경 없음.
+func (h *Handlers) UpdateSSOProvider(w http.ResponseWriter, r *http.Request, providerID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSO == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: service not configured")
+		return
+	}
+	var body struct {
+		Name    *string         `json:"name"`
+		Enabled *bool           `json:"enabled"`
+		Config  json.RawMessage `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	tenantID := storage.TenantIDFromContext(r.Context())
+	var updated sso.Provider
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		out, e := h.deps.SSO.UpdateProvider(ctx, tx, sso.UpdateProviderRequest{
+			ID:       providerID,
+			TenantID: tenantID,
+			Name:     body.Name,
+			Enabled:  body.Enabled,
+			Config:   body.Config,
+		})
+		if e != nil {
+			return e
+		}
+		updated = out
+		return nil
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toProviderView(updated))
+}
+
+// DeleteSSOProvider는 DELETE /api/v1/sso/providers/{providerId} 핸들러입니다.
+//
+// hard delete + audit emit. 404 시 ErrProviderNotFound.
+func (h *Handlers) DeleteSSOProvider(w http.ResponseWriter, r *http.Request, providerID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSO == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: service not configured")
+		return
+	}
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		return h.deps.SSO.DeleteProvider(ctx, tx, providerID)
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ssoErrorStatus는 sso 도메인 sentinel을 HTTP status로 매핑합니다.

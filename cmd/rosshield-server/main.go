@@ -135,6 +135,7 @@ func newMux(p *Platform) http.Handler {
 		EventBus:   p.EventBus,
 		License:    p.License,
 		Webhook:    p.Webhook,
+		SSO:        p.SSO,
 	})
 	h.Mount(apiRouter)
 	mux.Handle("/api/v1/", apiRouter)

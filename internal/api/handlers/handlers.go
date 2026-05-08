@@ -178,6 +178,20 @@ func (h *Handlers) Mount(r chi.Router) {
 			h.CompleteSSOLoginSAML(w, req, chi.URLParam(req, "providerId"))
 		})
 
+		// E20-D Phase 3 — SSO Provider CRUD (B4 /sso 페이지 의존).
+		// admin role gate는 후속 stage(E21 invitation·RBAC) 도입 시 r.Use(h.RequireRole("admin")).
+		r.Post("/api/v1/sso/providers", h.CreateSSOProvider)
+		r.Get("/api/v1/sso/providers", h.ListSSOProviders)
+		r.Get("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
+			h.GetSSOProvider(w, req, chi.URLParam(req, "providerId"))
+		})
+		r.Put("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
+			h.UpdateSSOProvider(w, req, chi.URLParam(req, "providerId"))
+		})
+		r.Delete("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
+			h.DeleteSSOProvider(w, req, chi.URLParam(req, "providerId"))
+		})
+
 		// E23-C Phase 3 — Webhook CRUD HTTP 표면.
 		// chi 직접 mount — gen 래퍼 없이 path param/query 직접 추출.
 		r.Post("/api/v1/webhooks", h.CreateWebhookEndpoint)
@@ -267,9 +281,25 @@ func errorStatusFor(err error) int {
 		errors.Is(err, tenant.ErrTokenExpired),
 		errors.Is(err, tenant.ErrTokenSignatureInvalid):
 		return http.StatusUnauthorized
+	case errors.Is(err, license.ErrQuotaExceeded),
+		errors.Is(err, license.ErrFeatureGated):
+		return http.StatusPaymentRequired
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// writeQuotaError는 license.QuotaCheckResult 거부 응답을 402 Payment Required로 작성합니다.
+//
+// 응답 본문: {"error":"quota exceeded","reason":"<reason>","field":"<field>"}.
+// reason은 운영자 메시지 — "robots quota exceeded (current=99 add=1 max=100)" 등.
+// field는 클라이언트가 분기 가능한 식별자 — "robots_max", "scans_per_day", "llm_tokens_per_day", "feature:<name>".
+func writeQuotaError(w http.ResponseWriter, result license.QuotaCheckResult) {
+	writeJSON(w, http.StatusPaymentRequired, map[string]string{
+		"error":  "quota exceeded",
+		"reason": result.Reason,
+		"field":  result.Field,
+	})
 }
 
 // complianceErrorStatus는 compliance 도메인 sentinel을 HTTP status로 매핑합니다.
