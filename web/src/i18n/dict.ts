@@ -22,6 +22,8 @@ export const ko = {
   'nav.reports': '리포트',
   'nav.audit': '감사',
   'nav.integrations': '통합',
+  'nav.sso': 'SSO',
+  'nav.license': '라이선스',
   'nav.settings': '설정',
 
   'header.theme.light': '라이트',
@@ -349,6 +351,46 @@ export const ko = {
   'settings.license.community.note':
     '현재 community 에디션입니다. SSO·MT·Webhook·HA·Cloud 같은 enterprise 기능은 비활성. 라이선스 키 활성화는 운영 문서 참조.',
   'settings.license.error': '라이선스 정보를 불러올 수 없습니다',
+  'settings.license.viewAll': '전체 보기 (/license)',
+
+  'pages.license.title': '라이선스',
+  'pages.license.description':
+    '현재 에디션·만료·기능·한도를 한눈에 확인합니다. 사용량 시각화는 다음 단계에서 추가됩니다.',
+  'license.page.header.section': '라이선스 정보',
+  'license.page.edition': '에디션',
+  'license.page.issuedTo': '발급 대상',
+  'license.page.issuedAt': '발급일',
+  'license.page.expiresAt': '만료일',
+  'license.page.expiresIn.future': '{days}일 후 만료',
+  'license.page.expiresIn.future.today': '오늘 안에 만료',
+  'license.page.expiresIn.past': '{days}일 전에 만료됨',
+  'license.page.expired.banner':
+    '라이선스가 만료되었습니다. enterprise 기능이 비활성 상태입니다.',
+  'license.page.features.section': '기능 (5종)',
+  'license.page.features.description':
+    '활성된 enterprise feature flag 목록입니다. 회색 항목은 현재 라이선스에서 비활성.',
+  'license.page.feature.sso': 'SSO',
+  'license.page.feature.mt': 'Multi-Tenancy',
+  'license.page.feature.webhook': 'Webhook',
+  'license.page.feature.cloud': 'Cloud',
+  'license.page.feature.ha': 'High Availability',
+  'license.page.feature.active': '활성',
+  'license.page.feature.inactive': '비활성',
+  'license.page.quotas.section': '한도',
+  'license.page.quotas.description':
+    '0 또는 비어있으면 무제한입니다. 일일 사용량 시각화는 다음 epic에서.',
+  'license.page.quotas.col.metric': '항목',
+  'license.page.quotas.col.limit': '한도',
+  'license.page.quotas.col.usage': '오늘 사용량',
+  'license.page.quotas.usage.placeholder': 'n/a (다음 단계)',
+  'license.page.quotas.unlimited': '무제한',
+  'license.page.usage.section': '사용량',
+  'license.page.usage.note':
+    '오늘 사용량 시각화는 다음 epic에서 추가됩니다 (스캔·LLM 토큰·로봇 등록 카운터).',
+  'license.page.community.title': 'Community 에디션',
+  'license.page.community.description':
+    '라이선스를 추가하면 SSO·Multi-Tenancy·Webhook·Cloud·HA 기능이 활성화됩니다. 라이선스 키 등록은 운영 문서를 참조하세요.',
+  'license.page.error.fallback': '라이선스 정보를 불러올 수 없습니다',
   'reports.table.id': 'ID',
   'reports.table.session': 'Session',
   'reports.table.created': '생성일',
@@ -363,6 +405,75 @@ export const ko = {
   'reports.empty.description':
     'scan 완료 후 자동 생성되거나, 별도 endpoint로 수동 생성됩니다 (Phase 3 후속).',
   'reports.error.fallback': '리포트 목록을 불러올 수 없습니다',
+
+  'pages.sso.title': 'SSO Provider',
+  'pages.sso.description':
+    'OIDC / SAML 기반 SSO Provider를 등록하고 활성 상태를 관리합니다. 본 기능은 enterprise 라이선스에서 활성화됩니다.',
+  'sso.form.section': '신규 Provider 등록',
+  'sso.form.section.edit': 'Provider 수정',
+  'sso.form.toggle.show': 'Provider 등록',
+  'sso.form.toggle.hide': '폼 닫기',
+  'sso.form.type': 'Type',
+  'sso.form.type.oidc': 'OIDC',
+  'sso.form.type.saml': 'SAML',
+  'sso.form.name': '이름',
+  'sso.form.name.placeholder': '예: Google Workspace',
+  'sso.form.enabled': '활성',
+  'sso.form.oidc.issuer': 'Issuer',
+  'sso.form.oidc.issuer.placeholder': '예: https://accounts.google.com',
+  'sso.form.oidc.clientId': 'Client ID',
+  'sso.form.oidc.clientId.placeholder': '예: 1234.apps.googleusercontent.com',
+  'sso.form.oidc.redirectUri': 'Redirect URI',
+  'sso.form.oidc.redirectUri.placeholder':
+    '예: https://app.example.com/api/v1/auth/sso/{providerId}/callback',
+  'sso.form.oidc.scopes': 'Scopes (쉼표 또는 공백 구분)',
+  'sso.form.oidc.scopes.placeholder': '예: openid, email, profile',
+  'sso.form.saml.metadataUrl': 'Metadata URL',
+  'sso.form.saml.metadataUrl.placeholder':
+    '예: https://idp.example.com/metadata.xml',
+  'sso.form.saml.metadataXml': 'Metadata XML (URL 미사용 시)',
+  'sso.form.saml.metadataXml.placeholder':
+    '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata">...</EntityDescriptor>',
+  'sso.form.saml.acsUrl': 'ACS URL',
+  'sso.form.saml.acsUrl.placeholder':
+    '예: https://app.example.com/api/v1/auth/sso/{providerId}/saml/acs',
+  'sso.form.submit': '등록',
+  'sso.form.submit.update': '저장',
+  'sso.form.submitting': '저장 중…',
+  'sso.form.cancel': '취소',
+  'sso.form.success.create': 'Provider가 등록되었습니다.',
+  'sso.form.success.update': 'Provider가 갱신되었습니다.',
+  'sso.form.error.fallback': 'Provider 저장에 실패했습니다',
+  'sso.form.validation.issuer': 'Issuer는 https URL이어야 합니다.',
+  'sso.form.validation.clientId': 'Client ID를 입력하세요.',
+  'sso.form.validation.redirectUri': 'Redirect URI는 https URL이어야 합니다.',
+  'sso.form.validation.scopes':
+    'Scopes에 최소 1개 이상의 값(예: openid)을 입력하세요.',
+  'sso.form.validation.metadata':
+    'Metadata URL 또는 Metadata XML 중 하나를 채워야 합니다.',
+  'sso.form.validation.acsUrl': 'ACS URL은 https URL이어야 합니다.',
+  'sso.form.validation.name': '이름을 입력하세요.',
+  'sso.table.id': 'ID',
+  'sso.table.type': 'Type',
+  'sso.table.name': '이름',
+  'sso.table.enabled': '상태',
+  'sso.table.created': '생성',
+  'sso.table.actions': '조치',
+  'sso.table.enabled.on': '활성',
+  'sso.table.enabled.off': '비활성',
+  'sso.action.edit': '수정',
+  'sso.action.delete': '삭제',
+  'sso.action.delete.confirm':
+    '이 Provider를 삭제하시겠습니까? (관련 외부 ID 매핑은 보존됩니다)',
+  'sso.action.deleting': '삭제 중…',
+  'sso.empty.title': '등록된 SSO Provider가 없습니다',
+  'sso.empty.description':
+    '위 폼에서 첫 OIDC 또는 SAML Provider를 등록하세요. 활성화 후 /api/v1/auth/sso/{providerId}/login으로 로그인할 수 있습니다.',
+  'sso.error.fallback': 'Provider 목록을 불러올 수 없습니다',
+  'sso.error.duplicate': '이미 같은 이름의 Provider가 있습니다.',
+  'sso.error.notfound': '해당 Provider를 찾을 수 없습니다.',
+  'sso.error.disabled':
+    '본 기능은 enterprise 라이선스에서만 활성화됩니다 (Settings > 라이선스).',
 } as const
 
 export const en: Record<keyof typeof ko, string> = {
@@ -379,6 +490,8 @@ export const en: Record<keyof typeof ko, string> = {
   'nav.reports': 'Reports',
   'nav.audit': 'Audit',
   'nav.integrations': 'Integrations',
+  'nav.sso': 'SSO',
+  'nav.license': 'License',
   'nav.settings': 'Settings',
 
   'header.theme.light': 'Light',
@@ -709,6 +822,46 @@ export const en: Record<keyof typeof ko, string> = {
   'settings.license.community.note':
     'Currently on community edition. Enterprise features (SSO, MT, Webhook, HA, Cloud) disabled. See operations docs to activate a license key.',
   'settings.license.error': 'Failed to load license info',
+  'settings.license.viewAll': 'View all (/license)',
+
+  'pages.license.title': 'License',
+  'pages.license.description':
+    'Edition, expiry, features, and quotas at a glance. Per-day usage visualization is coming in the next step.',
+  'license.page.header.section': 'License info',
+  'license.page.edition': 'Edition',
+  'license.page.issuedTo': 'Issued to',
+  'license.page.issuedAt': 'Issued at',
+  'license.page.expiresAt': 'Expires at',
+  'license.page.expiresIn.future': 'Expires in {days} day(s)',
+  'license.page.expiresIn.future.today': 'Expires within today',
+  'license.page.expiresIn.past': 'Expired {days} day(s) ago',
+  'license.page.expired.banner':
+    'This license has expired. Enterprise features are disabled.',
+  'license.page.features.section': 'Features (5)',
+  'license.page.features.description':
+    'Enterprise feature flags. Grayed-out items are not active under the current license.',
+  'license.page.feature.sso': 'SSO',
+  'license.page.feature.mt': 'Multi-Tenancy',
+  'license.page.feature.webhook': 'Webhook',
+  'license.page.feature.cloud': 'Cloud',
+  'license.page.feature.ha': 'High Availability',
+  'license.page.feature.active': 'active',
+  'license.page.feature.inactive': 'inactive',
+  'license.page.quotas.section': 'Quotas',
+  'license.page.quotas.description':
+    '0 or empty means unlimited. Per-day usage visualization is coming in a follow-up epic.',
+  'license.page.quotas.col.metric': 'Metric',
+  'license.page.quotas.col.limit': 'Limit',
+  'license.page.quotas.col.usage': "Today's usage",
+  'license.page.quotas.usage.placeholder': 'n/a (next step)',
+  'license.page.quotas.unlimited': 'unlimited',
+  'license.page.usage.section': 'Usage',
+  'license.page.usage.note':
+    "Today's usage visualization is coming in a follow-up epic (scans, LLM tokens, robot registrations).",
+  'license.page.community.title': 'Community edition',
+  'license.page.community.description':
+    'Add a license to enable SSO, Multi-Tenancy, Webhook, Cloud, and HA features. See operations docs for license key activation.',
+  'license.page.error.fallback': 'Failed to load license info',
   'reports.table.id': 'ID',
   'reports.table.session': 'Session',
   'reports.table.created': 'Created',
@@ -723,6 +876,75 @@ export const en: Record<keyof typeof ko, string> = {
   'reports.empty.description':
     'Auto-generated on scan completion, or via a dedicated endpoint (Phase 3 follow-up).',
   'reports.error.fallback': 'Failed to load reports',
+
+  'pages.sso.title': 'SSO Providers',
+  'pages.sso.description':
+    'Register and manage OIDC / SAML SSO providers. Available with the enterprise license.',
+  'sso.form.section': 'Register a new provider',
+  'sso.form.section.edit': 'Edit provider',
+  'sso.form.toggle.show': 'Add provider',
+  'sso.form.toggle.hide': 'Close form',
+  'sso.form.type': 'Type',
+  'sso.form.type.oidc': 'OIDC',
+  'sso.form.type.saml': 'SAML',
+  'sso.form.name': 'Name',
+  'sso.form.name.placeholder': 'e.g. Google Workspace',
+  'sso.form.enabled': 'Enabled',
+  'sso.form.oidc.issuer': 'Issuer',
+  'sso.form.oidc.issuer.placeholder': 'e.g. https://accounts.google.com',
+  'sso.form.oidc.clientId': 'Client ID',
+  'sso.form.oidc.clientId.placeholder': 'e.g. 1234.apps.googleusercontent.com',
+  'sso.form.oidc.redirectUri': 'Redirect URI',
+  'sso.form.oidc.redirectUri.placeholder':
+    'e.g. https://app.example.com/api/v1/auth/sso/{providerId}/callback',
+  'sso.form.oidc.scopes': 'Scopes (comma or space separated)',
+  'sso.form.oidc.scopes.placeholder': 'e.g. openid, email, profile',
+  'sso.form.saml.metadataUrl': 'Metadata URL',
+  'sso.form.saml.metadataUrl.placeholder':
+    'e.g. https://idp.example.com/metadata.xml',
+  'sso.form.saml.metadataXml': 'Metadata XML (when no URL)',
+  'sso.form.saml.metadataXml.placeholder':
+    '<EntityDescriptor xmlns="urn:oasis:names:tc:SAML:2.0:metadata">...</EntityDescriptor>',
+  'sso.form.saml.acsUrl': 'ACS URL',
+  'sso.form.saml.acsUrl.placeholder':
+    'e.g. https://app.example.com/api/v1/auth/sso/{providerId}/saml/acs',
+  'sso.form.submit': 'Register',
+  'sso.form.submit.update': 'Save',
+  'sso.form.submitting': 'Saving…',
+  'sso.form.cancel': 'Cancel',
+  'sso.form.success.create': 'Provider registered.',
+  'sso.form.success.update': 'Provider updated.',
+  'sso.form.error.fallback': 'Failed to save provider',
+  'sso.form.validation.issuer': 'Issuer must be an https URL.',
+  'sso.form.validation.clientId': 'Client ID is required.',
+  'sso.form.validation.redirectUri': 'Redirect URI must be an https URL.',
+  'sso.form.validation.scopes':
+    'Provide at least one scope (e.g. openid).',
+  'sso.form.validation.metadata':
+    'Provide either a Metadata URL or Metadata XML.',
+  'sso.form.validation.acsUrl': 'ACS URL must be an https URL.',
+  'sso.form.validation.name': 'Name is required.',
+  'sso.table.id': 'ID',
+  'sso.table.type': 'Type',
+  'sso.table.name': 'Name',
+  'sso.table.enabled': 'Status',
+  'sso.table.created': 'Created',
+  'sso.table.actions': 'Actions',
+  'sso.table.enabled.on': 'enabled',
+  'sso.table.enabled.off': 'disabled',
+  'sso.action.edit': 'Edit',
+  'sso.action.delete': 'Delete',
+  'sso.action.delete.confirm':
+    'Delete this provider? (External identity mappings are preserved.)',
+  'sso.action.deleting': 'Deleting…',
+  'sso.empty.title': 'No SSO providers registered',
+  'sso.empty.description':
+    'Use the form above to register your first OIDC or SAML provider. Once enabled, log in via /api/v1/auth/sso/{providerId}/login.',
+  'sso.error.fallback': 'Failed to load providers',
+  'sso.error.duplicate': 'A provider with the same name already exists.',
+  'sso.error.notfound': 'Provider not found.',
+  'sso.error.disabled':
+    'This feature requires an enterprise license (see Settings > License).',
 }
 
 export type DictKey = keyof typeof ko

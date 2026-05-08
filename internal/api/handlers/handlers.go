@@ -52,14 +52,15 @@ type Deps struct {
 	Robot      robot.Service
 	Scan       scan.Service
 	Reporting  reporting.Service
-	Insight    insight.Service    // E17 Phase 2
-	Compliance compliance.Service // E17 Phase 2
-	Advisor    advisor.Service    // E16 Phase 2 — LLM 옵트인
-	Audit      audit.Service      // B1 — Web UI Audit 페이지 (GET /audit/head)
-	EventBus   eventbus.Bus       // C1 carryover — WebSocket scan progress 구독
-	License    *license.Enforcer  // E24-C — Open-core enterprise feature 게이트
-	SSO        sso.Service        // E20-A Phase 3 — SSO scaffold (옵트인, nil이면 503)
-	Webhook    webhook.Service    // E23-C Phase 3 — Webhook CRUD HTTP 표면
+	Insight    insight.Service          // E17 Phase 2
+	Compliance compliance.Service       // E17 Phase 2
+	Advisor    advisor.Service          // E16 Phase 2 — LLM 옵트인
+	Audit      audit.Service            // B1 — Web UI Audit 페이지 (GET /audit/head)
+	EventBus   eventbus.Bus             // C1 carryover — WebSocket scan progress 구독
+	License    *license.Enforcer        // E24-C — Open-core enterprise feature 게이트
+	SSO        sso.Service              // E20-A Phase 3 — SSO scaffold (옵트인, nil이면 503)
+	Webhook    webhook.Service          // E23-C Phase 3 — Webhook CRUD HTTP 표면
+	Invitation tenant.InvitationService // E21 — 초대·역할 (옵트인, nil이면 503)
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -94,6 +95,14 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/refresh", h.RefreshAuth) // C6 — refresh token rotation
 	r.Post("/api/v1/auth/logout", h.LogoutAuth)   // C6 — refresh revoke + cookie clear
+
+	// E21 — invitation by-token (비인증 — token이 capability).
+	r.Get("/api/v1/invitations/by-token/{token}", func(w http.ResponseWriter, req *http.Request) {
+		h.GetInvitationByToken(w, req, chi.URLParam(req, "token"))
+	})
+	r.Post("/api/v1/invitations/by-token/{token}/accept", func(w http.ResponseWriter, req *http.Request) {
+		h.AcceptInvitation(w, req, chi.URLParam(req, "token"))
+	})
 
 	// 2. Protected endpoints — AuthMiddleware 통과 후 진입
 	r.Group(func(r chi.Router) {
@@ -176,6 +185,13 @@ func (h *Handlers) Mount(r chi.Router) {
 		})
 		r.Post("/api/v1/auth/sso/{providerId}/saml/acs", func(w http.ResponseWriter, req *http.Request) {
 			h.CompleteSSOLoginSAML(w, req, chi.URLParam(req, "providerId"))
+		})
+
+		// E21 Phase 3 — Invitation CRUD (admin operations).
+		r.Post("/api/v1/invitations", h.CreateInvitation)
+		r.Get("/api/v1/invitations", h.ListInvitations)
+		r.Delete("/api/v1/invitations/{invitationId}", func(w http.ResponseWriter, req *http.Request) {
+			h.RevokeInvitation(w, req, chi.URLParam(req, "invitationId"))
 		})
 
 		// E20-D Phase 3 — SSO Provider CRUD (B4 /sso 페이지 의존).

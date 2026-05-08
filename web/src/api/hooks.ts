@@ -1025,3 +1025,147 @@ export const KNOWN_WEBHOOK_EVENTS: ReadonlyArray<WebhookEventType> = [
   'insight.created',
   'audit.checkpoint',
 ]
+
+// ────────────────────────────────────────────────────────────────────────
+// 7) SSO Providers (E20-D / B4) — provider CRUD.
+//
+// Backend 응답 schema (handlers/sso.go providerView):
+//   { id, type:'oidc'|'saml', name, enabled, config:object, createdAt, updatedAt }
+// 에러 매핑: 401(no tenant), 400(validation), 404(not found), 409(name dup).
+// openapi spec에는 미정의 — webhook과 동일한 raw fetch wrapper 사용.
+// ────────────────────────────────────────────────────────────────────────
+
+export type SSOProviderType = 'oidc' | 'saml'
+
+export interface SSOProvider {
+  id: string
+  type: SSOProviderType
+  name: string
+  enabled: boolean
+  config: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateSSOProviderVars {
+  type: SSOProviderType
+  name: string
+  enabled: boolean
+  config: Record<string, unknown>
+}
+
+export interface UpdateSSOProviderVars {
+  providerId: string
+  name?: string
+  enabled?: boolean
+  config?: Record<string, unknown>
+}
+
+// ssoFetch — webhookFetch와 동일 패턴. SSO endpoint는 OpenAPI spec에 미정의이므로
+//   typed openapi-fetch 대신 직접 fetch + Bearer 헤더.
+async function ssoFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const accessToken = useAuthStore.getState().accessToken
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((init?.headers as Record<string, string> | undefined) ?? {}),
+  }
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`
+  }
+  const res = await fetch(path, {
+    ...init,
+    headers,
+    credentials: 'include',
+  })
+  if (res.status === 401) {
+    useAuthStore.getState().clearSession()
+  }
+  if (res.status === 204) {
+    return undefined as unknown as T
+  }
+  if (!res.ok) {
+    let message = res.statusText
+    try {
+      const body: unknown = await res.json()
+      message = extractErrorMessage(body, res.statusText)
+    } catch {
+      /* JSON 파싱 실패 시 statusText fallback */
+    }
+    throw new ApiError(res.status, message)
+  }
+  return (await res.json()) as T
+}
+
+export const useSSOProviders = () => {
+  return useQuery({
+    queryKey: ['sso', 'providers'],
+    queryFn: async (): Promise<SSOProvider[]> => {
+      const body = await ssoFetch<{ providers: SSOProvider[] }>(
+        `${API_BASE_PATH}/sso/providers`,
+      )
+      return body.providers ?? []
+    },
+  })
+}
+
+export const useCreateSSOProvider = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: CreateSSOProviderVars): Promise<SSOProvider> => {
+      return ssoFetch<SSOProvider>(`${API_BASE_PATH}/sso/providers`, {
+        method: 'POST',
+        body: JSON.stringify(vars),
+      })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sso', 'providers'] })
+    },
+  })
+}
+
+export const useUpdateSSOProvider = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: UpdateSSOProviderVars): Promise<SSOProvider> => {
+      const { providerId, ...body } = vars
+      return ssoFetch<SSOProvider>(
+        `${API_BASE_PATH}/sso/providers/${encodeURIComponent(providerId)}`,
+        { method: 'PUT', body: JSON.stringify(body) },
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sso', 'providers'] })
+    },
+  })
+}
+
+export const useDeleteSSOProvider = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (providerId: string): Promise<void> => {
+      await ssoFetch<void>(
+        `${API_BASE_PATH}/sso/providers/${encodeURIComponent(providerId)}`,
+        { method: 'DELETE' },
+      )
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sso', 'providers'] })
+    },
+  })
+}
+
+export const useSSOProvider = (providerId?: string) => {
+  return useQuery({
+    queryKey: ['sso', 'providers', providerId ?? null],
+    queryFn: async (): Promise<SSOProvider | null> => {
+      if (!providerId) return null
+      return ssoFetch<SSOProvider>(
+        `${API_BASE_PATH}/sso/providers/${encodeURIComponent(providerId)}`,
+      )
+    },
+    enabled: !!providerId,
+  })
+}

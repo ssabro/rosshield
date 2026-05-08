@@ -120,12 +120,13 @@ type Platform struct {
 	Insight           insight.Service
 	Compliance        compliance.Service
 	LLM               llm.Adapter
-	Advisor           advisor.Service         // E16
-	License           *license.Enforcer       // E24 — Open-core enterprise feature 게이트 + 쿼터
-	Webhook           webhook.Service         // E23 — webhook + SIEM 통합 도메인
-	WebhookDispatcher *webhookrun.Dispatcher  // E23-B — Process worker
-	WebhookBridge     *webhookrun.EventBridge // E23-D — EventBus → webhook.Enqueue bridge
-	SSO               sso.Service             // E20-D — SSO Provider CRUD + IdP 호출
+	Advisor           advisor.Service          // E16
+	License           *license.Enforcer        // E24 — Open-core enterprise feature 게이트 + 쿼터
+	Webhook           webhook.Service          // E23 — webhook + SIEM 통합 도메인
+	WebhookDispatcher *webhookrun.Dispatcher   // E23-B — Process worker
+	WebhookBridge     *webhookrun.EventBridge  // E23-D — EventBus → webhook.Enqueue bridge
+	SSO               sso.Service              // E20-D — SSO Provider CRUD + IdP 호출
+	Invitation        tenant.InvitationService // E21 — 초대·역할 관리
 
 	systemTenant storage.TenantID
 
@@ -509,6 +510,36 @@ func (a *auditEmitterAdapter) EmitSuggestionDecided(ctx context.Context, tx stor
 	return err
 }
 
+// EmitInvitationSent는 tenant.InvitationAuditEmitter 구현 (E21 — CreateInvitation 시점).
+func (a *auditEmitterAdapter) EmitInvitationSent(ctx context.Context, tx storage.Tx, inv tenant.Invitation) error {
+	payload := fmt.Sprintf(`{"invitationId":%q,"email":%q,"roleName":%q,"invitedBy":%q,"expiresAt":%q}`,
+		inv.ID, inv.Email, inv.RoleName, inv.InvitedBy, inv.ExpiresAt.Format(time.RFC3339))
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: inv.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorUser, ID: inv.InvitedBy},
+		Action:   "invitation.sent",
+		Target:   audit.Target{Type: "invitation", ID: inv.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitInvitationAccepted는 tenant.InvitationAuditEmitter 구현 (E21 — AcceptInvitation 시점).
+func (a *auditEmitterAdapter) EmitInvitationAccepted(ctx context.Context, tx storage.Tx, inv tenant.Invitation, user tenant.User) error {
+	payload := fmt.Sprintf(`{"invitationId":%q,"userId":%q,"email":%q,"roleName":%q}`,
+		inv.ID, user.ID, user.Email, inv.RoleName)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: inv.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorUser, ID: user.ID},
+		Action:   "invitation.accepted",
+		Target:   audit.Target{Type: "invitation", ID: inv.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 // EmitProviderChanged는 sso.AuditEmitter 구현 (E20-D — Provider CRUD).
 // action: "created"|"updated"|"deleted".
 func (a *auditEmitterAdapter) EmitProviderChanged(ctx context.Context, tx storage.Tx, p sso.Provider, action string) error {
@@ -727,14 +758,17 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	emitter := &auditEmitterAdapter{svc: auditSvc}
 
-	tenantSvc := tenantrepo.New(tenantrepo.Deps{
-		Clock:         clk,
-		IDGen:         ids,
-		Audit:         emitter,
-		JWTPrivateKey: jwtPrivateKey,
-		JWTPublicKey:  jwtPublicKey,
+	tenantRepo := tenantrepo.New(tenantrepo.Deps{
+		Clock:           clk,
+		IDGen:           ids,
+		Audit:           emitter,
+		InvitationAudit: emitter, // E21 — 같은 어댑터가 InvitationAuditEmitter도 구현.
+		JWTPrivateKey:   jwtPrivateKey,
+		JWTPublicKey:    jwtPublicKey,
 		// AccessTTL/RefreshTTL는 0 → tenant.DefaultAccessTTL/DefaultRefreshTTL.
 	})
+	tenantSvc := tenantRepo
+	invitationSvc := tenantRepo // E21 — 같은 Repo가 두 인터페이스 모두 만족.
 
 	benchmarkSvc := benchmarkrepo.New(benchmarkrepo.Deps{
 		Clock:              clk,
@@ -985,6 +1019,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		WebhookDispatcher: webhookDispatcher,
 		WebhookBridge:     webhookBridge,
 		SSO:               ssoSvc,
+		Invitation:        invitationSvc,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}, nil

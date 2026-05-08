@@ -32,6 +32,9 @@ type Deps struct {
 	IDGen idgen.IDGen
 	Audit tenant.AuditEmitter // bootstrap이 audit.Service를 어댑팅한 구현체 주입.
 
+	// InvitationAudit은 E21 초대 관련 audit emit. nil이면 emit skip (테스트 호환).
+	InvitationAudit tenant.InvitationAuditEmitter
+
 	// JWTPrivateKey/JWTPublicKey는 access·refresh 토큰 서명·검증용 (Stage D).
 	// 비어 있으면 Login/Refresh/VerifyAccessToken은 ErrInvalidToken 반환 (테스트 외 부팅 경로에선 필수).
 	JWTPrivateKey ed25519.PrivateKey

@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import {
   AlertTriangle,
+  Award,
   ClipboardCheck,
   FileText,
+  KeyRound,
   LayoutDashboard,
   MessageSquare,
   PlayCircle,
@@ -37,6 +39,8 @@ const items: ReadonlyArray<{
     | '/reports'
     | '/audit'
     | '/integrations'
+    | '/sso'
+    | '/license'
     | '/settings'
   labelKey: DictKey
   icon: typeof Server
@@ -50,6 +54,8 @@ const items: ReadonlyArray<{
   { to: '/reports', labelKey: 'nav.reports', icon: FileText },
   { to: '/audit', labelKey: 'nav.audit', icon: ScrollText },
   { to: '/integrations', labelKey: 'nav.integrations', icon: Webhook },
+  { to: '/sso', labelKey: 'nav.sso', icon: KeyRound },
+  { to: '/license', labelKey: 'nav.license', icon: Award },
   { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ]
 
