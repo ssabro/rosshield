@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/gen"
+	"github.com/ssabro/rosshield/internal/app/webhookrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
@@ -46,21 +47,22 @@ import (
 // bootstrap이 *Platform에서 필요한 도메인 서비스만 추출하여 주입.
 // Phase 1 Stage B는 Storage·Tenant·Robot·Scan·Reporting만 직접 사용 — 나머지는 후속 Stage.
 type Deps struct {
-	Storage    storage.Storage
-	Clock      clock.Clock
-	Tenant     tenant.Service
-	Robot      robot.Service
-	Scan       scan.Service
-	Reporting  reporting.Service
-	Insight    insight.Service          // E17 Phase 2
-	Compliance compliance.Service       // E17 Phase 2
-	Advisor    advisor.Service          // E16 Phase 2 — LLM 옵트인
-	Audit      audit.Service            // B1 — Web UI Audit 페이지 (GET /audit/head)
-	EventBus   eventbus.Bus             // C1 carryover — WebSocket scan progress 구독
-	License    *license.Enforcer        // E24-C — Open-core enterprise feature 게이트
-	SSO        sso.Service              // E20-A Phase 3 — SSO scaffold (옵트인, nil이면 503)
-	Webhook    webhook.Service          // E23-C Phase 3 — Webhook CRUD HTTP 표면
-	Invitation tenant.InvitationService // E21 — 초대·역할 (옵트인, nil이면 503)
+	Storage           storage.Storage
+	Clock             clock.Clock
+	Tenant            tenant.Service
+	Robot             robot.Service
+	Scan              scan.Service
+	Reporting         reporting.Service
+	Insight           insight.Service          // E17 Phase 2
+	Compliance        compliance.Service       // E17 Phase 2
+	Advisor           advisor.Service          // E16 Phase 2 — LLM 옵트인
+	Audit             audit.Service            // B1 — Web UI Audit 페이지 (GET /audit/head)
+	EventBus          eventbus.Bus             // C1 carryover — WebSocket scan progress 구독
+	License           *license.Enforcer        // E24-C — Open-core enterprise feature 게이트
+	SSO               sso.Service              // E20-A Phase 3 — SSO scaffold (옵트인, nil이면 503)
+	Webhook           webhook.Service          // E23-C Phase 3 — Webhook CRUD HTTP 표면
+	WebhookDispatcher *webhookrun.Dispatcher   // E29 — POST /webhooks/{id}/test (옵트인, nil이면 503)
+	Invitation        tenant.InvitationService // E21 — 초대·역할 (옵트인, nil이면 503)
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -216,6 +218,8 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Put("/api/v1/webhooks/{endpointId}", h.updateWebhookEndpointFromChi)
 		r.Delete("/api/v1/webhooks/{endpointId}", h.deleteWebhookEndpointFromChi)
 		r.Get("/api/v1/webhooks/{endpointId}/deliveries", h.listWebhookDeliveriesFromChi)
+		// E29 — webhook test (one-off ping, no delivery row)
+		r.Post("/api/v1/webhooks/{endpointId}/test", h.testWebhookEndpointFromChi)
 	})
 }
 

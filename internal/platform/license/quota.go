@@ -150,3 +150,33 @@ func (e *Enforcer) Payload() Payload {
 	}
 	return e.payload
 }
+
+// UsageSnapshot은 tenant의 현재 사용량을 한 번 읽어 반환합니다 (E29 — license info usage).
+//
+// UsageReader 미주입 시 zero 반환 (community SKU 또는 미결선 환경). 에러는 partial result —
+// 한 메서드 실패하더라도 나머지 값은 그대로 반환.
+type UsageSnapshot struct {
+	CurrentRobots  int
+	ScansToday     int
+	LLMTokensToday int
+}
+
+// ReadUsage는 UsageSnapshot을 채워 반환합니다.
+//
+// usage reader 호출은 storage Tx를 새로 열기 때문에 짧은 timeout ctx 권장.
+func (e *Enforcer) ReadUsage(ctx context.Context, tenantID string) UsageSnapshot {
+	var snap UsageSnapshot
+	if e == nil || e.usage == nil || tenantID == "" {
+		return snap
+	}
+	if v, err := e.usage.CurrentRobots(ctx, tenantID); err == nil {
+		snap.CurrentRobots = v
+	}
+	if v, err := e.usage.ScansToday(ctx, tenantID); err == nil {
+		snap.ScansToday = v
+	}
+	if v, err := e.usage.LLMTokensToday(ctx, tenantID); err == nil {
+		snap.LLMTokensToday = v
+	}
+	return snap
+}

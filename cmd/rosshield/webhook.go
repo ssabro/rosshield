@@ -35,30 +35,87 @@ type webhookEndpointView struct {
 // runWebhook 는 `webhook ...` 서브커맨드를 분기합니다.
 func runWebhook(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: rosshield webhook list [-o table|json]")
+		fmt.Fprintln(os.Stderr, "usage: rosshield webhook <list|test> ...")
 		return 2
 	}
 	switch args[0] {
 	case "list":
 		return runWebhookList(args[1:])
+	case "test":
+		return runWebhookTest(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stderr, `webhook 서브커맨드 — Webhook endpoint 조회 (read-only)
+		fmt.Fprintln(os.Stderr, `webhook 서브커맨드 — Webhook endpoint 조회·테스트
 
 사용법:
   rosshield webhook list [-o table|json]
+  rosshield webhook test <endpointId> [-o table|json]   one-off ping (delivery row INSERT 안 함)
 
 옵션:
   -o table|json    출력 포맷 (기본 table)
   --config <path>  config 파일 경로
 
 후속 stage:
-  rosshield webhook test <id>     one-off ping (backend POST /api/v1/webhooks/{id}/test 필요)
   rosshield webhook create/update/delete   (backend CRUD 활용)`)
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "webhook: unknown sub-command %q\n", args[0])
 		return 2
 	}
+}
+
+func runWebhookTest(args []string) int {
+	fs := flag.NewFlagSet("webhook test", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		configPath = fs.String("config", "", "config 파일 경로")
+		output     = fs.String("o", "table", "출력 포맷")
+	)
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "rosshield webhook test: %v\n", err)
+		return 2
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: rosshield webhook test <endpointId>")
+		return 2
+	}
+	id := fs.Arg(0)
+	format, err := ParseOutputFormat(*output)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "rosshield webhook test: %v\n", err)
+		return 2
+	}
+
+	client, code := newAuthenticatedClient(*configPath, "rosshield webhook test")
+	if client == nil {
+		return code
+	}
+
+	var resp struct {
+		Success   bool   `json:"success"`
+		Status    int    `json:"status"`
+		Error     string `json:"error,omitempty"`
+		LatencyMs int64  `json:"latencyMs"`
+	}
+	if err := client.Post(context.Background(), "/api/v1/webhooks/"+id+"/test", nil, &resp); err != nil {
+		fmt.Fprintf(os.Stderr, "rosshield webhook test: %v\n", err)
+		return HTTPErrorToExitCode(err)
+	}
+
+	switch format {
+	case OutputJSON:
+		_ = PrintJSON(resp)
+	default:
+		PrintTable([]string{"KEY", "VALUE"}, [][]string{
+			{"success", strconv.FormatBool(resp.Success)},
+			{"status", strconv.Itoa(resp.Status)},
+			{"latencyMs", strconv.FormatInt(resp.LatencyMs, 10)},
+			{"error", resp.Error},
+		})
+	}
+	if !resp.Success {
+		return 1 // ping 실패는 exit 1 (transport·HTTP non-2xx)
+	}
+	return 0
 }
 
 func runWebhookList(args []string) int {

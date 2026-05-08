@@ -23,6 +23,7 @@ type licenseInfoResponse struct {
 	Expired   bool               `json:"expired"`
 	Features  []string           `json:"features,omitempty"`
 	Quotas    licenseQuotaPublic `json:"quotas"`
+	Usage     licenseUsagePublic `json:"usage"`
 }
 
 type licenseQuotaPublic struct {
@@ -31,17 +32,33 @@ type licenseQuotaPublic struct {
 	LLMTokensPerDay int `json:"llmTokensPerDay"` // 0 = 무제한
 }
 
+// licenseUsagePublic은 현재 tenant의 사용량 스냅샷입니다 (E29).
+//
+// UsageReader 미결선 시 모두 0. quota 한도 대비 진척률을 운영자가 직접 보고 판단.
+type licenseUsagePublic struct {
+	CurrentRobots  int `json:"currentRobots"`
+	ScansToday     int `json:"scansToday"`
+	LLMTokensToday int `json:"llmTokensToday"`
+}
+
 // GetLicenseInfo는 GET /api/v1/license 핸들러입니다.
 //
 // 인증된 사용자만 호출 가능. License 미설정 시 community 기본값 응답(에러 X).
+// E29: usage snapshot 추가 — UsageReader 미결선 시 0으로 응답.
 func (h *Handlers) GetLicenseInfo(w http.ResponseWriter, r *http.Request) {
-	if storage.TenantIDFromContext(r.Context()) == "" {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
 		writeError(w, http.StatusUnauthorized, "no tenant in context")
 		return
 	}
 
 	resp := licenseInfoResponse{Edition: string(license.EditionCommunity)}
 	if h.deps.License != nil {
+		snap := h.deps.License.ReadUsage(r.Context(), string(tenantID))
+		resp.Usage.CurrentRobots = snap.CurrentRobots
+		resp.Usage.ScansToday = snap.ScansToday
+		resp.Usage.LLMTokensToday = snap.LLMTokensToday
+
 		p := h.deps.License.Payload()
 		if p.Version != 0 {
 			resp.Edition = string(p.Edition)

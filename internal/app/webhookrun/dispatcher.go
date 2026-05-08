@@ -234,6 +234,53 @@ func (d *Dispatcher) processOne(ctx context.Context, del webhook.WebhookDelivery
 // postOnce는 endpoint URL로 단일 HTTP POST를 수행합니다.
 //
 // 반환: (HTTP status, error). transport error면 status=0, response body 무시.
+// PingResult는 PingEndpoint 결과입니다 (E29 — webhook test CLI).
+type PingResult struct {
+	Status    int    // HTTP status code (0 = transport error)
+	Error     string // transport·sign 에러 메시지 (성공 시 빈 값)
+	LatencyMs int64  // POST 호출 wall-clock 소요
+}
+
+// PingEndpoint는 endpoint에 1회 ping payload를 POST하고 결과를 반환합니다.
+//
+// delivery row를 INSERT하지 않음 — 운영자 ad-hoc 검증 용도. 결과 metric counter는
+// 증가 안 함(test 호출은 운영 baseline 오염 회피).
+//
+// tenantCtx로 endpoint 조회 → postOnce 흐름 재사용. endpoint 미존재면 webhook.ErrEndpointNotFound.
+func (d *Dispatcher) PingEndpoint(ctx context.Context, endpointID string) (PingResult, error) {
+	tenantID := storage.TenantIDFromContext(ctx)
+	if tenantID == "" {
+		return PingResult{}, storage.ErrTenantMissing
+	}
+	var ep webhook.WebhookEndpoint
+	if err := d.deps.Storage.Tx(ctx, func(c context.Context, tx storage.Tx) error {
+		out, e := d.deps.Webhook.GetEndpoint(c, tx, endpointID)
+		if e != nil {
+			return e
+		}
+		ep = out
+		return nil
+	}); err != nil {
+		return PingResult{}, err
+	}
+
+	// 단순 ping payload — 수신자가 routing 가능한 minimal JSON.
+	pingDel := webhook.WebhookDelivery{
+		ID:        "ping_" + endpointID,
+		EventType: webhook.EventScanCompleted, // 라우팅 키 — 사용자가 알 수 있는 값으로 통일
+		Payload:   []byte(`{"ping":true,"source":"rosshield-webhook-test"}`),
+	}
+
+	start := d.deps.Clock.Now()
+	status, err := d.postOnce(ctx, ep, pingDel)
+	latency := d.deps.Clock.Now().Sub(start).Milliseconds()
+	res := PingResult{Status: status, LatencyMs: latency}
+	if err != nil {
+		res.Error = err.Error()
+	}
+	return res, nil
+}
+
 func (d *Dispatcher) postOnce(ctx context.Context, ep webhook.WebhookEndpoint, del webhook.WebhookDelivery) (int, error) {
 	body := del.Payload
 	sig, err := webhook.SignPayload(ep.Secret, body)

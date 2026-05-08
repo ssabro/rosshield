@@ -27,6 +27,11 @@ type licenseInfoBody struct {
 		ScansPerDay     int `json:"scansPerDay"`
 		LLMTokensPerDay int `json:"llmTokensPerDay"`
 	} `json:"quotas"`
+	Usage struct {
+		CurrentRobots  int `json:"currentRobots"`
+		ScansToday     int `json:"scansToday"`
+		LLMTokensToday int `json:"llmTokensToday"`
+	} `json:"usage"`
 }
 
 // runLicense는 `license ...` 서브커맨드를 분기합니다.
@@ -113,9 +118,12 @@ func runLicenseInfo(args []string) int {
 			{"expiresAt", lic.ExpiresAt},
 			{"expired", strconv.FormatBool(lic.Expired)},
 			{"features", strings.Join(lic.Features, ",")},
-			{"robotsMax", quotaStr(lic.Quotas.RobotsMax)},
-			{"scansPerDay", quotaStr(lic.Quotas.ScansPerDay)},
-			{"llmTokensPerDay", quotaStr(lic.Quotas.LLMTokensPerDay)},
+			{"quota.robotsMax", quotaStr(lic.Quotas.RobotsMax)},
+			{"quota.scansPerDay", quotaStr(lic.Quotas.ScansPerDay)},
+			{"quota.llmTokensPerDay", quotaStr(lic.Quotas.LLMTokensPerDay)},
+			{"usage.currentRobots", strconv.Itoa(lic.Usage.CurrentRobots)},
+			{"usage.scansToday", strconv.Itoa(lic.Usage.ScansToday)},
+			{"usage.llmTokensToday", strconv.Itoa(lic.Usage.LLMTokensToday)},
 		}
 		PrintTable([]string{"KEY", "VALUE"}, rows)
 	}

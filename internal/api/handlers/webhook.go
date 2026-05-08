@@ -436,3 +436,47 @@ func (h *Handlers) deleteWebhookEndpointFromChi(w http.ResponseWriter, r *http.R
 func (h *Handlers) listWebhookDeliveriesFromChi(w http.ResponseWriter, r *http.Request) {
 	h.ListWebhookDeliveries(w, r, chi.URLParam(r, "endpointId"))
 }
+
+// === E29 — POST /api/v1/webhooks/{endpointId}/test (one-off ping) ===
+
+type webhookTestResponse struct {
+	Success   bool   `json:"success"`
+	Status    int    `json:"status"`
+	Error     string `json:"error,omitempty"`
+	LatencyMs int64  `json:"latencyMs"`
+}
+
+// TestWebhookEndpoint는 endpoint에 1회 ping payload를 POST하고 결과를 반환합니다 (E29).
+//
+// delivery row INSERT 안 함. dispatcher의 PingEndpoint 호출 — 운영자 ad-hoc 검증용.
+// 응답: 200 + {success, status, error?, latencyMs}. endpoint 미존재 시 404.
+func (h *Handlers) TestWebhookEndpoint(w http.ResponseWriter, r *http.Request, endpointID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.WebhookDispatcher == nil {
+		writeError(w, http.StatusServiceUnavailable, "webhook dispatcher not configured")
+		return
+	}
+	res, err := h.deps.WebhookDispatcher.PingEndpoint(r.Context(), endpointID)
+	if err != nil {
+		status := errorStatusFor(err)
+		if errors.Is(err, webhook.ErrEndpointNotFound) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, webhookTestResponse{
+		Success:   res.Status >= 200 && res.Status < 300,
+		Status:    res.Status,
+		Error:     res.Error,
+		LatencyMs: res.LatencyMs,
+	})
+}
+
+// testWebhookEndpointFromChi는 chi router용 어댑터입니다.
+func (h *Handlers) testWebhookEndpointFromChi(w http.ResponseWriter, r *http.Request) {
+	h.TestWebhookEndpoint(w, r, chi.URLParam(r, "endpointId"))
+}
