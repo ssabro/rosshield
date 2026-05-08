@@ -95,6 +95,16 @@ func (c *Client) Post(ctx context.Context, path string, in any, out any) error {
 	return c.do(req, out)
 }
 
+// Delete는 DELETE <path>를 호출합니다 (응답 본문 무시 — 204 정상).
+func (c *Client) Delete(ctx context.Context, path string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	c.applyAuth(req)
+	return c.do(req, nil)
+}
+
 func (c *Client) applyAuth(req *http.Request) {
 	if c.accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.accessToken)
