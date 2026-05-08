@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +46,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/blobstore"
 	blobfs "github.com/ssabro/rosshield/internal/platform/blobstore/fs"
 	"github.com/ssabro/rosshield/internal/platform/clock"
+	"github.com/ssabro/rosshield/internal/platform/email"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
@@ -139,6 +141,20 @@ type Config struct {
 	// SQLite: 빈 값이면 DataDir/data.db (현 동작 유지).
 	// Postgres: postgres://user:pass@host:port/db?sslmode=... 형식. 빈 값이면 부트스트랩 에러.
 	StorageDSN string
+
+	// O6 — Email + invite notifier 옵션 (옵트인).
+	//
+	// EmailProvider: "" 또는 "noop" → NoopSender (stdout JSON, 실 SMTP 호출 X — 기본).
+	//                "smtp" → SMTPSender (Host/Port + optional auth).
+	// SMTPHost/SMTPPort/SMTPUsername/SMTPPassword/SMTPFrom는 EmailProvider="smtp"일 때만 사용.
+	// PublicBaseURL은 invite accept URL 빌드 — 빈 값이면 acceptURL이 빈 문자열로 Notifier에 전달.
+	EmailProvider string
+	SMTPHost      string
+	SMTPPort      int
+	SMTPUsername  string
+	SMTPPassword  string
+	SMTPFrom      string // "rosshield <noreply@example.com>" 또는 단순 주소.
+	PublicBaseURL string // 예: "https://app.example.com" (trailing slash 없이).
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -836,13 +852,26 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	emitter := &auditEmitterAdapter{svc: auditSvc}
 
+	// O6 — Email sender + InvitationNotifier 어댑터 결선 (옵트인).
+	// EmailProvider="" 또는 "noop"이면 NoopSender, "smtp"이면 SMTPSender.
+	emailSender, err := buildEmailSender(cfg, logger)
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: email: %w", err)
+	}
+	invitationNotifier := &invitationEmailNotifier{sender: emailSender, logger: logger}
+	urlBuilder := buildAcceptURLBuilder(cfg.PublicBaseURL)
+
 	tenantRepo := tenantrepo.New(tenantrepo.Deps{
-		Clock:           clk,
-		IDGen:           ids,
-		Audit:           emitter,
-		InvitationAudit: emitter, // E21 — 같은 어댑터가 InvitationAuditEmitter도 구현.
-		JWTPrivateKey:   jwtPrivateKey,
-		JWTPublicKey:    jwtPublicKey,
+		Clock:                      clk,
+		IDGen:                      ids,
+		Audit:                      emitter,
+		InvitationAudit:            emitter, // E21 — 같은 어댑터가 InvitationAuditEmitter도 구현.
+		InvitationNotifier:         invitationNotifier,
+		InvitationAcceptURLBuilder: urlBuilder,
+		JWTPrivateKey:              jwtPrivateKey,
+		JWTPublicKey:               jwtPublicKey,
 		// AccessTTL/RefreshTTL는 0 → tenant.DefaultAccessTTL/DefaultRefreshTTL.
 	})
 	tenantSvc := tenantRepo
@@ -1232,4 +1261,116 @@ func buildLicenseEnforcer(cfg Config, clk clock.Clock, usage license.UsageReader
 	}
 	enforcer := license.NewEnforcer(payload, usage, clk.Now)
 	return enforcer, payload.Edition, nil
+}
+
+// === O6 — Email + InvitationNotifier 결선 헬퍼 ===
+
+// buildEmailSender는 cfg.EmailProvider 값에 따라 NoopSender 또는 SMTPSender를 반환합니다.
+//
+// "" 또는 "noop" → NoopSender (기본값, 실 SMTP 호출 X). "smtp" → SMTPSender (Host/Port 필수).
+//
+// noop은 logger.Info로 발송 시도를 기록 (subcommand stdout 오염 방지). smtp는 실 송신.
+func buildEmailSender(cfg Config, logger *slog.Logger) (email.Sender, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.EmailProvider)) {
+	case "", "noop":
+		// logger.Info로 라우팅 — JSON handler를 거쳐 stdout에 가지만 message가 식별 가능 ("email noop send").
+		// subcommand는 자체 logger를 io.Discard로 셋업하면 출력 없음.
+		return email.NewNoopSenderWith(slogInfoWriter{logger: logger}, time.Now), nil
+	case "smtp":
+		return email.NewSMTPSender(email.SMTPConfig{
+			Host:        cfg.SMTPHost,
+			Port:        cfg.SMTPPort,
+			Username:    cfg.SMTPUsername,
+			Password:    cfg.SMTPPassword,
+			DefaultFrom: cfg.SMTPFrom,
+		})
+	default:
+		return nil, fmt.Errorf("email: unknown provider %q (allowed: noop|smtp)", cfg.EmailProvider)
+	}
+}
+
+// slogInfoWriter는 io.Writer를 slog.Logger.Info 호출로 어댑팅합니다.
+//
+// NoopSender가 한 줄에 한 메시지만 쓰므로 buffering 없이 message로 그대로 전달.
+// logger가 nil이면 silent (Discard 효과).
+type slogInfoWriter struct {
+	logger *slog.Logger
+}
+
+func (w slogInfoWriter) Write(p []byte) (int, error) {
+	if w.logger != nil {
+		w.logger.Info("email noop send", "payload", strings.TrimSpace(string(p)))
+	}
+	return len(p), nil
+}
+
+// buildAcceptURLBuilder는 PublicBaseURL 기반 acceptURL 빌더 closure를 반환합니다.
+//
+// PublicBaseURL이 비어 있으면 nil을 반환 — sqliterepo는 빈 acceptURL을 Notifier에 전달.
+// trailing slash는 정규화 (있으면 trim).
+func buildAcceptURLBuilder(publicBaseURL string) func(token string) string {
+	base := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if base == "" {
+		return nil
+	}
+	return func(token string) string {
+		return base + "/invitations/accept/" + token
+	}
+}
+
+// invitationEmailNotifier는 tenant.InvitationNotifier 구현입니다 (O6).
+//
+// 도메인이 platform/email을 직접 import하지 않게 어댑팅 (P5). subject·body는 본 어댑터가
+// 빌드 — 도메인은 메시지 내용을 모름. 실패는 logger에 warn으로만 기록 — invitation 자체는
+// commit (best-effort delivery).
+type invitationEmailNotifier struct {
+	sender email.Sender
+	logger *slog.Logger
+}
+
+func (n *invitationEmailNotifier) NotifyInvitationSent(ctx context.Context, inv tenant.Invitation, acceptURL string) error {
+	subject := fmt.Sprintf("rosshield 초대 — %s 역할", inv.RoleName)
+	textBody := buildInvitationTextBody(inv, acceptURL)
+	htmlBody := buildInvitationHTMLBody(inv, acceptURL)
+	err := n.sender.SendMessage(ctx, email.Message{
+		To:       inv.Email,
+		Subject:  subject,
+		TextBody: textBody,
+		HTMLBody: htmlBody,
+	})
+	if err != nil && n.logger != nil {
+		n.logger.Warn("invitation email send failed",
+			"invitationId", inv.ID,
+			"to", inv.Email,
+			"provider", n.sender.Provider(),
+			"err", err.Error())
+	}
+	return err
+}
+
+func buildInvitationTextBody(inv tenant.Invitation, acceptURL string) string {
+	var b strings.Builder
+	b.WriteString("rosshield 초대\r\n\r\n")
+	b.WriteString(fmt.Sprintf("역할: %s\r\n", inv.RoleName))
+	b.WriteString(fmt.Sprintf("만료: %s\r\n", inv.ExpiresAt.Format(time.RFC3339)))
+	if acceptURL != "" {
+		b.WriteString("\r\n다음 링크에서 계정을 활성화하세요:\r\n")
+		b.WriteString(acceptURL)
+		b.WriteString("\r\n")
+	} else {
+		b.WriteString("\r\n토큰은 관리자가 별도로 전달합니다.\r\n")
+	}
+	return b.String()
+}
+
+func buildInvitationHTMLBody(inv tenant.Invitation, acceptURL string) string {
+	if acceptURL == "" {
+		return ""
+	}
+	return fmt.Sprintf(
+		`<p>rosshield 초대</p><p>역할: %s</p><p>만료: %s</p><p><a href="%s">계정 활성화</a></p>`,
+		inv.RoleName,
+		inv.ExpiresAt.Format(time.RFC3339),
+		acceptURL,
+	)
 }

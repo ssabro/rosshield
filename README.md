@@ -82,6 +82,39 @@ sha256sum -c checksums.sha256
 ./rosshield-audit-verify --bundle <report.tar.gz>
 ```
 
+## Invite Email (O6)
+
+초대 발송은 옵트인입니다. 기본값(`--email-provider=noop`)은 SMTP 연결 없이 발송 시도를
+slog Info 한 줄로만 기록합니다 — admin이 `POST /api/v1/invitations` 응답의 `token`을
+사용자에게 직접 전달하는 모델 (데스크톱·소규모 SKU 가정).
+
+### Noop (기본)
+
+```bash
+rosshield-server --addr 127.0.0.1:8080
+# CreateInvitation 시 logger Info 한 줄:
+# {"time":"...","level":"INFO","msg":"email noop send","payload":"{\"ts\":\"...\",\"to\":\"newuser@acme.test\",...}"}
+```
+
+### SMTP
+
+```bash
+ROSSHIELD_SMTP_PASSWORD='secret' rosshield-server \
+  --addr 127.0.0.1:8080 \
+  --email-provider smtp \
+  --email-smtp-host smtp.example.com \
+  --email-smtp-port 587 \
+  --email-smtp-user noreply@example.com \
+  --email-from 'rosshield <noreply@example.com>' \
+  --public-base-url https://app.example.com
+```
+
+`--public-base-url`이 설정되면 초대 이메일에 `<base>/invitations/accept/<token>` 형식의
+accept URL이 포함됩니다. 비어 있으면 본문에 토큰만 명시되고 admin이 별도로 전달.
+
+발송 실패는 invitation INSERT를 rollback하지 않습니다 — best-effort. 실패 시에도 admin은
+`POST /api/v1/invitations` 응답의 `token`을 받아 수동 전달 가능. 실패는 logger.Warn으로 기록.
+
 ## Backup·Restore (E28)
 
 단일 인스턴스 데이터 손실 위험 완화. SQLite VACUUM INTO로 일관 스냅샷을 떠내므로 서버

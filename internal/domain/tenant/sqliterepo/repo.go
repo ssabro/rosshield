@@ -35,6 +35,18 @@ type Deps struct {
 	// InvitationAudit은 E21 초대 관련 audit emit. nil이면 emit skip (테스트 호환).
 	InvitationAudit tenant.InvitationAuditEmitter
 
+	// InvitationNotifier는 O6 — invite 생성 시 외부 채널(email 등) 알림 hook.
+	// nil이면 알림 skip (기본·기존 동작 유지). 알림 실패는 invitation INSERT를 rollback하지
+	// 않음 — best-effort delivery.
+	InvitationNotifier tenant.InvitationNotifier
+
+	// InvitationAcceptURLBuilder는 InvitationNotifier 호출 시 전달할 acceptURL을
+	// 빌드하는 함수입니다. nil이면 빈 문자열을 넘김 — Notifier 구현이 직접 빌드하거나
+	// URL 없이 발송할 수 있다.
+	//
+	// bootstrap이 cfg.PublicBaseURL 기반 closure를 주입한다 (도메인은 PublicBaseURL 미지각).
+	InvitationAcceptURLBuilder func(token string) string
+
 	// JWTPrivateKey/JWTPublicKey는 access·refresh 토큰 서명·검증용 (Stage D).
 	// 비어 있으면 Login/Refresh/VerifyAccessToken은 ErrInvalidToken 반환 (테스트 외 부팅 경로에선 필수).
 	JWTPrivateKey ed25519.PrivateKey

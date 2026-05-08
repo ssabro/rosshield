@@ -203,6 +203,13 @@ func main() {
 	licenseToken := flag.String("license-token", "", "Enterprise license token (E24 — opt-in). Prefer env ROSSHIELD_LICENSE_TOKEN.")
 	licensePubHex := flag.String("license-pubkey-hex", "", "Ed25519 public key (32B hex) for license verification. Prefer env ROSSHIELD_LICENSE_PUBKEY_HEX.")
 	webhookTick := flag.Duration("webhook-tick-interval", 0, "Webhook dispatcher polling interval (E23-B). 0 = default 30s.")
+	emailProvider := flag.String("email-provider", "noop", "Email provider for invite delivery (O6): noop (default — log only via slog Info, no SMTP) | smtp")
+	smtpHost := flag.String("email-smtp-host", "", "SMTP server host (required when --email-provider=smtp)")
+	smtpPort := flag.Int("email-smtp-port", 587, "SMTP server port (default 587)")
+	smtpUser := flag.String("email-smtp-user", "", "SMTP username for AUTH PLAIN (empty = unauthenticated submission)")
+	smtpPassword := flag.String("email-smtp-password", "", "SMTP password for AUTH PLAIN. Prefer env ROSSHIELD_SMTP_PASSWORD.")
+	smtpFrom := flag.String("email-from", "", "Email From header (e.g. 'rosshield <noreply@example.com>'). Required when --email-provider=smtp.")
+	publicBaseURL := flag.String("public-base-url", "", "Public base URL used to build invite accept links (e.g. https://app.example.com). Empty = Notifier receives empty acceptURL.")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
@@ -218,6 +225,11 @@ func main() {
 	licPub := *licensePubHex
 	if licPub == "" {
 		licPub = os.Getenv("ROSSHIELD_LICENSE_PUBKEY_HEX")
+	}
+	// SMTP password env fallback (avoid shell history leak).
+	smtpPw := *smtpPassword
+	if smtpPw == "" {
+		smtpPw = os.Getenv("ROSSHIELD_SMTP_PASSWORD")
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -245,6 +257,13 @@ func main() {
 		LicenseToken:        licTok,
 		LicensePublicKeyHex: licPub,
 		WebhookTickInterval: *webhookTick,
+		EmailProvider:       *emailProvider,
+		SMTPHost:            *smtpHost,
+		SMTPPort:            *smtpPort,
+		SMTPUsername:        *smtpUser,
+		SMTPPassword:        smtpPw,
+		SMTPFrom:            *smtpFrom,
+		PublicBaseURL:       *publicBaseURL,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

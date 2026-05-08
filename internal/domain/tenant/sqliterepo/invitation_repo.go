@@ -110,6 +110,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 	}
 
+	// O6 — InvitationNotifier 호출 (옵트인). 알림 실패는 INSERT를 rollback하지 않음 —
+	// best-effort delivery. 실패 시에도 caller(handler)는 token을 응답으로 받아 admin이
+	// 수동 전달 가능. 운영 모니터링은 Notifier 구현의 자체 metric/log에 위임.
+	if r.deps.InvitationNotifier != nil {
+		acceptURL := ""
+		if r.deps.InvitationAcceptURLBuilder != nil {
+			acceptURL = r.deps.InvitationAcceptURLBuilder(token)
+		}
+		_ = r.deps.InvitationNotifier.NotifyInvitationSent(ctx, inv, acceptURL)
+	}
+
 	return tenant.CreateInvitationResult{Invitation: inv, Token: token}, nil
 }
 

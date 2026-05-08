@@ -104,6 +104,21 @@ type InvitationAuditEmitter interface {
 	EmitInvitationAccepted(ctx context.Context, tx storage.Tx, inv Invitation, user User) error
 }
 
+// InvitationNotifier는 초대가 INSERT된 직후 외부 채널(email 등)로 알림을 보내는
+// 옵트인 hook입니다 (O6 — invite email adapter).
+//
+// bootstrap이 platform/email 어댑터를 감싼 구현체를 sqliterepo Deps에 주입한다.
+// nil이면 알림 skip — 기존 동작(admin이 token URL을 수동 전달) 유지. acceptURL은 caller가
+// 빌드해서 전달 — 도메인은 PublicBaseURL을 모름.
+//
+// audit emit과 분리한 이유:
+//   - audit는 결정론적 + 항상 성공 (실패 시 invitation 자체가 rollback).
+//   - email은 외부 IO + 실패 가능 — sqliterepo는 본 hook err를 로깅만 하고 invitation
+//     INSERT는 commit (best-effort 발송). 본 메서드의 error는 caller(repo)가 결정.
+type InvitationNotifier interface {
+	NotifyInvitationSent(ctx context.Context, inv Invitation, acceptURL string) error
+}
+
 // InvitationService는 invitation 도메인 진입점입니다.
 //
 // tenant.Service와 분리 — 한 도메인 안 sub-interface 분할로 grow 가능. bootstrap은

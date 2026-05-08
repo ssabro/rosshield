@@ -19,6 +19,7 @@ package sqliterepo_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -417,6 +418,180 @@ func TestCreateInvitationInvalidRole(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid role") {
 		t.Errorf("err = %v, want ErrInvalidRole", err)
+	}
+}
+
+// === O6: InvitationNotifier 호출 ===
+
+// recordingNotifier는 InvitationNotifier 호출을 기록합니다.
+type recordingNotifier struct {
+	calls []struct {
+		Inv       tenant.Invitation
+		AcceptURL string
+	}
+	returnErr error
+}
+
+func (n *recordingNotifier) NotifyInvitationSent(_ context.Context, inv tenant.Invitation, acceptURL string) error {
+	n.calls = append(n.calls, struct {
+		Inv       tenant.Invitation
+		AcceptURL string
+	}{inv, acceptURL})
+	return n.returnErr
+}
+
+// newInvFixtureWithNotifier는 newInvFixture와 동일하되 InvitationNotifier hook을
+// 추가 주입한 fixture를 반환합니다.
+func newInvFixtureWithNotifier(t *testing.T, notifier tenant.InvitationNotifier, urlBuilder func(token string) string) *invFixture {
+	t.Helper()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "data.db")
+	store, err := sqlite.Open(storage.Config{Driver: "sqlite", DSN: dbPath})
+	if err != nil {
+		t.Fatalf("sqlite.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	clk := clock.System()
+	ids := idgen.NewULID()
+	rec := &recordingInvAudit{}
+
+	repo := sqliterepo.New(sqliterepo.Deps{
+		Clock:                      clk,
+		IDGen:                      ids,
+		InvitationAudit:            rec,
+		InvitationNotifier:         notifier,
+		InvitationAcceptURLBuilder: urlBuilder,
+	})
+
+	var t1, t2 tenant.CreateResult
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r1, e := repo.Create(ctx, tx, tenant.CreateRequest{
+			Name: "Acme", Plan: tenant.PlanDesktopFree,
+			AdminEmail: "admin@acme.test", AdminPassword: "verylongpassword123",
+			AdminDisplayName: "Acme Admin",
+		})
+		if e != nil {
+			return e
+		}
+		t1 = r1
+		r2, e := repo.Create(ctx, tx, tenant.CreateRequest{
+			Name: "Globex", Plan: tenant.PlanDesktopFree,
+			AdminEmail: "admin@globex.test", AdminPassword: "verylongpassword123",
+			AdminDisplayName: "Globex Admin",
+		})
+		if e != nil {
+			return e
+		}
+		t2 = r2
+		return nil
+	}); err != nil {
+		t.Fatalf("seed tenants: %v", err)
+	}
+
+	return &invFixture{
+		repo:     repo,
+		store:    store,
+		tenantID: t1.Tenant.ID,
+		otherID:  t2.Tenant.ID,
+		adminID:  t1.Admin.ID,
+		otherAdm: t2.Admin.ID,
+		auditMu:  rec,
+	}
+}
+
+func TestCreateInvitationCallsNotifier(t *testing.T) {
+	notifier := &recordingNotifier{}
+	urlBuilder := func(tok string) string { return "https://app.example.com/invitations/accept/" + tok }
+	f := newInvFixtureWithNotifier(t, notifier, urlBuilder)
+
+	tenantCtx := storage.WithTenantID(context.Background(), f.tenantID)
+	var token string
+	if err := f.store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		res, e := f.repo.CreateInvitation(ctx, tx, tenant.CreateInvitationRequest{
+			TenantID: f.tenantID, Email: "notify@acme.test",
+			RoleName: tenant.RoleOperator, InvitedBy: f.adminID,
+		})
+		if e != nil {
+			return e
+		}
+		token = res.Token
+		return nil
+	}); err != nil {
+		t.Fatalf("CreateInvitation: %v", err)
+	}
+
+	if len(notifier.calls) != 1 {
+		t.Fatalf("notifier calls = %d, want 1", len(notifier.calls))
+	}
+	if notifier.calls[0].Inv.Email != "notify@acme.test" {
+		t.Errorf("notified email = %q", notifier.calls[0].Inv.Email)
+	}
+	wantURL := "https://app.example.com/invitations/accept/" + token
+	if notifier.calls[0].AcceptURL != wantURL {
+		t.Errorf("acceptURL = %q, want %q", notifier.calls[0].AcceptURL, wantURL)
+	}
+}
+
+// 알림 실패는 INSERT를 rollback하지 않음 — best-effort.
+func TestCreateInvitationNotifierFailureDoesNotRollback(t *testing.T) {
+	notifier := &recordingNotifier{returnErr: errors.New("smtp down")}
+	f := newInvFixtureWithNotifier(t, notifier, nil)
+
+	tenantCtx := storage.WithTenantID(context.Background(), f.tenantID)
+	var token string
+	if err := f.store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		res, e := f.repo.CreateInvitation(ctx, tx, tenant.CreateInvitationRequest{
+			TenantID: f.tenantID, Email: "noisy@acme.test",
+			RoleName: tenant.RoleOperator, InvitedBy: f.adminID,
+		})
+		if e != nil {
+			return e
+		}
+		token = res.Token
+		return nil
+	}); err != nil {
+		t.Fatalf("CreateInvitation: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected token despite notifier error")
+	}
+
+	tenantCtx2 := storage.WithTenantID(context.Background(), f.tenantID)
+	if err := f.store.Tx(tenantCtx2, func(ctx context.Context, tx storage.Tx) error {
+		list, e := f.repo.ListInvitations(ctx, tx)
+		if e != nil {
+			return e
+		}
+		if len(list) != 1 || list[0].Email != "noisy@acme.test" {
+			t.Errorf("list = %+v, want 1 invitation for noisy@acme.test", list)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ListInvitations: %v", err)
+	}
+}
+
+// nil InvitationAcceptURLBuilder는 빈 문자열을 넘김.
+func TestCreateInvitationNilURLBuilderPassesEmptyAcceptURL(t *testing.T) {
+	notifier := &recordingNotifier{}
+	f := newInvFixtureWithNotifier(t, notifier, nil)
+
+	tenantCtx := storage.WithTenantID(context.Background(), f.tenantID)
+	if err := f.store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := f.repo.CreateInvitation(ctx, tx, tenant.CreateInvitationRequest{
+			TenantID: f.tenantID, Email: "nourl@acme.test",
+			RoleName: tenant.RoleOperator, InvitedBy: f.adminID,
+		})
+		return e
+	}); err != nil {
+		t.Fatalf("CreateInvitation: %v", err)
+	}
+	if len(notifier.calls) != 1 || notifier.calls[0].AcceptURL != "" {
+		t.Errorf("acceptURL = %q, want empty (nil builder)", notifier.calls[0].AcceptURL)
 	}
 }
 
