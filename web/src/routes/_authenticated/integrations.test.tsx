@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   formatWebhookEvent,
+  summarizeDeliveries,
   webhookDeliveryStatus,
   type WebhookEndpoint,
 } from '@/api/hooks'
@@ -14,6 +15,7 @@ import {
 import {
   deliveryStatusLabelKey,
   endpointDisplayName,
+  statCellColorClass,
   statusBadgeVariant,
 } from './integrations'
 
@@ -117,5 +119,42 @@ describe('deliveryStatusLabelKey', () => {
     expect(deliveryStatusLabelKey('pending')).toBe(
       'integrations.deliveries.status.pending',
     )
+  })
+})
+
+describe('summarizeDeliveries (O7)', () => {
+  it('빈 배열 → 모두 0', () => {
+    expect(summarizeDeliveries([])).toEqual({
+      total: 0,
+      success: 0,
+      retrying: 0,
+      dead: 0,
+      pending: 0,
+    })
+  })
+  it('mixed deliveries → 정확한 분류', () => {
+    const stats = summarizeDeliveries([
+      { succeeded: true, attemptCount: 1 },
+      { succeeded: true, attemptCount: 2 },
+      { succeeded: false, attemptCount: 5 },
+      { succeeded: false, attemptCount: 3 },
+      { succeeded: false, attemptCount: 0 },
+    ])
+    expect(stats).toEqual({
+      total: 5,
+      success: 2,
+      retrying: 1,
+      dead: 1,
+      pending: 1,
+    })
+  })
+})
+
+describe('statCellColorClass (O7)', () => {
+  it('각 variant에 색상 클래스 매핑', () => {
+    expect(statCellColorClass('success')).toContain('primary')
+    expect(statCellColorClass('warning')).toContain('amber')
+    expect(statCellColorClass('destructive')).toContain('destructive')
+    expect(statCellColorClass('muted')).toContain('muted')
   })
 })

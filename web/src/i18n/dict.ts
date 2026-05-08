@@ -309,6 +309,18 @@ export const ko = {
   'integrations.deliveries.status.dead': 'dead-letter',
   'integrations.deliveries.status.retrying': '재시도 대기',
   'integrations.deliveries.status.pending': '대기',
+  'integrations.deliveries.stats.success': '성공',
+  'integrations.deliveries.stats.retrying': '재시도',
+  'integrations.deliveries.stats.dead': 'dead-letter',
+  'integrations.deliveries.stats.pending': '대기',
+  'integrations.action.test': '테스트',
+  'integrations.action.test.tooltip': 'endpoint에 1회 ping 송출 (delivery row 생성 안 함)',
+  'integrations.action.test.sending': '전송 중…',
+  'integrations.action.test.success':
+    'ping 성공 — status {status}, latency {latency}ms',
+  'integrations.action.test.failure':
+    'ping 실패 — status {status}, error: {error}',
+  'integrations.action.test.error.fallback': 'ping 호출에 실패했습니다',
   'integrations.empty.title': '등록된 endpoint가 없습니다',
   'integrations.empty.description':
     '위 폼에서 첫 webhook endpoint를 등록하세요. 모든 송출은 HMAC-SHA256으로 서명됩니다.',
@@ -865,6 +877,18 @@ export const en: Record<keyof typeof ko, string> = {
   'integrations.deliveries.status.dead': 'dead-letter',
   'integrations.deliveries.status.retrying': 'retrying',
   'integrations.deliveries.status.pending': 'pending',
+  'integrations.deliveries.stats.success': 'Success',
+  'integrations.deliveries.stats.retrying': 'Retrying',
+  'integrations.deliveries.stats.dead': 'Dead-letter',
+  'integrations.deliveries.stats.pending': 'Pending',
+  'integrations.action.test': 'Test',
+  'integrations.action.test.tooltip': 'Send a one-off ping to this endpoint (no delivery row created)',
+  'integrations.action.test.sending': 'Sending…',
+  'integrations.action.test.success':
+    'Ping succeeded — status {status}, latency {latency}ms',
+  'integrations.action.test.failure':
+    'Ping failed — status {status}, error: {error}',
+  'integrations.action.test.error.fallback': 'Ping call failed',
   'integrations.empty.title': 'No endpoints registered',
   'integrations.empty.description':
     'Use the form above to register your first webhook endpoint. All payloads are signed with HMAC-SHA256.',

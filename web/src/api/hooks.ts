@@ -1026,6 +1026,55 @@ export const KNOWN_WEBHOOK_EVENTS: ReadonlyArray<WebhookEventType> = [
   'audit.checkpoint',
 ]
 
+// O7 — webhook one-off ping (E29 backend POST /webhooks/{id}/test 활용).
+export interface WebhookTestResult {
+  success: boolean
+  status: number
+  error?: string
+  latencyMs: number
+}
+
+export const useTestWebhookEndpoint = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (endpointId: string): Promise<WebhookTestResult> => {
+      return webhookFetch<WebhookTestResult>(
+        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}/test`,
+        { method: 'POST' },
+      )
+    },
+    onSettled: (_data, _err, endpointId) => {
+      // ping 후 deliveries 캐시 무효화 — UI 새 row 표시 (현재 backend는 INSERT 안 함).
+      void qc.invalidateQueries({ queryKey: ['webhooks', endpointId, 'deliveries'] })
+    },
+  })
+}
+
+// O7 — delivery 통계 (success/retrying/dead/pending) 집계 helper (단위 테스트 가능).
+export interface WebhookDeliveryStats {
+  total: number
+  success: number
+  retrying: number
+  dead: number
+  pending: number
+}
+
+export function summarizeDeliveries(
+  deliveries: ReadonlyArray<Pick<WebhookDelivery, 'succeeded' | 'attemptCount'>>,
+): WebhookDeliveryStats {
+  const stats: WebhookDeliveryStats = {
+    total: deliveries.length,
+    success: 0,
+    retrying: 0,
+    dead: 0,
+    pending: 0,
+  }
+  for (const d of deliveries) {
+    stats[webhookDeliveryStatus(d)] += 1
+  }
+  return stats
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // 7) SSO Providers (E20-D / B4) — provider CRUD.
 //

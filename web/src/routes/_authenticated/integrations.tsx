@@ -7,8 +7,10 @@ import { ApiError } from '@/api/errors'
 import {
   KNOWN_WEBHOOK_EVENTS,
   formatWebhookEvent,
+  summarizeDeliveries,
   useCreateWebhook,
   useDeleteWebhook,
+  useTestWebhookEndpoint,
   useWebhookDeliveries,
   useWebhookEndpoints,
   webhookDeliveryStatus,
@@ -245,6 +247,7 @@ function EndpointRow({
           >
             {t('integrations.action.select')}
           </Button>
+          <TestButton endpointId={endpoint.id} />
           <Button
             size="sm"
             variant="outline"
@@ -261,7 +264,51 @@ function EndpointRow({
   )
 }
 
-// DeliveriesSection — 선택된 endpoint의 최근 deliveries 표.
+// TestButton — endpoint one-off ping (O7, E29 backend POST /webhooks/{id}/test).
+function TestButton({ endpointId }: { endpointId: string }): React.ReactElement {
+  const t = useT()
+  const test = useTestWebhookEndpoint()
+  const handle = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    test.mutate(endpointId, {
+      onSuccess: (res) => {
+        const msg = res.success
+          ? t('integrations.action.test.success', {
+              status: String(res.status),
+              latency: String(res.latencyMs),
+            })
+          : t('integrations.action.test.failure', {
+              status: String(res.status),
+              error: res.error || t('common.error.unknown'),
+            })
+        // 사용자에게 즉시 피드백 — 단순 alert (B3 패턴 따라). 향후 toast 시스템 통합.
+        window.alert(msg)
+      },
+      onError: (err) => {
+        window.alert(
+          err instanceof ApiError
+            ? `${t('integrations.action.test.error.fallback')}: ${err.message}`
+            : t('integrations.action.test.error.fallback'),
+        )
+      },
+    })
+  }
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handle}
+      disabled={test.isPending}
+      title={t('integrations.action.test.tooltip')}
+    >
+      {test.isPending
+        ? t('integrations.action.test.sending')
+        : t('integrations.action.test')}
+    </Button>
+  )
+}
+
+// DeliveriesSection — 선택된 endpoint의 최근 deliveries 표 + 통계 카드 (O7).
 function DeliveriesSection({
   endpoint,
 }: {
@@ -269,6 +316,8 @@ function DeliveriesSection({
 }): React.ReactElement {
   const t = useT()
   const deliveries = useWebhookDeliveries(endpoint?.id)
+
+  const stats = summarizeDeliveries(deliveries.data ?? [])
 
   const title = endpoint
     ? t('integrations.deliveries.title', {
@@ -279,6 +328,15 @@ function DeliveriesSection({
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-medium">{title}</h2>
+
+      {endpoint && stats.total > 0 && (
+        <div className="grid grid-cols-4 gap-2 rounded-md border bg-muted/30 p-3 text-xs">
+          <StatCell label={t('integrations.deliveries.stats.success')} value={stats.success} variant="success" />
+          <StatCell label={t('integrations.deliveries.stats.retrying')} value={stats.retrying} variant="warning" />
+          <StatCell label={t('integrations.deliveries.stats.dead')} value={stats.dead} variant="destructive" />
+          <StatCell label={t('integrations.deliveries.stats.pending')} value={stats.pending} variant="muted" />
+        </div>
+      )}
 
       {!endpoint ? (
         <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-xs text-muted-foreground">
@@ -610,6 +668,43 @@ function eventLabelKey(e: WebhookEventType): DictKey {
     case 'audit.checkpoint':
       return 'integrations.event.audit.checkpoint'
   }
+}
+
+// StatCell — DeliveriesSection 통계 카드 셀 (O7).
+//
+// variant별 색상: success=primary, warning=amber, destructive=destructive, muted=muted.
+type StatCellVariant = 'success' | 'warning' | 'destructive' | 'muted'
+
+export function statCellColorClass(v: StatCellVariant): string {
+  switch (v) {
+    case 'success':
+      return 'text-primary'
+    case 'warning':
+      return 'text-amber-600 dark:text-amber-400'
+    case 'destructive':
+      return 'text-destructive'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+function StatCell({
+  label,
+  value,
+  variant,
+}: {
+  label: string
+  value: number
+  variant: StatCellVariant
+}): React.ReactElement {
+  return (
+    <div className="space-y-0.5">
+      <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
+      <div className={`text-base font-medium tabular-nums ${statCellColorClass(variant)}`}>
+        {value}
+      </div>
+    </div>
+  )
 }
 
 export const Route = createFileRoute('/_authenticated/integrations')({
