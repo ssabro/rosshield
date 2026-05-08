@@ -1351,8 +1351,8 @@ func (n *invitationEmailNotifier) NotifyInvitationSent(ctx context.Context, inv 
 func buildInvitationTextBody(inv tenant.Invitation, acceptURL string) string {
 	var b strings.Builder
 	b.WriteString("rosshield 초대\r\n\r\n")
-	b.WriteString(fmt.Sprintf("역할: %s\r\n", inv.RoleName))
-	b.WriteString(fmt.Sprintf("만료: %s\r\n", inv.ExpiresAt.Format(time.RFC3339)))
+	fmt.Fprintf(&b, "역할: %s\r\n", inv.RoleName)
+	fmt.Fprintf(&b, "만료: %s\r\n", inv.ExpiresAt.Format(time.RFC3339))
 	if acceptURL != "" {
 		b.WriteString("\r\n다음 링크에서 계정을 활성화하세요:\r\n")
 		b.WriteString(acceptURL)
