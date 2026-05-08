@@ -671,6 +671,65 @@ SELECT id, name, plan, created_at, settings, features, retention
 	}, nil
 }
 
+// ProvisionExternalUser는 SSO IdP 첫 로그인 시 user를 자동 생성합니다 (O5 — Phase 4).
+//
+// 같은 (tenantID, email) user가 이미 있으면 link 모드 — 그 user.ID 반환 (role 변경 X).
+// 없으면 새 user INSERT (auth_provider=oidc/saml, ExternalSubject) + DefaultRole 자동 할당.
+//
+// 본 메서드는 IdentityResolver 어댑터(bootstrap)가 호출 — sso.CompleteLogin 같은 Tx.
+func (r *Repo) ProvisionExternalUser(ctx context.Context, tx storage.Tx, req tenant.ProvisionExternalUserRequest) (tenant.User, error) {
+	if req.TenantID == "" {
+		return tenant.User{}, storage.ErrTenantMissing
+	}
+	emailNormalized := strings.ToLower(strings.TrimSpace(req.Email))
+	if emailNormalized == "" {
+		return tenant.User{}, tenant.ErrEmptyEmail
+	}
+	if req.AuthProvider != tenant.AuthProviderOIDC && req.AuthProvider != tenant.AuthProviderSAML {
+		return tenant.User{}, fmt.Errorf("tenant: ProvisionExternalUser: AuthProvider must be oidc or saml, got %q", req.AuthProvider)
+	}
+
+	// 1. 기존 user lookup (link 모드).
+	existing, err := r.GetUserByEmail(ctx, tx, req.TenantID, emailNormalized)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, storage.ErrNotFound) {
+		return tenant.User{}, fmt.Errorf("tenant: lookup external user: %w", err)
+	}
+
+	// 2. 신규 user INSERT.
+	roleName := req.DefaultRoleName
+	if roleName == "" {
+		roleName = tenant.RoleOperator
+	}
+	role, err := r.GetRole(ctx, tx, req.TenantID, roleName)
+	if err != nil {
+		return tenant.User{}, fmt.Errorf("tenant: lookup default role %q: %w", roleName, err)
+	}
+
+	now := r.deps.Clock.Now().UTC()
+	user := tenant.User{
+		ID:              r.deps.IDGen.New("us"),
+		TenantID:        req.TenantID,
+		Email:           emailNormalized,
+		DisplayName:     req.DisplayName,
+		AuthProvider:    req.AuthProvider,
+		ExternalSubject: req.ExternalSubject,
+		PasswordHash:    "", // 외부 IdP 전용 — local password 없음.
+		Status:          tenant.UserStatusActive,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := insertUser(ctx, tx, user); err != nil {
+		return tenant.User{}, err
+	}
+	if err := assignRole(ctx, tx, user.ID, role.ID); err != nil {
+		return tenant.User{}, err
+	}
+	return user, nil
+}
+
 // GetUserByEmail은 tenant.Service.GetUserByEmail 구현입니다.
 func (r *Repo) GetUserByEmail(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, email string) (tenant.User, error) {
 	normalized := strings.ToLower(strings.TrimSpace(email))

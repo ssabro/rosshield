@@ -586,6 +586,42 @@ func (a *auditEmitterAdapter) EmitInvitationAccepted(ctx context.Context, tx sto
 	return err
 }
 
+// ssoIdentityResolverAdapter는 ssorepo.IdentityResolver 구현입니다 (O5 Phase 4).
+//
+// 첫 SSO 로그인 시 tenant.Service.ProvisionExternalUser를 호출 — 외부 sub/email로 user 자동 생성.
+// 같은 (tenant, email) user가 이미 있으면 link 모드 (role 변경 X).
+type ssoIdentityResolverAdapter struct {
+	tenantSvc tenant.Service
+}
+
+func (a *ssoIdentityResolverAdapter) ResolveOIDCIdentity(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, providerID string, claims sso.IDTokenClaims) (string, error) {
+	user, err := a.tenantSvc.ProvisionExternalUser(ctx, tx, tenant.ProvisionExternalUserRequest{
+		TenantID:        tenantID,
+		Email:           claims.Email,
+		DisplayName:     claims.Name,
+		AuthProvider:    tenant.AuthProviderOIDC,
+		ExternalSubject: claims.Subject,
+	})
+	if err != nil {
+		return "", err
+	}
+	return user.ID, nil
+}
+
+func (a *ssoIdentityResolverAdapter) ResolveSAMLIdentity(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, providerID string, assertion sso.SAMLAssertion) (string, error) {
+	user, err := a.tenantSvc.ProvisionExternalUser(ctx, tx, tenant.ProvisionExternalUserRequest{
+		TenantID:        tenantID,
+		Email:           assertion.Email,
+		DisplayName:     assertion.NameID, // SAML은 별 displayName attribute가 있을 수 있지만 본 stage는 단순화.
+		AuthProvider:    tenant.AuthProviderSAML,
+		ExternalSubject: assertion.NameID,
+	})
+	if err != nil {
+		return "", err
+	}
+	return user.ID, nil
+}
+
 // EmitProviderChanged는 sso.AuditEmitter 구현 (E20-D — Provider CRUD).
 // action: "created"|"updated"|"deleted".
 func (a *auditEmitterAdapter) EmitProviderChanged(ctx context.Context, tx storage.Tx, p sso.Provider, action string) error {
@@ -976,14 +1012,16 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
 	}
 
-	// E20-D + E20-C — SSO 도메인 결선 (Provider CRUD + OIDC + SAML client).
-	// IdentityResolver는 Phase 3 후속(E20-E)에서 tenant.Service에 매핑 — 본 stage는 nil.
+	// E20-D + E20-C + O5 — SSO 도메인 결선 (Provider CRUD + OIDC + SAML + IdentityResolver).
+	// O5(Phase 4): IdentityResolver를 tenant.Service.ProvisionExternalUser로 결선 → SSO 첫 로그인
+	// 시 user 자동 생성 + 기본 role(operator) 할당.
 	ssoSvc := ssorepo.New(ssorepo.Deps{
-		Clock: clk,
-		IDGen: ids,
-		Audit: emitter,
-		OIDC:  sso.NewOIDCClient(),
-		SAML:  sso.NewSAMLClient(),
+		Clock:            clk,
+		IDGen:            ids,
+		Audit:            emitter,
+		OIDC:             sso.NewOIDCClient(),
+		SAML:             sso.NewSAMLClient(),
+		IdentityResolver: &ssoIdentityResolverAdapter{tenantSvc: tenantSvc},
 	})
 
 	// E23 — Webhook 도메인 결선 (sqliterepo 어댑터).

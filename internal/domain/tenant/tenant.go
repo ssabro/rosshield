@@ -222,6 +222,19 @@ type CreateResult struct {
 	Admin  User
 }
 
+// ProvisionExternalUserRequest는 Service.ProvisionExternalUser 입력입니다 (O5 Phase 4).
+//
+// AuthProvider는 AuthProviderOIDC 또는 AuthProviderSAML.
+// DefaultRoleName이 빈 값이면 RoleOperator로 자동 적용 (가장 안전한 default).
+type ProvisionExternalUserRequest struct {
+	TenantID        storage.TenantID
+	Email           string       // IdP claim — lowercase normalize 후 lookup·INSERT.
+	DisplayName     string       // 옵션 — 빈 값 허용.
+	AuthProvider    AuthProvider // OIDC 또는 SAML.
+	ExternalSubject string       // IdP의 sub(OIDC) 또는 NameID(SAML).
+	DefaultRoleName string       // 신규 user에 자동 할당 (기존 user는 role 미변경). 빈 값=RoleOperator.
+}
+
 // AuditEmitter는 도메인 변경을 감사 로그에 기록하는 콜백입니다.
 //
 // tenant 도메인은 audit 도메인을 직접 import하지 않습니다 (P5 격리).
@@ -297,6 +310,19 @@ type Service interface {
 	// 멱등 — 이미 revoked인 token은 그대로 둠.
 	// 반환 int은 새로 revoke된 count.
 	RevokeAllRefreshForUser(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, userID string) (int, error)
+
+	// ProvisionExternalUser는 SSO IdP에서 인증된 사용자를 내부 user로 프로비저닝합니다 (O5 — Phase 4).
+	//
+	// 흐름:
+	//
+	//  1. (tenantID, email)로 기존 user 조회.
+	//     - 발견 → 그 user.ID 반환 (link 모드 — 같은 이메일은 단일 user로 통합).
+	//  2. 미발견 → 새 user INSERT (auth_provider=external, ExternalSubject 채움) + DefaultRole 자동 할당.
+	//     - 새 user의 password_hash는 빈 값 (외부 IdP 인증 전용).
+	//
+	// 호출 시점: sso.Service.CompleteLogin 흐름의 IdentityResolver에서 호출.
+	// 같은 Tx로 호출 — 외부 identity 매핑 + user provisioning이 atomic.
+	ProvisionExternalUser(ctx context.Context, tx storage.Tx, req ProvisionExternalUserRequest) (User, error)
 }
 
 // 공통 에러.
