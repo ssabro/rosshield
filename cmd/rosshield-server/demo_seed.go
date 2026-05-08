@@ -33,8 +33,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	"github.com/ssabro/rosshield/internal/domain/scan"
+	"github.com/ssabro/rosshield/internal/domain/tenant"
+	"github.com/ssabro/rosshield/internal/domain/tenant/sso"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -44,6 +47,23 @@ const (
 	demoPackID       = "pk_DEMO_PACK"
 	demoCheckMapped  = "CIS-1.1.1.1"
 	demoCheckUnmappd = "CIS-1.2.1.1"
+)
+
+// O8 — Phase 4 Exit demo 추가 시드 상수.
+//
+// Webhook: 로컬 sink (외부 의존성 없이 receiver 실행 가능).
+// SSO: Google OIDC 더미 (실 client는 customer가 별 issuer로 교체).
+// Invitation: operator 역할 + 7일 만료 (DefaultInvitationTTL).
+const (
+	demoWebhookURL          = "http://localhost:9999/sink"
+	demoWebhookSecret       = "demo-webhook-secret-rosshield"
+	demoSSOName             = "Demo Google Workspace"
+	demoSSOIssuer           = "https://accounts.google.com"
+	demoSSOClientID         = "example.apps.googleusercontent.com"
+	demoSSORedirectURI      = "http://localhost:8080/api/v1/auth/sso/{providerId}/callback"
+	demoInviteEmail         = "demo-operator@example.com"
+	demoInviteRole          = "operator"
+	demoInviteAcceptBaseURL = "http://localhost:8080/invitations/accept"
 )
 
 // 시연용 robot/check ID는 결정적 — idempotent 시드를 위해.
@@ -56,16 +76,23 @@ type demoSeedOptions struct {
 }
 
 // demoSeedOutput은 stdout JSON 출력 형식입니다.
+//
+// O8 — Phase 4 Exit demo: webhookEndpointId·ssoProviderId·invitationToken·invitationAcceptUrl 추가.
+// invitationToken은 1회 노출 — 재실행 시 기존 active 초대가 있으면 빈 값.
 type demoSeedOutput struct {
-	TenantID    string   `json:"tenantId"`
-	FleetID     string   `json:"fleetId"`
-	PackID      string   `json:"packId"`
-	RobotIDs    []string `json:"robotIds"`
-	SessionIDs  []string `json:"sessionIds"`
-	DriftRobot  string   `json:"driftRobot"`
-	DriftCheck  string   `json:"driftCheck"`
-	SeededAt    string   `json:"seededAt"`
-	WasExisting bool     `json:"wasExisting"`
+	TenantID            string   `json:"tenantId"`
+	FleetID             string   `json:"fleetId"`
+	PackID              string   `json:"packId"`
+	RobotIDs            []string `json:"robotIds"`
+	SessionIDs          []string `json:"sessionIds"`
+	DriftRobot          string   `json:"driftRobot"`
+	DriftCheck          string   `json:"driftCheck"`
+	WebhookEndpointID   string   `json:"webhookEndpointId"`
+	SSOProviderID       string   `json:"ssoProviderId"`
+	InvitationToken     string   `json:"invitationToken"`
+	InvitationAcceptURL string   `json:"invitationAcceptUrl"`
+	SeededAt            string   `json:"seededAt"`
+	WasExisting         bool     `json:"wasExisting"`
 }
 
 // runSeedDemo는 `seed demo` 본 흐름입니다.
@@ -108,7 +135,7 @@ func runSeedDemo(args []string) int {
 		return 3
 	}
 
-	out, code := executeSeedDemo(bootCtx, platform, tenantID)
+	out, code := executeSeedDemo(bootCtx, platform, tenantID, opts)
 	if code != 0 {
 		return code
 	}
@@ -160,8 +187,10 @@ func lookupTenantByEmail(ctx context.Context, p *Platform, email string) (storag
 	return tenantID, err
 }
 
-// executeSeedDemo는 Fleet → Robots → Scan sessions를 시드합니다 (멱등).
-func executeSeedDemo(ctx context.Context, p *Platform, tenantID storage.TenantID) (demoSeedOutput, int) {
+// executeSeedDemo는 Fleet → Robots → Scan sessions → Webhook → SSO → Invitation을 시드합니다 (멱등).
+//
+// opts는 admin email 룩업(invitation.InvitedBy)과 후속 확장에 필요. 본 stage에서 email만 사용.
+func executeSeedDemo(ctx context.Context, p *Platform, tenantID storage.TenantID, opts demoSeedOptions) (demoSeedOutput, int) {
 	out := demoSeedOutput{
 		PackID:     demoPackID,
 		DriftRobot: demoRobotNames[0],
@@ -277,32 +306,69 @@ func executeSeedDemo(ctx context.Context, p *Platform, tenantID storage.TenantID
 	}
 
 	if existingSessionCount >= targetSessionCount {
+		// 모든 scan session이 이미 존재 — 새 session은 시드하지 않음.
+		// 단, O8(webhook/sso/invitation) 시드는 별 idempotency를 가지므로 계속 진행.
 		out.SessionIDs = sessionIDs
 		out.WasExisting = true
-		return out, 0
-	}
-
-	// 부족분만 시드 (idempotent — 부분적 실패 후 재실행 시 잔여만 채움).
-	for i := existingSessionCount; i < targetSessionCount; i++ {
-		isDriftSession := i == targetSessionCount-1
-		sessID, e := seedOneScanSession(tenantCtx, p, fleetID, robotIDs, isDriftSession)
-		if e != nil {
-			fmt.Fprintf(os.Stderr, "seed demo: session %d: %v\n", i, e)
-			return out, 1
+	} else {
+		// 부족분만 시드 (idempotent — 부분적 실패 후 재실행 시 잔여만 채움).
+		for i := existingSessionCount; i < targetSessionCount; i++ {
+			isDriftSession := i == targetSessionCount-1
+			sessID, e := seedOneScanSession(tenantCtx, p, fleetID, robotIDs, isDriftSession)
+			if e != nil {
+				fmt.Fprintf(os.Stderr, "seed demo: session %d: %v\n", i, e)
+				return out, 1
+			}
+			sessionIDs = append(sessionIDs, sessID)
 		}
-		sessionIDs = append(sessionIDs, sessID)
-	}
-	out.SessionIDs = sessionIDs
+		out.SessionIDs = sessionIDs
 
-	// 4) Insight detector 명시 트리거 (W3 EventBus 구독은 orchestrator 경유 — 본 seed는 직접 service
-	//    호출이라 publish 안 됨). 시연용 1회 backfill.
-	err = p.Storage.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
-		_, e := p.Insight.RunForFleet(ctx, tx, fleetID)
-		return e
-	})
+		// 4) Insight detector 명시 트리거 (W3 EventBus 구독은 orchestrator 경유 — 본 seed는 직접 service
+		//    호출이라 publish 안 됨). 시연용 1회 backfill. 신규 session 시드 시에만 실행.
+		err = p.Storage.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+			_, e := p.Insight.RunForFleet(ctx, tx, fleetID)
+			return e
+		})
+		if err != nil {
+			// 시드 자체는 성공이므로 warning only — Insight는 추후 :run endpoint로 재시도 가능.
+			fmt.Fprintf(os.Stderr, "seed demo: warning — RunForFleet 실패: %v\n", err)
+		}
+	}
+
+	// 5) O8 — Webhook endpoint 1건 (local sink, scan.completed 구독).
+	endpointID, wasExistingWh, err := seedDemoWebhook(tenantCtx, p)
 	if err != nil {
-		// 시드 자체는 성공이므로 warning only — Insight는 추후 :run endpoint로 재시도 가능.
-		fmt.Fprintf(os.Stderr, "seed demo: warning — RunForFleet 실패: %v\n", err)
+		fmt.Fprintf(os.Stderr, "seed demo: webhook endpoint: %v\n", err)
+		return out, 1
+	}
+	out.WebhookEndpointID = endpointID
+	if wasExistingWh {
+		out.WasExisting = true
+	}
+
+	// 6) O8 — SSO Provider 1건 (OIDC, Google issuer 더미, enabled).
+	providerID, wasExistingSSO, err := seedDemoSSOProvider(tenantCtx, p)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "seed demo: sso provider: %v\n", err)
+		return out, 1
+	}
+	out.SSOProviderID = providerID
+	if wasExistingSSO {
+		out.WasExisting = true
+	}
+
+	// 7) O8 — Invitation 1건 (operator role, 7일). 재시드 시 active 초대가 있으면 token 빈 값.
+	token, wasExistingInv, err := seedDemoInvitation(tenantCtx, p, tenantID, opts.email)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "seed demo: invitation: %v\n", err)
+		return out, 1
+	}
+	out.InvitationToken = token
+	if token != "" {
+		out.InvitationAcceptURL = fmt.Sprintf("%s?token=%s", demoInviteAcceptBaseURL, token)
+	}
+	if wasExistingInv {
+		out.WasExisting = true
 	}
 	return out, 0
 }
@@ -422,4 +488,148 @@ func seedOneScanSession(ctx context.Context, p *Platform, fleetID string, robotI
 		return "", fmt.Errorf("record+complete: %w", err)
 	}
 	return sessID, nil
+}
+
+// seedDemoWebhook은 local sink 1건을 INSERT합니다 (멱등 — URL 매칭으로 중복 감지).
+//
+// scan.completed 구독 + JSON format + enabled. 실 송출은 dispatcher 책임.
+// receiver는 외부 도구(webhook.site / 로컬 nc) 또는 cmd/rosshield의 webhook test ping으로 시연.
+func seedDemoWebhook(ctx context.Context, p *Platform) (string, bool, error) {
+	var endpointID string
+	var wasExisting bool
+	err := p.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		eps, e := p.Webhook.ListEndpoints(ctx, tx)
+		if e != nil {
+			return fmt.Errorf("list endpoints: %w", e)
+		}
+		for _, ep := range eps {
+			if ep.URL == demoWebhookURL {
+				endpointID = ep.ID
+				wasExisting = true
+				return nil
+			}
+		}
+		created, e := p.Webhook.CreateEndpoint(ctx, tx, webhook.WebhookEndpoint{
+			URL:     demoWebhookURL,
+			Secret:  demoWebhookSecret,
+			Events:  []webhook.EventType{webhook.EventScanCompleted},
+			Format:  webhook.PayloadFormatJSON,
+			Enabled: true,
+		})
+		if e != nil {
+			return fmt.Errorf("create endpoint: %w", e)
+		}
+		endpointID = created.ID
+		return nil
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return endpointID, wasExisting, nil
+}
+
+// seedDemoSSOProvider는 OIDC provider 1건을 INSERT합니다 (멱등 — name unique).
+//
+// Google issuer 더미 — 실 customer 흐름은 자체 client_id로 교체. enabled=true이지만
+// 실제 IdP 호출은 redirectUri의 placeholder로 인해 first redirect에서 실패 — 시연용 row만 노출.
+func seedDemoSSOProvider(ctx context.Context, p *Platform) (string, bool, error) {
+	var providerID string
+	var wasExisting bool
+	cfg := fmt.Sprintf(`{"issuer":%q,"clientId":%q,"redirectUri":%q,"scopes":["openid","email","profile"]}`,
+		demoSSOIssuer, demoSSOClientID, demoSSORedirectURI)
+
+	err := p.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		providers, e := p.SSO.ListProviders(ctx, tx)
+		if e != nil {
+			return fmt.Errorf("list providers: %w", e)
+		}
+		for _, pr := range providers {
+			if pr.Name == demoSSOName {
+				providerID = pr.ID
+				wasExisting = true
+				return nil
+			}
+		}
+		tenantID := tx.TenantID()
+		created, e := p.SSO.CreateProvider(ctx, tx, sso.CreateProviderRequest{
+			TenantID: tenantID,
+			Type:     sso.TypeOIDC,
+			Name:     demoSSOName,
+			Enabled:  true,
+			Config:   json.RawMessage(cfg),
+		})
+		if e != nil {
+			return fmt.Errorf("create provider: %w", e)
+		}
+		providerID = created.ID
+		return nil
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return providerID, wasExisting, nil
+}
+
+// seedDemoInvitation은 operator role 초대 1건을 INSERT합니다 (멱등 — 같은 email active 초대 있으면 skip).
+//
+// active 초대가 이미 있으면 token은 빈 값 반환 — 1회 노출 정책 + revoke·재발급은 별 운영 흐름.
+// InvitedBy는 admin email로 lookup한 user.ID. 미발견 시 에러.
+func seedDemoInvitation(ctx context.Context, p *Platform, tenantID storage.TenantID, adminEmail string) (string, bool, error) {
+	// 1) admin user lookup (InvitedBy용).
+	var adminUserID string
+	err := p.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		u, e := p.Tenant.GetUserByEmail(ctx, tx, tenantID, adminEmail)
+		if e != nil {
+			return fmt.Errorf("lookup admin user: %w", e)
+		}
+		adminUserID = u.ID
+		return nil
+	})
+	if err != nil {
+		return "", false, err
+	}
+
+	// 2) 기존 active 초대 감지 — operator role + demoInviteEmail.
+	var existingActive bool
+	err = p.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		invs, e := p.Invitation.ListInvitations(ctx, tx)
+		if e != nil {
+			return fmt.Errorf("list invitations: %w", e)
+		}
+		now := time.Now().UTC()
+		for _, inv := range invs {
+			if inv.Email == demoInviteEmail && inv.IsActive(now) {
+				existingActive = true
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", false, err
+	}
+	if existingActive {
+		return "", true, nil
+	}
+
+	// 3) 새 초대 생성.
+	var token string
+	err = p.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		res, e := p.Invitation.CreateInvitation(ctx, tx, tenant.CreateInvitationRequest{
+			TenantID:  tenantID,
+			Email:     demoInviteEmail,
+			RoleName:  demoInviteRole,
+			InvitedBy: adminUserID,
+			ExpiresIn: tenant.DefaultInvitationTTL,
+		})
+		if e != nil {
+			return fmt.Errorf("create invitation: %w", e)
+		}
+		token = res.Token
+		return nil
+	})
+	if err != nil {
+		return "", false, err
+	}
+	return token, false, nil
 }

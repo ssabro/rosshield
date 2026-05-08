@@ -17,7 +17,7 @@
 | O5 | E20-D 후속 | SSO 사용자 자동 프로비저닝 — IdentityResolver 결선 + 첫 로그인 시 user 생성 + 기본 role 할당 | 3일 |
 | O6 | E21 후속 | 초대 이메일 발송 어댑터 (SMTP·SES·noop 옵트인). 현 운영은 admin이 token URL 수동 전달 | 3일 |
 | O7 | E23 후속 | Webhook UI에 Delivery 재전송·dead-letter 명시 표시 + dispatcher 통계 | 2일 |
-| O8 | demo seed 확장 | seed demo가 invitation·webhook·SSO provider 시드까지 포함 (Exit demo 자동화) | 1일 |
+| O8 | demo seed 확장 | seed demo가 invitation·webhook·SSO provider 시드까지 포함 (Exit demo 자동화) — ✅ 2026-05-08 완료 | 1일 |
 
 ---
 

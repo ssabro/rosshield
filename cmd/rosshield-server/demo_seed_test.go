@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/ssabro/rosshield/internal/domain/insight"
+	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
 	"github.com/ssabro/rosshield/internal/domain/scan"
+	"github.com/ssabro/rosshield/internal/domain/tenant/sso"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -68,7 +70,10 @@ func TestSeedDemoCreatesAllEntities(t *testing.T) {
 		t.Fatalf("unmarshal stdout: %v\nraw: %s", err, res.stdout)
 	}
 
-	for _, k := range []string{"tenantId", "fleetId", "packId", "robotIds", "sessionIds", "driftRobot", "driftCheck"} {
+	for _, k := range []string{
+		"tenantId", "fleetId", "packId", "robotIds", "sessionIds", "driftRobot", "driftCheck",
+		"webhookEndpointId", "ssoProviderId", "invitationToken", "invitationAcceptUrl",
+	} {
 		if _, ok := out[k]; !ok {
 			t.Errorf("missing JSON key %q", k)
 		}
@@ -234,4 +239,174 @@ func shutdownPlatform(t *testing.T, p *Platform) {
 	t.Helper()
 	ctx := context.Background()
 	_ = p.Shutdown(ctx)
+}
+
+// TestSeedDemoSeedsWebhookEndpoint는 O8 — webhook endpoint 1건이 ListEndpoints에 나타남을 검증합니다.
+func TestSeedDemoSeedsWebhookEndpoint(t *testing.T) {
+	dir, email := seedDemoFixture(t)
+	res := runSeedCapture(t, []string{"demo", "--email", email, "--data-dir", dir}, "")
+	if res.exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", res.exit, res.stderr)
+	}
+	var out map[string]any
+	_ = json.Unmarshal([]byte(res.stdout), &out)
+
+	tenantIDStr, _ := out["tenantId"].(string)
+	tenantID := storage.TenantID(tenantIDStr)
+	endpointID, _ := out["webhookEndpointId"].(string)
+	if !strings.HasPrefix(endpointID, "wh_") {
+		t.Errorf("webhookEndpointId=%q, want wh_ prefix", endpointID)
+	}
+
+	platform := bootstrapForVerify(t, dir)
+	defer shutdownPlatform(t, platform)
+
+	ctx := storage.WithTenantID(context.Background(), tenantID)
+	var endpoints []webhook.WebhookEndpoint
+	err := platform.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		eps, e := platform.Webhook.ListEndpoints(ctx, tx)
+		if e != nil {
+			return e
+		}
+		endpoints = eps
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ListEndpoints: %v", err)
+	}
+	if len(endpoints) != 1 {
+		t.Fatalf("endpoint count=%d, want 1", len(endpoints))
+	}
+	ep := endpoints[0]
+	if ep.ID != endpointID {
+		t.Errorf("endpoint.ID=%q, want %q", ep.ID, endpointID)
+	}
+	if ep.URL != demoWebhookURL {
+		t.Errorf("endpoint.URL=%q, want %q", ep.URL, demoWebhookURL)
+	}
+	if !ep.Enabled {
+		t.Error("endpoint.Enabled=false, want true")
+	}
+	if !webhook.EndpointSubscribesTo(ep, webhook.EventScanCompleted) {
+		t.Error("endpoint must subscribe scan.completed")
+	}
+}
+
+// TestSeedDemoSeedsSSOProvider는 O8 — SSO provider 1건이 ListProviders에 나타남을 검증합니다.
+func TestSeedDemoSeedsSSOProvider(t *testing.T) {
+	dir, email := seedDemoFixture(t)
+	res := runSeedCapture(t, []string{"demo", "--email", email, "--data-dir", dir}, "")
+	if res.exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", res.exit, res.stderr)
+	}
+	var out map[string]any
+	_ = json.Unmarshal([]byte(res.stdout), &out)
+
+	tenantIDStr, _ := out["tenantId"].(string)
+	tenantID := storage.TenantID(tenantIDStr)
+	providerID, _ := out["ssoProviderId"].(string)
+	if !strings.HasPrefix(providerID, "ssop_") {
+		t.Errorf("ssoProviderId=%q, want ssop_ prefix", providerID)
+	}
+
+	platform := bootstrapForVerify(t, dir)
+	defer shutdownPlatform(t, platform)
+
+	ctx := storage.WithTenantID(context.Background(), tenantID)
+	var providers []sso.Provider
+	err := platform.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		ps, e := platform.SSO.ListProviders(ctx, tx)
+		if e != nil {
+			return e
+		}
+		providers = ps
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ListProviders: %v", err)
+	}
+	if len(providers) != 1 {
+		t.Fatalf("provider count=%d, want 1", len(providers))
+	}
+	p := providers[0]
+	if p.ID != providerID {
+		t.Errorf("provider.ID=%q, want %q", p.ID, providerID)
+	}
+	if p.Type != sso.TypeOIDC {
+		t.Errorf("provider.Type=%q, want oidc", p.Type)
+	}
+	if !p.Enabled {
+		t.Error("provider.Enabled=false, want true")
+	}
+	if !strings.Contains(string(p.Config), "accounts.google.com") {
+		t.Errorf("provider.Config missing issuer marker: %s", p.Config)
+	}
+}
+
+// TestSeedDemoSeedsInvitation는 O8 — invitation 1건이 ListInvitations에 나타나고
+// stdout JSON에 token + acceptUrl이 포함됨을 검증합니다.
+func TestSeedDemoSeedsInvitation(t *testing.T) {
+	dir, email := seedDemoFixture(t)
+	res := runSeedCapture(t, []string{"demo", "--email", email, "--data-dir", dir}, "")
+	if res.exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", res.exit, res.stderr)
+	}
+	var out map[string]any
+	_ = json.Unmarshal([]byte(res.stdout), &out)
+
+	tenantIDStr, _ := out["tenantId"].(string)
+	tenantID := storage.TenantID(tenantIDStr)
+	token, _ := out["invitationToken"].(string)
+	acceptURL, _ := out["invitationAcceptUrl"].(string)
+	if token == "" {
+		t.Fatal("invitationToken empty")
+	}
+	if acceptURL == "" || !strings.Contains(acceptURL, token) {
+		t.Errorf("invitationAcceptUrl missing token: %q", acceptURL)
+	}
+
+	platform := bootstrapForVerify(t, dir)
+	defer shutdownPlatform(t, platform)
+
+	ctx := storage.WithTenantID(context.Background(), tenantID)
+	err := platform.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		invs, e := platform.Invitation.ListInvitations(ctx, tx)
+		if e != nil {
+			return e
+		}
+		if len(invs) != 1 {
+			t.Fatalf("invitation count=%d, want 1", len(invs))
+		}
+		inv := invs[0]
+		if inv.RoleName != "operator" {
+			t.Errorf("invitation.RoleName=%q, want operator", inv.RoleName)
+		}
+		if inv.IsAccepted() {
+			t.Error("invitation.AcceptedAt non-nil — fresh seed should be active")
+		}
+		// Token 자체는 1회 노출만 — 영속에는 평문/해시 저장 정책에 의존하므로
+		// stdout token으로 GetInvitationByToken 룩업이 가능한지 검증.
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ListInvitations: %v", err)
+	}
+
+	// stdout token으로 비인증 lookup 가능해야 함 (Bootstrap Tx).
+	err = platform.Storage.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		inv, e := platform.Invitation.GetInvitationByToken(ctx, tx, token)
+		if e != nil {
+			return e
+		}
+		if inv.TenantID != tenantID {
+			t.Errorf("invitation.TenantID=%q, want %q", inv.TenantID, tenantID)
+		}
+		if inv.RoleName != "operator" {
+			t.Errorf("invitation.RoleName=%q, want operator", inv.RoleName)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("GetInvitationByToken: %v", err)
+	}
 }

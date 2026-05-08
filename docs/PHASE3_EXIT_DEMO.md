@@ -37,6 +37,26 @@ make web-build && make build
 # stdout JSON: {"tenantId":"tn_...","userId":"us_...","email":"admin@test.local"}
 ```
 
+### 0-B-bis. (옵션) 시드 demo — 시연 데이터 일괄 주입 (O8)
+
+`seed demo`는 admin 시드 후 시연 흐름에 필요한 데이터를 한 번에 주입합니다.
+멱등 — 두 번째 호출은 동일 row를 재사용, invitation token은 1회 노출.
+
+```bash
+./bin/rosshield-server.exe seed demo --email admin@test.local
+# stdout JSON 주요 필드:
+#   tenantId/fleetId/packId/robotIds (3개)/sessionIds (5개, 마지막 drift)
+#   webhookEndpointId  ← 항목 4 (webhook + SIEM) 시연용 endpoint (URL=http://localhost:9999/sink)
+#   ssoProviderId      ← 항목 1 (SSO) 시연용 OIDC provider (issuer=Google, clientId 더미)
+#   invitationToken    ← 항목 2 (초대) — 1회 노출, accept URL 시연 가능
+#   invitationAcceptUrl ← http://localhost:8080/invitations/accept?token=<token>
+```
+
+이 데이터는 다음 항목 시연을 단축합니다:
+- **항목 1**: ssoProviderId가 이미 등록되어 있어 `/sso` UI에서 즉시 확인 가능 (실 IdP 호출은 customer client_id로 교체 필요)
+- **항목 2**: invitationToken으로 `/invitations/accept` 흐름 즉시 시연 (별 admin 로그인 + curl POST 단계 생략)
+- **항목 4**: webhookEndpointId가 scan.completed를 구독 — drift session(5번째 scan)이 자동으로 송출 트리거
+
 ### 0-C. 서버 부팅
 
 ```bash
