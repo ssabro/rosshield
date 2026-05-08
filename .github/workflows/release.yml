@@ -1,33 +1,38 @@
-name: Release
+name: Release Build
 
-# tag push (v*) trigger.
+# rosshield release pipeline (E26 Phase 4).
+#
+# Trigger:
+#   - tag push v*.*.* (자동)
+#   - workflow_dispatch (수동, ref=v* 권장)
 #
 # 산출:
-#   - linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
-#   - rosshield-server·rosshield 두 binary × 5 platform = 10 artifact
-#   - 각 binary에 cosign keyless 서명(.sig) + Sigstore Rekor public log 기록
-#   - SBOM (syft) SPDX JSON 1건 (repo 전체)
-#   - GitHub Release 자동 게시 + checksums.txt + cosign verify 절차 README 안내
+#   - 5 platform × 3 binary = 15 artifact (rosshield-server·rosshield·rosshield-audit-verify)
+#   - 각 binary cosign keyless 서명 (.sig + .cert) — Sigstore Rekor public log
+#   - SBOM (syft) SPDX JSON 1건
+#   - GitHub Release 자동 게시 + checksums.sha256 + cosign verify 절차 README
 #
-# 외부 검증 (R30-4 — private repo + binary 외부 검증):
+# 외부 검증 (R30-4 — private repo + binary verify):
 #   cosign verify-blob \
-#     --certificate <bundle.cert> \
-#     --signature <binary.sig> \
+#     --certificate <binary>.cert \
+#     --signature <binary>.sig \
 #     --certificate-identity-regexp 'https://github.com/ssabro/rosshield/.github/workflows/release.yml@refs/tags/.*' \
 #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
 #     <binary>
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
-  # 수동 trigger — gh workflow run release.yml --ref v0.2.0
-  # GitHub UI에서 main push가 비정상 fire하는 우회용 + ad-hoc 재실행.
+    tags: ['v*.*.*']
   workflow_dispatch:
+    inputs:
+      ref:
+        description: '빌드할 ref (예: v0.2.0). 비우면 dispatch ref 사용.'
+        required: false
+        default: ''
 
 permissions:
-  contents: write   # gh release 생성·업로드
-  id-token: write   # cosign keyless OIDC
+  contents: write
+  id-token: write
   packages: read
 
 jobs:
@@ -56,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0   # tag·commit 정보 ldflags 주입용
+          fetch-depth: 0
 
       - uses: actions/setup-go@v6
         with:
@@ -82,9 +87,16 @@ jobs:
       - name: Resolve build metadata
         id: meta
         run: |
-          echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          set -e
+          # tag push면 GITHUB_REF_NAME=v*.*.*, dispatch면 inputs.ref 또는 ref_name
+          VERSION="${{ inputs.ref }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "Resolved: version=${VERSION}, commit=$(git rev-parse --short HEAD)"
 
       - name: Build binaries
         env:
@@ -98,21 +110,11 @@ jobs:
             -X main.Version=${{ steps.meta.outputs.version }} \
             -X main.BuildCommit=${{ steps.meta.outputs.commit }} \
             -X main.BuildTime=${{ steps.meta.outputs.build_time }}"
+          SUFFIX="${{ steps.meta.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
 
-          # rosshield-server
-          go build -trimpath -ldflags "$LDFLAGS" \
-            -o "dist/rosshield-server-${{ steps.meta.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
-            ./cmd/rosshield-server
-
-          # rosshield CLI
-          go build -trimpath -ldflags "$LDFLAGS" \
-            -o "dist/rosshield-${{ steps.meta.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
-            ./cmd/rosshield
-
-          # rosshield-audit-verify (E30 — 외부 감사인용 standalone 검증)
-          go build -trimpath -ldflags "$LDFLAGS" \
-            -o "dist/rosshield-audit-verify-${{ steps.meta.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
-            ./cmd/rosshield-audit-verify
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/rosshield-server-${SUFFIX}" ./cmd/rosshield-server
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/rosshield-${SUFFIX}" ./cmd/rosshield
+          go build -trimpath -ldflags "$LDFLAGS" -o "dist/rosshield-audit-verify-${SUFFIX}" ./cmd/rosshield-audit-verify
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -176,32 +178,39 @@ jobs:
         with:
           path: artifacts
 
+      - name: Resolve tag
+        id: tag
+        run: |
+          set -e
+          TAG="${{ inputs.ref }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: ${TAG}"
+
       - name: Flatten artifacts + checksums
         run: |
           set -e
           mkdir -p release
-          # bin-* 디렉터리들에서 dist 내용을 release로 평탄화
           find artifacts -type f \( -name 'rosshield*' -o -name '*.sig' -o -name '*.cert' \) -exec cp {} release/ \;
-          # SBOM
           cp artifacts/sbom/rosshield-sbom.spdx.json release/ || true
-          # checksums
           (cd release && sha256sum rosshield-* > checksums.sha256)
           ls -la release/
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
         run: |
           set -e
-          gh release create "$TAG" \
-            --title "rosshield $TAG" \
-            --notes "Release $TAG.
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            --title "rosshield ${{ steps.tag.outputs.tag }}" \
+            --notes "Release ${{ steps.tag.outputs.tag }}.
 
 ## 검증
 
 \`\`\`
-# 1) Sigstore cosign으로 서명 검증 (keyless · Rekor public log)
+# 1) Sigstore cosign 서명 검증 (keyless · Rekor public log)
 cosign verify-blob \\
   --certificate <binary>.cert \\
   --signature <binary>.sig \\
