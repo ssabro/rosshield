@@ -21,6 +21,9 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # 수동 trigger — gh workflow run release.yml --ref v0.2.0
+  # GitHub UI에서 main push가 비정상 fire하는 우회용 + ad-hoc 재실행.
+  workflow_dispatch:
 
 permissions:
   contents: write   # gh release 생성·업로드
