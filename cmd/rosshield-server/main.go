@@ -179,6 +179,7 @@ func main() {
 	}
 
 	addr := flag.String("addr", "127.0.0.1:0", "bind address")
+	metricsAddr := flag.String("metrics-addr", "", "Prometheus /metrics bind address (e.g. 127.0.0.1:9090). Empty = disabled (E27 — opt-in).")
 	dataDir := flag.String("data-dir", defaultDataDir(), "data directory (SQLite DB, keys, etc.)")
 	storageDriver := flag.String("storage", "sqlite", "storage driver: sqlite (default) | postgres")
 	storageDSN := flag.String("storage-dsn", "", "storage DSN. SQLite ignores (uses data-dir/data.db). Postgres requires postgres://user:pass@host:port/db")
@@ -244,6 +245,19 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// E27 — Prometheus /metrics 별 mux + 별 서버 (옵트인 --metrics-addr).
+	// API mux와 격리해 외부 노출 risk 분리. 보통 internal network bind (127.0.0.1).
+	var metricsSrv *http.Server
+	if *metricsAddr != "" && platform.Metrics != nil {
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", platform.Metrics.Handler())
+		metricsSrv = &http.Server{
+			Addr:              *metricsAddr,
+			Handler:           metricsMux,
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+	}
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
@@ -255,12 +269,26 @@ func main() {
 		}
 	}()
 
+	if metricsSrv != nil {
+		go func() {
+			logger.Info("metrics server starting", "addr", *metricsAddr)
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("metrics server failed", "err", err.Error())
+			}
+		}()
+	}
+
 	<-stop
 	logger.Info("shutdown signal received")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	if metricsSrv != nil {
+		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("metrics shutdown error", "err", err.Error())
+		}
+	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("http shutdown error", "err", err.Error())
 	}

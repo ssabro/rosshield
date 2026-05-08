@@ -53,6 +53,7 @@ import (
 	llmanthropic "github.com/ssabro/rosshield/internal/platform/llm/anthropic"
 	llmnoop "github.com/ssabro/rosshield/internal/platform/llm/noop"
 	llmollama "github.com/ssabro/rosshield/internal/platform/llm/ollama"
+	"github.com/ssabro/rosshield/internal/platform/metrics"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
 	"github.com/ssabro/rosshield/internal/platform/signer"
@@ -170,6 +171,8 @@ type Platform struct {
 	WebhookBridge     *webhookrun.EventBridge  // E23-D — EventBus → webhook.Enqueue bridge
 	SSO               sso.Service              // E20-D — SSO Provider CRUD + IdP 호출
 	Invitation        tenant.InvitationService // E21 — 초대·역할 관리
+	Metrics           *metrics.Registry        // E27 — Prometheus exposition (옵트인)
+	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
 
 	systemTenant storage.TenantID
 
@@ -1009,6 +1012,12 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	})
 	webhookBridge.Start(ctx, bus)
 
+	// E27 — Prometheus metrics Registry + EventBus bridge 결선.
+	// /metrics endpoint mount는 main.go --metrics-addr 옵트인 시점에 별 mux로.
+	metricsReg := metrics.New()
+	metricsBridge := metrics.NewBridge(logger, metricsReg)
+	metricsBridge.Start(ctx, bus)
+
 	// E24 — License 결선 (옵트인). 토큰 + public key 둘 다 있어야 검증 진입.
 	// E24-D — UsageReader는 robot/scan/advisor SQL 집계 어댑터 (P5 격리 — license는 도메인 import 안 함).
 	licenseUsage := newLicenseUsageAdapter(store, clk)
@@ -1060,6 +1069,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		WebhookBridge:     webhookBridge,
 		SSO:               ssoSvc,
 		Invitation:        invitationSvc,
+		Metrics:           metricsReg,
+		MetricsBridge:     metricsBridge,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}, nil
@@ -1103,9 +1114,12 @@ func (p *Platform) Shutdown(ctx context.Context) error {
 	p.shutdownOnce.Do(func() {
 		var errs []error
 
-		// E23-D — bridge 먼저 cancel (구독 해제하면 EventBus.Close가 깨끗).
+		// E23-D + E27 — EventBus subscriber bridge 먼저 cancel (구독 해제하면 EventBus.Close가 깨끗).
 		if p.WebhookBridge != nil {
 			p.WebhookBridge.Stop()
+		}
+		if p.MetricsBridge != nil {
+			p.MetricsBridge.Stop()
 		}
 
 		// E23-B — webhook dispatcher 먼저 종료 (in-flight POST는 ctx 통해 cancel).
