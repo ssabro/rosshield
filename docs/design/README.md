@@ -72,7 +72,9 @@
 
 | 문서 | 내용 |
 |---|---|
-| [phase2-backlog.md](./phase2-backlog.md) | Phase 2(Intelligence & Compliance) 에픽 7개(E13~E19) + Phase 1 carryover C1~C7 |
+| [phase4-backlog.md](./phase4-backlog.md) | Phase 4(Production Hardening) 에픽 5개(E26~E30) + Phase 3 carryover(E25 HA·E22-F PG-native·O5~O8) — 현재 실행 백로그 |
+| [archive/phase3-backlog.md](./archive/phase3-backlog.md) | Phase 3(Multi-tenant SKU) 에픽 6개(E20~E25) — 5/5 핵심 완료(SSO·초대·PG·webhook·라이선스), E25 HA는 carryover |
+| [archive/phase2-backlog.md](./archive/phase2-backlog.md) | Phase 2(Intelligence & Compliance) 에픽 7개(E13~E19) — 모두 완료 |
 | [archive/phase1-backlog.md](./archive/phase1-backlog.md) | Phase 1 완료 백로그(E1~E12 + 운영 도구, 12 epic 모두 ✅) — 아카이브 |
 | [notes/](./notes/) | 에픽별 사전 설계 노트 — Phase 1 R3·R4·R5·R6·R7·R8·R9·R10 정찰 결과 |
 
