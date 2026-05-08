@@ -1,0 +1,58 @@
+# rosshield-audit-verify
+
+외부 감사인용 standalone 검증 binary (E30, R30-4).
+
+rosshield-server·rosshield CLI 없이 단일 binary만 다운로드하여 서명된 report
+tar.gz 번들의 무결성·진위를 검증합니다.
+
+## 빌드
+
+```bash
+make audit-verify-build
+# → bin/rosshield-audit-verify
+```
+
+stdlib + `crypto/ed25519`만 사용 — 외부 의존 0.
+
+## 사용법
+
+```bash
+rosshield-audit-verify --bundle <path.tar.gz> [--format json|table] [--strict]
+```
+
+옵션:
+
+- `--bundle`  검증할 report tar.gz 번들 경로 (필수)
+- `--format`  출력 포맷 (`table` 기본 / `json`)
+- `--strict`  warning을 fail로 처리 (현 단계 no-op, 미래 확장)
+
+## exit code
+
+| code | 의미 |
+|------|------|
+| 0 | PASS — 모든 단계 통과 |
+| 1 | FAIL — 검증 실패 (서명·entry 부재·tar.gz 손상·anchor) |
+| 2 | ARG  — invalid CLI args |
+
+## 검증 단계
+
+1. `read`      — tar.gz 파일 읽기
+2. `extract`   — 번들 entry 4종 (`report.pdf`·`report.pdf.sig`·`audit-chain-head.json`·`public-key.pem`) 모두 존재
+3. `publicKey` — PEM PKIX → Ed25519 PublicKey 디코드
+4. `signature` — `ed25519.Verify(pub, pdf, sig)` 통과
+5. `anchor`    — `audit-chain-head.json`의 `chainHeadSeq`·`chainHeadHash`·`signerKeyId` 추출
+6. `evidence`  — PDF sha256 + size 노출 (감사인이 별도 채널의 hash와 cross-check 가능)
+
+## 예시
+
+```bash
+$ rosshield-audit-verify --bundle report-2026.tar.gz
+RESULT       PASS
+bundle       report-2026.tar.gz
+pdfSize      48217
+pdfSha256    9f2c...
+signerKeyId  rosshield-prod-2026-q2
+chainHeadSeq 12031
+...
+PASS — bundle verification successful.
+```

@@ -1,14 +1,21 @@
 GO ?= go
 BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
+AUDIT_VERIFY_BIN := $(BIN_DIR)/rosshield-audit-verify
 
-.PHONY: all build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
+.PHONY: all build audit-verify-build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
 
 all: ci
 
 build:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(SERVER_BIN) ./cmd/rosshield-server
+
+# E30 — 외부 감사인용 standalone 검증 binary (R30-4).
+# stdlib + crypto/ed25519만 사용. 외부 의존 0 — release page에 단독 게시 가능.
+audit-verify-build:
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -o $(AUDIT_VERIFY_BIN) ./cmd/rosshield-audit-verify
 
 test:
 	$(GO) test -count=1 ./...
