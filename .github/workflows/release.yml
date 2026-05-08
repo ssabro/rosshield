@@ -1,0 +1,213 @@
+name: Release
+
+# tag push (v*) trigger.
+#
+# 산출:
+#   - linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64
+#   - rosshield-server·rosshield 두 binary × 5 platform = 10 artifact
+#   - 각 binary에 cosign keyless 서명(.sig) + Sigstore Rekor public log 기록
+#   - SBOM (syft) SPDX JSON 1건 (repo 전체)
+#   - GitHub Release 자동 게시 + checksums.txt + cosign verify 절차 README 안내
+#
+# 외부 검증 (R30-4 — private repo + binary 외부 검증):
+#   cosign verify-blob \
+#     --certificate <bundle.cert> \
+#     --signature <binary.sig> \
+#     --certificate-identity-regexp 'https://github.com/ssabro/rosshield/.github/workflows/release.yml@refs/tags/.*' \
+#     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+#     <binary>
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # gh release 생성·업로드
+  id-token: write   # cosign keyless OIDC
+  packages: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}/${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            ext: ''
+          - os: linux
+            arch: arm64
+            ext: ''
+          - os: darwin
+            arch: amd64
+            ext: ''
+          - os: darwin
+            arch: arm64
+            ext: ''
+          - os: windows
+            arch: amd64
+            ext: '.exe'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # tag·commit 정보 ldflags 주입용
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build web (produces internal/web/dist for embed)
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Resolve build metadata
+        id: meta
+        run: |
+          echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+        run: |
+          set -e
+          mkdir -p dist
+          LDFLAGS="-s -w \
+            -X main.Version=${{ steps.meta.outputs.version }} \
+            -X main.BuildCommit=${{ steps.meta.outputs.commit }} \
+            -X main.BuildTime=${{ steps.meta.outputs.build_time }}"
+
+          # rosshield-server
+          go build -trimpath -ldflags "$LDFLAGS" \
+            -o "dist/rosshield-server-${{ steps.meta.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
+            ./cmd/rosshield-server
+
+          # rosshield CLI
+          go build -trimpath -ldflags "$LDFLAGS" \
+            -o "dist/rosshield-${{ steps.meta.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
+            ./cmd/rosshield
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Sign binaries with cosign keyless
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          set -e
+          for f in dist/*; do
+            cosign sign-blob --yes \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.cert" \
+              "$f"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: rosshield-sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: rosshield-sbom.spdx.json
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: [build, sbom]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts + checksums
+        run: |
+          set -e
+          mkdir -p release
+          # bin-* 디렉터리들에서 dist 내용을 release로 평탄화
+          find artifacts -type f \( -name 'rosshield*' -o -name '*.sig' -o -name '*.cert' \) -exec cp {} release/ \;
+          # SBOM
+          cp artifacts/sbom/rosshield-sbom.spdx.json release/ || true
+          # checksums
+          (cd release && sha256sum rosshield-* > checksums.sha256)
+          ls -la release/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          gh release create "$TAG" \
+            --title "rosshield $TAG" \
+            --notes "Release $TAG.
+
+## 검증
+
+\`\`\`
+# 1) Sigstore cosign으로 서명 검증 (keyless · Rekor public log)
+cosign verify-blob \\
+  --certificate <binary>.cert \\
+  --signature <binary>.sig \\
+  --certificate-identity-regexp 'https://github.com/ssabro/rosshield/.github/workflows/release.yml@refs/tags/.*' \\
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
+  <binary>
+
+# 2) checksum
+sha256sum -c checksums.sha256
+
+# 3) report verify (외부 감사인용 standalone tool — E30 산출)
+rosshield-audit-verify --bundle <report.tar.gz>
+\`\`\`
+
+빌드 메타: \`<binary> version\`으로 commit·built·go 확인.
+" \
+            release/*
