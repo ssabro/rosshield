@@ -214,7 +214,7 @@ func extractArchive(opts restoreOptions) (int64, int, int) {
 				fmt.Fprintf(os.Stderr, "restore: mkdir %s: %v\n", dstClean, err)
 				return total, count, 1
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
 			if err := writeTarFile(tr, dstClean, hdr); err != nil {
 				fmt.Fprintf(os.Stderr, "restore: write %s: %v\n", dstClean, err)
 				return total, count, 1
