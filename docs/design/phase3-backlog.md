@@ -258,12 +258,12 @@ Carryover C4 Playwright (independent)
 
 ## Phase 3 Exit 체크리스트
 
-- [ ] OIDC 1개 + SAML 1개 IdP로 SSO 로그인 시연
-- [ ] Web Console에서 admin이 사용자 초대 → 새 사용자가 로그인 → role 반영
-- [ ] PostgreSQL 백엔드로 모든 도메인 테스트 통과
-- [ ] scan.completed 시 webhook + SIEM ECS log 1회 송출
-- [ ] 라이선스 키 검증 + 한도 초과 시 402 응답
-- [ ] (옵션) HA 2 인스턴스 leader/follower 동작
+- [~] OIDC 1개 + SAML 1개 IdP로 SSO 로그인 시연 — OIDC: E20-A·B·D 완료 (`128ad16`, sso.OIDCClient + Provider CRUD HTTP + B4 `/sso` Web `1f686db`). SAML: E20-C 후속 stage.
+- [~] Web Console에서 admin이 사용자 초대 → 새 사용자가 로그인 → role 반영 — E21 도메인+handler 완료 (`1f686db`, invitation 도메인 + 마이그 0021 + handler `/api/v1/invitations` + by-token capability). B2 `/users` 페이지 후속 stage.
+- [ ] PostgreSQL 백엔드로 모든 도메인 테스트 통과 — E22-A storage interface + E22-B 마이그 0001~0019 변환 완료. E22-C/D `--storage` flag + Tx 일반화 후속.
+- [x] scan.completed 시 webhook + SIEM ECS log 1회 송출 — E23-A·B·C·D 완료 (`128ad16` Bridge: scan.completed/insight.created/audit.checkpoint 3 topic 자동 enqueue → dispatcher).
+- [x] 라이선스 키 검증 + 한도 초과 시 402 응답 — E24-A~D 완료 (`128ad16` UsageReader 결선 + handler 게이트 + 402 매핑).
+- [ ] (옵션) HA 2 인스턴스 leader/follower 동작 — E25 후속.
 
 ---
 

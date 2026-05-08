@@ -4,13 +4,17 @@
 >
 > **Claude에게**: 이 문서를 먼저 읽고, 사용자에게 "## 진행 중 선택지" 섹션을 제시해라.
 
-_마지막 업데이트: 2026-05-07 (Phase 3 두 번째 dispatch 머지 + 13 commits push + 세 번째 dispatch 진행 중)_
+_마지막 업데이트: 2026-05-08 (Phase 3 다섯 번째 dispatch 머지 + push 완료)_
 
 ---
 
 ## 현재 상태 한 줄
 
-**Phase 3 두 번째 dispatch 머지 완료 + origin/main과 동기화 (13 commits push, head `49124f8`) + 세 번째 dispatch 진행 중 (E20-B Google OIDC / E23-C Webhook HTTP 표면 / B3 Web Console /integrations)** — 두 번째 dispatch 머지 내역: E22-B PostgreSQL 마이그레이션 0002~0019 변환 (commit `8b033de`) + E23-B Webhook Process worker(재시도 dispatcher) + bootstrap 결선 (commit `b38bd46`) + E20-A SSO 도메인 + 마이그레이션 0020 + handler scaffold (commit `49124f8`) + E24-C·B5 license HTTP middleware + Settings 카드 (commit `2ea5578`) + E24 후속 openapi `/license` + CLI `rosshield license info` + 통합 테스트 (commit `bda3a31`). Go test **50 패키지 그린**, vitest **73 PASS**, CI run #25484917127 진행 중. 세 번째 dispatch는 worktree 격리(background)로 진행 중 — main 디렉터리에선 SESSION_HANDOFF 동기만 직접 작업. **남은 후보**: E20-C SAML(Okta) / E20-D SSO bootstrap 결선 / E22-C Tx interface 일반화 / E22-D `--storage` flag / E23-D EventBus 구독 / E23-E AuditEmitter / E24-D 도메인 quota 강제 / E25 HA / B4 `/sso` 페이지 / B5 별도 `/license` 페이지(Settings 카드는 이미 있음).
+**Phase 3 다섯 번째 dispatch 머지 완료 + origin/main 동기화 (head `1f686db`) — E21 Invitation 도메인 + B4 `/sso` Web + B5 `/license` Web** — 본 stage 산출: (a) **E21** invitation 도메인(메인): 마이그레이션 `0021_invitations.sql` (token UNIQUE INDEX + tenant scope + accepted_at·accepted_by FK) + `internal/domain/tenant/invitation.go` (Invitation entity·CreateRequest·AcceptRequest·InvitationService·InvitationAuditEmitter 별 인터페이스) + `internal/domain/tenant/sqliterepo/invitation_repo.go` (CRUD + 토큰 base64url + 활성 중복·email mismatch·만료·1회 사용 검증) + `internal/api/handlers/invitation.go` (POST·GET·DELETE `/api/v1/invitations` + GET·POST `/api/v1/invitations/by-token/{token}` 비인증 capability 흐름) + bootstrap에 InvitationAudit emitter 결선 + 통합 테스트 7건 (T1 single-use+만료 / T2 user+role 자동 / T3 audit emit / dup·mismatch·invalid role / 격리). (b) **B4** `/sso` Web (sub-agent worktree): Provider CRUD UI + 동적 OIDC/SAML config 폼, 5 hook (useSSOProviders·useCreateSSO·useUpdateSSO·useDeleteSSO·useSSOProvider), Sidebar/Header/dict 70+ 키, helper 단위 20개. (c) **B5** `/license` Web (sub-agent worktree): Edition 배지 + Feature 그리드 + Quota 표 + Community 안내 + Settings 링크, license.page.* 25+ 키, helper 단위 14개. **검증**: Go test 모두 그린 / vitest **14 files / 121 PASS** (이전 87 + B4 20 + B5 14) / pnpm build 성공 (sso 10.54KB · license 6.59KB chunk) / gofmt·vet 깨끗 / **CI #25529730096 ✓** (Go 4m35s · Web · Playwright). **남은 후보**: E22-C/D PG `--storage` flag + Tx 일반화 / E20-C SAML(Okta) / E25 HA / B2 `/users` 페이지(E21 invitation 노출).
+
+### 직전 한 줄 (Phase 3 네 번째 dispatch 머지 — `128ad16`)
+
+**E20-D SSO bootstrap 결선 + Provider CRUD HTTP + E23-D EventBus → Webhook bridge + E24-D 도메인 quota 강제** — (a) E20-D: sso.Service(sqliterepo) + OIDC client 결선 + Platform.SSO 필드 + auditEmitterAdapter에 EmitProviderChanged·EmitLoginStarted·EmitLoginCompleted 추가 + handlers Provider CRUD 5 endpoint + 통합 테스트 6건. (b) E23-D: `internal/app/webhookrun/eventbridge.go` (scan.completed·insight.created·audit.checkpoint 3 topic 구독 → webhook.Service.Enqueue) + bootstrap 결선 + Shutdown bridge.Stop + 통합 테스트 5건. (c) E24-D (sub-agent): `licenseUsageAdapter` (CurrentRobots/ScansToday/LLMTokensToday SQL 집계) + handlers/{robot,scan,advisor}.go에 enforcer.Check* 게이트 + 402 매핑 + 어댑터 단위 11개 + 게이트 통합 6개. **수정 메모**: 메인이 sub-agent의 lint·schema 오류(unused import / credentials.ciphertext→encrypted_payload / advisor_conversations FK user_id) 정리 + day-boundary race(now.Add(-1h) 자정 직후 어제 떨어짐) 수정.
 
 ### 직전 한 줄 (Phase 3 첫 stage 4 epic A 완료)
 
