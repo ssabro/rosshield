@@ -198,6 +198,23 @@ jobs:
           (cd release && sha256sum rosshield-* > checksums.sha256)
           ls -la release/
 
+      - name: Write release notes
+        run: |
+          set -e
+          cat > release-notes.md <<EOF
+          Release ${{ steps.tag.outputs.tag }}.
+
+          ## 검증
+
+          See README "Release 검증" 섹션:
+          - cosign verify-blob (Sigstore Rekor public log)
+          - sha256sum -c checksums.sha256
+          - ./rosshield version (commit·built·go 메타)
+          - ./rosshield-audit-verify --bundle <report.tar.gz>
+
+          상세는 https://github.com/ssabro/rosshield/blob/main/README.md 참조.
+          EOF
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -205,26 +222,5 @@ jobs:
           set -e
           gh release create "${{ steps.tag.outputs.tag }}" \
             --title "rosshield ${{ steps.tag.outputs.tag }}" \
-            --notes "Release ${{ steps.tag.outputs.tag }}.
-
-## 검증
-
-\`\`\`
-# 1) Sigstore cosign 서명 검증 (keyless · Rekor public log)
-cosign verify-blob \\
-  --certificate <binary>.cert \\
-  --signature <binary>.sig \\
-  --certificate-identity-regexp 'https://github.com/ssabro/rosshield/.github/workflows/release.yml@refs/tags/.*' \\
-  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
-  <binary>
-
-# 2) checksum
-sha256sum -c checksums.sha256
-
-# 3) report verify (외부 감사인용 standalone tool — E30 산출)
-rosshield-audit-verify --bundle <report.tar.gz>
-\`\`\`
-
-빌드 메타: \`<binary> version\`으로 commit·built·go 확인.
-" \
+            --notes-file release-notes.md \
             release/*
