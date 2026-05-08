@@ -196,7 +196,7 @@ E29 CLI ext ─────────────────┘
 - [ ] HA 2 인스턴스 leader/follower 동작 (E25)
 - [ ] tag push → multi-arch signed binary 자동 게시 (E26)
 - [ ] Prometheus metric + Grafana dashboard 1개 시연 (E27)
-- [ ] backup → restore round-trip 동작 (E28)
+- [x] backup → restore round-trip 동작 (E28)
 - [ ] admin task 100%를 CLI로 수행 가능 (E29)
 - [ ] 외부 감사인이 report verify CLI 실행 (E30)
 - [ ] (옵트인) PG-native repo 분리 (E22-F)

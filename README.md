@@ -82,6 +82,35 @@ sha256sum -c checksums.sha256
 ./rosshield-audit-verify --bundle <report.tar.gz>
 ```
 
+## Backup·Restore (E28)
+
+단일 인스턴스 데이터 손실 위험 완화. SQLite VACUUM INTO로 일관 스냅샷을 떠내므로 서버
+실행 중에도 안전합니다.
+
+```bash
+# 백업 — 데이터 디렉터리 → tar.gz (data.db 스냅샷 + keys/* + evidence/*)
+rosshield-server backup --output /backups/rosshield-$(date +%Y%m%d).tar.gz
+
+# evidence 제외 (메타데이터 전용 — 빠르고 작음)
+rosshield-server backup --output /backups/meta-$(date +%Y%m%d).tar.gz --skip-evidence
+
+# 복원 — 빈 디렉터리에. 기존 파일이 있으면 거부 (--force로 강제).
+rosshield-server restore --input /backups/rosshield-20260508.tar.gz \
+  --data-dir /var/lib/rosshield
+```
+
+cron 예시 (매일 03:15 KST 백업 + S3 업로드):
+
+```cron
+15 3 * * * /usr/local/bin/rosshield-server backup \
+  --output /var/backups/rosshield/$(date +\%Y\%m\%d).tar.gz \
+  --data-dir /var/lib/rosshield && \
+  aws s3 cp /var/backups/rosshield/$(date +\%Y\%m\%d).tar.gz \
+  s3://my-bucket/rosshield-backups/ --storage-class STANDARD_IA
+```
+
+stdout JSON 예 (backup): `{"path":"...","size":18297,"sha256":"232267...","includesEvidence":true,"generatedAt":"2026-05-08T04:31:20.9056265Z"}` — 운영 자동화 파이프라인이 sha256으로 무결성 추적 가능.
+
 ## 전신 프로젝트
 
 이 리포는 [`D:\robot\dev\nrobotcheck`](../nrobotcheck)(Electron 데스크톱 앱, v2.0 DDD 리팩토링 중)에서 상업화 전략 검토 결과 분리 개설되었습니다. 전신의 CIS·ROS2 벤치마크 자산과 도메인 설계 개념을 차용하되, 코드는 완전히 새로 작성합니다.

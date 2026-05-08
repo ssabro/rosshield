@@ -177,6 +177,16 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "seed" {
 		os.Exit(seedSubcommand(os.Args[2:]))
 	}
+	// `backup` 서브커맨드 분기 — DataDir 일관 스냅샷 tar.gz 생성 (E28).
+	// 사용 예: rosshield-server backup --output /backups/2026-05-08.tar.gz [--skip-evidence]
+	if len(os.Args) > 1 && os.Args[1] == "backup" {
+		os.Exit(backupSubcommand(os.Args[2:]))
+	}
+	// `restore` 서브커맨드 분기 — backup tar.gz를 빈 DataDir에 복원 (E28).
+	// 사용 예: rosshield-server restore --input /backups/2026-05-08.tar.gz --data-dir /var/lib/rosshield
+	if len(os.Args) > 1 && os.Args[1] == "restore" {
+		os.Exit(restoreSubcommand(os.Args[2:]))
+	}
 
 	addr := flag.String("addr", "127.0.0.1:0", "bind address")
 	metricsAddr := flag.String("metrics-addr", "", "Prometheus /metrics bind address (e.g. 127.0.0.1:9090). Empty = disabled (E27 — opt-in).")
