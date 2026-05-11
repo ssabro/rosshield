@@ -352,6 +352,68 @@ func TestBootstrapRejectsHaEnabledOnSqlite(t *testing.T) {
 	}
 }
 
+// E34 — KeystoreType="tpm"은 Stage 1 placeholder라 첫 LoadOrCreatePrivateKey 호출에서
+// 부팅 실패 (조용한 fallback 금지).
+func TestBootstrapKeystoreTpmReturnsNotImplemented(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		DataDir:      t.TempDir(),
+		Logger:       slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		KeystoreType: "tpm",
+	}
+	_, err := Bootstrap(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected bootstrap failure with KeystoreType=tpm (Stage 1 placeholder)")
+	}
+	if !strings.Contains(err.Error(), "TPM") && !strings.Contains(err.Error(), "tpm") {
+		t.Errorf("error does not mention TPM: %v", err)
+	}
+}
+
+// E34 — KeystoreType="" 기본값은 file 어댑터 → 정상 부팅 (현재 동작 보존).
+func TestBootstrapKeystoreDefaultIsFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := Config{
+		DataDir: dir,
+		Logger:  slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		// KeystoreType "" → file
+	}
+	p, err := Bootstrap(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Bootstrap with default keystore: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = p.Shutdown(ctx)
+	}()
+	if p.Keystore == nil {
+		t.Errorf("expected p.Keystore != nil, got nil")
+	}
+	// keys 디렉터리 존재 확인 (file 어댑터가 첫 LoadOrCreate 시 생성)
+	if _, err := os.Stat(filepath.Join(dir, "keys", "platform.ed25519")); err != nil {
+		t.Errorf("platform key file not created: %v", err)
+	}
+}
+
+// E34 — 알 수 없는 driver는 ErrUnsupportedDriver.
+func TestBootstrapKeystoreUnknownDriverFails(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		DataDir:      t.TempDir(),
+		Logger:       slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		KeystoreType: "hsm",
+	}
+	_, err := Bootstrap(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error for unknown KeystoreType=hsm")
+	}
+	if !strings.Contains(err.Error(), "hsm") {
+		t.Errorf("error does not mention 'hsm': %v", err)
+	}
+}
+
 // E25 — HAEnabled 기본값 false → 단일 인스턴스 정상 부팅.
 func TestBootstrapDefaultHaDisabledNormalBoot(t *testing.T) {
 	t.Parallel()

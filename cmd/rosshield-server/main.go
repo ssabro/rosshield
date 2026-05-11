@@ -247,6 +247,7 @@ func main() {
 	haHeartbeat := flag.Duration("ha-heartbeat-interval", 0, "HA heartbeat interval (E25). 0 = default 5s.")
 	haLeaderID := flag.String("ha-leader-id", "", "HA instance identifier (E25). Empty = auto (hostname:pid).")
 	haAdvertised := flag.String("ha-advertised-addr", "", "HA advertised URL for redirect from followers (E25, optional).")
+	keystoreType := flag.String("keystore", "file", "KeyStore adapter (E34): file (default, soft.LoadOrCreate) | tpm (Stage 1 placeholder — Stage 2+ TPM 2.0 PCR-sealed).")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
@@ -306,6 +307,7 @@ func main() {
 		HAHeartbeatInterval: *haHeartbeat,
 		HALeaderID:          *haLeaderID,
 		HAAdvertisedAddr:    *haAdvertised,
+		KeystoreType:        *keystoreType,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

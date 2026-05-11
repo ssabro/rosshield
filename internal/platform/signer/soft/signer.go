@@ -105,6 +105,14 @@ func writeKeyToFile(path string, priv ed25519.PrivateKey) error {
 }
 
 func wrapPrivateKey(priv ed25519.PrivateKey) signer.Signer {
+	return WrapPrivateKey(priv)
+}
+
+// WrapPrivateKey는 외부에서 얻은 ed25519 private key(예: TPM이 unseal한 raw key)를
+// soft signer로 감쌉니다 (E34 keystore 어댑터 결선용).
+//
+// 본 함수는 키 영속을 수행하지 않습니다 — caller가 keystore 측에서 영속 책임.
+func WrapPrivateKey(priv ed25519.PrivateKey) signer.Signer {
 	pub := priv.Public().(ed25519.PublicKey)
 	return &softSigner{private: priv, public: pub, keyID: makeKeyID(pub)}
 }

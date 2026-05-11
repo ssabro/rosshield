@@ -51,6 +51,9 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
 	"github.com/ssabro/rosshield/internal/platform/ha"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
+	"github.com/ssabro/rosshield/internal/platform/keystore"
+	keystorefile "github.com/ssabro/rosshield/internal/platform/keystore/file"
+	keystoretpm "github.com/ssabro/rosshield/internal/platform/keystore/tpm"
 	"github.com/ssabro/rosshield/internal/platform/license"
 	"github.com/ssabro/rosshield/internal/platform/llm"
 	llmanthropic "github.com/ssabro/rosshield/internal/platform/llm/anthropic"
@@ -168,6 +171,14 @@ type Config struct {
 	HAHeartbeatInterval time.Duration // leader heartbeat 주기. 0이면 5초.
 	HALeaderID          string        // 본 인스턴스 식별자 ("hostname:pid"). 빈 값이면 자동 생성.
 	HAAdvertisedAddr    string        // 다른 인스턴스가 redirect 시 사용할 URL (옵션, Stage 3 사용).
+
+	// E34 — KeyStore 어댑터 선택 (Phase 5 어플라이언스 트랙).
+	//
+	// "" 또는 "file" → file 어댑터(현재 동작, soft.LoadOrCreatePrivateKey 위임).
+	// "tpm" → TPM 2.0 PCR-sealed (Stage 1 placeholder = 즉시 부팅 실패, Stage 2+ 본격 구현).
+	//
+	// R40-2 결정(2026-05-11): TPM 시뮬레이터 = swtpm. R41 결정 후 본격 구현.
+	KeystoreType string
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -203,6 +214,7 @@ type Platform struct {
 	Metrics           *metrics.Registry        // E27 — Prometheus exposition (옵트인)
 	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
 	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
+	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
 
 	systemTenant storage.TenantID
 
@@ -855,19 +867,29 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	bus := inproc.New(inproc.Deps{Logger: logger, Clock: clk, IDGen: ids})
 
-	keyPath := filepath.Join(cfg.DataDir, "keys", "platform.ed25519")
-	sgn, err := soft.LoadOrCreate(keyPath)
+	// E34 — KeyStore 추상 (file = 현재 동작, tpm = Stage 2+ 본격). 동작 차이 0 (file 시).
+	ks, err := buildKeystore(cfg)
 	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: keystore: %w", err)
+	}
+
+	keyPath := filepath.Join(cfg.DataDir, "keys", "platform.ed25519")
+	platformPriv, err := ks.LoadOrCreatePrivateKey(keyPath)
+	if err != nil {
+		_ = ks.Close()
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: signer: %w", err)
 	}
+	sgn := soft.WrapPrivateKey(platformPriv)
 
 	// JWT 별도 키 — audit checkpoint 키와 분리(B4 결정).
 	// 키 회전 주기·키 손실 영향이 다르므로 결선 단계에서 두 개 별도 키.
-	// jwt 라이브러리(`golang-jwt/jwt/v5`)는 raw ed25519.PrivateKey/PublicKey를 요구하므로 LoadOrCreatePrivateKey 사용.
+	// jwt 라이브러리(`golang-jwt/jwt/v5`)는 raw ed25519.PrivateKey/PublicKey를 요구.
 	jwtKeyPath := filepath.Join(cfg.DataDir, "keys", "jwt.ed25519")
-	jwtPrivateKey, err := soft.LoadOrCreatePrivateKey(jwtKeyPath)
+	jwtPrivateKey, err := ks.LoadOrCreatePrivateKey(jwtKeyPath)
 	if err != nil {
+		_ = ks.Close()
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: jwt key: %w", err)
 	}
@@ -974,12 +996,14 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	// E8 Stage D — Reporting 도메인 결선 (R10-1 signintech/gopdf, R10-7 키 분리).
 	// Report signer는 audit checkpoint signer와 별도 키 파일(역할 격리·키 회전 분리).
 	reportKeyPath := filepath.Join(cfg.DataDir, "keys", "report.ed25519")
-	reportSigner, err := soft.LoadOrCreate(reportKeyPath)
+	reportPriv, err := ks.LoadOrCreatePrivateKey(reportKeyPath)
 	if err != nil {
 		_ = sch.Close(ctx)
+		_ = ks.Close()
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: report signer: %w", err)
 	}
+	reportSigner := soft.WrapPrivateKey(reportPriv)
 	reportPDFBuilder := pdf.New()
 	reportingSvc := reportingrepo.New(reportingrepo.Deps{
 		Clock:            clk,
@@ -1165,6 +1189,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Invitation:        invitationSvc,
 		Metrics:           metricsReg,
 		MetricsBridge:     metricsBridge,
+		Keystore:          ks,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}
@@ -1191,6 +1216,23 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	}
 
 	return platform, nil
+}
+
+// buildKeystore는 cfg.KeystoreType 기반으로 KeyStore 어댑터를 생성합니다 (E34).
+//
+// "" / "file" → file 어댑터 (현재 동작, soft.LoadOrCreatePrivateKey 위임)
+// "tpm" → TPM 2.0 어댑터 (Stage 1 placeholder — LoadOrCreate 호출 시 ErrTpmNotImplemented)
+//
+// 후속 stage에서 tpm 어댑터에 PCR selection·EK/SRK 옵션이 추가됨.
+func buildKeystore(cfg Config) (keystore.KeyStore, error) {
+	switch cfg.KeystoreType {
+	case "", "file":
+		return keystorefile.New(), nil
+	case "tpm":
+		return keystoretpm.New(), nil
+	default:
+		return nil, fmt.Errorf("%w: %q (allowed: file|tpm)", keystore.ErrUnsupportedDriver, cfg.KeystoreType)
+	}
 }
 
 // buildHAManager는 PG advisory lock 기반 HA Manager를 생성합니다.
@@ -1313,6 +1355,12 @@ func (p *Platform) Shutdown(ctx context.Context) error {
 		}
 		if err := p.Storage.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("storage close: %w", err))
+		}
+		// E34 — Keystore close (file은 no-op, tpm은 TPM session close).
+		if p.Keystore != nil {
+			if err := p.Keystore.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("keystore close: %w", err))
+			}
 		}
 
 		p.shutdown = true
