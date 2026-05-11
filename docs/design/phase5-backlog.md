@@ -14,10 +14,10 @@
 
 ## Phase 4 Carryover (deferred — Phase 5 합류)
 
-| ID | 출처 | 내용 | 추정 |
-|---|---|---|---|
-| E25 | Phase 4 backlog | HA — PostgreSQL advisory lock + leader/follower (single-writer audit chain) | 4일 |
-| E22-F | Phase 4 backlog | PG-native repo 분리 — JSONB·TIMESTAMPTZ·BOOLEAN 활용 + driver-aware repo (현재 sqliterepo 단일 경로) | 1주 |
+| ID | 출처 | 내용 | 추정 | 상태 |
+|---|---|---|---|---|
+| E25 | Phase 4 backlog | HA — PostgreSQL advisory lock + leader/follower (single-writer audit chain) | 4일 | 🟡 Stage 1/4 (2026-05-11 `678367c` — Manager+PGLock+migration+bootstrap+/healthz+sqlite 거부) |
+| E22-F | Phase 4 backlog | PG-native repo 분리 — JSONB·TIMESTAMPTZ·BOOLEAN 활용 + driver-aware repo (현재 sqliterepo 단일 경로) | 1주 | ⏭ |
 
 ---
 
