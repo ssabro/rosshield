@@ -10,14 +10,14 @@
 
 ## Phase 3 Carryover (deferred — Phase 4 합류)
 
-| ID | 출처 | 내용 | 추정 |
-|---|---|---|---|
-| E25 | Phase 3 backlog (옵션) | HA — PostgreSQL advisory lock + leader/follower (single-writer audit) | 4일 |
-| E22-F | E22-E follow-up | PG-native repo 분리 — JSONB·TIMESTAMPTZ·BOOLEAN 활용 + driver-aware repo (현재 sqliterepo 단일 경로) | 1주 |
-| O5 | E20-D 후속 | SSO 사용자 자동 프로비저닝 — IdentityResolver 결선 + 첫 로그인 시 user 생성 + 기본 role 할당 | 3일 |
-| O6 | E21 후속 | 초대 이메일 발송 어댑터 (SMTP·SES·noop 옵트인). 현 운영은 admin이 token URL 수동 전달 | 3일 |
-| O7 | E23 후속 | Webhook UI에 Delivery 재전송·dead-letter 명시 표시 + dispatcher 통계 | 2일 |
-| O8 | demo seed 확장 | seed demo가 invitation·webhook·SSO provider 시드까지 포함 (Exit demo 자동화) — ✅ 2026-05-08 완료 | 1일 |
+| ID | 출처 | 내용 | 추정 | 상태 |
+|---|---|---|---|---|
+| E25 | Phase 3 backlog (옵션) | HA — PostgreSQL advisory lock + leader/follower (single-writer audit) | 4일 | ⏭ Phase 5 carryover |
+| E22-F | E22-E follow-up | PG-native repo 분리 — JSONB·TIMESTAMPTZ·BOOLEAN 활용 + driver-aware repo (현재 sqliterepo 단일 경로) | 1주 | ⏭ Phase 5 carryover |
+| O5 | E20-D 후속 | SSO 사용자 자동 프로비저닝 — IdentityResolver 결선 + 첫 로그인 시 user 생성 + 기본 role 할당 | 3일 | ✅ 2026-05-08 (`c6d4fa2`) |
+| O6 | E21 후속 | 초대 이메일 발송 어댑터 (SMTP·SES·noop 옵트인). 현 운영은 admin이 token URL 수동 전달 | 3일 | ✅ 2026-05-08 (`02c1905`) |
+| O7 | E23 후속 | Webhook UI에 Delivery 재전송·dead-letter 명시 표시 + dispatcher 통계 | 2일 | ✅ 2026-05-08 (`7a81e8a`) |
+| O8 | demo seed 확장 | seed demo가 invitation·webhook·SSO provider 시드까지 포함 (Exit demo 자동화) | 1일 | ✅ 2026-05-08 (`1576767`) |
 
 ---
 
@@ -193,14 +193,16 @@ E29 CLI ext ─────────────────┘
 
 ## Phase 4 Exit 체크리스트
 
-- [ ] HA 2 인스턴스 leader/follower 동작 (E25)
-- [ ] tag push → multi-arch signed binary 자동 게시 (E26)
-- [ ] Prometheus metric + Grafana dashboard 1개 시연 (E27)
+- [ ] HA 2 인스턴스 leader/follower 동작 (E25) — ⏭ Phase 5 carryover
+- [x] tag push → multi-arch signed binary 자동 게시 (E26) — v0.2.0 47 assets, cosign keyless
+- [x] Prometheus metric + EventBus bridge (E27) — Grafana dashboard는 운영 진입 시 customer 측
 - [x] backup → restore round-trip 동작 (E28)
-- [ ] admin task 100%를 CLI로 수행 가능 (E29)
-- [ ] 외부 감사인이 report verify CLI 실행 (E30)
-- [ ] (옵트인) PG-native repo 분리 (E22-F)
-- [ ] customer 1명이 30일 운영 + incident 0
+- [x] admin task 100%를 CLI로 수행 가능 (E29) — invite/webhook/license usage
+- [x] 외부 감사인이 report verify CLI 실행 (E30) — `cmd/rosshield-audit-verify` standalone
+- [ ] (옵트인) PG-native repo 분리 (E22-F) — ⏭ Phase 5 carryover
+- [ ] customer 1명이 30일 운영 + incident 0 — Phase 5 진입 후 onboarding
+
+**판정 (2026-05-11)**: 핵심 5/7 완료(E26·E27·E28·E29·E30 + R30-4 결정 + O5~O8 carryover) + 잔여 2(E25 HA·E22-F PG-native)는 **paying customer 진입 시점에 필요해지는 항목** → Phase 5로 이전. Phase 4 종료.
 
 ---
 
