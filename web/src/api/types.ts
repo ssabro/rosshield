@@ -555,6 +555,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List automatic backup archives
+         * @description Returns .tar.gz archives present in the configured BackupDir (자동 백업
+         *     schedule 결과). 빈 디렉터리이거나 BackupDir 미설정이면 빈 배열을 반환합니다.
+         */
+        get: operations["listBackups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/{filename}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a backup archive
+         * @description Streams a single .tar.gz file from BackupDir. Filename은 단순 base name이어야
+         *     하며 path traversal(`..`, separator)은 거부됩니다. `.tar.gz` suffix가 강제됩니다.
+         *     Range request·Last-Modified는 `http.ServeContent`가 자동 처리합니다.
+         */
+        get: operations["downloadBackup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -918,6 +961,26 @@ export interface components {
         };
         ListWebhookDeliveriesResponse: {
             deliveries: components["schemas"]["WebhookDelivery"][];
+        };
+        BackupMeta: {
+            /** @description Base name (no path) */
+            filename: string;
+            /**
+             * Format: int64
+             * @description Archive size in bytes
+             */
+            size: number;
+            /** @description Hex digest of the archive */
+            sha256: string;
+            /**
+             * Format: date-time
+             * @description RFC3339Nano UTC
+             */
+            generatedAt: string;
+            includesEvidence: boolean;
+        };
+        BackupListResponse: {
+            backups: components["schemas"]["BackupMeta"][];
         };
     };
     responses: {
@@ -1859,6 +1922,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListWebhookDeliveriesResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listBackups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        ok: true;
+                        value: components["schemas"]["BackupListResponse"];
+                    };
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            500: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    downloadBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — binary archive */
+            200: {
+                headers: {
+                    /** @description `attachment; filename="<name>.tar.gz"` */
+                    "Content-Disposition"?: string;
+                    "Content-Length"?: number;
+                    "Last-Modified"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": string;
+                };
+            };
+            /** @description Invalid filename (path traversal or wrong suffix) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Backup not found or BackupDir unset */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

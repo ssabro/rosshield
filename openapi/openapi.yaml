@@ -853,6 +853,91 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  # B7 Stage 2-C — 자동 백업 archive list + download.
+  #
+  # 백업 schedule(--backup-schedule cron)이 BackupDir에 .tar.gz를 적층 — 본 endpoint는
+  # 운영자가 web /system 페이지에서 archive 목록·다운로드를 수행하기 위한 표면.
+  # 핸들러는 chi 직접 mount (advisor·license와 동일 패턴, gen.Unimplemented가 자동 501).
+  # spec은 문서·계약 목적으로만 정의.
+  /api/v1/backups:
+    get:
+      tags: [tenant]
+      operationId: listBackups
+      summary: List automatic backup archives
+      description: |
+        Returns .tar.gz archives present in the configured BackupDir (자동 백업
+        schedule 결과). 빈 디렉터리이거나 BackupDir 미설정이면 빈 배열을 반환합니다.
+      x-status: phase3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, value]
+                properties:
+                  ok:    { type: boolean, const: true }
+                  value:
+                    $ref: "#/components/schemas/BackupListResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "500":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/backups/{filename}/download:
+    get:
+      tags: [tenant]
+      operationId: downloadBackup
+      summary: Download a backup archive
+      description: |
+        Streams a single .tar.gz file from BackupDir. Filename은 단순 base name이어야
+        하며 path traversal(`..`, separator)은 거부됩니다. `.tar.gz` suffix가 강제됩니다.
+        Range request·Last-Modified는 `http.ServeContent`가 자동 처리합니다.
+      x-status: phase3
+      parameters:
+        - in: path
+          name: filename
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9._-]+\\.tar\\.gz$"
+            description: Base name of the archive (no directory components).
+      responses:
+        "200":
+          description: OK — binary archive
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+              description: "`attachment; filename=\"<name>.tar.gz\"`"
+            Content-Length:
+              schema: { type: integer, format: int64 }
+            Last-Modified:
+              schema: { type: string }
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid filename (path traversal or wrong suffix)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Backup not found or BackupDir unset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1359,3 +1444,22 @@ components:
         deliveries:
           type: array
           items: { $ref: "#/components/schemas/WebhookDelivery" }
+
+    # ─── Backup (B7 Stage 2-C) ───────────────────────────────────────────
+    BackupMeta:
+      type: object
+      required: [filename, size, sha256, generatedAt, includesEvidence]
+      properties:
+        filename:         { type: string, description: "Base name (no path)" }
+        size:             { type: integer, format: int64, description: "Archive size in bytes" }
+        sha256:           { type: string, description: "Hex digest of the archive" }
+        generatedAt:      { type: string, format: date-time, description: "RFC3339Nano UTC" }
+        includesEvidence: { type: boolean }
+
+    BackupListResponse:
+      type: object
+      required: [backups]
+      properties:
+        backups:
+          type: array
+          items: { $ref: "#/components/schemas/BackupMeta" }
