@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_001
+    title: /etc/passwd 계정의 shadow 패스워드 사용 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/passwd의 모든 계정이 shadow 패스워드를 사용해야 한다(비밀번호 필드가 "x").
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(awk -F: ''\''''($2 != "x") { print $1 }''\'''' /etc/passwd | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /etc/passwd에 비밀번호 해시가 직접 저장되면 모든 사용자가 해시를 읽을 수 있어 오프라인 브루트포스 공격에 취약해진다. shadow 파일을 사용하면 해시 접근을 제한할 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 shadow 패스워드를 활성화하고 비밀번호를 마이그레이션한다:
+
+        pwconv
+
+        해당 계정이 로그인 중인지 확인하고 용도를 파악한다.

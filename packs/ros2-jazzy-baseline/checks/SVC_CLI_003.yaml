@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CLI_003
+    title: talk 클라이언트 패키지 제거 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 talk 클라이언트가 설치되어 있지 않아야 한다. 로봇 운용에 필요하지 않은 레거시 사용자 메시징 클라이언트는 시스템에서 제거되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s talk &>/dev/null && echo '\''installed'\'' || echo '\''not_installed'\'' 2>&1)"; if { [ "$C1_OUT" = '\''not_installed'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: talk 클라이언트는 사용자 간 실시간 텍스트 메시지를 터미널을 통해 전달하는 기능을 제공하지만, 통신이 평문으로 이루어지고 인증 및 접근 제어가 미흡하다. 이로 인해 사용자 정보 노출, 메시지 도청, 세션 가로채기 등의 보안 위협이 발생할 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 talk를 제거한다:
+
+        apt purge talk

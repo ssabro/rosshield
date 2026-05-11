@@ -1,0 +1,60 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.2.4
+    title: 6.2.2.4 Ensure system warns when audit logs are low on space (Automated)
+    description: |-
+        The auditd daemon can be configured to halt the system, put the system in single user
+        mode or send a warning message, if the partition that holds the audit log files is low on
+        space.
+        The space_left_action parameter tells the system what action to take when the
+        system has detected that it is starting to get low on disk space. Valid values are ignore,
+        syslog, rotate, email, exec, suspend, single, and halt.
+        • ignore, the audit daemon does nothing
+        • syslog, the audit daemon will issue a warning to syslog
+        • rotate, the audit daemon will rotate logs, losing the oldest to free up space
+        • email, the audit daemon will send a warning to the email account specified in
+        action_mail_acct as well as sending the message to syslog
+        • exec, /path-to-script will execute the script. You cannot pass parameters to the
+        script. The script is also responsible for telling the auditd daemon to resume
+        logging once its completed its action
+        • suspend, the audit daemon will stop writing records to the disk
+        • single, the audit daemon will put the computer system in single user mode
+        • halt, the audit daemon will shut down the system
+        The admin_space_left_action parameter tells the system what action to take when
+        the system has detected that it is low on disk space. Valid values are ignore, syslog,
+        rotate, email, exec, suspend, single, and halt.
+        • ignore, the audit daemon does nothing
+        • syslog, the audit daemon will issue a warning to syslog
+        • rotate, the audit daemon will rotate logs, losing the oldest to free up space
+        • email, the audit daemon will send a warning to the email account specified in
+        action_mail_acct as well as sending the message to syslog
+        • exec, /path-to-script will execute the script. You cannot pass parameters to the
+        script. The script is also responsible for telling the auditd daemon to resume
+        logging once its completed its action
+        • suspend, the audit daemon will stop writing records to the disk
+        • single, the audit daemon will put the computer system in single user mode
+        • halt, the audit daemon will shut down the system
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        In high security contexts, the risk of detecting unauthorized access or nonrepudiation
+        exceeds the benefit of the system's availability.
+        Impact:
+        If the admin_space_left_action is set to single the audit daemon will put the
+        computer system in single user mode.
+    fixGuidance: |-
+        Set the space_left_action parameter in /etc/audit/auditd.conf to email, exec,
+        single, or halt:
+        Example:
+        space_left_action = email
+        Set the admin_space_left_action parameter in /etc/audit/auditd.conf to
+        single or halt:
+        Example:
+        admin_space_left_action = single
+        Note: A Mail Transfer Agent (MTA) must be installed and configured properly to set
+        space_left_action = email

@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.4.1.1
+    title: 2.4.1.1 Ensure cron daemon is enabled and active (Automated)
+    description: The cron daemon is used to execute batch jobs on the system.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        While there may not be user jobs that need to be run on the system, the system does
+        have maintenance jobs that may include security monitoring that have to run, and cron
+        is used to execute them.
+    fixGuidance: |-
+        - IF - cron is installed on the system:
+        Run the following commands to unmask, enable, and start cron:
+        # systemctl unmask "$(systemctl list-unit-files | awk
+        '$1~/^crond?\.service/{print $1}')"
+        # systemctl --now enable "$(systemctl list-unit-files | awk
+        '$1~/^crond?\.service/{print $1}')"

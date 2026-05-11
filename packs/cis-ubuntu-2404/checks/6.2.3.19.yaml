@@ -1,0 +1,51 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.19
+    title: 6.2.3.19 Ensure kernel module loading unloading and (Automated)
+    description: |-
+        Monitor the loading and unloading of kernel modules. All the loading / listing /
+        dependency checking of modules is done by kmod via symbolic links.
+        The following system calls control loading and unloading of modules:
+        • init_module - load a module
+        • finit_module - load a module (used when the overhead of using
+        cryptographically signed modules to determine the authenticity of a module can
+        be avoided)
+        • delete_module - delete a module
+        • create_module - create a loadable module entry
+        • query_module - query the kernel for various bits pertaining to modules
+        Any execution of the loading and unloading module programs and system calls will
+        trigger an audit record with an identifier of modules.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Monitoring the use of all the various ways to manipulate kernel modules could provide
+        system administrators with evidence that an unauthorized change was made to a kernel
+        module, possibly compromising the security of the system.
+    fixGuidance: |-
+        Create audit rules
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor kernel module modification.
+        Example:
+        #!/usr/bin/env bash
+        {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        [ -n "${UID_MIN}" ] && printf "
+        -a always,exit -F arch=b64 -S
+        init_module,finit_module,delete_module,create_module,query_module -F
+        auid>=${UID_MIN} -F auid!=unset -k kernel_modules
+        -a always,exit -F path=/usr/bin/kmod -F perm=x -F auid>=${UID_MIN} -F
+        auid!=unset -k kernel_modules
+        " >> /etc/audit/rules.d/50-kernel_modules.rules || printf "ERROR: Variable
+        'UID_MIN' is unset.\n"
+        }
+        Load audit rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

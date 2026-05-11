@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.2.5
+    title: 4.2.5 Ensure ufw outbound connections are configured (Manual)
+    description: |-
+        Configure the firewall rules for new outbound connections.
+        Note:
+        • Changing firewall settings while connected over network can result in being
+        locked out of the system.
+        • Unlike iptables, when a new outbound rule is added, ufw automatically takes care
+        of associated established connections, so no rules for the latter kind are required.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If rules are not in place for new outbound connections all packets will be dropped by the
+        default policy preventing network usage.
+    fixGuidance: |-
+        Configure ufw in accordance with site policy. The following commands will implement a
+        policy to allow all outbound connections on all interfaces:
+        # ufw allow out on all

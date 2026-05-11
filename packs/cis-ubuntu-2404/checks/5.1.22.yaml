@@ -1,0 +1,30 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.22
+    title: 5.1.22 Ensure sshd UsePAM is enabled (Automated)
+    description: |-
+        The UsePAM directive enables the Pluggable Authentication Module (PAM) interface. If
+        set to yes this will enable PAM authentication using
+        ChallengeResponseAuthentication and PasswordAuthentication directives in
+        addition to PAM account and session module processing for all authentication types.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        When usePAM is set to yes, PAM runs through account and session types properly. This
+        is important if you want to restrict access to services based off of IP, time or other
+        factors of the account. Additionally, you can make sure users inherit certain
+        environment variables on login or disallow access to the server
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set the UsePAM parameter to yes above any
+        Include entries as follows:
+        UsePAM yes
+        Note: First occurrence of an option takes precedence. If Include locations are enabled,
+        used, and order of precedence is understood in your environment, the entry may be
+        created in a file in Include location.
+        Default Value:
+        UsePAM yes

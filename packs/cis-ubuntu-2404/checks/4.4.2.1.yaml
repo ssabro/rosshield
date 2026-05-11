@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.2.1
+    title: 4.4.2.1 Ensure iptables default deny firewall policy (Automated)
+    description: |-
+        A default deny all policy on connections ensures that any unconfigured network usage
+        will be rejected.
+        Notes:
+        • Changing firewall settings while connected over network can result in being
+        locked out of the system
+        • Remediation will only affect the active system firewall, be sure to configure the
+        default policy in your firewall management to apply on boot as well
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        With a default accept policy the firewall will accept any packet that is not configured to
+        be denied. It is easier to allow list acceptable usage than to deny list unacceptable
+        usage.
+    fixGuidance: |-
+        Run the following commands to implement a default DROP policy:
+        # iptables -P INPUT DROP
+        # iptables -P OUTPUT DROP
+        # iptables -P FORWARD DROP

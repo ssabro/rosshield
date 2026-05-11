@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_010
+    title: 로컬 사용자 dot 파일 접근 권한 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 로컬 대화형 사용자의 dot 파일이 적절한 권한, 소유권, 그룹 소유권을 가져야 하며, .forward, .rhost 파일이 없어야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(FAIL=0; VALID_SHELLS=$(awk -F/ ''\''''$NF != "nologin" {print}''\'''' /etc/shells | grep ''\''''^/''\'''' | paste -sd''\''''|''\''''); awk -v pat="^(${VALID_SHELLS})$" -F: ''\''''$(NF) ~ pat { print $1 ":" $(NF-1) }''\'''' /etc/passwd | while IFS=: read user home; do if [ -d "$home" ]; then find "$home" -maxdepth 1 -xdev -type f -name ''\''''.*''\'''' \( -name ''\''''.forward''\'''' -o -name ''\''''.rhost''\'''' -o -perm /0133 \) 2>/dev/null | head -1 | grep -q . && echo ''\''''FAIL''\''''; fi; done | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: dot 파일의 부적절한 권한은 악의적인 사용자가 다른 사용자의 설정을 변경하여 데이터 접근 권한을 탈취할 수 있게 한다. .forward와 .rhost 파일은 보안 위험을 초래한다.
+    fixGuidance: |-
+        사이트 정책에 따라 모니터링 정책을 수립하고 조치한다:
+
+        • .forward, .rhost 파일: 수동 검토 후 삭제
+        • dot 파일 과도한 권한: chmod u-x,go-wx <file>
+        • .bash_history 과도한 권한: chmod u-x,go-rwx <file>
+        • 소유권 불일치: chown <user> <file>
+        • 그룹 불일치: chgrp <primary_group> <file>

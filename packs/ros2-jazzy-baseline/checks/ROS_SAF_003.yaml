@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_SAF_003
+    title: 안전 경계 파라미터 보호
+    description: 로봇의 최대속도, 최대토크, 동작 범위 등 안전 경계 파라미터가 런타임에 변경 불가능하도록 보호되는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -r '\''read_only.*true'\'' /home/*/ros2_ws/src/ 2>/dev/null --include='\''*.py'\'' --include='\''*.cpp'\'' | grep -iE '\''max_speed|max_velocity|max_torque|max_force|safety'\'' | head -3 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 안전 경계 파라미터의 악의적 변경은 로봇의 물리적 안전 한계를 초과하여 사고를 유발할 수 있음
+    fixGuidance: 안전 경계 파라미터를 declare_parameter() 시 read_only descriptor를 설정한다. SROS2 permissions.xml에서 파라미터 서비스 접근을 제한한다.

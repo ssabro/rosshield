@@ -1,0 +1,42 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.18
+    title: 6.2.3.18 Ensure successful and unsuccessful attempts to use the (Automated)
+    description: |-
+        The operating system must generate audit records for successful/unsuccessful uses of
+        the usermod command.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        The usermod command modifies the system account files to reflect the changes that are
+        specified on the command line. Without generating audit records that are specific to the
+        security and mission needs of the organization, it would be difficult to establish,
+        correlate, and investigate the events relating to an incident or identify those responsible
+        for one.
+        Audit records can be generated from various components within the information system
+        (e.g., module or policy filter).
+    fixGuidance: |-
+        Create audit rules
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor successful and unsuccessful attempts to use the
+        usermod command.
+        Example:
+        # {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        [ -n "${UID_MIN}" ] && printf "
+        -a always,exit -F path=/usr/sbin/usermod -F perm=x -F auid>=${UID_MIN} -F
+        auid!=unset -k usermod
+        " >> /etc/audit/rules.d/50-usermod.rules || printf "ERROR: Variable 'UID_MIN'
+        is unset.\n"
+        }
+        Load audit rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

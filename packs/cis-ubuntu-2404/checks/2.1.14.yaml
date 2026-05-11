@@ -1,0 +1,36 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.14
+    title: 2.1.14 Ensure samba file server services are not in use (Automated)
+    description: |-
+        The Samba daemon allows system administrators to configure their Linux systems to
+        share file systems and directories with Windows desktops. Samba will advertise the file
+        systems and directories via the Server Message Block (SMB) protocol. Windows
+        desktop users will be able to mount these directories and file systems as letter drives on
+        their systems.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If there is no need to mount directories and file systems to Windows systems, then this
+        service should be deleted to reduce the potential attack surface.
+        Impact:
+        There may be packages that are dependent on the samba package. If the samba
+        package is removed, these dependent packages will be removed as well. Before
+        removing the samba package, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask the smbd.service leaving the
+        samba package installed.
+    fixGuidance: |-
+        Run the following commands to stop smbd.service and remove samba package:
+        # systemctl stop smbd.service
+        # apt purge samba
+        - OR -
+        - IF - the samba package is required as a dependency:
+        Run the following commands to stop and mask the smbd.service:
+        # systemctl stop smbd.service
+        # systemctl mask smbd.service

@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_008
+    title: 메시지 접근 서버(IMAP/POP) 서비스 미사용 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 메시지 접근 서버 서비스(IMAP/POP 계열)가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 메일 수신 서버 기능은 비활성화되거나 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s dovecot-imapd &>/dev/null && echo '\''installed'\''; dpkg-query -s dovecot-pop3d &>/dev/null && echo '\''installed'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled dovecot.socket dovecot.service 2>/dev/null | grep '\''enabled'\'' 2>&1)"; C3_OUT="$(systemctl is-active dovecot.socket dovecot.service 2>/dev/null | grep '\''^active'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } || { { [ -z "$C2_OUT" ]; } && { [ -z "$C3_OUT" ]; }; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 메시지 접근 서버 서비스는 IMAP 또는 POP 프로토콜을 통해 메일함에 대한 원격 접근을 제공한다. 해당 서비스가 활성화될 경우, 인증 공격, 서비스 오남용, 불필요한 네트워크 포트 노출 등의 보안 위협이 발생할 수 있다.
+    fixGuidance: 'dovecot-imapd/dovecot-pop3d 패키지를 제거한다: apt purge -y dovecot-imapd dovecot-pop3d. 패키지가 의존성으로 필요한 경우 서비스를 중지하고 마스크한다.'

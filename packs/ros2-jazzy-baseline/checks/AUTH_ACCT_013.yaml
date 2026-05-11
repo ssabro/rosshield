@@ -1,0 +1,16 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ACCT_013
+    title: 시스템 계정 로그인 쉘 비활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 시스템 계정(root, halt, sync, shutdown, nfsnobody 제외)은 유효한 로그인 쉘을 가지지 않아야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(l_valid_shells="^($(awk -F/ ''\''''$NF != "nologin" {print}''\'''' /etc/shells | sed -rn ''\''''/^\//{s,/,\\/,g;p}''\'''' | paste -s -d ''\''''|''\'''' - ))$"; l_uid_min=$(awk ''\''''/^\s*UID_MIN/{print $2}''\'''' /etc/login.defs); [ -z "$l_uid_min" ] && l_uid_min=1000; awk -v pat="$l_valid_shells" -v uid_min="$l_uid_min" -F: ''\''''($1!~/^(root|halt|sync|shutdown|nfsnobody)$/ && ($3 < uid_min || $3 == 65534) && $(NF) ~ pat) {print $1}''\'''' /etc/passwd 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 시스템 계정은 서비스 실행을 위해 존재하며 대화형 로그인이 필요하지 않다. 유효한 로그인 쉘이 있으면 공격자가 해당 계정으로 시스템에 접근할 수 있다.
+    fixGuidance: |-
+        유효한 로그인 쉘을 가진 시스템 계정의 쉘을 nologin으로 변경한다:
+        usermod -s $(command -v nologin) <사용자명>

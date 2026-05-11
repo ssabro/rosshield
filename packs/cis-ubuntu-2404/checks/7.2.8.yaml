@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.2.8
+    title: 7.2.8 Ensure no duplicate group names exist (Automated)
+    description: |-
+        Although the groupadd program will not let you create a duplicate group name, it is
+        possible for an administrator to manually edit the /etc/group file and change the group
+        name.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If a group is assigned a duplicate group name, it will create and have access to files
+        with the first GID for that group in /etc/group . Effectively, the GID is shared, which is
+        a security problem.
+    fixGuidance: |-
+        Based on the results of the audit script, establish unique names for the user groups. File
+        group ownerships will automatically reflect the change as long as the groups have
+        unique GIDs.

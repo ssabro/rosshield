@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_031
+    title: 감사 로그 파일 소유자(owner) 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 감사 로그 파일의 소유자가 root여야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$([ -f /etc/audit/auditd.conf ] && find "$(dirname "$(awk -F= '\''/^\s*log_file\s*/{print $2}'\'' /etc/audit/auditd.conf | xargs)")" -maxdepth 1 -type f ! -user root 2>/dev/null | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 감사 로그 파일이 root 소유가 아니면 권한 없는 사용자가 로그를 수정하거나 삭제할 수 있어 보안 감사의 무결성이 훼손된다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 감사 로그 파일의 소유자를 root로 변경한다:
+
+        [ -f /etc/audit/auditd.conf ] && find "$(dirname $(awk -F "=" '/^\s*log_file/ {print $2}' /etc/audit/auditd.conf | xargs))" -type f ! -user root -exec chown root {} +

@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.1.2.2.4
+    title: 1.1.2.2.4 Ensure noexec option set on /dev/shm partition (Automated)
+    description: |-
+        The noexec mount option specifies that the filesystem cannot contain executable
+        binaries.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Setting this option on a file system prevents users from executing programs from shared
+        memory. This deters users from introducing potentially malicious software on the
+        system.
+    fixGuidance: |-
+        - IF - a separate partition exists for /dev/shm.
+        Edit the /etc/fstab file and add noexec to the fourth field (mounting options) for the
+        /dev/shm partition.
+        Example:
+        tmpfs /dev/shm tmpfs defaults,rw,nosuid,nodev,noexec,relatime 0 0
+        Run the following command to remount /dev/shm with the configured options:
+        # mount -o remount /dev/shm
+        Note: It is recommended to use tmpfs as the device/filesystem type as /dev/shm is
+        used as shared memory space by applications.

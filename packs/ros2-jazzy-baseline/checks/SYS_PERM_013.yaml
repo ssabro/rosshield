@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_PERM_013
+    title: SUID 및 SGID 파일 검토
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 SUID 또는 SGID 비트가 설정된 파일 목록을 검토하여 불법적인 프로그램이 없는지 확인해야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find / -xdev -type f \( -perm -4000 -o -perm -2000 \) -print 2>/dev/null | wc -l 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: SUID/SGID 비트가 설정된 실행 파일은 높은 권한으로 실행되므로 악용될 수 있다. 정기적인 검토를 통해 무단으로 추가된 SUID/SGID 프로그램을 탐지해야 한다.
+    fixGuidance: |-
+        SUID 및 SGID 파일 목록을 검토하여 불법적인 프로그램이 없는지 확인한다.
+
+        불법 파일이 발견되면 SUID/SGID 비트를 제거한다:
+        chmod u-s <suid_file>
+        chmod g-s <sgid_file>
+
+        또는 해당 패키지의 무결성을 확인한다:
+        dpkg --verify <package_name>

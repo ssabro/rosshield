@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PRIV_007
+    title: su 명령 접근 제한 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 su 명령은 특정 그룹의 사용자만 사용할 수 있도록 제한되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Pi '\''^\s*auth\s+required\s+pam_wheel\.so.*use_uid.*group='\'' /etc/pam.d/su 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: su 명령을 제한하면 무차별 대입 공격으로 root 비밀번호를 추측하는 것을 방지할 수 있다.
+    fixGuidance: |-
+        su 명령 접근을 제한하기 위한 빈 그룹을 생성하고 PAM 설정을 추가한다.
+
+        1. 빈 그룹 생성:
+        groupadd sugroup
+
+        2. /etc/pam.d/su 파일에 다음 라인 추가:
+        auth required pam_wheel.so use_uid group=sugroup
+
+        참고: sugroup에 사용자를 추가하면 해당 사용자는 su 명령 사용 가능

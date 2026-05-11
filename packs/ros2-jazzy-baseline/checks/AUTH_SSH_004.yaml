@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_SSH_004
+    title: SSH 접근 제어 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 SSH 서버를 사용하는 경우, AllowUsers, AllowGroups, DenyUsers, DenyGroups 중 하나 이상이 설정되어 SSH 접근이 제한되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(sshd -T 2>/dev/null | grep -Pi '\''^\s*(allow|deny)(users|groups)\s+\S+'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: SSH 접근 제어를 설정하면 허가된 사용자/그룹만 원격 접속할 수 있어 비인가 접근을 방지할 수 있다. 거부 목록보다 허용 목록을 사용하는 것이 관리가 용이하다.
+    fixGuidance: |-
+        /etc/ssh/sshd_config 파일에 접근 제어 설정을 추가한다. Include 및 Match 문 위에 설정한다.
+
+        AllowUsers <사용자목록>
+        또는
+        AllowGroups <그룹목록>
+
+        예시:
+        AllowUsers robot admin
+        AllowGroups sshusers
+
+        참고: AllowUsers와 AllowGroups를 함께 설정하면 AND 조건으로 적용된다.

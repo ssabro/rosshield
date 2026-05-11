@@ -1,0 +1,38 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.3.3.3.2
+    title: 5.3.3.3.2 Ensure password history is enforced for the root user (Automated)
+    description: |-
+        If the pwhistory enforce_for_root option is enabled, the module will enforce
+        password history for the root user as well
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Requiring users not to reuse their passwords make it less likely that an attacker will be
+        able to guess the password or use a compromised password
+        Note: These change only apply to accounts configured on the local system.
+    fixGuidance: |-
+        Run the following command:
+        # awk '/Password-Type:/{ f = 1;next } /-Type:/{ f = 0 } f {if
+        (/pam_pwhistory\.so/) print FILENAME}' /usr/share/pam-configs/*
+        Edit any returned files and add the enforce_for_root argument to the
+        pam_pwhistory line in the Password section:
+        Example File:
+        Name: pwhistory password history checking
+        Default: yes
+        Priority: 1024
+        Password-Type: Primary
+        Password:
+        requisite pam_pwhistory.so remember=24 enforce_for_root try_first_pass
+        use_authtok # <- **ensure line includes enforce_for_root**
+        Run the following command to update the files in the /etc/pam.d/ directory:
+        # pam-auth-update --enable <MODIFIED_PROFILE_NAME>
+        Example:
+        # pam-auth-update --enable pwhistory
+        Default Value:
+        disabled

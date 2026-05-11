@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DDS_002
+    title: DDS 도메인 ID 구성
+    description: 적절한 DDS 도메인 ID가 설정되었는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(echo $ROS_DOMAIN_ID 2>&1)"; C2_OUT="$([ "$ROS_DOMAIN_ID" -ne 0 ] 2>/dev/null && echo '\''PASS'\'' || echo '\''FAIL'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 네트워크의 ROS2 시스템 분리
+    fixGuidance: ROS_DOMAIN_ID를 0이 아닌 고유한 값으로 설정한다. systemd 서비스 파일의 Environment 또는 /etc/profile.d/ros2_domain.sh에 export ROS_DOMAIN_ID=<값>을 설정한다.

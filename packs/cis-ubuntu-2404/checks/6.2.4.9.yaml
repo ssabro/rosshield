@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.4.9
+    title: 6.2.4.9 Ensure audit tools owner is configured (Automated)
+    description: |-
+        Audit tools include, but are not limited to, vendor-provided and open source audit tools
+        needed to successfully view and manipulate audit information system activity and
+        records. Audit tools include custom queries and report generators.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Protecting audit information includes identifying and protecting the tools used to view
+        and manipulate log data. Protecting audit tools is necessary to prevent unauthorized
+        operation on audit information.
+    fixGuidance: |-
+        Run the following command to change the owner of the audit tools to the root user:
+        # chown root /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace
+        /sbin/auditd /sbin/augenrules

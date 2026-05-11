@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.2.4
+    title: 7.2.4 Ensure shadow group is empty (Automated)
+    description: |-
+        The shadow group allows system programs which require access the ability to read the
+        /etc/shadow file. No users should be assigned to the shadow group.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Any users assigned to the shadow group would be granted read access to the
+        /etc/shadow file. If attackers can gain read access to the /etc/shadow file, they can
+        easily run a password cracking program against the hashed passwords to break them.
+        Other security information that is stored in the /etc/shadow file (such as expiration)
+        could also be useful to subvert additional user accounts.
+    fixGuidance: |-
+        Run the following command to remove all users from the shadow group
+        # sed -ri 's/(^shadow:[^:]*:[^:]*:)([^:]+$)/\1/' /etc/group
+        Change the primary group of any users with shadow as their primary group.
+        # usermod -g <primary group> <user>

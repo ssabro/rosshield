@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_TIME_005
+    title: chrony 데몬의 전용 사용자(_chrony) 실행 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 chrony를 시간 동기화 서비스로 사용하는 경우, chrony 데몬은 전용 비권한 사용자 계정인 _chrony로 실행되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(ps -ef | awk '\''(/[c]hronyd/ && $1!="_chrony") { print $1 }'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: chrony는 네트워크를 통해 외부 시간 서버와 통신하는 데몬으로, 보안 취약점이 존재할 경우 공격 대상이 될 수 있다. 해당 데몬이 root 권한으로 실행될 경우, 취약점 악용 시 시스템 전체 권한 탈취로 이어질 위험이 있다.
+    fixGuidance: |-
+        /etc/chrony/chrony.conf 또는 /etc/chrony/conf.d/*.conf 파일에 다음 설정을 추가한다:
+
+        user _chrony
+
+        다른 시간 동기화 서비스를 사용하는 경우 chrony를 제거한다:
+        apt purge chrony

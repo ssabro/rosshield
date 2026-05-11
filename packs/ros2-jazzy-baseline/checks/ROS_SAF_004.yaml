@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_SAF_004
+    title: Lifecycle 노드 상태 관리
+    description: 핵심 ROS2 노드가 Lifecycle(Managed) 노드로 구현되어 상태 전이가 관리되는지 확인
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(ros2 lifecycle nodes 2>/dev/null | head -3 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: Lifecycle 노드는 상태 전이(unconfigured→inactive→active→finalized)를 통해 노드 시작/중지를 체계적으로 관리하여 예기치 않은 동작 방지
+    fixGuidance: 핵심 제어 노드(모터 컨트롤러, 센서 드라이버 등)를 rclcpp_lifecycle::LifecycleNode로 재구현하고, nav2_lifecycle_manager로 상태 전이를 관리한다.

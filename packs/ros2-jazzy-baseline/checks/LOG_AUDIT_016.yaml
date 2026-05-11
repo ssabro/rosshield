@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_016
+    title: 사용자/그룹 정보 수정 감사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 사용자 및 그룹 정보 파일의 변경을 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 사용자/그룹 정보 파일(passwd, shadow, group 등)과 인증 설정(PAM, NSS)의 변경을 감사하면 무단 계정 생성이나 권한 변경을 탐지할 수 있다.
+    fixGuidance: |-
+        /etc/audit/rules.d/ 디렉토리에 규칙 파일을 생성한다:
+
+        printf "
+        -w /etc/group -p wa -k identity
+        -w /etc/passwd -p wa -k identity
+        -w /etc/gshadow -p wa -k identity
+        -w /etc/shadow -p wa -k identity
+        -w /etc/security/opasswd -p wa -k identity
+        -w /etc/nsswitch.conf -p wa -k identity
+        -w /etc/pam.conf -p wa -k identity
+        -w /etc/pam.d -p wa -k identity
+        " >> /etc/audit/rules.d/50-identity.rules
+
+        규칙을 로드한다:
+        augenrules --load

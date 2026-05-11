@@ -1,0 +1,49 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.10
+    title: 6.2.3.10 Ensure successful file system mounts are collected (Automated)
+    description: |-
+        Monitor the use of the mount system call. The mount (and umount ) system call controls
+        the mounting and unmounting of file systems. The parameters below configure the
+        system to create an audit record when the mount system call is used by a non-
+        privileged user
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        It is highly unusual for a non privileged user to mount file systems to the system. While
+        tracking mount commands gives the system administrator evidence that external media
+        may have been mounted (based on a review of the source of the mount and confirming
+        it's an external media type), it does not conclusively indicate that data was exported to
+        the media. System administrators who wish to determine if data were exported, would
+        also have to track successful open, creat and truncate system calls requiring write
+        access to a file under the mount point of the external media file system. This could give
+        a fair indication that a write occurred. The only way to truly prove it, would be to track
+        successful writes to the external media. Tracking write system calls could quickly fill up
+        the audit log and is not recommended. Recommendations on configuration options to
+        track data export to media is beyond the scope of this document.
+    fixGuidance: |-
+        Create audit rules
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor successful file system mounts.
+        Example:
+        # {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        [ -n "${UID_MIN}" ] && printf "
+        -a always,exit -F arch=b32 -S mount -F auid>=$UID_MIN -F auid!=unset -k
+        mounts
+        -a always,exit -F arch=b64 -S mount -F auid>=$UID_MIN -F auid!=unset -k
+        mounts
+        " >> /etc/audit/rules.d/50-mounts.rules || printf "ERROR: Variable 'UID_MIN'
+        is unset.\n"
+        }
+        Load audit rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

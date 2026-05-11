@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CRON_007
+    title: 승인된 사용자로 at 사용 제한 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 at 작업 스케줄러를 사용하는 경우, at 명령을 통해 작업을 예약할 수 있는 사용자는 승인된 사용자로 제한되어야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(if [ ! -e /etc/at.allow ]; then echo "FAIL: at.allow not exist"; elif [ "$(stat -c ''\''''%u''\'''' /etc/at.allow)" != "0" ]; then echo "FAIL: at.allow owner not root"; elif [ "$(stat -c ''\''''%G''\'''' /etc/at.allow)" != "daemon" ] && [ "$(stat -c ''\''''%G''\'''' /etc/at.allow)" != "root" ]; then echo "FAIL: at.allow group not daemon or root"; elif [ "$(stat -c ''\''''%a''\'''' /etc/at.allow)" -gt 640 ]; then echo "FAIL: at.allow permission too open"; else echo "PASS"; fi 2>&1)"; C2_OUT="$(if [ ! -e /etc/at.deny ]; then echo "PASS"; elif [ "$(stat -c ''\''''%u''\'''' /etc/at.deny)" != "0" ]; then echo "FAIL: at.deny owner not root"; elif [ "$(stat -c ''\''''%G''\'''' /etc/at.deny)" != "daemon" ] && [ "$(stat -c ''\''''%G''\'''' /etc/at.deny)" != "root" ]; then echo "FAIL: at.deny group not daemon or root"; elif [ "$(stat -c ''\''''%a''\'''' /etc/at.deny)" -gt 640 ]; then echo "FAIL: at.deny permission too open"; else echo "PASS"; fi 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; } && { [ "$C2_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: at은 사용자가 지정한 시점에 명령을 실행할 수 있는 기능을 제공하므로, 접근 통제가 미흡할 경우 비인가 사용자가 악성 명령을 예약 실행하여 권한 남용, 시스템 자원 고갈, 지속성 공격을 수행할 수 있다. CIS 벤치마크에서는 이러한 위험을 방지하기 위해 at 사용을 승인된 사용자로 제한할 것을 권고하고 있다.
+    fixGuidance: |-
+        /etc/at.allow 파일을 생성하고 권한을 설정한다. at.deny가 있으면 동일하게 설정한다.
+
+        grep -Pq -- '^daemon\b' /etc/group && l_group="daemon" || l_group="root"
+        [ ! -e "/etc/at.allow" ] && touch /etc/at.allow
+        chown root:"$l_group" /etc/at.allow
+        chmod u-x,g-wx,o-rwx /etc/at.allow
+        [ -e "/etc/at.deny" ] && chown root:"$l_group" /etc/at.deny && chmod u-x,g-wx,o-rwx /etc/at.deny

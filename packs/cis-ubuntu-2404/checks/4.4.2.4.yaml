@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.2.4
+    title: 4.4.2.4 Ensure iptables firewall rules exist for all open ports (Automated)
+    description: |-
+        Any ports that have been opened on non-loopback addresses need firewall rules to
+        govern traffic.
+        Notes:
+        • Changing firewall settings while connected over network can result in being
+        locked out of the system
+        • Remediation will only affect the active system firewall, be sure to configure the
+        default policy in your firewall management to apply on boot as well
+        • The remediation command opens up the port to traffic from all sources. Consult
+        iptables documentation and set any restrictions in compliance with site policy
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Without a firewall rule configured for open ports default firewall policy will drop all
+        packets to these ports.
+    fixGuidance: |-
+        For each port identified in the audit which does not have a firewall rule establish a
+        proper rule for accepting inbound connections:
+        # iptables -A INPUT -p <protocol> --dport <port> -m state --state NEW -j
+        ACCEPT

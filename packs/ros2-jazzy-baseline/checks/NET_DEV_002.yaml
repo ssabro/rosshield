@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_DEV_002
+    title: 무선 인터페이스 비활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 사용되지 않는 무선 네트워크 인터페이스가 비활성화되어야 한다. 로봇 운용에 필요하지 않은 Wi-Fi 등 무선 인터페이스는 시스템에서 사용되지 않도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(if [ -z "$(find /sys/class/net/*/ -type d -name wireless 2>/dev/null)" ]; then echo "PASS"; else for drv in $(find /sys/class/net/*/ -type d -name wireless 2>/dev/null | xargs -I{} dirname {} | xargs -I{} readlink -f {}/device/driver/module 2>/dev/null | xargs -I{} basename {} 2>/dev/null | sort -u); do if lsmod | grep -q "^$drv "; then echo "FAIL"; exit 0; fi; done; echo "PASS"; fi 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 무선 네트워크 인터페이스는 유선 네트워크에 비해 접근 통제가 어렵고, 승인되지 않은 접속 시도나 무선 기반 공격에 노출될 가능성이 높다. 사용되지 않는 무선 인터페이스가 활성화되어 있을 경우, 공격자가 이를 통해 시스템에 접근하거나 네트워크를 탐색할 수 있다.
+    fixGuidance: |-
+        무선 인터페이스 드라이버 모듈을 비활성화한다.
+
+        1. 모듈을 로드 불가능하게 설정: echo "install <module> /bin/false" >> /etc/modprobe.d/<module>.conf
+        2. 모듈을 블랙리스트에 추가: echo "blacklist <module>" >> /etc/modprobe.d/<module>.conf
+        3. 모듈 언로드: modprobe -r <module>

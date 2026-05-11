@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_RT_003
+    title: ROS2 로그 보안
+    description: ROS2 로그 파일 접근 권한이 제한되었는지 확인
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 로그 정보 노출 방지
+    fixGuidance: ROS2 전용 로그 디렉토리(/var/log/ros2)를 생성하고 소유자를 ros_user로 설정한 후, 권한을 750으로 제한한다. /etc/profile.d/ros2_log.sh에 ROS_LOG_DIR 환경 변수를 영구 설정한다.

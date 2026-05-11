@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_024
+    title: pam_unix 강력한 비밀번호 해시 알고리즘 사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 pam_unix 모듈이 sha512 또는 yescrypt와 같은 강력한 해시 알고리즘을 사용해야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -PH '\''^\s*password\s+([^#]*\s+)?pam_unix\.so\s+([^#]*\s+)?(sha512|yescrypt)\b'\'' /etc/pam.d/common-password 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: MD5나 DES와 같은 약한 해시 알고리즘은 레인보우 테이블 공격이나 무차별 대입 공격에 취약하다. sha512나 yescrypt는 더 강력한 보안을 제공한다.
+    fixGuidance: |-
+        pam-auth-update 프로필에서 pam_unix.so 라인에 sha512 또는 yescrypt를 추가한다.
+
+        1. pam_unix.so가 있는 프로필 찾기:
+        awk '/Password-Type:/{ f = 1;next } /-Type:/{ f = 0 } f {if (/pam_unix\.so/) print FILENAME}' /usr/share/pam-configs/*
+
+        2. 반환된 파일의 Password 섹션에서 pam_unix.so 라인에 yescrypt 추가:
+        [success=end default=ignore] pam_unix.so obscure use_authtok try_first_pass yescrypt
+
+        3. 적용:
+        pam-auth-update --enable unix

@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_002
+    title: /etc/shadow 내 빈 패스워드 필드 존재 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/shadow에 비밀번호가 설정되지 않은 계정이 없어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(awk -F: ''\''''($2 == "") { print $1 }''\'''' /etc/shadow | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 비밀번호가 없는 계정은 누구나 인증 없이 로그인할 수 있어 심각한 보안 위협이 된다.
+    fixGuidance: |-
+        비밀번호가 없는 계정을 확인하고 잠금 처리한다:
+
+        passwd -l <username>
+
+        해당 계정이 로그인 중인지 확인하고 용도를 파악한다.

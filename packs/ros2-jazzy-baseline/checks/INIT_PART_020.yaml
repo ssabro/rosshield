@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PART_020
+    title: /var/log 파티션에 nodev 옵션 설정
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 /var/log 디렉터리에 nodev 마운트 옵션이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(findmnt -kn /var/log | grep nodev 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /var/log 하위 일부 디렉터리는 서비스 특성상 쓰기 권한이 허용될 수 있으며, 디바이스 파일 생성이 허용될 경우 시스템 자원에 대한 비인가 접근으로 이어질 수 있다. nodev 옵션을 적용함으로써 이러한 위험을 줄일 수 있다.
+    fixGuidance: '/var/log 파티션이 별도로 존재하는 경우, /etc/fstab 파일의 /var/log 마운트 항목에 nodev 옵션을 추가한다. 예: <device> /var/log <fstype> defaults,rw,nosuid,nodev,noexec,relatime 0 0. 설정 후 mount -o remount /var/log 명령으로 변경사항을 즉시 적용한다.'

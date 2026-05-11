@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_RT_006
+    title: ROS2 액션 서버 접근제어
+    description: ROS2 액션 서버가 SROS2 접근제어 정책에 의해 보호되고 비인가 클라이언트의 접근이 차단되는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(echo $ROS_SECURITY_ENABLE 2>&1)"; C2_OUT="$(grep -r '\''_action'\'' "$ROS_SECURITY_KEYSTORE"/enclaves/ 2>/dev/null --include='\''permissions.xml'\'' | head -1 2>&1)"; if { [ "$C1_OUT" = '\''true'\'' ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 로봇 이동(navigate), 매니퓰레이터 제어 등 액션 서버는 물리적 동작과 직결되어 비인가 접근 시 안전 사고 가능
+    fixGuidance: SROS2 permissions.xml에 각 액션 서버의 관련 토픽(/_action/feedback, /_action/status, /_action/cancel_goal 등)에 대한 명시적 접근제어 규칙을 추가한다.

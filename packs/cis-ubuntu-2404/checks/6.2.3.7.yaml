@@ -1,0 +1,51 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.7
+    title: 6.2.3.7 Ensure unsuccessful file access attempts are collected (Automated)
+    description: |-
+        Monitor for unsuccessful attempts to access files. The following parameters are
+        associated with system calls that control files:
+        • creation - creat
+        • opening - open , openat
+        • truncation - truncate , ftruncate
+        An audit log record will only be written if all of the following criteria is met for the user
+        when trying to access a file:
+        • a non-privileged user (auid>=UID_MIN)
+        • is not a Daemon event (auid=4294967295/unset/-1)
+        • if the system call returned EACCES (permission denied) or EPERM (some other
+        permanent error associated with the specific system call)
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Failed attempts to open, create or truncate files could be an indication that an individual
+        or process is trying to gain unauthorized access to the system.
+    fixGuidance: |-
+        Create audit rules
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor unsuccessful file access attempts.
+        Example:
+        # {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        [ -n "${UID_MIN}" ] && printf "
+        -a always,exit -F arch=b64 -S creat,open,openat,truncate,ftruncate -F exit=-
+        EACCES -F auid>=${UID_MIN} -F auid!=unset -k access
+        -a always,exit -F arch=b64 -S creat,open,openat,truncate,ftruncate -F exit=-
+        EPERM -F auid>=${UID_MIN} -F auid!=unset -k access
+        -a always,exit -F arch=b32 -S creat,open,openat,truncate,ftruncate -F exit=-
+        EACCES -F auid>=${UID_MIN} -F auid!=unset -k access
+        -a always,exit -F arch=b32 -S creat,open,openat,truncate,ftruncate -F exit=-
+        EPERM -F auid>=${UID_MIN} -F auid!=unset -k access
+        " >> /etc/audit/rules.d/50-access.rules || printf "ERROR: Variable 'UID_MIN'
+        is unset.\n"
+        }
+        Load audit rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

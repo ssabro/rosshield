@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_SYSLOG_020
+    title: /var/log 내 모든 로그 파일 접근 권한 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /var/log/ 디렉토리의 모든 로그 파일이 적절한 권한과 소유권을 가지고 있어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(find -L /var/log -type f -perm /0137 -exec stat -Lc ''\''''%n:%#a''\'''' {} \; 2>/dev/null | while IFS=: read -r fname mode; do case "$(basename "$fname")" in lastlog*|wtmp*|btmp*) [ $(( 0$mode & 0113 )) -gt 0 ] && echo "FAIL: $fname mode=$mode";; *) [ $(( 0$mode & 0137 )) -gt 0 ] && echo "FAIL: $fname mode=$mode";; esac; done | head -1 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 로그 파일에는 민감한 시스템 정보가 포함될 수 있다. 부적절한 권한은 무단 사용자가 로그를 읽거나 수정할 수 있게 하여 보안 감사를 무력화할 수 있다.
+    fixGuidance: |-
+        /var/log/ 내 부적절한 권한의 파일을 수정한다.
+
+        일반적인 권한 수정:
+        • 인증 로그 (auth.log, syslog 등): chmod 640, chown root:adm
+        • lastlog, wtmp: chmod 664, chown root:utmp
+        • journal 파일: chmod 640, chown root:systemd-journal
+        • 기타 로그: chmod 640, chown root:adm
+
+        참고: 로그 서비스 설정도 함께 확인하여 향후 생성되는 로그에 적절한 권한이 적용되도록 한다.

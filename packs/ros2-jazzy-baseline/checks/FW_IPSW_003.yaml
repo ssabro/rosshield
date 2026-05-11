@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_IPSW_003
+    title: iptables 사용 시 UFW 미사용 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 iptables를 방화벽 관리 도구로 사용하는 경우, Uncomplicated Firewall(UFW)는 사용되지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(if ! dpkg-query -s ufw &>/dev/null; then echo "PASS"; elif ufw status 2>/dev/null | grep -q ''\''''Status: inactive''\'''' && ! systemctl is-enabled ufw 2>/dev/null | grep -q ''\''''^enabled''\'''' && ! systemctl is-active ufw.service 2>/dev/null | grep -q ''\''''^active''\''''; then echo "PASS"; else echo "FAIL"; fi 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: UFW는 iptables를 기반으로 동작하는 상위 관리 도구로, iptables와 동시에 사용할 경우 방화벽 규칙이 중복 적용되거나 관리되지 않는 규칙이 생성될 수 있다. CIS 벤치마크에서는 단일 방화벽 관리 체계를 유지하기 위해 iptables 사용 환경에서 UFW를 제거하거나 비활성화할 것을 권고하고 있다.
+    fixGuidance: |-
+        UFW를 제거하거나 비활성화한다.
+
+        옵션 1 (제거):
+        apt purge ufw
+
+        옵션 2 (비활성화):
+        ufw disable
+        systemctl stop ufw.service
+        systemctl mask ufw.service

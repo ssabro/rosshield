@@ -1,0 +1,48 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.7.10
+    title: 1.7.10 Ensure XDMCP is not enabled (Automated)
+    description: |-
+        X Display Manager Control Protocol (XDMCP) is designed to provide authenticated
+        access to display management services for remote displays
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        XDMCP is inherently insecure.
+        • XDMCP is not a ciphered protocol. This may allow an attacker to capture
+        keystrokes entered by a user
+        • XDMCP is vulnerable to man-in-the-middle attacks. This may allow an attacker to
+        steal the credentials of legitimate users by impersonating the XDMCP server.
+    fixGuidance: |-
+        Edit all files returned by the audit and remove or commend out the Enable=true line in
+        the [xdmcp] block:
+        Example file:
+        # GDM configuration storage
+        #
+        # See /usr/share/gdm/gdm.schemas for a list of available options.
+        [daemon]
+        # Uncomment the line below to force the login screen to use Xorg
+        #WaylandEnable=false
+        # Enabling automatic login
+        # AutomaticLoginEnable = true
+        # AutomaticLogin = user1
+        # Enabling timed login
+        # TimedLoginEnable = true
+        # TimedLogin = user1
+        # TimedLoginDelay = 10
+        [security]
+        [xdmcp]
+        # Enable=true <- **This line should be removed or commented out**
+        [chooser]
+        [debug]
+        # Uncomment the line below to turn on debugging
+        # More verbose logs
+        # Additionally lets the X server dump core if it crashes
+        #Enable=true
+        Default Value:
+        false (This is denoted by no Enabled= entry in the [xdmcp] block

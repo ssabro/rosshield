@@ -4,6 +4,7 @@
 //
 //	convert   외부 baseline JSON을 rosshield pack 디렉터리로 변환 (Stage B·C)
 //	archive   pack 디렉터리를 MANIFEST + SIGNATURE + tar.gz로 묶음 (Stage D)
+//	keygen    Ed25519 keypair 생성 — pack 서명용 (raw 64-byte private + hex public)
 //
 // Phase 1 Exit는 "CIS Ubuntu 팩으로 감사"가 필수 — 본 도구가 nrobotcheck baseline을
 // rosshield pack format으로 변환하는 entry point (`docs/design/12-*` §12.4).
@@ -11,6 +12,8 @@ package main
 
 import (
 	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"os"
@@ -32,6 +35,8 @@ func run(args []string) int {
 		return runConvert(args[1:])
 	case "archive":
 		return runArchive(args[1:])
+	case "keygen":
+		return runKeygen(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -48,16 +53,22 @@ func usage() {
 서브커맨드:
   convert   외부 baseline JSON을 rosshield pack 디렉터리로 변환 (Stage B·C)
   archive   pack 디렉터리를 MANIFEST + SIGNATURE + tar.gz로 묶음 (Stage D)
+  keygen    Ed25519 keypair 생성 — pack 서명용 (raw 64-byte private + hex public)
 
 사용법:
   pack-tools convert -input <baseline.json> -format <ros2-framework-v1|cis-ubuntu-json-v1> -output <dir>
                      [-vendor <s>] [-pack-name <s>] [-pack-version <s>] [-description <s>]
   pack-tools archive -input <dir> -signer-key <ed25519.key> -output <pack>.tar.gz
+  pack-tools keygen  -out <signer.key> [-pub-out <signer.pub.hex>] [-force]
 
 archive 옵션:
-  -signer-key  raw 64-byte Ed25519 private key 파일
-               (생성: openssl genpkey -algorithm ed25519 후 raw bytes 추출,
-                또는 internal/platform/signer/soft.LoadOrCreatePrivateKey 결과 키 파일)`)
+  -signer-key  raw 64-byte Ed25519 private key 파일 (pack-tools keygen 또는
+               internal/platform/signer/soft.LoadOrCreatePrivateKey 결과)
+
+keygen 옵션:
+  -out         private key 출력 경로 (raw 64 bytes, 0o600)
+  -pub-out     public key 출력 경로 (hex string + LF, 옵션)
+  -force       기존 파일 덮어쓰기 (default false)`)
 }
 
 func runConvert(args []string) int {
@@ -204,6 +215,50 @@ func runArchive(args []string) int {
 	}
 
 	fmt.Printf("archive 생성 완료: %s (%d bytes)\n", *output, len(data))
+	return 0
+}
+
+func runKeygen(args []string) int {
+	fs := flag.NewFlagSet("keygen", flag.ContinueOnError)
+	var (
+		out    = fs.String("out", "", "private key 출력 경로 (raw 64 bytes, 필수)")
+		pubOut = fs.String("pub-out", "", "public key 출력 경로 (hex string + LF, 옵션)")
+		force  = fs.Bool("force", false, "기존 파일 덮어쓰기")
+	)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *out == "" {
+		fmt.Fprintln(os.Stderr, "keygen: -out 필수")
+		fs.Usage()
+		return 2
+	}
+	if !*force {
+		if _, err := os.Stat(*out); err == nil {
+			fmt.Fprintf(os.Stderr, "keygen: %q already exists (use -force)\n", *out)
+			return 1
+		}
+	}
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "keygen: GenerateKey: %v\n", err)
+		return 1
+	}
+	if err := os.WriteFile(*out, priv, 0o600); err != nil {
+		fmt.Fprintf(os.Stderr, "keygen: write private key: %v\n", err)
+		return 1
+	}
+	if *pubOut != "" {
+		if err := os.WriteFile(*pubOut, []byte(hex.EncodeToString(pub)+"\n"), 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "keygen: write public key: %v\n", err)
+			return 1
+		}
+	}
+	fmt.Printf("keygen 완료\n  private: %s (%d bytes)\n  public : %s\n",
+		*out, ed25519.PrivateKeySize, hex.EncodeToString(pub))
+	if *pubOut != "" {
+		fmt.Printf("  public file: %s\n", *pubOut)
+	}
 	return 0
 }
 

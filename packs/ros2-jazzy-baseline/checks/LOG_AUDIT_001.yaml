@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_001
+    title: auditd 패키지 설치 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 auditd 및 audispd-plugins 패키지가 설치되어 있어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s auditd &>/dev/null && echo '\''installed'\'' || echo '\''not_installed'\'' 2>&1)"; C2_OUT="$(dpkg-query -s audispd-plugins &>/dev/null && echo '\''installed'\'' || echo '\''not_installed'\'' 2>&1)"; if { [ "$C1_OUT" = '\''installed'\'' ]; } && { [ "$C2_OUT" = '\''installed'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: auditd는 시스템 감사 로그를 수집하는 핵심 도구이다. audispd-plugins는 감사 이벤트를 다른 시스템으로 전달하는 플러그인을 제공한다. 이들이 설치되지 않으면 시스템 감사가 불가능하다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 auditd 및 audispd-plugins를 설치한다:
+
+        apt install auditd audispd-plugins

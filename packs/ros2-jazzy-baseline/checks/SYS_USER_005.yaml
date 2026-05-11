@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_005
+    title: 중복 UID 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/passwd에 중복 UID가 없어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(cut -f3 -d: /etc/passwd | sort -n | uniq -d | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 중복 UID는 사용자 간에 동일한 권한을 공유하게 하여 감사 추적을 어렵게 하고 보안 격리를 무력화한다.
+    fixGuidance: 감사 결과를 분석하여 중복 UID를 고유하게 수정하고, 해당 UID가 소유한 파일의 소유권을 확인한다.

@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_023
+    title: pam_unix remember 인자 미포함 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 pam_unix 모듈에 remember 인자가 설정되어 있지 않아야 한다. 비밀번호 이력 관리는 pam_pwhistory 모듈에서 담당한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -PH '\''^\s*[^#]*\s+pam_unix\.so\b'\'' /etc/pam.d/common-{password,auth,account,session} 2>/dev/null | grep -P '\''\bremember=\d+\b'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: pam_unix의 remember와 pam_pwhistory의 remember가 동시에 설정되면 혼란을 야기할 수 있다. 비밀번호 이력 관리는 pam_pwhistory에서 일관되게 처리해야 한다.
+    fixGuidance: |-
+        pam-auth-update 프로필에서 pam_unix.so 라인의 remember 인자를 제거한다.
+
+        1. remember 인자가 있는 프로필 찾기:
+        grep -PH '^\s*([^#]*\s+)?pam_unix\.so\s+([^#]*\s+)?remember\b' /usr/share/pam-configs/*
+
+        2. 반환된 파일에서 remember=<N> 인자를 제거한다.
+
+        3. 적용:
+        pam-auth-update --enable unix
+
+        참고: 비밀번호 이력 관리는 pam_pwhistory 모듈에서 설정한다.

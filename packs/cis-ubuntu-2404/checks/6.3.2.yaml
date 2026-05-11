@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.3.2
+    title: 6.3.2 Ensure filesystem integrity is regularly checked (Automated)
+    description: |-
+        Periodic checking of the filesystem integrity is needed to detect changes to the
+        filesystem.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Periodic file checking allows the system administrator to determine on a regular basis if
+        critical files have been changed in an unauthorized fashion.
+    fixGuidance: |-
+        Run the following command to unmask dailyaidecheck.timer and
+        dailyaidecheck.service:
+        # systemctl unmask dailyaidecheck.timer dailyaidecheck.service
+        Run the following command to enable and start dailyaidecheck.timer:
+        # systemctl --now enable dailyaidecheck.timer

@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.4
+    title: 4.3.4 Ensure a nftables table exists (Automated)
+    description: |-
+        Tables hold chains. Each table only has one address family and only applies to packets
+        of this family. Tables can have one of five families.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        nftables doesn't have any default tables. Without a table being built, nftables will not
+        filter network traffic.
+        Impact:
+        Adding rules to a running nftables can cause loss of connectivity to the system
+    fixGuidance: |-
+        Run the following command to create a table in nftables
+        # nft create table inet <table name>
+        Example:
+        # nft create table inet filter

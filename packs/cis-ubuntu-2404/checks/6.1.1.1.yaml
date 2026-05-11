@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.1.1
+    title: 6.1.1.1 Ensure journald service is enabled and active (Automated)
+    description: |-
+        Ensure that the systemd-journald service is enabled to allow capturing of logging
+        events.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If the systemd-journald service is not enabled to start on boot, the system will not
+        capture logging events.
+    fixGuidance: |-
+        Run the following commands to unmask and start systemd-journald.service
+        # systemctl unmask systemd-journald.service
+        # systemctl start systemd-journald.service

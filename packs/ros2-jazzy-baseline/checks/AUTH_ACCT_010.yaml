@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ACCT_010
+    title: root 계정 비밀번호 설정 또는 잠금 상태 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 root 계정은 비밀번호가 설정되어 있거나 계정이 잠겨 있어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(passwd -S root | awk '\''{print $2}'\'' 2>&1)"; if { printf '\''%s'\'' "$C1_OUT" | grep -qE '\''^(P|L)$'\''; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: root 계정의 비밀번호가 설정되지 않고 잠기지도 않으면 누구나 root로 로그인할 수 있어 심각한 보안 위험이 된다.
+    fixGuidance: |-
+        root 비밀번호를 설정하려면:
+        passwd root
+
+        또는 root 계정을 잠그려면:
+        usermod -L root

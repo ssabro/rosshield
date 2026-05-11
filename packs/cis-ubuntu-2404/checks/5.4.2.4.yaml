@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.4.2.4
+    title: 5.4.2.4 Ensure root account access is controlled (Automated)
+    description: |-
+        There are a number of methods to access the root account directly. Without a password
+        set any user would be able to gain access and thus control over the entire system.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Access to root should be secured at all times.
+        Impact:
+        If there are any automated processes that relies on access to the root account without
+        authentication, they will fail after remediation.
+    fixGuidance: |-
+        Run the following command to set a password for the root user:
+        # passwd root
+        - OR -
+        Run the following command to lock the root user account:
+        # usermod -L root

@@ -1,0 +1,42 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.7.6
+    title: 1.7.6 Ensure GDM automatic mounting of removable media is (Automated)
+    description: |-
+        By default GNOME automatically mounts removable media when inserted as a
+        convenience to the user.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        With automounting enabled anyone with physical access could attach a USB drive or
+        disc and have its contents available in system even if they lacked permissions to mount
+        it themselves.
+        Impact:
+        The use of portable hard drives is very common for workstation users. If your
+        organization allows the use of portable storage or media on workstations and physical
+        access controls to workstations is considered adequate there is little value add in
+        turning off automounting.
+    fixGuidance: |-
+        - IF - A user profile exists run the following commands to ensure automatic mounting is
+        disabled:
+        # gsettings set org.gnome.desktop.media-handling automount false
+        # gsettings set org.gnome.desktop.media-handling automount-open false
+        Note:
+        • gsettings commands in this section MUST be done from a command window
+        on a graphical desktop or an error will be returned.
+        • The system must be restarted after all gsettings configurations have been set
+        in order for CIS-CAT Assessor to appropriately assess.
+        - OR/IF - A user profile does not exist:
+        1. Create a file /etc/dconf/db/local.d/00-media-automount with following
+        content:
+        [org/gnome/desktop/media-handling]
+        automount=false
+        automount-open=false
+        2. After creating the file, apply the changes using below command :
+        # dconf update
+        Note: Users must log out and back in again before the system-wide settings take effect.

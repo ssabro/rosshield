@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_008
+    title: 로그인 실패 시 계정 잠금 횟수 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 연속 로그인 실패 시 계정이 잠기는 횟수가 5회 이하로 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Pi '\''^\s*deny\s*=\s*[1-5]\b'\'' /etc/security/faillock.conf 2>/dev/null 2>&1)"; C2_OUT="$(grep -Pi '\''^\s*auth\s+(requisite|required|sufficient)\s+pam_faillock\.so\s+([^#]*\s+)?deny\s*=\s*(0|[6-9]|[1-9][0-9]+)\b'\'' /etc/pam.d/common-auth 2>/dev/null || echo '\''PASS'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 로그인 실패 횟수를 제한하면 무차별 대입 공격을 효과적으로 방지할 수 있다.
+    fixGuidance: |-
+        /etc/security/faillock.conf 파일에서 deny 값을 5 이하로 설정한다.
+
+        deny = 5
+
+        pam-auth-update 프로필에서 deny 인자가 있다면 제거한다:
+        grep -Pl '\bpam_faillock\.so.*deny\b' /usr/share/pam-configs/*

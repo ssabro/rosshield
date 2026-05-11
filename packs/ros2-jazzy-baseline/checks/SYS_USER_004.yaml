@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_004
+    title: shadow 그룹 구성원 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 shadow 그룹에 사용자가 할당되어 있지 않아야 하며, shadow를 기본 그룹으로 사용하는 사용자가 없어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(MEMBERS=$(awk -F: ''\''''($1=="shadow") {print $NF}''\'''' /etc/group); [ -z "$MEMBERS" ] && echo ''\''''PASS''\'''' || echo ''\''''FAIL''\'''' 2>&1)"; C2_OUT="$(SGID=$(getent group shadow 2>/dev/null | awk -F: ''\''''{print $3}''\''''); [ -n "$SGID" ] && awk -F: -v gid="$SGID" ''\''''($4 == gid) {print $1}''\'''' /etc/passwd | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; } && { [ "$C2_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: shadow 그룹에 사용자가 있으면 /etc/shadow 파일에 대한 읽기 권한이 부여되어 비밀번호 해시가 노출될 수 있다.
+    fixGuidance: |-
+        shadow 그룹에서 모든 사용자를 제거한다:
+
+        sed -ri 's/(^shadow:[^:]*:[^:]*:)([^:]+$)/\1/' /etc/group
+
+        shadow를 기본 그룹으로 사용하는 사용자의 기본 그룹을 변경한다:
+        usermod -g <primary_group> <user>

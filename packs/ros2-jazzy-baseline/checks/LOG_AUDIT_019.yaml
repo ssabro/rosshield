@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_019
+    title: 세션 시작 이벤트 감사 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 세션 시작 정보(utmp, wtmp, btmp)를 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 세션 시작 정보를 감사하면 시스템에 대한 로그인 활동을 추적하여 무단 접근 시도를 탐지할 수 있다.
+    fixGuidance: |-
+        /etc/audit/rules.d/ 디렉토리에 규칙 파일을 생성한다:
+
+        printf "
+        -w /var/run/utmp -p wa -k session
+        -w /var/log/wtmp -p wa -k session
+        -w /var/log/btmp -p wa -k session
+        " >> /etc/audit/rules.d/50-session.rules
+
+        규칙을 로드한다:
+        augenrules --load

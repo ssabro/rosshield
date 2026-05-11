@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_011
+    title: IPv6 라우터 광고 거부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 IPv6 라우터 광고(Router Advertisement) 메시지를 수신하지 않도록 구성되어야 한다. 시스템은 네트워크 구성 정보를 외부 라우터 광고에 의해 자동으로 변경하지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: IPv6 라우터 광고는 주소 자동 구성 및 라우팅 정보 전달에 사용되지만, 공격자가 이를 위조하여 전송할 경우 네트워크 트래픽을 비인가 경로로 우회시키거나 중간자 공격을 수행할 수 있다. CIS 벤치마크에서는 이러한 네트워크 구성 조작 공격을 방지하기 위해 라우터 역할을 수행하지 않는 시스템에서 IPv6 라우터 광고 수신을 비활성화할 것을 권고하고 있다.
+    fixGuidance: |-
+        IPv6가 활성화된 경우, 라우터 광고 수신을 비활성화한다.
+
+        printf '%s\n' "net.ipv6.conf.all.accept_ra = 0" "net.ipv6.conf.default.accept_ra = 0" >> /etc/sysctl.d/60-netipv6_sysctl.conf
+        sysctl -w net.ipv6.conf.all.accept_ra=0
+        sysctl -w net.ipv6.conf.default.accept_ra=0
+        sysctl -w net.ipv6.route.flush=1

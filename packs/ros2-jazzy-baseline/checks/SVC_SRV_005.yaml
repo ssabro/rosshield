@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_005
+    title: dnsmasq 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 dnsmasq 서비스가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 DNS 캐싱 및 DHCP 기능은 비활성화되거나 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s dnsmasq &>/dev/null && echo '\''installed'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled dnsmasq.service 2>/dev/null | grep '\''enabled'\'' 2>&1)"; C3_OUT="$(systemctl is-active dnsmasq.service 2>/dev/null | grep '\''^active'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } || { { [ -z "$C2_OUT" ]; } && { [ -z "$C3_OUT" ]; }; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: dnsmasq는 DNS 요청 처리 및 IP 주소 할당 기능을 제공하는 서비스로, 활성화될 경우 로봇 Host가 의도하지 않게 네트워크 인프라 역할을 수행하게 될 수 있다. 이는 네트워크 주소 충돌, 통신 장애, 비인가 장치 연결 등 보안 및 안정성 문제를 유발할 수 있다.
+    fixGuidance: 'dnsmasq 패키지를 제거한다: apt purge -y dnsmasq. 패키지가 의존성으로 필요한 경우 서비스를 중지하고 마스크한다.'

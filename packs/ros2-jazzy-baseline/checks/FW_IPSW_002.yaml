@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_IPSW_002
+    title: iptables 사용 시 nftables 미사용 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 iptables를 방화벽 관리 도구로 사용하는 경우, nftables는 사용되지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(if ! dpkg-query -s nftables &>/dev/null; then echo "PASS"; elif ! systemctl is-enabled nftables.service 2>/dev/null | grep -q '\''^enabled'\'' && ! systemctl is-active nftables.service 2>/dev/null | grep -q '\''^active'\''; then echo "PASS"; else echo "FAIL"; fi 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: nftables와 iptables는 서로 다른 방화벽 관리 체계이며, 동시에 활성화될 경우 방화벽 규칙 충돌이나 우선순위 혼선이 발생할 수 있다. CIS 벤치마크에서는 방화벽 정책의 일관성과 예측 가능성을 확보하기 위해 단일 방화벽 관리 도구만 사용할 것을 권고하고 있다.
+    fixGuidance: |-
+        nftables를 제거하거나 비활성화한다.
+
+        옵션 1 (제거):
+        apt purge nftables
+
+        옵션 2 (비활성화):
+        systemctl stop nftables.service
+        systemctl mask nftables.service

@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.19
+    title: 5.1.19 Ensure sshd PermitEmptyPasswords is disabled (Automated)
+    description: |-
+        The PermitEmptyPasswords parameter specifies if the SSH server allows login to
+        accounts with empty password strings.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Disallowing remote shell access to accounts that have an empty password reduces the
+        probability of unauthorized access to the system.
+    fixGuidance: |-
+        Edit /etc/ssh/sshd_config and set the PermitEmptyPasswords parameter to no
+        above any Include and Match entries as follows:
+        PermitEmptyPasswords no
+        Note: First occurrence of an option takes precedence, Match set statements
+        withstanding. If Include locations are enabled, used, and order of precedence is
+        understood in your environment, the entry may be created in a file in Include location.
+        Default Value:
+        PermitEmptyPasswords no

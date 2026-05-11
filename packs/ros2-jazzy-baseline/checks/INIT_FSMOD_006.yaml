@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_FSMOD_006
+    title: overlayfs 커널 모듈 비활성화
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 overlayfs 커널 모듈의 사용이 제한되어야 한다. 로봇 운용 및 유지보수에 필요하지 않은 커널 기능은 시스템에서 사용되지 않도록 구성되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(lsmod | grep overlay 2>&1)"; C2_OUT="$(modprobe --showconfig | grep -P '\''\binstall\h+overlay\h+((/usr)?/bin/(true|false))\b'\'' 2>&1)"; C3_OUT="$(modprobe --showconfig | grep -P '\''\bblacklist\h+overlay\b'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; } && { [ -n "$C3_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: overlayfs는 여러 파일시스템 계층을 결합하는 기능을 제공하는 커널 모듈로, 컨테이너 및 가상화 환경에서 주로 활용된다. 그러나 ROS 2 Jazzy 기반 피지컬 AI 로봇의 일반적인 Host 운영 환경에서는 필수 기능이 아닐 수 있으며, 사용되지 않는 커널 모듈이 활성화되어 있을 경우 해당 구현상의 취약점이 공격 경로로 악용될 가능성이 있다.
+    fixGuidance: overlayfs 커널 모듈이 시스템에 존재하는 경우, /etc/modprobe.d/ 디렉터리에 install overlayfs /bin/false 및 blacklist overlayfs 설정 파일을 생성하고, 현재 로드된 모듈을 언로드한다. 모듈이 시스템에 존재하지 않거나 커널에 미리 컴파일된 경우 조치 불필요.

@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_PERM_011
+    title: 월드 라이트 가능 파일 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 world writable 파일이 존재하지 않아야 하며, world writable 디렉토리에는 sticky bit가 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find / -xdev \( -path /run/user -o -path /proc -o -path /sys -o -path /snap \) -prune -o -type f -perm -0002 -print 2>/dev/null | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; C2_OUT="$(find / -xdev \( -path /run/user -o -path /proc -o -path /sys -o -path /snap \) -prune -o -type d -perm -0002 ! -perm -1000 -print 2>/dev/null | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: World writable 파일은 모든 사용자가 수정할 수 있어 악의적인 변조에 취약하다. World writable 디렉토리에 sticky bit가 없으면 다른 사용자의 파일을 삭제할 수 있다.
+    fixGuidance: |-
+        world writable 파일에서 other write 권한을 제거한다:
+        chmod o-w <filename>
+
+        world writable 디렉토리에 sticky bit를 설정한다:
+        chmod a+t <directory_name>
+
+        주의: 애플리케이션 의존성을 확인한 후 수정해야 한다.

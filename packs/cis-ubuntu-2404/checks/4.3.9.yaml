@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.9
+    title: 4.3.9 Ensure nftables service is enabled (Automated)
+    description: |-
+        The nftables service allows for the loading of nftables rulesets during boot, or starting on
+        the nftables service
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        The nftables service restores the nftables rules from the rules files referenced in the
+        /etc/nftables.conf file during boot or the starting of the nftables service
+    fixGuidance: |-
+        Run the following command to enable the nftables service:
+        # systemctl enable nftables

@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_022
+    title: pam_unix nullok 인자 미포함 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 pam_unix 모듈에 nullok 인자가 설정되어 있지 않아야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -PH '\''^\s*[^#]*\s+pam_unix\.so\b'\'' /etc/pam.d/common-{password,auth,account,session} 2>/dev/null | grep -P '\''\bnullok\b'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: nullok 인자가 있으면 비밀번호가 없는 계정의 로그인이 허용되어 심각한 보안 취약점이 된다.
+    fixGuidance: |-
+        pam-auth-update 프로필에서 pam_unix.so 라인의 nullok 인자를 제거한다.
+
+        1. nullok 인자가 있는 프로필 찾기:
+        grep -PH '^\s*([^#]*\s+)?pam_unix\.so\s+([^#]*\s+)?nullok\b' /usr/share/pam-configs/*
+
+        2. 반환된 파일에서 nullok 인자를 제거한다.
+
+        3. 적용:
+        pam-auth-update --enable unix

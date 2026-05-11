@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_022
+    title: 승인된 서비스만 네트워크 수신 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 네트워크 인터페이스를 통해 수신(listening) 중인 모든 서비스가 조직 또는 시스템 운영 정책에 따라 승인된 서비스여야 한다. 승인되지 않은 서비스는 네트워크 포트를 열고 있어서는 안 된다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(ss -plntu | grep LISTEN | wc -l 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 네트워크 인터페이스에서 수신 중인 서비스는 외부 또는 내부 네트워크를 통한 직접적인 접근 경로가 된다. 승인되지 않은 서비스가 실행 중일 경우, 해당 서비스의 취약점을 통해 Host 운영체제 침해, 로봇 제어 기능 손상, 데이터 유출 등의 보안 사고로 이어질 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 불필요한 서비스를 중지하고 패키지를 제거한다:
+
+        systemctl stop <service_name>.socket <service_name>.service
+        apt purge <package_name>
+
+        또는 패키지의 의존성이 필요한 경우:
+
+        systemctl stop <service_name>.socket <service_name>.service
+        systemctl mask <service_name>.socket <service_name>.service
+
+        참고: <service_name>을 실제 서비스 이름으로 대체한다.

@@ -1,0 +1,50 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.7.4
+    title: 1.7.4 Ensure GDM screen locks when the user is idle (Automated)
+    description: |-
+        GNOME Desktop Manager can make the screen lock automatically whenever the user
+        is idle for some amount of time.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Setting a lock-out value reduces the window of opportunity for unauthorized user access
+        to another user's session that has been left unattended.
+    fixGuidance: |-
+        - IF - A user profile is already created run the following commands to enable screen
+        locks when the user is idle:
+        # gsettings set org.gnome.desktop.screensaver lock-delay 5
+        # gsettings set org.gnome.desktop.session idle-delay 900
+        Note:
+        • gsettings commands in this section MUST be done from a command window
+        on a graphical desktop or an error will be returned.
+        • The system must be restarted after all gsettings configurations have been set
+        in order for CIS-CAT Assessor to appropriately assess.
+        - OR/IF- A user profile does not exist:
+        1. Create or edit the user profile in the /etc/dconf/profile/ and verify it includes
+        the following:
+        user-db:user
+        system-db:{NAME_OF_DCONF_DATABASE}
+        Note: local is the name of a dconf database used in the examples.
+        2. Create the directory /etc/dconf/db/local.d/ if it doesn't already exist:
+        3. Create the key file /etc/dconf/db/local.d/00-screensaver to provide
+        information for the local database:
+        Example key file:
+        # Specify the dconf path
+        [org/gnome/desktop/session]
+        # Number of seconds of inactivity before the screen goes blank
+        # Set to 0 seconds if you want to deactivate the screensaver.
+        idle-delay=uint32 180
+        # Specify the dconf path
+        [org/gnome/desktop/screensaver]
+        # Number of seconds after the screen is blank before locking the screen
+        lock-delay=uint32 0
+        Note: You must include the uint32 along with the integer key values as shown.
+        4. Run the following command to update the system databases:
+        # dconf update
+        5. Users must log out and back in again before the system-wide settings take effect.

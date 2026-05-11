@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_SYSLOG_008
+    title: systemd-journal-remote 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 systemd-journal-remote.socket과 systemd-journal-remote.service가 비활성화되어 있어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(systemctl is-enabled systemd-journal-remote.socket 2>/dev/null | grep -q '\''^enabled'\'' && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled systemd-journal-remote.service 2>/dev/null | grep -q '\''^enabled'\'' && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; C3_OUT="$(systemctl is-active systemd-journal-remote.socket 2>/dev/null | grep -q '\''^active'\'' && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; C4_OUT="$(systemctl is-active systemd-journal-remote.service 2>/dev/null | grep -q '\''^active'\'' && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; } && { [ "$C3_OUT" = '\''PASS'\'' ]; } && { [ "$C4_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: systemd-journal-remote는 원격에서 로그를 수신하는 서비스이다. 로그 서버가 아닌 일반 시스템에서는 이 서비스가 필요하지 않으며, 불필요한 네트워크 서비스는 공격 표면을 증가시킨다.
+    fixGuidance: |-
+        systemd-journal-remote.socket과 systemd-journal-remote.service를 중지하고 마스크한다:
+
+        systemctl stop systemd-journal-remote.socket systemd-journal-remote.service
+        systemctl mask systemd-journal-remote.socket systemd-journal-remote.service

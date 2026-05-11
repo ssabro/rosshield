@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_SYSLOG_017
+    title: rsyslog 원격 로그 전송 구성 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 rsyslog를 사용하는 경우, 로그가 중앙 로그 서버로 전송되도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$({ grep -Phs '\''^[^#]*@@'\'' /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null; grep -Phsi '\''^\s*([^#]+\s+)?action\(([^#]+\s+)?\btarget='\'' /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null; } | head -1 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 로그를 중앙 서버로 전송하면 로컬 시스템이 침해되더라도 로그가 보존되며, 여러 시스템의 로그를 통합 분석할 수 있다.
+    fixGuidance: |-
+        rsyslog 구성에 원격 로그 전송을 추가한다.
+
+        예시 (고급 형식):
+        *.* action(type="omfwd" target="loghost.example.com" port="514" protocol="tcp"
+            action.resumeRetryCount="100"
+            queue.type="LinkedList" queue.size="1000")
+
+        설정 파일 생성:
+        echo '*.* action(type="omfwd" target="loghost.example.com" port="514" protocol="tcp" action.resumeRetryCount="100" queue.type="LinkedList" queue.size="1000")' >> /etc/rsyslog.d/60-rsyslog.conf
+
+        서비스 재시작:
+        systemctl reload-or-restart rsyslog.service

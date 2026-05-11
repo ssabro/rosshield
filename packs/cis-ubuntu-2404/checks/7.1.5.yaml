@@ -1,0 +1,30 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.1.5
+    title: 7.1.5 Ensure permissions on /etc/shadow are configured (Automated)
+    description: |-
+        The /etc/shadow file is used to store the information about user accounts that is critical
+        to the security of those accounts, such as the hashed password and other security
+        information.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If attackers can gain read access to the /etc/shadow file, they can easily run a
+        password cracking program against the hashed password to break it. Other security
+        information that is stored in the /etc/shadow file (such as expiration) could also be
+        useful to subvert the user accounts.
+    fixGuidance: |-
+        Run one of the following commands to set ownership of /etc/shadow to root and
+        group to either root or shadow:
+        # chown root:shadow /etc/shadow
+        -OR-
+        # chown root:root /etc/shadow
+        Run the following command to remove excess permissions form /etc/shadow:
+        # chmod u-x,g-wx,o-rwx /etc/shadow
+        Default Value:
+        Access: (0640/-rw-r-----) Uid: ( 0/ root) Gid: ( 42/ shadow)

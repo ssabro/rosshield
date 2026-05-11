@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.3.2
+    title: 4.4.3.2 Ensure ip6tables loopback traffic is configured (Automated)
+    description: |-
+        Configure the loopback interface to accept traffic. Configure all other interfaces to deny
+        traffic to the loopback network (::1).
+        Note:
+        • Changing firewall settings while connected over network can result in being
+        locked out of the system
+        • Remediation will only affect the active system firewall, be sure to configure the
+        default policy in your firewall management to apply on boot as well
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Loopback traffic is generated between processes on machine and is typically critical to
+        operation of the system. The loopback interface is the only place that loopback network
+        (::1) traffic should be seen, all other interfaces should ignore traffic on this network as
+        an anti-spoofing measure.
+    fixGuidance: |-
+        Run the following commands to implement the loopback rules:
+        # ip6tables -A INPUT -i lo -j ACCEPT
+        # ip6tables -A OUTPUT -o lo -j ACCEPT
+        # ip6tables -A INPUT -s ::1 -j DROP

@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.1.2
+    title: 6.1.1.2 Ensure journald log file access is configured (Manual)
+    description: |-
+        Journald will create logfiles that do not already exist on the system. This setting controls
+        what permissions will be applied to these newly created files.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        It is important to ensure that log files have the correct permissions to ensure that
+        sensitive data is archived and protected.
+    fixGuidance: |-
+        If the default configuration is not appropriate for the site specific requirements, copy
+        /usr/lib/tmpfiles.d/systemd.conf to /etc/tmpfiles.d/systemd.conf and
+        modify as required. Recommended mode for logfiles is 0640 or more restrictive.

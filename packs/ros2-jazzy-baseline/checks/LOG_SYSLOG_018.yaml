@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_SYSLOG_018
+    title: rsyslog 원격 로그 수신 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 로그 서버가 아닌 경우, rsyslog가 원격에서 로그를 수신하지 않도록 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Psi '\''^\s*module\(load="?imtcp"?\)'\'' /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null || echo '\''PASS'\'' 2>&1)"; C2_OUT="$(grep -Psi '\''^\s*input\(type="?imtcp"?'\'' /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null || echo '\''PASS'\'' 2>&1)"; C3_OUT="$(grep -Psi '\''^\s*\$ModLoad\s+imtcp'\'' /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null || echo '\''PASS'\'' 2>&1)"; C4_OUT="$(grep -Psi '\''^\s*\$InputTCPServerRun'\'' /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; } && { [ "$C3_OUT" = '\''PASS'\'' ]; } && { [ "$C4_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 로그 서버가 아닌 시스템에서 원격 로그 수신을 활성화하면 불필요한 네트워크 서비스가 열려 공격 표면이 증가한다.
+    fixGuidance: |-
+        rsyslog 구성 파일에서 다음 항목을 제거하거나 주석 처리한다:
+
+        고급 형식:
+        module(load="imtcp")
+        input(type="imtcp" port="514")
+
+        레거시 형식:
+        $ModLoad imtcp
+        $InputTCPServerRun
+
+        서비스 재시작:
+        systemctl reload-or-restart rsyslog

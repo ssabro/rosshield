@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PART_002
+    title: /tmp 파티션에 nodev 옵션 설정
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 /tmp 디렉터리에 nodev 마운트 옵션이 설정되어야 한다. /tmp 영역에서는 디바이스 파일이 생성되거나 사용되지 않도록 구성되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(findmnt -kn /tmp | grep nodev 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /tmp 디렉터리는 일반 사용자 및 애플리케이션이 임시 파일을 생성하는 데 사용되며, 쓰기 권한이 넓게 허용되는 영역이다. 해당 영역에서 디바이스 파일 생성이 허용될 경우, 공격자가 이를 악용하여 커널 또는 시스템 자원에 비인가 접근을 시도할 수 있다.
+    fixGuidance: '/tmp 파티션이 별도로 존재하는 경우, /etc/fstab 파일의 /tmp 마운트 항목에 nodev 옵션을 추가한다. 예: <device> /tmp <fstype> defaults,rw,nosuid,nodev,noexec,relatime 0 0. 설정 후 mount -o remount /tmp 명령으로 변경사항을 즉시 적용한다.'

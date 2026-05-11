@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_MAC_002
+    title: 부트로더에서 AppArmor 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 AppArmor가 활성화되어 있어야 한다. AppArmor는 커널 수준에서 동작하며, 비활성화된 경우 보안 정책이 적용되지 않는다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep "^\s*linux" /boot/grub/grub.cfg | grep -v '\''apparmor=1'\'' 2>&1)"; C2_OUT="$(grep "^\s*linux" /boot/grub/grub.cfg | grep -v '\''security=apparmor'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } && { [ -z "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: AppArmor가 설치되어 있더라도 활성화되지 않으면 강제적 접근 제어 기능이 동작하지 않는다. 피지컬 AI 로봇 환경에서는 보안 정책 미적용 상태가 지속될 경우 취약한 프로세스를 통한 시스템 침해 가능성이 증가한다.
+    fixGuidance: /etc/default/grub 파일에서 GRUB_CMDLINE_LINUX_DEFAULT에 apparmor=1 security=apparmor를 추가한 후 update-grub 명령을 실행하여 GRUB 설정을 업데이트한다.

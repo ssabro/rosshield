@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DDS_004
+    title: DDS Governance 파일 검증
+    description: DDS Governance XML 파일이 존재하고 보호 설정(enable_discovery_protection, enable_liveliness_protection 등)이 활성화되었는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find "$ROS_SECURITY_KEYSTORE" -name '\''governance.xml'\'' -o -name '\''governance.p7s'\'' 2>/dev/null | head -1 2>&1)"; C2_OUT="$(grep -r '\''enable_discovery_protection'\'' "$ROS_SECURITY_KEYSTORE" 2>/dev/null | grep -i '\''true'\'' | head -1 2>&1)"; C3_OUT="$(grep -r '\''enable_liveliness_protection'\'' "$ROS_SECURITY_KEYSTORE" 2>/dev/null | grep -i '\''true'\'' | head -1 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; } && { [ -n "$C3_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: Governance 파일은 DDS Security의 정책 정의 파일로, 미설정 시 Discovery 및 토픽 보호가 적용되지 않음
+    fixGuidance: SROS2 키스토어 내에 governance.xml 파일을 생성하고, enable_discovery_protection 및 enable_liveliness_protection을 true로 설정한 후 서명한다.

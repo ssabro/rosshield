@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_009
+    title: 시스템 관리 범위 변경 감사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/sudoers 및 /etc/sudoers.d 변경을 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: sudoers 파일의 변경을 감사하면 시스템 관리자 범위 변경을 추적할 수 있어 무단 권한 상승 시도를 탐지할 수 있다.
+    fixGuidance: |-
+        /etc/audit/rules.d/ 디렉토리에 규칙 파일을 생성한다:
+
+        printf "
+        -w /etc/sudoers -p wa -k scope
+        -w /etc/sudoers.d -p wa -k scope
+        " >> /etc/audit/rules.d/50-scope.rules
+
+        규칙을 로드한다:
+        augenrules --load

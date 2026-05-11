@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.2.2.1
+    title: 1.2.2.1 Ensure updates, patches, and additional security software (Manual)
+    description: |-
+        Periodically patches are released for included software either due to security flaws or to
+        include additional functionality.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Newer patches may contain security enhancements that would not be available through
+        the latest full update. As a result, it is recommended that the latest software patches be
+        used to take advantage of the latest functionality. As with any software installation,
+        organizations need to determine if a given update meets their requirements and verify
+        the compatibility and supportability of any additional software against the update
+        revision that is selected.
+    fixGuidance: |-
+        Run the following command to update all packages following local site policy guidance
+        on applying updates and patches:
+        # apt update
+        # apt upgrade
+        - OR -
+        # apt dist-upgrade

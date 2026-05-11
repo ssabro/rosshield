@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.2.4
+    title: 5.2.4 Ensure users must provide password for privilege escalation (Automated)
+    description: |-
+        The operating system must be configured so that users must provide a password for
+        privilege escalation.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Without (re-)authentication, users may access resources or perform tasks for which they
+        do not have authorization.
+        When operating systems provide the capability to escalate a functional capability, it is
+        critical the user (re-)authenticate.
+        Impact:
+        This will prevent automated processes from being able to elevate privileges.
+    fixGuidance: |-
+        Based on the outcome of the audit procedure, use visudo -f <PATH TO FILE> to edit
+        the relevant sudoers file.
+        Remove any line with occurrences of NOPASSWD tags in the file.

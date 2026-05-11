@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_UFW_003
+    title: ufw 서비스 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 UFW를 방화벽 관리 도구로 사용하는 경우, UFW 서비스는 활성화되어 있으며 실행 중인 상태여야 한다. 시스템 부팅 시 자동으로 시작되도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(systemctl is-enabled ufw.service 2>/dev/null 2>&1)"; C2_OUT="$(systemctl is-active ufw 2>/dev/null 2>&1)"; C3_OUT="$(ufw status 2>/dev/null | grep -q ''\''''Status: active''\'''' && echo "active" || echo "inactive" 2>&1)"; if { [ "$C1_OUT" = ''\''''enabled''\'''' ]; } && { [ "$C2_OUT" = ''\''''active''\'''' ]; } && { [ "$C3_OUT" = ''\''''active''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: UFW는 정의된 방화벽 규칙을 실제 네트워크 트래픽에 적용하기 위해 서비스 형태로 동작한다. UFW 서비스가 비활성화되어 있거나 실행 중이 아닌 경우, 방화벽 규칙이 적용되지 않아 네트워크 접근 통제가 이루어지지 않는다.
+    fixGuidance: |-
+        ufw 서비스를 unmask하고 활성화한다.
+
+        systemctl unmask ufw.service
+        systemctl --now enable ufw.service
+        ufw enable

@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_018
+    title: root 계정 비밀번호 품질 정책 적용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 root 계정에도 비밀번호 품질 정책이 적용되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Psi '\''^\s*enforce_for_root\b'\'' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: root 계정은 시스템의 최고 권한을 가지므로 강력한 비밀번호 정책이 필수적이다.
+    fixGuidance: |-
+        /etc/security/pwquality.conf.d/ 디렉토리에 설정 파일을 생성한다.
+
+        mkdir -p /etc/security/pwquality.conf.d
+        echo "enforce_for_root" > /etc/security/pwquality.conf.d/50-pwroot.conf

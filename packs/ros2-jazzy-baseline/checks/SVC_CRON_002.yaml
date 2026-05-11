@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CRON_002
+    title: crontab 파일 권한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 chrony를 시간 동기화 서비스로 사용하는 경우, chrony 데몬은 전용 비권한 사용자 계정인 _chrony로 실행되어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: chrony는 네트워크를 통해 외부 시간 서버와 통신하는 데몬으로, 보안 취약점이 존재할 경우 공격 대상이 될 수 있다. 해당 데몬이 root 권한으로 실행될 경우, 취약점 악용 시 시스템 전체 권한 탈취로 이어질 위험이 있다.
+    fixGuidance: |-
+        /etc/crontab 파일의 소유자와 권한을 설정한다.
+
+        chown root:root /etc/crontab
+        chmod og-rwx /etc/crontab

@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.1.1
+    title: 4.4.1.1 Ensure iptables packages are installed (Automated)
+    description: |-
+        iptables is a utility program that allows a system administrator to configure the tables
+        provided by the Linux kernel firewall, implemented as different Netfilter modules, and
+        the chains and rules it stores. Different kernel modules and programs are used for
+        different protocols; iptables applies to IPv4, ip6tables to IPv6, arptables to ARP, and
+        ebtables to Ethernet frames.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        A method of configuring and maintaining firewall rules is necessary to configure a Host
+        Based Firewall.
+    fixGuidance: |-
+        Run the following command to install iptables and iptables-persistent
+        # apt install iptables iptables-persistent

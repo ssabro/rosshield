@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CLI_001
+    title: nis 클라이언트 패키지 제거 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 NIS(Network Information Service) 클라이언트가 설치되어 있지 않아야 한다. 로봇 운용에 필요하지 않은 레거시 인증 및 계정 조회 클라이언트는 시스템에서 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s nis &>/dev/null && echo '\''installed'\'' || echo '\''not_installed'\'' 2>&1)"; if { [ "$C1_OUT" = '\''not_installed'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: NIS 클라이언트는 사용자 계정, 그룹, 호스트 정보 등을 네트워크를 통해 조회하기 위해 NIS 서버와 통신한다. 해당 통신은 평문 기반으로 이루어지며, 인증 정보 노출 및 중간자 공격에 취약하다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 nis를 제거한다:
+
+        apt purge nis

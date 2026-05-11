@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.1.1
+    title: 7.1.1 Ensure permissions on /etc/passwd are configured (Automated)
+    description: |-
+        The /etc/passwd file contains user account information that is used by many system
+        utilities and therefore must be readable for these utilities to operate.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        It is critical to ensure that the /etc/passwd file is protected from unauthorized write
+        access. Although it is protected by default, the file permissions could be changed either
+        inadvertently or through malicious actions.
+    fixGuidance: |-
+        Run the following commands to remove excess permissions, set owner, and set group
+        on /etc/passwd:
+        # chmod u-x,go-wx /etc/passwd
+        # chown root:root /etc/passwd
+        Default Value:
+        Access: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root)

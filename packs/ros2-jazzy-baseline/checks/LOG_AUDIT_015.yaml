@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_015
+    title: 파일 접근 시도 실패 감사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 파일 접근 실패(EACCES, EPERM)를 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 파일 접근 실패를 감사하면 권한 없는 사용자가 민감한 파일에 접근하려는 시도를 탐지할 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 규칙을 생성한다:
+
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        printf "
+        -a always,exit -F arch=b64 -S creat,open,openat,truncate,ftruncate -F exit=-EACCES -F auid>=${UID_MIN} -F auid!=unset -k access
+        -a always,exit -F arch=b64 -S creat,open,openat,truncate,ftruncate -F exit=-EPERM -F auid>=${UID_MIN} -F auid!=unset -k access
+        -a always,exit -F arch=b32 -S creat,open,openat,truncate,ftruncate -F exit=-EACCES -F auid>=${UID_MIN} -F auid!=unset -k access
+        -a always,exit -F arch=b32 -S creat,open,openat,truncate,ftruncate -F exit=-EPERM -F auid>=${UID_MIN} -F auid!=unset -k access
+        " >> /etc/audit/rules.d/50-access.rules
+
+        규칙을 로드한다:
+        augenrules --load

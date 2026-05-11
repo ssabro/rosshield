@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.4.1.6
+    title: 5.4.1.6 Ensure all users last password change date is in the past (Automated)
+    description: All users should have a password change date in the past.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If a user's recorded password change date is in the future, then they could bypass any
+        set password expiration.
+    fixGuidance: |-
+        Investigate any users with a password change date in the future and correct them.
+        Locking the account, expiring the password, or resetting the password manually may be
+        appropriate.

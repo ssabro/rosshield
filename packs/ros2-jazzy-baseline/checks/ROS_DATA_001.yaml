@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DATA_001
+    title: ROS2 bag 파일 보안
+    description: ROS2 bag 파일의 저장 위치 권한이 제한되고, 민감 데이터 포함 bag 파일이 보호되는지 확인
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find /home -type d -name '\''rosbag*'\'' -o -name '\''bag_files'\'' 2>/dev/null | while read d; do stat -c '\''%a %U %n'\'' "$d"; done | head -5 2>&1)"; C2_OUT="$(find /home -type d \( -name '\''rosbag*'\'' -o -name '\''bag_files'\'' \) -perm /077 2>/dev/null | head -1 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -z "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: bag 파일에는 센서 데이터, 위치 정보, 카메라 이미지 등 민감 정보가 포함될 수 있어 유출 시 개인정보 침해 가능
+    fixGuidance: bag 파일 전용 저장 디렉토리를 생성하고 권한을 700으로 설정한다. cron을 통한 자동 삭제 정책을 수립한다.

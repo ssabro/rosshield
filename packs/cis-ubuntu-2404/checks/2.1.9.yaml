@@ -1,0 +1,35 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.9
+    title: 2.1.9 Ensure network file system services are not in use (Automated)
+    description: |-
+        The Network File System (NFS) is one of the first and most widely distributed file
+        systems in the UNIX environment. It provides the ability for systems to mount file
+        systems of other servers through the network.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If the system does not export NFS shares, it is recommended that the nfs-kernel-
+        server package be removed to reduce the remote attack surface.
+        Impact:
+        There may be packages that are dependent on the nfs-kernel-server package. If the
+        nfs-kernel-server package is removed, these dependent packages will be removed
+        as well. Before removing the nfs-kernel-server package, review any dependent
+        packages to determine if they are required on the system.
+        - IF - a dependent package is required: stop and mask the nfs-server.service
+        leaving the nfs-kernel-server package installed.
+    fixGuidance: |-
+        Run the following command to stop nfs-server.service and remove nfs-kernel-
+        server package:
+        # systemctl stop nfs-server.service
+        # apt purge nfs-kernel-server
+        - OR -
+        - IF - the nfs-kernel-server package is required as a dependency:
+        Run the following commands to stop and mask the nfs-server.service:
+        # systemctl stop nfs-server.service
+        # systemctl mask nfs-server.service

@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DDS_006
+    title: DDS 통신 암호화 설정
+    description: DDS 통신에 AES-GCM 암호화가 활성화되어 데이터 기밀성과 무결성이 보장되는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -r '\''data_protection_kind'\'' "$ROS_SECURITY_KEYSTORE" 2>/dev/null | grep -i '\''ENCRYPT'\'' | head -1 2>&1)"; C2_OUT="$(grep -r '\''metadata_protection_kind'\'' "$ROS_SECURITY_KEYSTORE" 2>/dev/null | grep -i '\''ENCRYPT'\'' | head -1 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: DDS 통신이 평문으로 전송될 경우 중간자 공격(MITM)을 통한 데이터 도청 및 변조 가능
+    fixGuidance: Governance XML 파일에서 data_protection_kind와 metadata_protection_kind를 ENCRYPT로 설정한다. rtps_protection_kind도 ENCRYPT로 설정을 권장한다.

@@ -1,0 +1,30 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.1.7
+    title: 7.1.7 Ensure permissions on /etc/gshadow are configured (Automated)
+    description: |-
+        The /etc/gshadow file is used to store the information about groups that is critical to
+        the security of those accounts, such as the hashed password and other security
+        information.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If attackers can gain read access to the /etc/gshadow file, they can easily run a
+        password cracking program against the hashed password to break it. Other security
+        information that is stored in the /etc/gshadow file (such as group administrators) could
+        also be useful to subvert the group.
+    fixGuidance: |-
+        Run one of the following commands to set ownership of /etc/gshadow to root and
+        group to either root or shadow:
+        # chown root:shadow /etc/gshadow
+        -OR-
+        # chown root:root /etc/gshadow
+        Run the following command to remove excess permissions form /etc/gshadow:
+        # chmod u-x,g-wx,o-rwx /etc/gshadow
+        Default Value:
+        Access: (0640/-rw-r-----) Uid: ( 0/ root) Gid: ( 42/ shadow)

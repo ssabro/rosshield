@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_TIME_001
+    title: 단일 시간 동기화 데몬 사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 하나의 시간 동기화 데몬만 사용되도록 구성되어야 한다. systemd-timesyncd, chrony, ntpd 등 복수의 시간 동기화 서비스가 동시에 실행되어서는 안 된다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 시간 동기화 데몬이 둘 이상 동시에 실행될 경우, 각 서비스가 서로 다른 기준 시각으로 시스템 시간을 반복적으로 보정하여 시간 불일치 및 시스템 불안정성을 초래할 수 있다. 이는 로그 시간 왜곡, 보안 이벤트 상관 분석 오류, 분산 노드 간 메시지 정합성 문제로 이어질 수 있다.
+    fixGuidance: |-
+        chrony 또는 systemd-timesyncd 중 하나를 선택하여 사용한다.
+
+        1. chrony 사용 시:
+           apt install chrony
+           systemctl stop systemd-timesyncd.service
+           systemctl mask systemd-timesyncd.service
+
+        2. systemd-timesyncd 사용 시:
+           apt purge chrony

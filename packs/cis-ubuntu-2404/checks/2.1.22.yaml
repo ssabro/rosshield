@@ -1,0 +1,41 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.22
+    title: 2.1.22 Ensure only approved services are listening on a network (Manual)
+    description: |-
+        A network port is identified by its number, the associated IP address, and the type of the
+        communication protocol such as TCP or UDP.
+        A listening port is a network port on which an application or process listens on, acting as
+        a communication endpoint.
+        Each listening port can be open or closed (filtered) using a firewall. In general terms, an
+        open port is a network port that accepts incoming packets from remote locations.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Services listening on the system pose a potential risk as an attack vector. These
+        services should be reviewed, and if not required, the service should be stopped, and the
+        package containing the service should be removed. If required packages have a
+        dependency, the service should be stopped and masked to reduce the attack surface of
+        the system.
+        Impact:
+        There may be packages that are dependent on the service's package. If the service's
+        package is removed, these dependent packages will be removed as well. Before
+        removing the service's package, review any dependent packages to determine if they
+        are required on the system.
+        - IF - a dependent package is required: stop and mask the <service_name>.socket
+        and <service_name>.service leaving the service's package installed.
+    fixGuidance: |-
+        Run the following commands to stop the service and remove the package containing
+        the service:
+        # systemctl stop <service_name>.socket <service_name>.service
+        # apt purge <package_name>
+        - OR - If required packages have a dependency:
+        Run the following commands to stop and mask the service and socket:
+        # systemctl stop <service_name>.socket <service_name>.service
+        # systemctl mask <service_name>.socket <service_name>.service
+        Note: replace <service_name> with the appropriate service name.

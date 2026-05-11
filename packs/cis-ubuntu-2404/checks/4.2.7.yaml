@@ -1,0 +1,34 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.2.7
+    title: 4.2.7 Ensure ufw default deny firewall policy (Automated)
+    description: |-
+        A default deny policy on connections ensures that any unconfigured network usage will
+        be rejected.
+        Note: Any port or protocol without a explicit allow before the default deny will be
+        blocked
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        With a default accept policy the firewall will accept any packet that is not configured to
+        be denied. It is easier to allow list acceptable usage than to deny list unacceptable
+        usage.
+        Impact:
+        Any port and protocol not explicitly allowed will be blocked. The following rules should
+        be considered before applying the default deny.
+        ufw allow out http
+        ufw allow out https
+        ufw allow out ntp # Network Time Protocol
+        ufw allow out to any port 53 # DNS
+        ufw allow out to any port 853 # DNS over TLS
+        ufw logging on
+    fixGuidance: |-
+        Run the following commands to implement a default deny policy:
+        # ufw default deny incoming
+        # ufw default deny outgoing
+        # ufw default deny routed

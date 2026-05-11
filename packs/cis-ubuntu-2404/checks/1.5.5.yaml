@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.5.5
+    title: 1.5.5 Ensure Automatic Error Reporting is not enabled (Automated)
+    description: |-
+        The Apport Error Reporting Service automatically generates crash reports for
+        debugging
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Apport collects potentially sensitive data, such as core dumps, stack traces, and log
+        files. They can contain passwords, credit card numbers, serial numbers, and other
+        private material.
+    fixGuidance: |-
+        Edit /etc/default/apport and add or edit the enabled parameter to equal 0:
+        enabled=0
+        Run the following commands to stop and mask the apport service
+        # systemctl stop apport.service
+        # systemctl mask apport.service
+        - OR -
+        Run the following command to remove the apport package:
+        # apt purge apport
+        Default Value:
+        enabled=1

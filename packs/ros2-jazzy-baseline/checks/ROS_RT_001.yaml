@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_RT_001
+    title: ROS2 노드 권한 최소화
+    description: ROS2 노드가 최소 권한으로 실행되는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(ps -eo user,comm | grep -E '\''ros2|ros_'\'' | grep root | head -3 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 권한 상승 공격 방지
+    fixGuidance: 전용 ros_user 계정 생성 및 systemd 서비스로 노드 관리. User=ros_user로 서비스를 구성한다.

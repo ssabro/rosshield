@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_020
+    title: 로그인·로그아웃 이벤트 감사 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 로그인 및 로그아웃 이벤트(lastlog, faillock)를 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 로그인/로그아웃 이벤트를 감사하면 로그인 실패 시도와 무단 접근 패턴을 탐지할 수 있다.
+    fixGuidance: |-
+        /etc/audit/rules.d/ 디렉토리에 규칙 파일을 생성한다:
+
+        printf "
+        -w /var/log/lastlog -p wa -k logins
+        -w /var/run/faillock -p wa -k logins
+        " >> /etc/audit/rules.d/50-login.rules
+
+        규칙을 로드한다:
+        augenrules --load

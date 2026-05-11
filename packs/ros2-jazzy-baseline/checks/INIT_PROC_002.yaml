@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PROC_002
+    title: ptrace_scope 제한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 ptrace_scope 설정을 통해 ptrace 시스템 호출 사용이 제한되어야 한다. 이를 통해 프로세스가 임의로 다른 프로세스를 디버깅하거나 메모리를 추적하지 못하도록 구성해야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: ptrace는 디버깅을 목적으로 다른 프로세스의 메모리와 실행 상태를 추적할 수 있는 강력한 기능을 제공한다. 그러나 해당 기능이 제한되지 않을 경우, 공격자가 이를 악용하여 민감한 정보 탈취, 권한 상승 또는 프로세스 조작을 수행할 수 있다.
+    fixGuidance: sysctl -w kernel.yama.ptrace_scope=1 명령으로 현재 커널 파라미터를 설정하고, /etc/sysctl.conf 또는 /etc/sysctl.d/ 파일에 kernel.yama.ptrace_scope = 1을 추가하여 영구 설정한다.

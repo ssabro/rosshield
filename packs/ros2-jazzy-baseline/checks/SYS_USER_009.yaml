@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_009
+    title: 홈 디렉토리 권한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 로컬 대화형 사용자의 홈 디렉토리가 존재하고, 해당 사용자가 소유하며, 권한이 0750 이하로 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(FAIL=0; VALID_SHELLS=$(awk -F/ ''\''''$NF != "nologin" {print}''\'''' /etc/shells | grep ''\''''^/''\'''' | paste -sd''\''''|''\''''); awk -v pat="^(${VALID_SHELLS})$" -F: ''\''''$(NF) ~ pat { print $1 " " $(NF-1) }''\'''' /etc/passwd | while read user home; do if [ -d "$home" ]; then OWNER=$(stat -Lc ''\''''%U''\'''' "$home"); MODE=$(stat -Lc ''\''''%a''\'''' "$home"); [ "$user" != "$OWNER" ] && echo "FAIL_OWNER"; [ $(( 0$MODE & 0027 )) -gt 0 ] && echo "FAIL_MODE"; else echo "FAIL_NODIR"; fi; done | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 홈 디렉토리가 존재하지 않거나 권한이 부적절하면 사용자 데이터가 노출되거나 다른 사용자에게 접근 가능해질 수 있다.
+    fixGuidance: |-
+        홈 디렉토리가 없으면 사이트 정책에 따라 생성하거나 계정을 잠금한다.
+
+        홈 디렉토리의 과도한 권한 제거:
+        chmod g-w,o-rwx <home_directory>
+
+        홈 디렉토리 소유권 수정:
+        chown <user> <home_directory>

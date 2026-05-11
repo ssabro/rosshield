@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_038
+    title: 감사 도구 소유자(owner) 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 감사 도구(auditctl, aureport, ausearch, autrace, auditd, augenrules)의 소유자가 root여야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(stat -Lc '\''%n %U'\'' /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules 2>/dev/null | awk '\''$2 != "root" {print}'\'' | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 감사 도구가 root 소유가 아니면 무단 사용자가 도구를 교체하거나 수정할 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 감사 도구의 소유자를 root로 변경한다:
+
+        chown root /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/augenrules

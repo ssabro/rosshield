@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.1.2.4.2
+    title: 1.1.2.4.2 Ensure nodev option set on /var partition (Automated)
+    description: The nodev mount option specifies that the filesystem cannot contain special devices.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Since the /var filesystem is not intended to support devices, set this option to ensure
+        that users cannot create a block or character special devices in /var.
+    fixGuidance: |-
+        - IF - a separate partition exists for /var.
+        Edit the /etc/fstab file and add nodev to the fourth field (mounting options) for the
+        /var partition.
+        Example:
+        <device> /var <fstype> defaults,rw,nosuid,nodev,noexec,relatime 0 0
+        Run the following command to remount /var with the configured options:
+        # mount -o remount /var

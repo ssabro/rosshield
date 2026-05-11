@@ -1,0 +1,34 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.12
+    title: 6.2.3.12 Ensure login and logout events are collected (Automated)
+    description: |-
+        Monitor login and logout events. The parameters below track changes to files
+        associated with login/logout events.
+        • /var/log/lastlog - maintain records of the last time a user successfully logged
+        in.
+        • /var/run/faillock - directory maintains records of login failures via the
+        pam_faillock module.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Monitoring login/logout events could provide a system administrator with information
+        associated with brute force attacks against user logins.
+    fixGuidance: |-
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor login and logout events.
+        Example:
+        # printf "
+        -w /var/log/lastlog -p wa -k logins
+        -w /var/run/faillock -p wa -k logins
+        " >> /etc/audit/rules.d/50-login.rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

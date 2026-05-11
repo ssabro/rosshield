@@ -1,0 +1,60 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.6
+    title: 6.2.3.6 Ensure use of privileged commands are collected (Automated)
+    description: |-
+        Monitor privileged programs, those that have the setuid and/or setgid bit set on
+        execution, to determine if unprivileged users are running these commands.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Execution of privileged commands by non-privileged users could be an indication of
+        someone trying to gain unauthorized access to the system.
+        Impact:
+        Both the audit and remediation section of this recommendation will traverse all mounted
+        file systems that is not mounted with either noexec or nosuid mount options. If there
+        are large file systems without these mount options, such traversal will be significantly
+        detrimental to the performance of the system.
+        Before running either the audit or remediation section, inspect the output of the following
+        command to determine exactly which file systems will be traversed:
+        # findmnt -n -l -k -it $(awk '/nodev/ { print $2 }' /proc/filesystems | paste
+        -sd,) | grep -Pv "noexec|nosuid"
+        To exclude a particular file system due to adverse performance impacts, update the
+        audit and remediation sections by adding a sufficiently unique string to the grep
+        statement. The above command can be used to test the modified exclusions.
+    fixGuidance: |-
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor the use of privileged commands.
+        Example script:
+        #!/usr/bin/env bash
+        {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        AUDIT_RULE_FILE="/etc/audit/rules.d/50-privileged.rules"
+        NEW_DATA=()
+        for PARTITION in $(findmnt -n -l -k -it $(awk '/nodev/ { print $2 }'
+        /proc/filesystems | paste -sd,) | grep -Pv "noexec|nosuid" | awk '{print
+        $1}'); do
+        readarray -t DATA < <(find "${PARTITION}" -xdev -perm /6000 -type f | awk
+        -v UID_MIN=${UID_MIN} '{print "-a always,exit -F path=" $1 " -F perm=x -F
+        auid>="UID_MIN" -F auid!=unset -k privileged" }')
+        for ENTRY in "${DATA[@]}"; do
+        NEW_DATA+=("${ENTRY}")
+        done
+        done
+        readarray &> /dev/null -t OLD_DATA < "${AUDIT_RULE_FILE}"
+        COMBINED_DATA=( "${OLD_DATA[@]}" "${NEW_DATA[@]}" )
+        printf '%s\n' "${COMBINED_DATA[@]}" | sort -u > "${AUDIT_RULE_FILE}"
+        }
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi
+        Special mount points
+        If there are any special mount points that are not visible by default from just scanning /,
+        change the PARTITION variable to the appropriate partition and re-run the remediation.

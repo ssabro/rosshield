@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_NFT_006
+    title: nftables 루프백 트래픽 처리 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 nftables를 방화벽 관리 도구로 사용하는 경우, 루프백 인터페이스(lo)를 통한 트래픽은 허용되어야 하며, 외부 네트워크 인터페이스에서 출발지 주소가 루프백으로 위조된 트래픽은 차단되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(fail=0; nft list ruleset 2>/dev/null | awk '\''/hook input/,/}/'\'' | grep -q '\''iif.*lo.*accept'\'' || fail=1; nft list ruleset 2>/dev/null | awk '\''/hook input/,/}/'\'' | grep -q '\''ip saddr 127.0.0.0/8.*drop'\'' || fail=1; [ $fail -eq 0 ] && echo "PASS" || echo "FAIL" 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 루프백 인터페이스는 동일 시스템 내 프로세스 간 통신에 사용되며, ROS 2 노드 간 통신 및 미들웨어 내부 동작에 필수적인 요소이다. 루프백 트래픽이 차단될 경우 시스템 기능 장애가 발생할 수 있다.
+    fixGuidance: |-
+        nftables 루프백 규칙을 추가한다.
+
+        nft add rule inet filter input iif lo accept
+        nft add rule inet filter input ip saddr 127.0.0.0/8 counter drop
+        nft add rule inet filter input ip6 saddr ::1 counter drop

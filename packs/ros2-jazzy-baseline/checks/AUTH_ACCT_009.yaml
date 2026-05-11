@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ACCT_009
+    title: root 그룹이 유일한 GID 0 그룹인지 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 GID 0을 가진 그룹은 root만 존재해야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(awk -F: ''\''''$3=="0"{print $1}''\'''' /etc/group 2>&1)"; if { [ "$C1_OUT" = ''\''''root''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: GID 0은 시스템 최고 권한 그룹이므로 root 그룹만 GID 0을 가져야 한다. 다른 그룹이 GID 0을 가지면 권한 관리가 복잡해지고 보안 위험이 증가한다.
+    fixGuidance: |-
+        GID 0을 가진 root가 아닌 다른 그룹이 있으면 해당 그룹의 GID를 변경한다:
+        groupmod -g <새GID> <그룹명>
+
+        root 그룹의 GID가 0이 아니면:
+        groupmod -g 0 root

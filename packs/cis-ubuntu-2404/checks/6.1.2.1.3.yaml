@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.2.1.3
+    title: 6.1.2.1.3 Ensure systemd-journal-upload is enabled and active (Automated)
+    description: |-
+        Journald systemd-journal-upload supports the ability to send log events it gathers to
+        a remote log host.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Storing log data on a remote host protects log integrity from local attacks. If an attacker
+        gains root access on the local system, they could tamper with or remove log data that is
+        stored on the local system.
+        Note: This recommendation only applies if journald is the chosen method for
+        client side logging. Do not apply this recommendation if rsyslog is used.
+    fixGuidance: |-
+        Run the following commands to unmask, enable and start systemd-journal-upload:
+        # systemctl unmask systemd-journal-upload.service
+        # systemctl --now enable systemd-journal-upload.service

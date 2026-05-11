@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DDS_001
+    title: DDS Security 플러그인 활성화
+    description: ROS2 Security(SROS2)가 활성화되었는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(echo $ROS_SECURITY_ENABLE 2>&1)"; C2_OUT="$(echo $ROS_SECURITY_STRATEGY 2>&1)"; if { [ "$C1_OUT" = '\''true'\'' ]; } && { [ "$C2_OUT" = '\''Enforce'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 노드 간 통신 암호화 및 인증
+    fixGuidance: SROS2 키스토어를 생성하고 ROS2 보안 환경 변수를 영구 설정한다. ros2 security create_keystore 명령으로 키스토어를 생성한 후, /etc/profile.d/ros2_security.sh에 ROS_SECURITY_KEYSTORE, ROS_SECURITY_ENABLE=true, ROS_SECURITY_STRATEGY=Enforce 환경 변수를 설정한다.

@@ -1,0 +1,33 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.5
+    title: 4.3.5 Ensure nftables base chains exist (Automated)
+    description: |-
+        Chains are containers for rules. They exist in two kinds, base chains and regular chains.
+        A base chain is an entry point for packets from the networking stack, a regular chain
+        may be used as jump target and is used for better rule organization.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If a base chain doesn't exist with a hook for input, forward, and delete, packets that
+        would flow through those chains will not be touched by nftables.
+        Impact:
+        If configuring nftables over ssh, creating a base chain with a policy of drop will
+        cause loss of connectivity.
+        Ensure that a rule allowing ssh has been added to the base chain prior to setting the
+        base chain's policy to drop
+    fixGuidance: |-
+        Run the following command to create the base chains:
+        # nft create chain inet <table name> <base chain name> { type filter hook
+        <(input|forward|output)> priority 0 \; }
+        Example:
+        # nft create chain inet filter input { type filter hook input priority 0 \; }
+        # nft create chain inet filter forward { type filter hook forward priority 0
+        \; }
+        # nft create chain inet filter output { type filter hook output priority 0 \;
+        }

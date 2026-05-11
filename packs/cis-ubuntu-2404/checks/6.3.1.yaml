@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.3.1
+    title: 6.3.1 Ensure AIDE is installed (Automated)
+    description: |-
+        AIDE takes a snapshot of filesystem state including modification times, permissions,
+        and file hashes which can then be used to compare against the current state of the
+        filesystem to detect modifications to the system.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        By monitoring the filesystem state compromised files can be detected to prevent or limit
+        the exposure of accidental or malicious misconfigurations or modified binaries.
+    fixGuidance: |-
+        Install AIDE using the appropriate package manager or manual installation:
+        # apt install aide aide-common
+        Configure AIDE as appropriate for your environment. Consult the AIDE documentation
+        for options.
+        Run the following commands to initialize AIDE:
+        # aideinit
+        # mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db

@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PART_022
+    title: /var/log 파티션에 noexec 옵션 설정
+    description: /var/log 파티션에서 실행 파일 실행 방지
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(findmnt -kn /var/log | grep noexec 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 악성 코드 실행 방지
+    fixGuidance: '/var/log 파티션이 별도로 존재하는 경우, /etc/fstab 파일의 /var/log 마운트 항목에 noexec 옵션을 추가한다. 예: <device> /var/log <fstype> defaults,rw,nosuid,nodev,noexec,relatime 0 0. 설정 후 mount -o remount /var/log 명령으로 변경사항을 즉시 적용한다.'

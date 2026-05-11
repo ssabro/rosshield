@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_009
+    title: 의심스러운 패킷 로깅 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 의심스러운 네트워크 패킷이 로그로 기록되도록 구성되어야 한다. 시스템은 비정상적이거나 잠재적으로 악의적인 네트워크 트래픽을 식별할 수 있어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 의심스러운 패킷 로깅은 위조된 출발지 주소, 잘못된 플래그 조합, 비정상적인 네트워크 동작을 탐지하는 데 도움을 준다. CIS 벤치마크에서는 네트워크 공격 시도를 식별하고 사고 분석 및 대응을 용이하게 하기 위해 의심스러운 패킷을 로그로 기록할 것을 권고하고 있다.
+    fixGuidance: |-
+        의심스러운 패킷 로깅을 활성화한다.
+
+        printf '%s\n' "net.ipv4.conf.all.log_martians = 1" "net.ipv4.conf.default.log_martians = 1" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.conf.all.log_martians=1
+        sysctl -w net.ipv4.conf.default.log_martians=1
+        sysctl -w net.ipv4.route.flush=1

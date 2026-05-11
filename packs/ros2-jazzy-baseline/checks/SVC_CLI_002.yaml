@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CLI_002
+    title: rsh-client 패키지 제거 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 rsh 클라이언트가 설치되어 있지 않아야 한다. 로봇 운용에 필요하지 않은 레거시 원격 셸 클라이언트는 시스템에서 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s rsh-client &>/dev/null && echo '\''installed'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: rsh 클라이언트는 원격 시스템에 대한 명령 실행 및 파일 전송을 제공하지만, 사용자 인증 정보와 전송 데이터가 암호화되지 않은 평문으로 처리된다. 이로 인해 네트워크 도청, 인증 정보 탈취, 세션 하이재킹 공격에 매우 취약하다.
+    fixGuidance: rsh-client 패키지를 제거한다.

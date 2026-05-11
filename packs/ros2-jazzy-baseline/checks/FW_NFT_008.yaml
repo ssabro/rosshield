@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_NFT_008
+    title: nftables 기본 차단 정책 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 nftables를 방화벽 관리 도구로 사용하는 경우, 방화벽의 기본 정책은 차단(deny)으로 설정되어 있어야 하며, 명시적으로 허용된 트래픽만 통과되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(fail=0; nft list ruleset 2>/dev/null | grep '\''hook input'\'' | grep -q '\''policy drop'\'' || fail=1; nft list ruleset 2>/dev/null | grep '\''hook forward'\'' | grep -q '\''policy drop'\'' || fail=1; nft list ruleset 2>/dev/null | grep '\''hook output'\'' | grep -q '\''policy drop'\'' || fail=1; [ $fail -eq 0 ] && echo "PASS" || echo "FAIL" 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 기본 허용 정책은 방화벽 규칙에 정의되지 않은 서비스나 포트를 외부에 노출시킬 수 있다. CIS 벤치마크에서는 네트워크 접근 통제를 강화하기 위해 기본 차단 정책을 적용하고 필요한 트래픽만 예외적으로 허용할 것을 권고하고 있다.
+    fixGuidance: |-
+        nftables 기본 정책을 DROP으로 설정한다.
+
+        nft chain inet filter input { policy drop \; }
+        nft chain inet filter forward { policy drop \; }
+        nft chain inet filter output { policy drop \; }

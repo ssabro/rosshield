@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.4.7
+    title: 6.2.4.7 Ensure audit configuration files group owner is configured (Automated)
+    description: Audit configuration files control auditd and what events are audited.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Access to the audit configuration files could allow unauthorized personnel to prevent the
+        auditing of critical events.
+        Misconfigured audit configuration files may prevent the auditing of critical events or
+        impact the system's performance by overwhelming the audit log. Misconfiguration of the
+        audit configuration files may also make it more difficult to establish and investigate
+        events relating to an incident.
+    fixGuidance: |-
+        Run the following command to change group to root:
+        # find /etc/audit/ -type f \( -name '*.conf' -o -name '*.rules' \) ! -group
+        root -exec chgrp root {} +

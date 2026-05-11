@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 3.1.1
+    title: 3.1.1 Ensure IPv6 status is identified (Manual)
+    description: |-
+        Internet Protocol Version 6 (IPv6) is the most recent version of Internet Protocol (IP). It's
+        designed to supply IP addressing and additional security to support the predicted
+        growth of connected devices. IPv6 is based on 128-bit addressing and can support 340
+        undecillion, which is 340,282,366,920,938,463,463,374,607,431,768,211,456 unique
+        addresses.
+        Features of IPv6
+        • Hierarchical addressing and routing infrastructure
+        • Statefull and Stateless configuration
+        • Support for quality of service (QoS)
+        • An ideal protocol for neighboring node interaction
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        IETF RFC 4038 recommends that applications are built with an assumption of dual
+        stack. It is recommended that IPv6 be enabled and configured in accordance with
+        Benchmark recommendations.
+        - IF - dual stack and IPv6 are not used in your environment, IPv6 may be disabled to
+        reduce the attack surface of the system, and recommendations pertaining to IPv6 can
+        be skipped.
+        Note: It is recommended that IPv6 be enabled and configured unless this is against
+        local site policy
+        Impact:
+        IETF RFC 4038 recommends that applications are built with an assumption of dual
+        stack.
+        When enabled, IPv6 will require additional configuration to reduce risk to the system.
+    fixGuidance: |-
+        Enable or disable IPv6 in accordance with system requirements and local site policy
+        Default Value:
+        IPv6 is enabled

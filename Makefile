@@ -3,7 +3,7 @@ BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
 AUDIT_VERIFY_BIN := $(BIN_DIR)/rosshield-audit-verify
 
-.PHONY: all build build-enterprise audit-verify-build test test-enterprise vet vet-enterprise fmt tidy lint ci ci-enterprise clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
+.PHONY: all build build-enterprise audit-verify-build pack-tools-build pack-archive test test-enterprise vet vet-enterprise fmt tidy lint ci ci-enterprise clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
 
 all: ci
 
@@ -24,6 +24,32 @@ build-enterprise:
 audit-verify-build:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(AUDIT_VERIFY_BIN) ./cmd/rosshield-audit-verify
+
+# E12 — pack-tools (벤치마크 팩 변환·서명 CLI).
+pack-tools-build:
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -o $(BIN_DIR)/pack-tools ./cmd/pack-tools
+
+# E12 — built-in pack archive 빌드.
+# packs/<name>/ source → packs/<name>.tar.gz (Ed25519 서명).
+# DEV_PACK_SIGNER_KEY는 dev 머신의 raw 64-byte private key 파일.
+# 첫 사용: make pack-tools-build && bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex
+# CI(release)는 별도 secret signer 사용 (별 workflow).
+DEV_PACK_SIGNER_KEY ?= scripts/dev-pack-signer.key
+PACKS_SOURCE := packs/cis-ubuntu-2404 packs/ros2-jazzy-baseline
+PACKS_ARCHIVE := $(addsuffix .tar.gz,$(PACKS_SOURCE))
+
+pack-archive: pack-tools-build
+	@test -f $(DEV_PACK_SIGNER_KEY) || { \
+		echo "ERROR: $(DEV_PACK_SIGNER_KEY) not found."; \
+		echo "  Run: $(BIN_DIR)/pack-tools keygen -out $(DEV_PACK_SIGNER_KEY) -pub-out scripts/dev-pack-signer.pub.hex"; \
+		exit 1; \
+	}
+	@for src in $(PACKS_SOURCE); do \
+		echo "Archiving $$src ..."; \
+		$(BIN_DIR)/pack-tools archive -input $$src -signer-key $(DEV_PACK_SIGNER_KEY) -output $$src.tar.gz -force || exit 1; \
+	done
+	@echo "✓ Built $(words $(PACKS_ARCHIVE)) pack archives ($(PACKS_ARCHIVE))"
 
 test:
 	$(GO) test -count=1 ./...

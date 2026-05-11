@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_006
+    title: 보안 ICMP 리다이렉트 거부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 IPv4 환경에서 보안 ICMP 리다이렉트(secure ICMP redirect) 메시지를 수신하지 않도록 구성되어야 한다. 시스템은 신뢰된 게이트웨이로부터 전달되는 리다이렉트 메시지라 하더라도 이를 수용하지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 보안 ICMP 리다이렉트는 특정 조건 하에서 신뢰된 경로 변경을 허용하기 위한 기능이지만, 종단 시스템에서는 네트워크 경로 변경을 자동으로 수용할 필요가 없다. 해당 기능이 활성화되어 있을 경우, 공격자가 이를 악용하여 신뢰된 리다이렉트로 위장한 메시지를 전달함으로써 트래픽을 비인가 경로로 우회시키거나 중간자 공격을 수행할 수 있다.
+    fixGuidance: |-
+        Secure ICMP 리다이렉트 수신을 비활성화한다.
+
+        printf '%s\n' "net.ipv4.conf.all.secure_redirects = 0" "net.ipv4.conf.default.secure_redirects = 0" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.conf.all.secure_redirects=0
+        sysctl -w net.ipv4.conf.default.secure_redirects=0
+        sysctl -w net.ipv4.route.flush=1

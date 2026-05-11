@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_PERM_006
+    title: /etc/shadow- 권한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/shadow- 파일의 권한이 0640 이하이고, 소유자가 root:root 또는 shadow여야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$([ -f /etc/shadow- ] && { MODE=$(stat -Lc '\''%a'\'' /etc/shadow-) && [ $(( 0$MODE & 00137 )) -eq 0 ] && echo '\''PASS'\'' || echo '\''FAIL'\''; } || echo '\''PASS'\'' 2>&1)"; C2_OUT="$([ -f /etc/shadow- ] && { [ "$(stat -Lc '\''%U'\'' /etc/shadow-)" = '\''root'\'' ] && echo '\''PASS'\'' || echo '\''FAIL'\''; } || echo '\''PASS'\'' 2>&1)"; C3_OUT="$([ -f /etc/shadow- ] && { GRP=$(stat -Lc '\''%G'\'' /etc/shadow-); { [ "$GRP" = '\''root'\'' ] || [ "$GRP" = '\''shadow'\'' ]; } && echo '\''PASS'\'' || echo '\''FAIL'\''; } || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; } && { [ "$C3_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /etc/shadow- 파일의 권한이 부적절하면 민감한 시스템 정보가 노출되거나 무단 수정될 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 /etc/shadow-의 권한과 소유자를 수정한다:
+
+        chmod u-x,g-wx,o-rwx /etc/shadow-
+        chown root:shadow /etc/shadow-

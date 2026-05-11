@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_013
+    title: 비밀번호 복잡도 정책 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 비밀번호 복잡도 정책(minclass, dcredit, ucredit, lcredit, ocredit)이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Psi '\''^\s*(minclass|[dulo]credit)\b'\'' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null 2>&1)"; C2_OUT="$(grep -Psi '\''^\s*password\s+(requisite|required|sufficient)\s+pam_pwquality\.so\s+([^#]*\s+)?(minclass=\d*|[dulo]credit=-?\d*)\b'\'' /etc/pam.d/common-password 2>/dev/null || echo '\''PASS'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 다양한 문자 클래스(대문자, 소문자, 숫자, 특수문자)를 요구하면 비밀번호 강도가 높아진다.
+    fixGuidance: |-
+        /etc/security/pwquality.conf.d/ 디렉토리에 복잡도 설정 파일을 생성한다.
+
+        예시 1 - minclass 사용:
+        echo "minclass = 3" > /etc/security/pwquality.conf.d/50-pwcomplexity.conf
+
+        예시 2 - 개별 credit 사용:
+        cat > /etc/security/pwquality.conf.d/50-pwcomplexity.conf << 'EOF'
+        dcredit = -1
+        ucredit = -1
+        lcredit = -1
+        ocredit = -1
+        EOF

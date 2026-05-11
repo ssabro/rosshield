@@ -1,0 +1,27 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.21
+    title: 5.1.21 Ensure sshd PermitUserEnvironment is disabled (Automated)
+    description: |-
+        The PermitUserEnvironment option allows users to present environment options to
+        the SSH daemon.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Permitting users the ability to set environment variables through the SSH daemon could
+        potentially allow users to bypass security controls (e.g. setting an execution path that
+        has SSH executing trojan'd programs)
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set the PermitUserEnvironment parameter to
+        no above any Include entries as follows:
+        PermitUserEnvironment no
+        Note: First occurrence of an option takes precedence. If Include locations are enabled,
+        used, and order of precedence is understood in your environment, the entry may be
+        created in a file in Include location.
+        Default Value:
+        PermitUserEnvironment no

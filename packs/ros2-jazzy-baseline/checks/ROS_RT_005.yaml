@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_RT_005
+    title: ROS2 파라미터 보안 설정
+    description: ROS2 노드에서 allow_undeclared_parameters가 비활성화되어 사전 정의된 파라미터만 사용되는지 확인
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -r '\''allow_undeclared_parameters.*true'\'' /opt/ros/*/share/ /home/*/ros2_ws/src/ 2>/dev/null | head -5 2>&1)"; C2_OUT="$(grep -r '\''allow_undeclared_parameters.*True'\'' /home/*/ros2_ws/src/ /opt/ros/*/share/ 2>/dev/null --include='\''*.launch.py'\'' --include='\''*.launch.xml'\'' | head -5 2>&1)"; if { [ -z "$C1_OUT" ]; } && { [ -z "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 선언되지 않은 파라미터 허용 시 악의적 파라미터 주입을 통한 노드 동작 변경 가능
+    fixGuidance: 모든 ROS2 노드 소스코드 및 Launch 파일에서 allow_undeclared_parameters를 false로 설정하거나 해당 옵션을 제거한다.

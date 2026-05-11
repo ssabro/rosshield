@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_NET_004
+    title: RMW 구현체 보안 설정
+    description: 사용 중인 RMW 구현체가 명시적으로 지정되고 SROS2 보안 기능을 지원하는 구현체인지 확인
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(echo $RMW_IMPLEMENTATION 2>&1)"; C2_OUT="$(echo $RMW_IMPLEMENTATION | grep -E '\''rmw_fastrtps_cpp|rmw_cyclonedds_cpp'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 일부 RMW 구현체는 DDS Security를 지원하지 않으며, 미지정 시 환경에 따라 다른 구현체가 로드될 수 있음
+    fixGuidance: systemd 서비스 파일 또는 환경 설정에서 RMW_IMPLEMENTATION=rmw_fastrtps_cpp 또는 rmw_cyclonedds_cpp를 설정한다.

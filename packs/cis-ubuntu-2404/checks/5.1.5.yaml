@@ -1,0 +1,31 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.5
+    title: 5.1.5 Ensure sshd Banner is configured (Automated)
+    description: |-
+        The Banner parameter specifies a file whose contents must be sent to the remote user
+        before authentication is permitted. By default, no banner is displayed.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Banners are used to warn connecting users of the particular site's policy regarding
+        connection. Presenting a warning message prior to the normal user login may assist the
+        prosecution of trespassers on the computer system.
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set the Banner parameter above any Include
+        and Match entries as follows:
+        Banner /etc/issue.net
+        Note: First occurrence of a option takes precedence, Match set statements
+        withstanding. If Include locations are enabled, used, and order of precedence is
+        understood in your environment, the entry may be created in a file in Include location.
+        Edit the file being called by the Banner argument with the appropriate contents
+        according to your site policy, remove any instances of \m , \r , \s , \v or references to
+        the OS platform
+        Example:
+        # printf '%s\n' "Authorized users only. All activity may be monitored and
+        reported." > "$(sshd -T | awk '$1 == "banner" {print $2}')"

@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_PERM_012
+    title: 소유자/그룹 없는 파일 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 소유자 없는(unowned) 파일이나 그룹 없는(ungrouped) 파일이 존재하지 않아야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find / -xdev \( -path /run/user -o -path /proc -o -path /sys \) -prune -o -nouser -print 2>/dev/null | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; C2_OUT="$(find / -xdev \( -path /run/user -o -path /proc -o -path /sys \) -prune -o -nogroup -print 2>/dev/null | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 소유자/그룹이 없는 파일은 삭제된 사용자의 잔여물이거나 침입의 흔적일 수 있다. 이러한 파일의 UID/GID가 새 사용자에게 재사용되면 의도치 않은 접근 권한이 부여될 수 있다.
+    fixGuidance: |-
+        소유자/그룹 없는 파일을 확인하고 적절한 소유자와 그룹을 지정한다.
+
+        소유자 없는 파일 목록:
+        find / -xdev -nouser -print
+
+        그룹 없는 파일 목록:
+        find / -xdev -nogroup -print
+
+        각 파일에 대해 적절한 소유자를 설정하거나 불필요한 파일을 제거한다.

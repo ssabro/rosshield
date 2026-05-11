@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_FSMOD_010
+    title: 미사용 파일시스템 커널 모듈 비활성화
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 로봇 운용 및 유지보수에 필요하지 않은 파일시스템 커널 모듈이 로드되거나 사용되지 않도록 제한되어야 한다. 로봇 운영 환경에서 실제로 사용되는 파일시스템을 제외한 나머지 파일시스템 커널 모듈은 시스템에서 사용되지 않도록 구성되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(bash -c '\''a_ignore=(xfs vfat ext2 ext3 ext4); while IFS= read -r fs; do a_ignore+=("$fs"); done < <(findmnt -knD | awk "{print \$2}" | sort -u); mp_cfg=$(modprobe --showconfig 2>/dev/null); for d in $(find "$(readlink -f /lib/modules/$(uname -r)/kernel/fs)" -mindepth 1 -maxdepth 1 -type d ! -empty 2>/dev/null); do mod=$(basename "$d"); [[ "$mod" =~ overlay ]] && mod="${mod::-2}"; skip=false; for ig in "${a_ignore[@]}"; do [[ "$mod" == "$ig" ]] && skip=true; done; $skip && continue; mod_norm="${mod//-/_}"; grep -Pq "\bblacklist\h+${mod_norm}\b" <<< "$mp_cfg" && grep -Pq "\binstall\h+${mod_norm}\h+(/usr)?/bin/(true|false)\b" <<< "$mp_cfg" && continue; echo "$mod"; done'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: Ubuntu 24.04 LTS 기반 Host 운영체제는 다양한 파일시스템을 지원하기 위해 여러 파일시스템 커널 모듈을 기본 제공한다. 그러나 ROS 2 Jazzy 기반 피지컬 AI 로봇 환경에서는 ext4 등 제한된 파일시스템만을 사용하는 경우가 대부분이며, 사용되지 않는 파일시스템 커널 모듈이 활성화되어 있을 경우 해당 구현상의 취약점이 공격 경로로 악용될 수 있다.
+    fixGuidance: '시스템에서 사용되지 않는 파일시스템 커널 모듈을 개별적으로 비활성화한다. 각 미사용 모듈에 대해 /etc/modprobe.d/ 디렉터리에 install <모듈명> /bin/false 및 blacklist <모듈명> 설정 파일을 생성하고, 현재 로드된 모듈은 언로드한다. 경고: 현재 마운트 중인 파일시스템 모듈을 비활성화하면 시스템에 치명적 영향을 줄 수 있으므로, 점검 결과를 철저히 검토한 후 조치해야 한다. CVE가 존재하는 모듈(afs, ceph, cifs, exfat, fuse, gfs2 등)이 마운트된 경우 별도 보안 검토가 필요하다.'

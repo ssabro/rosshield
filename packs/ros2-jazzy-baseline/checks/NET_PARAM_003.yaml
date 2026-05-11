@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_003
+    title: 위조 ICMP 응답 무시 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 정상적이지 않거나 위조된 ICMP 응답을 무시하도록 구성되어야 한다. 시스템은 신뢰할 수 없는 ICMP 오류 메시지에 의해 네트워크 동작이 영향을 받지 않도록 설정되어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 위조된 ICMP 응답은 공격자가 네트워크 상태를 오인하도록 유도하거나, 패킷 전송을 방해하는 데 사용될 수 있다. 특히 잘못된 ICMP 오류 메시지를 수용할 경우, 서비스 거부 공격 또는 네트워크 통신 교란이 발생할 수 있다.
+    fixGuidance: |-
+        비정상적인 ICMP 오류 응답 무시를 활성화한다.
+
+        printf '%s\n' "net.ipv4.icmp_ignore_bogus_error_responses = 1" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.icmp_ignore_bogus_error_responses=1
+        sysctl -w net.ipv4.route.flush=1

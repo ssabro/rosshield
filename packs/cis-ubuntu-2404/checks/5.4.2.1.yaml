@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.4.2.1
+    title: 5.4.2.1 Ensure root is the only UID 0 account (Automated)
+    description: Any account with UID 0 has superuser privileges on the system.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        This access must be limited to only the default root account and only from the system
+        console. Administrative access must be through an unprivileged account using an
+        approved mechanism as noted in Item 5.6 Ensure access to the su command is
+        restricted.
+    fixGuidance: |-
+        Run the following command to change the root account UID to 0:
+        # usermod -u 0 root
+        Modify any users other than root with UID 0 and assign them a new UID.

@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.2.5
+    title: 7.2.5 Ensure no duplicate UIDs exist (Automated)
+    description: |-
+        Although the useradd program will not let you create a duplicate User ID (UID), it is
+        possible for an administrator to manually edit the /etc/passwd file and change the UID
+        field.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Users must be assigned unique UIDs for accountability and to ensure appropriate
+        access protections.
+    fixGuidance: |-
+        Based on the results of the audit script, establish unique UIDs and review all files owned
+        by the shared UIDs to determine which UID they are supposed to belong to.

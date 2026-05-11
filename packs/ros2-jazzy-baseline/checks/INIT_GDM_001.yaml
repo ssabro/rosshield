@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_GDM_001
+    title: GDM 제거 확인
+    description: GDM이 설치되어 있지 않은지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s gdm3 &>/dev/null && echo '\''installed'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 불필요한 그래픽 환경 제거
+    fixGuidance: GDM(gdm3) 패키지를 제거한다. 프로덕션 로봇 환경에서는 그래픽 데스크톱 환경이 불필요하며, 시각화는 원격 워크스테이션에서 수행한다.

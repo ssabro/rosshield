@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PART_025
+    title: /var/log/audit 디렉터리에 nosuid 옵션 설정
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 /var/log/audit 디렉터리에 nosuid 마운트 옵션이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(findmnt -kn /var/log/audit | grep nosuid 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /var/log/audit 영역에서 setuid 또는 setgid 비트가 적용된 파일이 실행될 경우, 권한 상승 공격이나 감사 로그 조작으로 이어질 수 있다. nosuid 옵션은 이러한 위험을 완화하는 데 효과적이다.
+    fixGuidance: '/var/log/audit 파티션이 별도로 존재하는 경우, /etc/fstab 파일의 /var/log/audit 마운트 항목에 nosuid 옵션을 추가한다. 예: <device> /var/log/audit <fstype> defaults,rw,nosuid,nodev,noexec,relatime 0 0. 설정 후 mount -o remount /var/log/audit 명령으로 변경사항을 즉시 적용한다.'

@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_NFT_009
+    title: nftables 서비스 활성화 확인
+    description: nftables 서비스가 활성화되어 부팅 시 자동 시작되는지 확인한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(systemctl is-enabled nftables 2>/dev/null 2>&1)"; if { [ "$C1_OUT" = '\''enabled'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: nftables 서비스를 활성화하면 시스템 부팅 시 방화벽 규칙이 자동으로 적용된다.
+    fixGuidance: |-
+        nftables 서비스를 활성화한다.
+
+        systemctl enable nftables

@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.3.3.3
+    title: 2.3.3.3 Ensure chrony is enabled and running (Automated)
+    description: chrony is a daemon for synchronizing the system clock across the network
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        chrony needs to be enabled and running in order to synchronize the system to a
+        timeserver.
+        Time synchronization is important to support time sensitive security mechanisms and to
+        ensure log files have consistent time records across the enterprise to aid in forensic
+        investigations
+    fixGuidance: |-
+        - IF - chrony is in use on the system, run the following commands:
+        Run the following command to unmask chrony.service:
+        # systemctl unmask chrony.service
+        Run the following command to enable and start chrony.service:
+        # systemctl --now enable chrony.service
+        - OR -
+        If another time synchronization service is in use on the system, run the following
+        command to remove chrony:
+        # apt purge chrony
+        # apt autoremove chrony

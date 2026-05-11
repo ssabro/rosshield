@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_NET_002
+    title: ROS2 방화벽 포트 규칙
+    description: ROS2 DDS 포트가 방화벽에서 올바르게 구성되었는지 확인
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(ufw status 2>/dev/null | grep -qi ''\''''Status: active''\'''' && echo ''\''''PASS''\'''' || echo ''\''''FAIL''\'''' 2>&1)"; C2_OUT="$(ufw status 2>/dev/null | grep -E ''\''''7400:7500/udp''\'''' | grep -qi ''\''''ALLOW''\'''' && echo ''\''''PASS''\'''' || echo ''\''''FAIL''\'''' 2>&1)"; C3_OUT="$(ufw status 2>/dev/null | grep -E ''\''''7400:7500/tcp''\'''' | grep -qi ''\''''ALLOW''\'''' && echo ''\''''PASS''\'''' || echo ''\''''FAIL''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; } && { [ "$C2_OUT" = ''\''''PASS''\'''' ]; } && { [ "$C3_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 필요한 통신만 허용
+    fixGuidance: 방화벽(ufw)에 ROS2 DDS 통신에 필요한 포트(7400-7500) 규칙을 UDP 및 TCP 프로토콜로 추가한다. 도메인 ID에 따라 포트 범위를 조정해야 할 수 있다.

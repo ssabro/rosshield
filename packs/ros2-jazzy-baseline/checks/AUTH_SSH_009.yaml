@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_SSH_009
+    title: SSH GSSAPI 인증 비활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 SSH 서버를 사용하는 경우, GSSAPI 인증을 사용하지 않는다면 비활성화해야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(sshd -T 2>/dev/null | grep gssapiauthentication 2>&1)"; if { [ "$C1_OUT" = '\''gssapiauthentication no'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: GSSAPI 인증은 Kerberos 환경에서 사용된다. 사용하지 않는 인증 방식을 비활성화하면 공격 표면을 줄일 수 있다.
+    fixGuidance: |-
+        /etc/ssh/sshd_config 파일에 GSSAPIAuthentication을 no로 설정한다.
+
+        GSSAPIAuthentication no

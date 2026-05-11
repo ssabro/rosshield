@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_029
+    title: 실행 중 감사 규칙과 디스크 설정 일치 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/audit/rules.d/의 규칙이 /etc/audit/audit.rules와 실행 중인 구성에 병합되어 일치해야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(augenrules --check 2>&1 | grep -q '\''No change'\'' && echo '\''PASS'\'' || echo '\''FAIL'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 디스크 규칙과 실행 중인 규칙이 일치하지 않으면 일부 감사 규칙이 적용되지 않아 보안 이벤트를 놓칠 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 규칙을 병합 및 로드한다:
+
+        augenrules --load
+
+        재부팅이 필요한지 확인한다:
+        if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then echo "Reboot required to load rules"; fi

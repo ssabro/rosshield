@@ -1,0 +1,31 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.2.4
+    title: 4.2.4 Ensure ufw loopback traffic is configured (Automated)
+    description: |-
+        Configure the loopback interface to accept traffic. Configure all other interfaces to deny
+        traffic to the loopback network (127.0.0.0/8 for IPv4 and ::1/128 for IPv6).
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Loopback traffic is generated between processes on machine and is typically critical to
+        operation of the system. The loopback interface is the only place that loopback network
+        (127.0.0.0/8 for IPv4 and ::1/128 for IPv6) traffic should be seen, all other interfaces
+        should ignore traffic on this network as an anti-spoofing measure.
+    fixGuidance: |-
+        Run the following commands to configure the loopback interface to accept traffic:
+        # ufw allow in on lo
+        # ufw allow out on lo
+        Run the following commands to configure all other interfaces to deny traffic to the
+        loopback network:
+        # ufw deny in from 127.0.0.0/8
+        # ufw deny in from ::1
+        Default Value:
+        # allow all on loopback
+        -A ufw-before-input -i lo -j ACCEPT
+        -A ufw-before-output -o lo -j ACCEPT

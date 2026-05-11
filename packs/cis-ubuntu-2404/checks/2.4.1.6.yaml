@@ -1,0 +1,30 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.4.1.6
+    title: 2.4.1.6 Ensure permissions on /etc/cron.monthly are configured (Automated)
+    description: |-
+        The /etc/cron.monthly directory contains system cron jobs that need to run on a
+        monthly basis. The files in this directory cannot be manipulated by the crontab
+        command but are instead edited by system administrators using a text editor. The
+        commands below restrict read/write and search access to user and group root,
+        preventing regular users from accessing this directory.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Granting write access to this directory for non-privileged users could provide them the
+        means for gaining unauthorized elevated privileges. Granting read access to this
+        directory could give an unprivileged user insight in how to gain elevated privileges or
+        circumvent auditing controls.
+    fixGuidance: |-
+        - IF - cron is installed on the system:
+        Run the following commands to set ownership and permissions on the
+        /etc/cron.monthly directory:
+        # chown root:root /etc/cron.monthly/
+        # chmod og-rwx /etc/cron.monthly/
+        Default Value:
+        Access: (755/drwxr-xr-x) Uid: ( 0/ root) Gid: ( 0/ root)

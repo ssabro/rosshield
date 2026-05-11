@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_SSH_012
+    title: SSH 취약 키 교환 알고리즘 비활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 SSH 서버를 사용하는 경우, 취약한 키 교환 알고리즘(diffie-hellman-group1-sha1 등)이 비활성화되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(sshd -T 2>/dev/null | grep -Pi "kexalgorithms.*(diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1)" || echo "PASS" 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 취약한 키 교환 알고리즘은 중간자 공격에 노출될 수 있다. SHA-1 기반 알고리즘은 충돌 공격에 취약하다.
+    fixGuidance: |-
+        /etc/ssh/sshd_config 파일에 취약 키 교환 알고리즘을 제외하도록 설정한다.
+
+        KexAlgorithms -diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1

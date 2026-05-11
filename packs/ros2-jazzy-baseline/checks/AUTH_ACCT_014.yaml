@@ -1,0 +1,16 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ACCT_014
+    title: 로그인 쉘 없는 계정 잠금 상태 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 유효한 로그인 쉘이 없는 계정(root 제외)은 잠겨 있어야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(l_valid_shells="^($(awk -F/ ''\''''$NF != "nologin" {print}''\'''' /etc/shells | sed -rn ''\''''/^\//{s,/,\\/,g;p}''\'''' | paste -s -d ''\''''|''\'''' - ))$"; while IFS= read -r l_user; do passwd -S "$l_user" | awk ''\''''$2 !~ /^L/ {print $1}''\''''; done < <(awk -v pat="$l_valid_shells" -F: ''\''''($1 != "root" && $(NF) !~ pat) {print $1}''\'''' /etc/passwd) 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 로그인 쉘이 없는 계정도 잠기지 않으면 su 명령 등을 통해 해당 계정으로 전환할 수 있다. 계정을 잠그면 이러한 접근을 방지할 수 있다.
+    fixGuidance: |-
+        로그인 쉘이 없고 잠기지 않은 계정을 잠근다:
+        usermod -L <사용자명>

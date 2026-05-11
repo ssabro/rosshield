@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.4.2.3
+    title: 5.4.2.3 Ensure group root is the only GID 0 group (Automated)
+    description: |-
+        The groupmod command can be used to specify which group the root group belongs
+        to. This affects permissions of files that are group owned by the root group.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Using GID 0 for the root group helps prevent root group owned files from accidentally
+        becoming accessible to non-privileged users.
+    fixGuidance: |-
+        Run the following command to set the root group's GID to 0:
+        # groupmod -g 0 root
+        Remove any groups other than the root group with GID 0 or assign them a new GID if
+        appropriate.

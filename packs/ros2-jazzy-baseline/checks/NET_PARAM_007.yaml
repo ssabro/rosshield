@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_007
+    title: 역방향 경로 필터링 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 역방향 경로 필터링(Reverse Path Filtering)이 활성화되어야 한다. 시스템은 수신된 패킷의 출발지 주소가 유효한 경로를 통해 도달한 것인지 검증하도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 역방향 경로 필터링은 패킷의 출발지 주소를 기반으로 해당 패킷이 합법적인 네트워크 경로를 통해 수신되었는지를 확인함으로써 IP 스푸핑 공격을 방지하는 보안 메커니즘이다. 해당 기능이 비활성화되어 있을 경우, 공격자가 위조된 출발지 주소를 가진 패킷을 전송하여 네트워크 기반 공격을 수행할 수 있다.
+    fixGuidance: |-
+        역방향 경로 필터링을 활성화한다.
+
+        printf '%s\n' "net.ipv4.conf.all.rp_filter = 1" "net.ipv4.conf.default.rp_filter = 1" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.conf.all.rp_filter=1
+        sysctl -w net.ipv4.conf.default.rp_filter=1
+        sysctl -w net.ipv4.route.flush=1

@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_035
+    title: 감사 구성 파일 소유자(owner) 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/audit/ 디렉토리의 감사 구성 파일(*.conf, *.rules)의 소유자가 root여야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find /etc/audit/ -type f \( -name '\''*.conf'\'' -o -name '\''*.rules'\'' \) ! -user root 2>/dev/null | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 감사 구성 파일이 root 소유가 아니면 권한 없는 사용자가 감사 설정을 변경할 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 소유자를 root로 변경한다:
+
+        find /etc/audit/ -type f \( -name '*.conf' -o -name '*.rules' \) ! -user root -exec chown root {} +

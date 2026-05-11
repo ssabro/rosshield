@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_FIM_002
+    title: 파일시스템 무결성 정기 검사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 dailyaidecheck.timer가 활성화되어 파일 시스템 무결성 검사가 정기적으로 수행되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(systemctl is-enabled dailyaidecheck.timer 2>/dev/null || echo '\''not_found'\'' 2>&1)"; C2_OUT="$(systemctl is-active dailyaidecheck.timer 2>/dev/null || echo '\''inactive'\'' 2>&1)"; if { [ "$C1_OUT" = '\''enabled'\'' ]; } && { [ "$C2_OUT" = '\''active'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 파일 시스템 무결성 검사가 정기적으로 수행되지 않으면 시스템 파일의 무단 변경을 적시에 탐지할 수 없다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 dailyaidecheck.timer를 unmask하고 활성화한다:
+
+        systemctl unmask dailyaidecheck.timer dailyaidecheck.service
+        systemctl --now enable dailyaidecheck.timer

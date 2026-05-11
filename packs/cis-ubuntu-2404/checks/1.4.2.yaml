@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.4.2
+    title: 1.4.2 Ensure access to bootloader config is configured (Automated)
+    description: |-
+        The grub configuration file contains information on boot settings and passwords for
+        unlocking boot options.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Setting the permissions to read and write for root only prevents non-root users from
+        seeing the boot parameters or changing them. Non-root users who read the boot
+        parameters may be able to identify weaknesses in security upon boot and be able to
+        exploit them.
+    fixGuidance: |-
+        Run the following commands to set permissions on your grub configuration:
+        # chown root:root /boot/grub/grub.cfg
+        # chmod u-x,go-rwx /boot/grub/grub.cfg
+        Default Value:
+        Access: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root)

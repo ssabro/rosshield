@@ -1,0 +1,49 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.12
+    title: 5.1.12 Ensure sshd KexAlgorithms is configured (Automated)
+    description: |-
+        Key exchange is any method in cryptography by which cryptographic keys are
+        exchanged between two parties, allowing use of a cryptographic algorithm. If the sender
+        and receiver wish to exchange encrypted messages, each must be equipped to encrypt
+        messages to be sent and decrypt messages received
+        Notes:
+        • Kex algorithms have a higher preference the earlier they appear in the list
+        • Some organizations may have stricter requirements for approved Key exchange
+        algorithms
+        • Ensure that Key exchange algorithms used are in compliance with site policy
+        • The only Key Exchange Algorithms currently FIPS 140 approved are:
+        o ecdh-sha2-nistp256
+        o ecdh-sha2-nistp384
+        o ecdh-sha2-nistp521
+        o diffie-hellman-group-exchange-sha256
+        o diffie-hellman-group16-sha512
+        o diffie-hellman-group18-sha512
+        o diffie-hellman-group14-sha256
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Key exchange methods that are considered weak should be removed. A key exchange
+        method may be weak because too few bits are used, or the hashing algorithm is
+        considered too weak. Using weak algorithms could expose connections to man-in-the-
+        middle attacks
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file and add/modify the KexAlgorithms line to contain
+        a comma separated list of the site unapproved (weak) KexAlgorithms preceded with a -
+        above any Include entries:
+        Example:
+        KexAlgorithms -diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-
+        hellman-group-exchange-sha1
+        Note: First occurrence of an option takes precedence. If Include locations are enabled,
+        used, and order of precedence is understood in your environment, the entry may be
+        created in a file in Include location.
+        Default Value:
+        KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-
+        sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-
+        sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-
+        sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256

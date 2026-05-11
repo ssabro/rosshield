@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DATA_003
+    title: DDS Shared Memory 보안
+    description: DDS Shared Memory Transport 사용 시 공유 메모리 세그먼트의 접근 권한이 적절히 제한되는지 확인
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(RMW=${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}; if echo $RMW | grep -q fastrtps; then ls -la /dev/shm/*fastrtps* /dev/shm/*FastDDS* 2>/dev/null | awk '\''{print $1}'\'' | grep -v '\''^-rw-------'\'' | head -1; elif echo $RMW | grep -q cyclone; then ls -la /dev/shm/*cyclone* /dev/shm/*iox* 2>/dev/null | awk '\''{print $1}'\'' | grep -v '\''^-rw-------'\'' | head -1; fi 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 공유 메모리 접근 권한이 과도하면 비인가 프로세스가 DDS 데이터를 직접 읽거나 변조할 수 있음
+    fixGuidance: Fast DDS XML 프로파일에서 Shared Memory Transport를 비활성화하거나, 시스템의 umask를 조정하여 공유 메모리 세그먼트 권한을 600으로 제한한다.

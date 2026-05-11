@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CLI_004
+    title: telnet 클라이언트 패키지 제거 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 telnet 클라이언트가 설치되어 있지 않아야 한다. 로봇 운용에 필요하지 않은 평문 기반 원격 접속 클라이언트는 시스템에서 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -l 2>/dev/null | grep -E '\''telnet|inetutils-telnet'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: telnet 클라이언트는 원격 시스템 접속 시 사용자 인증 정보와 명령어를 암호화하지 않고 전송한다. 이로 인해 네트워크 도청, 세션 하이재킹, 자격 증명 탈취 공격에 매우 취약하다.
+    fixGuidance: telnet/inetutils-telnet 패키지를 제거한다.

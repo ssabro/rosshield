@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_SYSLOG_004
+    title: 단일 로깅 시스템 사용 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 rsyslog 또는 journald 중 하나의 로깅 시스템만 사용해야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(systemctl is-active systemd-journald.service 2>/dev/null 2>&1)"; if { [ "$C1_OUT" = '\''active'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 여러 로깅 시스템을 동시에 사용하면 로그 관리가 복잡해지고, 로그가 중복되거나 누락될 수 있다. 단일 로깅 시스템을 사용하면 일관된 로그 관리가 가능하다.
+    fixGuidance: |-
+        1. 사이트 요구사항에 따라 journald 또는 rsyslog 중 하나를 선택한다.
+
+        2. journald만 사용하는 경우 (권장):
+           - rsyslog 비활성화: systemctl stop rsyslog && systemctl disable rsyslog
+           - journald 영구 저장 설정: Storage=persistent in /etc/systemd/journald.conf
+
+        3. rsyslog를 사용하는 경우:
+           - journald에서 rsyslog로 전달 설정
+           - ForwardToSyslog=yes in /etc/systemd/journald.conf
+
+        4. 선택한 로깅 시스템의 하위 권장사항을 구성한다.

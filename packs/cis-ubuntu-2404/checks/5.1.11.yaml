@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.11
+    title: 5.1.11 Ensure sshd IgnoreRhosts is enabled (Automated)
+    description: |-
+        The IgnoreRhosts parameter specifies that .rhosts and .shosts files will not be used
+        in RhostsRSAAuthentication or HostbasedAuthentication.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: Setting this parameter forces users to enter a password when authenticating with SSH.
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set the IgnoreRhosts parameter to yes above
+        any Include and Match entries as follows:
+        IgnoreRhosts yes
+        Note: First occurrence of a option takes precedence, Match set statements
+        withstanding. If Include locations are enabled, used, and order of precedence is
+        understood in your environment, the entry may be created in a file in Include location.
+        Default Value:
+        IgnoreRhosts yes

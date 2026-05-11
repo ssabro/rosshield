@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PART_005
+    title: /dev/shm을 별도 파티션으로 구성
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 /dev/shm 디렉터리가 별도의 파일시스템으로 구성되어야 한다. /dev/shm은 프로세스 간 통신(IPC)을 위한 공유 메모리 영역으로 사용되므로, 다른 중요 파일시스템과 분리되어 관리되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(findmnt -kn /dev/shm 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /dev/shm 디렉터리는 world-writable 속성을 가지며, 다수의 프로세스가 공유 메모리 기반 IPC를 위해 접근하는 영역이다. 해당 디렉터리가 별도의 파일시스템으로 분리되지 않은 경우, 자원 고갈 또는 악의적인 사용으로 인해 시스템 안정성에 영향을 줄 수 있다.
+    fixGuidance: '/dev/shm 마운트 설정을 환경에 맞게 /etc/fstab에 구성한다. 예: tmpfs /dev/shm tmpfs defaults,rw,nosuid,nodev,noexec,relatime,size=2G 0 0. size 값은 환경에 맞게 조정한다.'

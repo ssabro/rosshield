@@ -1,0 +1,27 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.18
+    title: 5.1.18 Ensure sshd MaxStartups is configured (Automated)
+    description: |-
+        The MaxStartups parameter specifies the maximum number of concurrent
+        unauthenticated connections to the SSH daemon.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        To protect a system from denial of service due to a large number of pending
+        authentication connection attempts, use the rate limiting function of MaxStartups to
+        protect availability of sshd logins and prevent overwhelming the daemon.
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set the MaxStartups parameter to 10:30:60 or
+        more restrictive above any Include entries as follows:
+        MaxStartups 10:30:60
+        Note: First occurrence of a option takes precedence. If Include locations are enabled,
+        used, and order of precedence is understood in your environment, the entry may be
+        created in a file in Include location.
+        Default Value:
+        MaxStartups 10:30:100

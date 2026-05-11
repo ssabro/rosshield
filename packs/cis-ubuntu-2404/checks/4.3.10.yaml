@@ -1,0 +1,32 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.10
+    title: 4.3.10 Ensure nftables rules are permanent (Automated)
+    description: |-
+        nftables is a subsystem of the Linux kernel providing filtering and classification of
+        network packets/datagrams/frames.
+        The nftables service reads the /etc/nftables.conf file for a nftables file or files to
+        include in the nftables ruleset.
+        A nftables ruleset containing the input, forward, and output base chains allow network
+        traffic to be filtered.
+        Note: Saving the script and following the instruction in the Configure nftables section
+        overview will implement the rules in the configure nftable section, open port 22(ssh)
+        from anywhere, and applies nftables ruleset on boot.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Changes made to nftables ruleset only affect the live system, you will also need to
+        configure the nftables ruleset to apply on boot
+    fixGuidance: |-
+        Edit the /etc/nftables.conf file and un-comment or add a line with include
+        <Absolute path to nftables rules file> for each nftables file you want included
+        in the nftables ruleset on boot
+        Example:
+        # vi /etc/nftables.conf
+        Add the line:
+        include "/etc/nftables.rules"

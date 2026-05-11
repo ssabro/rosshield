@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_NFT_010
+    title: nftables 규칙 영구 적용 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 nftables를 방화벽 관리 도구로 사용하는 경우, 정의된 nftables 규칙은 시스템 재부팅 이후에도 유지되도록 영구적으로 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(fail=0; if [ -f /etc/nftables.conf ]; then if grep -qE '\''^\s*include'\'' /etc/nftables.conf; then inc_file=$(awk '\''$1 ~ /^\s*include/ { gsub("\"","",$2); print $2 }'\'' /etc/nftables.conf | head -1); if [ -f "$inc_file" ]; then grep -q '\''hook input'\'' "$inc_file" || fail=1; grep -q '\''hook forward'\'' "$inc_file" || fail=1; grep -q '\''hook output'\'' "$inc_file" || fail=1; else fail=1; fi; else grep -q '\''hook input'\'' /etc/nftables.conf || fail=1; grep -q '\''hook forward'\'' /etc/nftables.conf || fail=1; grep -q '\''hook output'\'' /etc/nftables.conf || fail=1; fi; else fail=1; fi; [ $fail -eq 0 ] && echo "PASS" || echo "FAIL" 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: nftables 규칙이 영구적으로 저장되지 않을 경우, 시스템 재부팅 시 방화벽 정책이 초기화되어 네트워크 접근 통제가 해제될 수 있다. CIS 벤치마크에서는 방화벽 정책의 지속성을 확보하기 위해 nftables 규칙을 영구 적용하도록 구성할 것을 권고하고 있다.
+    fixGuidance: |-
+        /etc/nftables.conf 파일에 규칙 파일을 포함하도록 설정한다.
+
+        1. /etc/nftables.conf 파일 편집
+        2. include 라인 추가: include "/etc/nftables.rules"
+        3. 현재 규칙을 파일로 저장: nft list ruleset > /etc/nftables.rules
+
+        또는 직접 /etc/nftables.conf에 규칙을 작성한다.

@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.2.2
+    title: 7.2.2 Ensure /etc/shadow password fields are not empty (Automated)
+    description: |-
+        An account with an empty password field means that anybody may log in as that user
+        without providing a password.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        All accounts must have passwords or be locked to prevent the account from being used
+        by an unauthorized user.
+    fixGuidance: |-
+        If any accounts in the /etc/shadow file do not have a password, run the following
+        command to lock the account until it can be determined why it does not have a
+        password:
+        # passwd -l <username>
+        Also, check to see if the account is logged in and investigate what it is being used for to
+        determine if it needs to be forced off.

@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_TIME_002
+    title: 승인된 타임서버로 systemd-timesyncd 구성
+    description: systemd-timesyncd가 승인된 타임서버를 사용하는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(systemd-analyze cat-config /etc/systemd/timesyncd.conf 2>/dev/null | grep -E '\''^\s*(NTP|FallbackNTP)\s*='\'' | grep -v '\''^\s*#'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 신뢰할 수 있는 시간 소스 사용
+    fixGuidance: |-
+        /etc/systemd/timesyncd.conf.d/60-timesyncd.conf 파일에 NTP 서버를 설정한다.
+
+        [Time]
+        NTP=<승인된 NTP 서버>
+        FallbackNTP=<대체 NTP 서버>
+
+        설정 후 서비스를 재시작한다:
+        systemctl reload-or-restart systemd-timesyncd

@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DDS_003
+    title: SROS2 키스토어 구성 검증
+    description: SROS2 키스토어 디렉토리가 올바르게 구성되고 CA 인증서가 존재하는지 확인
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: SROS2 보안 통신의 기반이 되는 키스토어와 CA 인증서가 없으면 DDS Security 플러그인이 동작하지 않음
+    fixGuidance: ros2 security create_keystore 명령으로 키스토어를 생성하고, 디렉토리 권한을 700으로 설정한다. ROS_SECURITY_KEYSTORE 환경변수를 systemd 서비스 파일에 설정한다.

@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ENV_003
+    title: 기본 사용자 umask 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 기본 umask가 027 이상의 제한적인 값으로 설정되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Prs '\''^\s*umask\s+(0?[0-7][2-7]7|u(=[rwx]{0,3}),g=([rx]{0,2}),o=)\b'\'' /etc/profile.d/*.sh /etc/profile /etc/bashrc /etc/bash.bashrc /etc/login.defs 2>/dev/null | head -1 2>&1)"; C2_OUT="$(grep -Prs '\''^\s*umask\s+(0?0?[0-1][0-7]|0?0?2[0-6]|0?[0-7][0-1][0-7]|0?[0-7][0-7][0-6])\b'\'' /etc/profile.d/*.sh /etc/profile /etc/bashrc /etc/bash.bashrc /etc/login.defs 2>/dev/null || echo '\''PASS'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: umask는 새로 생성되는 파일과 디렉토리의 기본 권한을 결정한다. umask 027은 새 디렉토리를 750(rwxr-x---), 새 파일을 640(rw-r-----)으로 생성하여 다른 사용자의 접근을 제한한다.
+    fixGuidance: |-
+        /etc/profile.d/ 디렉토리에 .sh 파일을 생성하여 umask를 설정한다:
+
+        printf '%s\n' "umask 027" > /etc/profile.d/50-systemwide_umask.sh
+
+        기존 파일에 027보다 느슨한 umask 설정(예: 022, 002)이 있으면 주석 처리하거나 027로 수정한다.
+
+        확인할 파일:
+        • /etc/profile
+        • /etc/bashrc 또는 /etc/bash.bashrc
+        • /etc/login.defs
+        • /etc/profile.d/*.sh

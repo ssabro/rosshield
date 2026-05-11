@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_013
+    title: 네트워크 환경 수정 감사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 네트워크 환경 변경(호스트명, 도메인명, 네트워크 설정 파일)을 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 네트워크 환경 변경을 감사하면 시스템의 네트워크 정체성이나 구성을 무단으로 수정하는 행위를 탐지할 수 있다.
+    fixGuidance: |-
+        /etc/audit/rules.d/ 디렉토리에 규칙 파일을 생성한다:
+
+        printf "
+        -a always,exit -F arch=b64 -S sethostname,setdomainname -k system-locale
+        -a always,exit -F arch=b32 -S sethostname,setdomainname -k system-locale
+        -w /etc/issue -p wa -k system-locale
+        -w /etc/issue.net -p wa -k system-locale
+        -w /etc/hosts -p wa -k system-locale
+        -w /etc/networks -p wa -k system-locale
+        -w /etc/network/ -p wa -k system-locale
+        -w /etc/netplan/ -p wa -k system-locale
+        " >> /etc/audit/rules.d/50-system_locale.rules
+
+        규칙을 로드한다:
+        augenrules --load

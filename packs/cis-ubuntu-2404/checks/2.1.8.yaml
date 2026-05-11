@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.8
+    title: 2.1.8 Ensure message access server services are not in use (Automated)
+    description: |-
+        dovecot-imapd and dovecot-pop3d are an open source IMAP and POP3 server for
+        Linux based systems.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Unless POP3 and/or IMAP servers are to be provided by this system, it is
+        recommended that the package be removed to reduce the potential attack surface.
+        Note: Several IMAP/POP3 servers exist and can use other service names. These
+        should also be audited and the packages removed if not required.
+        Impact:
+        There may be packages that are dependent on dovecot-imapd and/or dovecot-pop3d
+        packages. If dovecot-imapd and dovecot-pop3d packages are removed, these
+        dependent packages will be removed as well. Before removing dovecot-imapd and/or
+        dovecot-pop3d packages, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask dovecot.socket and
+        dovecot.service leaving dovecot-imapd and/or dovecot-pop3d packages installed.
+    fixGuidance: |-
+        Run one of the following commands to remove dovecot-imapd and dovecot-pop3d:
+        Run the following commands to stop dovecot.socket and dovecot.service, and
+        remove the dovecot-imapd and dovecot-pop3d packages:
+        # systemctl stop dovecot.socket dovecot.service
+        # apt purge dovecot-imapd dovecot-pop3d
+        - OR -
+        - IF - a package is installed and is required for dependencies:
+        Run the following commands to stop and mask dovecot.socket and
+        dovecot.service:
+        # systemctl stop dovecot.socket dovecot.service
+        # systemctl mask dovecot.socket dovecot.service

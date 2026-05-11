@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: FW_NFT_007
+    title: nftables 아웃바운드 및 기존 연결 처리 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 nftables를 방화벽 관리 도구로 사용하는 경우, 아웃바운드 네트워크 연결과 이미 수립된(established) 또는 관련된(related) 연결에 대한 처리 규칙이 명확히 정의되어 있어야 한다. 정상적으로 생성된 연결은 지속적으로 허용되어야 하며, 아웃바운드 트래픽은 정책적으로 관리되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(fail=0; nft list ruleset 2>/dev/null | awk '\''/hook input/,/}/'\'' | grep -qE '\''ct state.*established.*accept'\'' || fail=1; nft list ruleset 2>/dev/null | awk '\''/hook output/,/}/'\'' | grep -qE '\''ct state.*(new|established).*accept'\'' || fail=1; [ $fail -eq 0 ] && echo "PASS" || echo "FAIL" 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 방화벽에서 기존 연결(established/related)을 명시적으로 허용하지 않을 경우, 정상적인 세션이 중간에 차단되어 서비스 장애가 발생할 수 있다. 또한 아웃바운드 트래픽을 무제한 허용할 경우 악성 코드의 외부 통신이나 정보 유출 경로가 될 수 있다.
+    fixGuidance: |-
+        nftables 연결 상태 규칙을 추가한다.
+
+        nft add rule inet filter input ip protocol tcp ct state established accept
+        nft add rule inet filter input ip protocol udp ct state established accept
+        nft add rule inet filter output ip protocol tcp ct state new,related,established accept
+        nft add rule inet filter output ip protocol udp ct state new,related,established accept

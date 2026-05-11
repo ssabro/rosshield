@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.2.1.1
+    title: 6.1.2.1.1 Ensure systemd-journal-remote is installed (Automated)
+    description: |-
+        Journald systemd-journal-remote supports the ability to send log events it gathers to
+        a remote log host or to receive messages from remote hosts, thus enabling centralized
+        log management.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Storing log data on a remote host protects log integrity from local attacks. If an attacker
+        gains root access on the local system, they could tamper with or remove log data that is
+        stored on the local system.
+        Note: This recommendation only applies if journald is the chosen method for
+        client side logging. Do not apply this recommendation if rsyslog is used.
+    fixGuidance: |-
+        Run the following command to install systemd-journal-remote:
+        # apt install systemd-journal-remote

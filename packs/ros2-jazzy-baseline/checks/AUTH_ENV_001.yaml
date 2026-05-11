@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ENV_001
+    title: nologin이 /etc/shells에 등록되지 않았는지 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 nologin이 /etc/shells 파일에 등록되어 있지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Ps '\''^\s*([^#]+)?/nologin\b'\'' /etc/shells || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /etc/shells에 nologin이 등록되어 있으면 유효한 쉘로 인식되어 nologin을 사용하는 계정이 일부 서비스(FTP 등)에 로그인할 수 있게 된다.
+    fixGuidance: |-
+        /etc/shells 파일을 편집하여 nologin이 포함된 라인을 제거한다.
+
+        1. 확인:
+        grep -n 'nologin' /etc/shells
+
+        2. 제거:
+        sed -i '/\/nologin/d' /etc/shells

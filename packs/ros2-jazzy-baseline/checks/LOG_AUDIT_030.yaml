@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_030
+    title: 감사 로그 파일 권한(mode) 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 감사 로그 파일의 권한이 0640 이하로 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$([ -f /etc/audit/auditd.conf ] && find "$(dirname "$(awk -F= '\''/^\s*log_file\s*/{print $2}'\'' /etc/audit/auditd.conf | xargs)")" -maxdepth 1 -type f -perm /0137 2>/dev/null | head -1 | grep -q . && echo '\''FAIL'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 감사 로그 파일에 부적절한 권한이 설정되면 민감한 감사 정보가 무단 사용자에게 노출되거나 변조될 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 감사 로그 파일의 권한을 수정한다:
+
+        [ -f /etc/audit/auditd.conf ] && find "$(dirname $(awk -F "=" '/^\s*log_file/ {print $2}' /etc/audit/auditd.conf | xargs))" -type f -perm /0137 -exec chmod u-x,g-wx,o-rwx {} +

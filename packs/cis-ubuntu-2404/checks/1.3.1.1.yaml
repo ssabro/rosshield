@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.3.1.1
+    title: 1.3.1.1 Ensure AppArmor is installed (Automated)
+    description: AppArmor provides Mandatory Access Controls.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Without a Mandatory Access Control system installed only the default Discretionary
+        Access Control system will be available.
+    fixGuidance: |-
+        Install AppArmor.
+        # apt install apparmor apparmor-utils

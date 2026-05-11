@@ -1,0 +1,36 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.14
+    title: 6.2.3.14 Ensure events that modify the system's Mandatory (Automated)
+    description: |-
+        Monitor AppArmor, an implementation of mandatory access controls. The parameters
+        below monitor any write access (potential additional, deletion or modification of files in
+        the directory) or attribute changes to the /etc/apparmor/ and /etc/apparmor.d/
+        directories.
+        Note: If a different Mandatory Access Control method is used, changes to the
+        corresponding directories should be audited.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Changes to files in the /etc/apparmor/ and /etc/apparmor.d/ directories could
+        indicate that an unauthorized user is attempting to modify access controls and change
+        security contexts, leading to a compromise of the system.
+    fixGuidance: |-
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor events that modify the system's Mandatory Access
+        Controls.
+        Example:
+        # printf "
+        -w /etc/apparmor/ -p wa -k MAC-policy
+        -w /etc/apparmor.d/ -p wa -k MAC-policy
+        " >> /etc/audit/rules.d/50-MAC-policy.rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

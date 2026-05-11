@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_FSMOD_011
+    title: firewire-core 커널 모듈 비활성화
+    description: FireWire는 고속 직렬 버스로 DMA 공격에 취약
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(lsmod | grep firewire-core 2>&1)"; C2_OUT="$(modprobe --showconfig | grep -P '\''\binstall\h+firewire_core\h+((/usr)?/bin/(true|false))\b'\'' 2>&1)"; C3_OUT="$(modprobe --showconfig | grep -P '\''\bblacklist\h+firewire_core\b'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; } && { [ -n "$C3_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: DMA 공격 표면 감소
+    fixGuidance: firewire-core 커널 모듈이 시스템에 존재하는 경우, /etc/modprobe.d/ 디렉터리에 install firewire-core /bin/false 및 blacklist firewire-core 설정 파일을 생성하고, 현재 로드된 모듈을 언로드한다. 모듈이 시스템에 존재하지 않거나 커널에 미리 컴파일된 경우 조치 불필요.

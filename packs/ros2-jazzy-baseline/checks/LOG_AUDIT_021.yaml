@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_021
+    title: 파일 삭제 이벤트 감사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 파일 삭제 및 이름 변경 이벤트(unlink, unlinkat, rename, renameat)를 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(UID_MIN=$(awk '\''/^\s*UID_MIN/{print $2}'\'' /etc/login.defs); awk "/^ *-a *always,exit/ && / -F *arch=b64/ && (/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) && / -F *auid>=${UID_MIN}/ && / -S/ && (/unlink/||/rename/) && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules 2>/dev/null 2>&1)"; C2_OUT="$(UID_MIN=$(awk '\''/^\s*UID_MIN/{print $2}'\'' /etc/login.defs); awk "/^ *-a *always,exit/ && / -F *arch=b32/ && (/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) && / -F *auid>=${UID_MIN}/ && / -S/ && (/unlink/||/rename/) && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 파일 삭제 이벤트를 감사하면 중요한 파일의 무단 삭제나 이름 변경을 통한 데이터 손실/은폐 시도를 탐지할 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 규칙을 생성한다:
+
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        printf "
+        -a always,exit -F arch=b64 -S rename,unlink,unlinkat,renameat -F auid>=${UID_MIN} -F auid!=unset -F key=delete
+        -a always,exit -F arch=b32 -S rename,unlink,unlinkat,renameat -F auid>=${UID_MIN} -F auid!=unset -F key=delete
+        " >> /etc/audit/rules.d/50-delete.rules
+
+        규칙을 로드한다:
+        augenrules --load

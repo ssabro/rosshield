@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.1.2
+    title: 4.4.1.2 Ensure nftables is not in use with iptables (Automated)
+    description: |-
+        nftables is a subsystem of the Linux kernel providing filtering and classification of
+        network packets/datagrams/frames and is the successor to iptables.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: Running both iptables and nftables may lead to conflict.
+    fixGuidance: |-
+        Run the following command to remove nftables:
+        # apt purge nftables
+        - OR -
+        Run the following commands to stop and mask nftables.service:
+        # systemctl stop nftables.service
+        # systemctl mask nftables.service

@@ -1,0 +1,27 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_008
+    title: 소스 라우팅 거부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 IPv4 및 IPv6 환경에서 소스 라우팅(Source Routed) 패킷을 수신하지 않도록 구성되어야 한다. 시스템은 패킷의 전달 경로가 송신자에 의해 지정된 네트워크 트래픽을 허용하지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 소스 라우팅은 패킷 송신자가 네트워크를 통과할 경로를 직접 지정할 수 있도록 하는 기능으로, 공격자가 이를 악용하여 방화벽이나 네트워크 보안 장비를 우회하거나 트래픽을 비인가 경로로 전달할 수 있다. CIS 벤치마크에서는 이러한 네트워크 경로 조작 공격을 방지하기 위해 소스 라우팅 패킷 수신을 차단할 것을 권고하고 있다.
+    fixGuidance: |-
+        소스 라우팅 패킷 수신을 비활성화한다.
+
+        # IPv4
+        printf '%s\n' "net.ipv4.conf.all.accept_source_route = 0" "net.ipv4.conf.default.accept_source_route = 0" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.conf.all.accept_source_route=0
+        sysctl -w net.ipv4.conf.default.accept_source_route=0
+        sysctl -w net.ipv4.route.flush=1
+
+        # IPv6 (활성화된 경우)
+        printf '%s\n' "net.ipv6.conf.all.accept_source_route = 0" "net.ipv6.conf.default.accept_source_route = 0" >> /etc/sysctl.d/60-netipv6_sysctl.conf
+        sysctl -w net.ipv6.conf.all.accept_source_route=0
+        sysctl -w net.ipv6.conf.default.accept_source_route=0
+        sysctl -w net.ipv6.route.flush=1

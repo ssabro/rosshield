@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.2.1.2
+    title: 1.2.1.2 Ensure package manager repositories are configured (Manual)
+    description: |-
+        Systems need to have package manager repositories configured to ensure they receive
+        the latest patches and updates.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If a system's package repositories are misconfigured important patches may not be
+        identified or a rogue repository could introduce compromised software.
+    fixGuidance: Configure your package manager repositories according to site policy.

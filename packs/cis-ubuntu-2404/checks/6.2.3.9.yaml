@@ -1,0 +1,66 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.9
+    title: 6.2.3.9 Ensure discretionary access control permission (Automated)
+    description: |-
+        Monitor changes to file permissions, attributes, ownership and group. The parameters in
+        this section track changes for system calls that affect file permissions and attributes.
+        The following commands and system calls effect the permissions, ownership and
+        various attributes of files.
+        • chmod
+        • fchmod
+        • fchmodat
+        • chown
+        • fchown
+        • fchownat
+        • lchown
+        • setxattr
+        • lsetxattr
+        • fsetxattr
+        • removexattr
+        • lremovexattr
+        • fremovexattr
+        In all cases, an audit record will only be written for non-system user ids and will ignore
+        Daemon events. All audit records will be tagged with the identifier "perm_mod."
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Monitoring for changes in file attributes could alert a system administrator to activity that
+        could indicate intruder activity or policy violation.
+    fixGuidance: |-
+        Create audit rules
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor discretionary access control permission modification
+        events.
+        Example:
+        # {
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        [ -n "${UID_MIN}" ] && printf "
+        -a always,exit -F arch=b64 -S chmod,fchmod,fchmodat -F auid>=${UID_MIN} -F
+        auid!=unset -F key=perm_mod
+        -a always,exit -F arch=b64 -S chown,fchown,lchown,fchownat -F
+        auid>=${UID_MIN} -F auid!=unset -F key=perm_mod
+        -a always,exit -F arch=b32 -S chmod,fchmod,fchmodat -F auid>=${UID_MIN} -F
+        auid!=unset -F key=perm_mod
+        -a always,exit -F arch=b32 -S lchown,fchown,chown,fchownat -F
+        auid>=${UID_MIN} -F auid!=unset -F key=perm_mod
+        -a always,exit -F arch=b64 -S
+        setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F
+        auid>=${UID_MIN} -F auid!=unset -F key=perm_mod
+        -a always,exit -F arch=b32 -S
+        setxattr,lsetxattr,fsetxattr,removexattr,lremovexattr,fremovexattr -F
+        auid>=${UID_MIN} -F auid!=unset -F key=perm_mod
+        " >> /etc/audit/rules.d/50-perm_mod.rules || printf "ERROR: Variable
+        'UID_MIN' is unset.\n"
+        }
+        Load audit rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

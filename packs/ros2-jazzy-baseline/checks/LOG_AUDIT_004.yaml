@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_004
+    title: audit backlog 크기 설정 적정성 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 GRUB 부트로더에 audit_backlog_limit 파라미터가 적절한 크기로 설정되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find /boot -type f -name '\''grub.cfg'\'' -exec grep -Ph -- '\''^\h*linux'\'' {} + 2>/dev/null | grep -Pv '\''audit_backlog_limit=\d+\b'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 부팅 과정에서 생성되는 감사 이벤트가 backlog 크기를 초과하면 이벤트가 유실될 수 있다. 충분한 크기의 backlog를 설정하여 모든 감사 이벤트를 기록해야 한다.
+    fixGuidance: |-
+        /etc/default/grub 파일을 편집하여 GRUB_CMDLINE_LINUX에 audit_backlog_limit=8192를 추가한다.
+        권장 크기는 8192 이상이다.
+
+        예시:
+        GRUB_CMDLINE_LINUX="audit_backlog_limit=8192"
+
+        다음 명령어를 실행하여 GRUB 설정을 업데이트한다:
+        update-grub

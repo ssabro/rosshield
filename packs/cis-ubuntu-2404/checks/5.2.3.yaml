@@ -1,0 +1,33 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.2.3
+    title: 5.2.3 Ensure sudo log file exists (Automated)
+    description: sudo can use a custom log file
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        A sudo log file simplifies auditing of sudo commands
+        Impact:
+        WARNING: Editing the sudo configuration incorrectly can cause sudo to stop
+        functioning. Always use visudo to modify sudo configuration files.
+    fixGuidance: |-
+        Edit the file /etc/sudoers or a file in /etc/sudoers.d/ with visudo or visudo -f
+        <PATH TO FILE> and add the following line:
+        Example:
+        Defaults logfile="/var/log/sudo.log"
+        Note:
+        • sudo will read each file in /etc/sudoers.d, skipping file names that end in ~ or
+        contain a . character to avoid causing problems with package manager or editor
+        temporary/backup files.
+        • Files are parsed in sorted lexical order. That is, /etc/sudoers.d/01_first will
+        be parsed before /etc/sudoers.d/10_second.
+        • Be aware that because the sorting is lexical, not numeric,
+        /etc/sudoers.d/1_whoops would be loaded after
+        /etc/sudoers.d/10_second.
+        • Using a consistent number of leading zeroes in the file names can be used to
+        avoid such problems.

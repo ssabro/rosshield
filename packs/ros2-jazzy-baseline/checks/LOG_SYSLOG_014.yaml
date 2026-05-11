@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_SYSLOG_014
+    title: journald 로그의 rsyslog 전달 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 rsyslog를 로깅에 사용하는 경우, journald에서 rsyslog로 로그를 전달하도록 ForwardToSyslog=yes가 설정되어 있어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Phs '\''^\s*ForwardToSyslog\s*=\s*yes'\'' /etc/systemd/journald.conf /etc/systemd/journald.conf.d/*.conf 2>/dev/null | head -1 2>&1)"; C2_OUT="$(systemctl is-active rsyslog.service 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''active'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: journald는 시스템 부팅 초기부터 로그를 수집하므로, rsyslog와 함께 사용할 때 ForwardToSyslog를 활성화하면 journald가 수집한 모든 로그를 rsyslog로 전달할 수 있다.
+    fixGuidance: |-
+        /etc/systemd/journald.conf.d/ 디렉토리에 .conf 파일을 생성하여 설정한다:
+
+        mkdir -p /etc/systemd/journald.conf.d/
+        cat << 'EOF' > /etc/systemd/journald.conf.d/60-journald.conf
+        [Journal]
+        ForwardToSyslog=yes
+        EOF
+
+        systemctl reload-or-restart systemd-journald.service

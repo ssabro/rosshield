@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.6.6
+    title: 1.6.6 Ensure access to /etc/issue.net is configured (Automated)
+    description: |-
+        The contents of the /etc/issue.net file are displayed to users prior to login for remote
+        connections from configured services.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        - IF - the /etc/issue.net file does not have the correct access configured, it could be
+        modified by unauthorized users with incorrect or misleading information.
+    fixGuidance: |-
+        Run the following commands to set mode, owner, and group on /etc/issue.net:
+        # chown root:root $(readlink -e /etc/issue.net)
+        # chmod u-x,go-wx $(readlink -e /etc/issue.net)
+        Default Value:
+        Access: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root)

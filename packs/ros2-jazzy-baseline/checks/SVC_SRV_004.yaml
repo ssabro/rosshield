@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_004
+    title: dns-server 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 DNS 서버 서비스가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 이름 해석 서버 기능은 비활성화되거나 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s bind9 &>/dev/null && echo '\''installed'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled named.service 2>/dev/null | grep '\''enabled'\'' 2>&1)"; C3_OUT="$(systemctl is-active named.service 2>/dev/null | grep '\''^active'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } || { { [ -z "$C2_OUT" ]; } && { [ -z "$C3_OUT" ]; }; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: DNS 서버 서비스는 네트워크 상의 클라이언트에 대해 이름 해석 요청을 처리하는 기능을 제공한다. 로봇 Host에서 해당 서비스가 활성화될 경우, 의도하지 않은 외부 요청을 처리하거나 DNS 응답 변조, 서비스 오남용 등의 보안 위협에 노출될 수 있다.
+    fixGuidance: 'bind9 패키지를 제거한다: apt purge -y bind9. 패키지가 의존성으로 필요한 경우 서비스를 중지하고 마스크한다: systemctl stop named.service && systemctl mask named.service.'

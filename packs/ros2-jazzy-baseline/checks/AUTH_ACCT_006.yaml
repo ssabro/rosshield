@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ACCT_006
+    title: 비밀번호 변경 시점 유효성 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 모든 사용자의 마지막 비밀번호 변경 날짜가 미래 날짜가 아니어야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(today=$(( $(date +%s) / 86400 )); awk -F: -v today=$today ''\''''($2~/^\$.+\$/) {if($3 > today)print $1}''\'''' /etc/shadow 2>/dev/null || echo ''\''''''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 비밀번호 변경 날짜가 미래로 설정되어 있으면 비밀번호 정책이 우회될 수 있다.
+    fixGuidance: |-
+        비밀번호 변경 날짜가 미래인 사용자를 조사하고 수정한다.
+
+        계정 잠금:
+        passwd -l <사용자>
+
+        비밀번호 만료:
+        chage -E 0 <사용자>
+
+        비밀번호 변경 날짜 재설정:
+        chage -d "$(date +%Y-%m-%d)" <사용자>

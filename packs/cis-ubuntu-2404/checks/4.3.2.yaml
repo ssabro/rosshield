@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.2
+    title: 4.3.2 Ensure ufw is uninstalled or disabled with nftables (Automated)
+    description: |-
+        Uncomplicated Firewall (UFW) is a program for managing a netfilter firewall designed to
+        be easy to use.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Running both the nftables service and ufw may lead to conflict and unexpected
+        results.
+    fixGuidance: |-
+        Run one of the following to either remove ufw or disable ufw and mask ufw.service:
+        Run the following command to remove ufw:
+        # apt purge ufw
+        -OR-
+        Run the following commands to disable ufw and mask ufw.service:
+        # ufw disable
+        # systemctl stop ufw.service
+        # systemctl mask ufw.service
+        Note: ufw disable needs to be run before systemctl mask ufw.service in order to
+        correctly disable UFW

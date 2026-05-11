@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_DEV_001
+    title: IPv6 상태 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 IPv6가 사용 중인지 여부를 명확히 식별해야 한다. 시스템 및 네트워크 환경에서 IPv6가 실제로 필요한지 여부를 확인하고, 이후 보안 설정 적용 여부를 결정해야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(ipv6_disabled="no"; grep -Pqs -- '\''^\h*0\b'\'' /sys/module/ipv6/parameters/disable || ipv6_disabled="yes"; if [ "$ipv6_disabled" = "no" ]; then sysctl net.ipv6.conf.all.disable_ipv6 2>/dev/null | grep -q '\''= 1'\'' && sysctl net.ipv6.conf.default.disable_ipv6 2>/dev/null | grep -q '\''= 1'\'' && ipv6_disabled="yes"; fi; echo $ipv6_disabled 2>&1)"; if { [ "$C1_OUT" = '\''yes'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: IPv6는 확장된 주소 공간과 새로운 네트워크 기능을 제공하지만, 사용하지 않는 환경에서 활성화되어 있을 경우 관리되지 않는 네트워크 경로를 생성하여 보안 위험을 증가시킬 수 있다. CIS 벤치마크에서는 IPv6를 무조건 비활성화하기에 앞서, 해당 프로토콜이 실제로 사용되고 있는지 여부를 먼저 식별하도록 권고하고 있다.
+    fixGuidance: 시스템 요구사항과 정책에 따라 IPv6를 활성화하거나 비활성화한다.

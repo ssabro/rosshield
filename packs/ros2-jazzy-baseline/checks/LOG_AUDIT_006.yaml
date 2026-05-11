@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_006
+    title: 감사 로그 파일 초과 시 동작 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 auditd의 max_log_file_action이 keep_logs로 설정되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Pi -- '\''^\s*max_log_file_action\s*=\s*keep_logs\b'\'' /etc/audit/auditd.conf 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: max_log_file_action을 keep_logs로 설정하면 로그 파일이 최대 크기에 도달했을 때 자동으로 새 로그 파일로 회전하며 기존 로그를 보존한다. 이를 통해 감사 기록의 손실을 방지한다.
+    fixGuidance: |-
+        /etc/audit/auditd.conf에 다음 파라미터를 설정한다:
+
+        max_log_file_action = keep_logs

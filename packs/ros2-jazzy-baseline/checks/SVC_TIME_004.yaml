@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_TIME_004
+    title: 승인된 타임서버로 chrony 구성
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 systemd-timesyncd가 조직 또는 시스템 운영 정책에 따라 승인된 시간 서버와만 동기화되도록 구성되어야 한다. 임의의 외부 시간 서버를 사용해서는 안 된다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Psh '\''^\s*(server|pool)\s+\S+'\'' /etc/chrony/chrony.conf /etc/chrony/sources.d/*.sources /etc/chrony/conf.d/*.conf 2>/dev/null | head -5 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: systemd-timesyncd는 네트워크를 통해 원격 시간 서버로부터 시각 정보를 수신하여 시스템 시간을 동기화한다. 승인되지 않은 시간 서버를 사용할 경우, 악의적인 시간 정보 제공이나 중간자 공격을 통해 시스템 시간이 왜곡될 수 있으며, 이는 로그 타임스탬프 무결성 훼손, 보안 이벤트 분석 오류, 인증 및 세션 관리 실패로 이어질 수 있다.
+    fixGuidance: |-
+        /etc/chrony/chrony.conf 또는 /etc/chrony/sources.d/*.sources 파일에 시간 서버를 설정한다.
+
+        예시:
+        pool time.nist.gov iburst maxsources 4
+        server time-a-g.nist.gov iburst
+
+        설정 후 서비스를 재시작한다:
+        systemctl reload-or-restart chronyd

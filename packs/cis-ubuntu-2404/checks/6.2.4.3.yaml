@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.4.3
+    title: 6.2.4.3 Ensure audit log files group owner is configured (Automated)
+    description: Audit log files contain information about the system and system activity.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Access to audit records can reveal system and configuration data to attackers,
+        potentially compromising its confidentiality.
+    fixGuidance: |-
+        Run the following command to configure the audit log files to be group owned by adm:
+        # find $(dirname $(awk -F"=" '/^\s*log_file/ {print $2}'
+        /etc/audit/auditd.conf | xargs)) -type f \( ! -group adm -a ! -group root \)
+        -exec chgrp adm {} +
+        Run the following command to set the log_group parameter in the audit configuration
+        file to log_group = adm:
+        # sed -ri 's/^\s*#?\s*log_group\s*=\s*\S+(\s*#.*)?.*$/log_group = adm\1/'
+        /etc/audit/auditd.conf
+        Run the following command to restart the audit daemon to reload the configuration file:
+        # systemctl restart auditd

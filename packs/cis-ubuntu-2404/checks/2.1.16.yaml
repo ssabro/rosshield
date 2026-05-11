@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.16
+    title: 2.1.16 Ensure tftp server services are not in use (Automated)
+    description: |-
+        Trivial File Transfer Protocol (TFTP) is a simple protocol for exchanging files between
+        two TCP/IP machines. TFTP servers allow connections from a TFTP Client for sending
+        and receiving files.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Unless there is a need to run the system as a TFTP server, it is recommended that the
+        package be removed to reduce the potential attack surface.
+        TFTP does not have built-in encryption, access control or authentication. This makes it
+        very easy for an attacker to exploit TFTP to gain access to files
+        Impact:
+        TFTP is often used to provide files for network booting such as for PXE based
+        installation of servers.
+        There may be packages that are dependent on the tftpd-hpa package. If the tftpd-
+        hpa package is removed, these dependent packages will be removed as well. Before
+        removing the tftpd-hpa package, review any dependent packages to determine if they
+        are required on the system.
+        - IF - a dependent package is required: stop and mask tftpd-hpa.service leaving the
+        tftpd-hpa package installed.
+    fixGuidance: |-
+        Run the following commands to stop tftpd-hpa.service, and remove the tftpd-hpa
+        package:
+        # systemctl stop tftpd-hpa.service
+        # apt purge tftpd-hpa
+        - OR -
+        - IF - the tftpd-hpa package is required as a dependency:
+        Run the following commands to stop and mask tftpd-hpa.service:
+        # systemctl stop tftpd-hpa.service
+        # systemctl mask tftpd-hpa.service

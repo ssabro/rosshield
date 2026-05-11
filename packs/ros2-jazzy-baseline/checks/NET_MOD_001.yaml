@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_MOD_001
+    title: dccp 커널 모듈 비활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 DCCP(Datagram Congestion Control Protocol) 커널 모듈이 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 네트워크 프로토콜 관련 커널 모듈은 시스템에서 로드되지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(fail=0; lsmod | grep -q "^dccp " && fail=1; modprobe --showconfig 2>/dev/null | grep -Pq "^\s*install\s+dccp\s+/bin/(true|false)" || fail=1; modprobe --showconfig 2>/dev/null | grep -Pq "^\s*blacklist\s+dccp\b" || fail=1; [ $fail -eq 0 ] && echo "PASS" || echo "FAIL" 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: DCCP는 혼잡 제어 기능을 제공하는 전송 계층 프로토콜이나, 일반적인 로봇 통신 환경에서는 사용되지 않는다. 사용되지 않는 네트워크 프로토콜 커널 모듈이 활성화되어 있을 경우, 해당 프로토콜 구현의 취약점이 원격 공격에 악용될 수 있다.
+    fixGuidance: |-
+        dccp 커널 모듈을 비활성화한다.
+
+        echo "install dccp /bin/false" >> /etc/modprobe.d/dccp.conf
+        echo "blacklist dccp" >> /etc/modprobe.d/dccp.conf
+        modprobe -r dccp 2>/dev/null; rmmod dccp 2>/dev/null

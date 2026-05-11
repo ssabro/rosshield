@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.10
+    title: 5.1.10 Ensure sshd HostbasedAuthentication is disabled (Automated)
+    description: |-
+        The HostbasedAuthentication parameter specifies if authentication is allowed
+        through trusted hosts via the user of .rhosts, or /etc/hosts.equiv, along with
+        successful public key client host authentication.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Even though the .rhosts files are ineffective if support is disabled in /etc/pam.conf,
+        disabling the ability to use .rhosts files in SSH provides an additional layer of
+        protection.
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set the HostbasedAuthentication parameter
+        to no above any Include and Match entries as follows:
+        HostbasedAuthentication no
+        Note: First occurrence of a option takes precedence, Match set statements
+        withstanding. If Include locations are enabled, used, and order of precedence is
+        understood in your environment, the entry may be created in a file in Include location.
+        Default Value:
+        HostbasedAuthentication no

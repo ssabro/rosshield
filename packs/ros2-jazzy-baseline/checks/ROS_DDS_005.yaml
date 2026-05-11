@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DDS_005
+    title: DDS Permissions 파일 검증
+    description: DDS Permissions XML 파일이 존재하고 토픽별 publish/subscribe 권한이 명시적으로 정의되었는지 확인
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: Permissions 파일이 없거나 과도한 와일드카드 허용 시 비인가 노드가 임의 토픽에 접근 가능
+    fixGuidance: ros2 security create_permission 명령으로 각 노드별 permissions.xml을 생성한다. 토픽별로 명시적인 ALLOW/DENY 규칙을 작성하고 와일드카드 사용을 최소화한다.

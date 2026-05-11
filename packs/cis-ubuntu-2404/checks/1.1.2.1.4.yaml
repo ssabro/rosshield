@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.1.2.1.4
+    title: 1.1.2.1.4 Ensure noexec option set on /tmp partition (Automated)
+    description: |-
+        The noexec mount option specifies that the filesystem cannot contain executable
+        binaries.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Since the /tmp filesystem is only intended for temporary file storage, set this option to
+        ensure that users cannot run executable binaries from /tmp.
+        Impact:
+        Setting the noexec option on /tmp may prevent installation and/or updating of some 3rd
+        party software.
+    fixGuidance: |-
+        - IF - a separate partition exists for /tmp.
+        Edit the /etc/fstab file and add noexec to the fourth field (mounting options) for the
+        /tmp partition.
+        Example:
+        <device> /tmp <fstype> defaults,rw,nosuid,nodev,noexec,relatime 0 0
+        Run the following command to remount /tmp with the configured options:
+        # mount -o remount /tmp

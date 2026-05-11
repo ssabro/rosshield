@@ -1,0 +1,32 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.17
+    title: 2.1.17 Ensure web proxy server services are not in use (Automated)
+    description: Squid is a standard proxy server used in many distributions and environments.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Unless a system is specifically set up to act as a proxy server, it is recommended that
+        the squid package be removed to reduce the potential attack surface.
+        Note: Several HTTP proxy servers exist. These should be checked and removed unless
+        required.
+        Impact:
+        There may be packages that are dependent on the squid package. If the squid
+        package is removed, these dependent packages will be removed as well. Before
+        removing the squid package, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask the squid.service leaving the
+        squid package installed.
+    fixGuidance: |-
+        Run the following commands to stop squid.service and remove the squid package:
+        # systemctl stop squid.service
+        # apt purge squid
+        - OR - If the squid package is required as a dependency:
+        Run the following commands to stop and mask the squid.service:
+        # systemctl stop squid.service
+        # systemctl mask squid.service

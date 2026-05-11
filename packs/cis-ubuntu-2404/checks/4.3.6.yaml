@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.6
+    title: 4.3.6 Ensure nftables loopback traffic is configured (Automated)
+    description: |-
+        Configure the loopback interface to accept traffic. Configure all other interfaces to deny
+        traffic to the loopback network
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Loopback traffic is generated between processes on machine and is typically critical to
+        the operation of the system. The loopback interface is the only place that loopback
+        network traffic should be seen, all other interfaces should ignore traffic on this network
+        as an anti-spoofing measure.
+    fixGuidance: |-
+        Run the following commands to implement the loopback rules:
+        # nft add rule inet filter input iif lo accept
+        # nft add rule inet filter input ip saddr 127.0.0.0/8 counter drop
+        - IF - IPv6 is enabled on the system:
+        Run the following command to implement the IPv6 loopback rule:
+        # nft add rule inet filter input ip6 saddr ::1 counter drop

@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_DATA_002
+    title: ROS2 패키지 무결성
+    description: 설치된 ROS2 패키지가 공식 리포지토리에서 설치되었고 변조되지 않았는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(apt-key list 2>/dev/null | grep -i '\''ros\|open robotics'\'' || gpg --list-keys --keyring /usr/share/keyrings/ros-archive-keyring.gpg 2>/dev/null | head -3 2>&1)"; C2_OUT="$(grep -r '\''packages.ros.org'\'' /etc/apt/sources.list.d/ 2>/dev/null | grep '\''signed-by'\'' | head -1 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 변조된 ROS2 패키지는 악성코드 삽입을 통한 로봇 제어권 탈취에 악용될 수 있음
+    fixGuidance: ROS2 공식 리포지토리 GPG 키를 등록하고, apt 소스 파일에 signed-by 옵션을 추가한다.

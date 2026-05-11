@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_019
+    title: xinetd 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 xinetd 서비스가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 레거시 네트워크 서비스 관리 데몬은 비활성화되거나 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s xinetd &>/dev/null && echo '\''installed'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled xinetd.service 2>/dev/null | grep '\''enabled'\'' 2>&1)"; C3_OUT="$(systemctl is-active xinetd.service 2>/dev/null | grep '\''^active'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } || { { [ -z "$C2_OUT" ]; } && { [ -z "$C3_OUT" ]; }; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: xinetd는 다양한 네트워크 서비스를 필요 시 실행하는 슈퍼데몬으로, 잘못 구성될 경우 여러 서비스가 외부에 노출될 수 있다. 또한 xinetd는 현대적인 보안 관리 체계(systemd) 대비 보안 통제가 제한적이며, CIS 벤치마크에서는 불필요한 xinetd 서비스 사용을 지양할 것을 권고하고 있다.
+    fixGuidance: xinetd 패키지를 제거한다. 패키지가 의존성으로 필요한 경우 서비스를 중지하고 마스크한다.

@@ -1,0 +1,9 @@
+apiVersion: rosshield.io/v1
+kind: Pack
+metadata:
+    name: cis-ubuntu-2404
+    version: 1.0.0
+    vendor: rosshield
+    description: CIS Ubuntu 24.04 LTS Benchmark v1.0.0
+spec:
+    schemaVersion: 1

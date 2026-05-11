@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.21
+    title: 6.2.3.21 Ensure the running and on disk configuration is the same (Manual)
+    description: |-
+        The Audit system have both on disk and running configuration. It is possible for these
+        configuration settings to differ.
+        Note: Due to the limitations of augenrules and auditctl, it is not absolutely
+        guaranteed that loading the rule sets via augenrules --load will result in all rules
+        being loaded or even that the user will be informed if there was a problem loading the
+        rules.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Configuration differences between what is currently running and what is on disk could
+        cause unexpected problems or may give a false impression of compliance
+        requirements.
+    fixGuidance: |-
+        If the rules are not aligned across all three () areas, run the following command to
+        merge and load all rules:
+        # augenrules --load
+        Check if reboot is required.
+        if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then echo "Reboot required
+        to load rules"; fi

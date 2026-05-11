@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.2.5
+    title: 5.2.5 Ensure re-authentication for privilege escalation is not (Automated)
+    description: |-
+        The operating system must be configured so that users must re-authenticate for
+        privilege escalation.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Without re-authentication, users may access resources or perform tasks for which they
+        do not have authorization.
+        When operating systems provide the capability to escalate a functional capability, it is
+        critical the user re-authenticate.
+    fixGuidance: |-
+        Configure the operating system to require users to reauthenticate for privilege
+        escalation.
+        Based on the outcome of the audit procedure, use visudo -f <PATH TO FILE> to edit
+        the relevant sudoers file.
+        Remove any occurrences of !authenticate tags in the file(s).

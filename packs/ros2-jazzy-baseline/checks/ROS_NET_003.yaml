@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_NET_003
+    title: DDS Discovery 프로토콜 보안
+    description: DDS Simple Discovery Protocol(SPDP)에서 멀티캐스트 범위가 제한되고 인가된 피어만 Discovery에 참여하는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(echo ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp} 2>&1)"; C2_OUT="$(RMW=${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}; if echo $RMW | grep -q fastrtps; then [ -n "$FASTRTPS_DEFAULT_PROFILES_FILE" ] && grep -qE '\''initialPeersList|metatrafficUnicastLocatorList'\'' "$FASTRTPS_DEFAULT_PROFILES_FILE" 2>/dev/null && echo '\''CONFIGURED'\'' || echo '\'''\''; elif echo $RMW | grep -q cyclone; then [ -n "$CYCLONEDDS_URI" ] && grep -qE '\''<Peer|<Peers'\'' "$CYCLONEDDS_URI" 2>/dev/null && echo '\''CONFIGURED'\'' || echo '\'''\''; fi 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''CONFIGURED'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 무제한 멀티캐스트 Discovery는 네트워크 내 모든 DDS 참여자가 노드 정보를 수신할 수 있어 토폴로지 노출 위험
+    fixGuidance: Fast DDS XML 프로파일 파일을 생성하고 initialPeersList에 인가된 피어의 IP만 등록한다. FASTRTPS_DEFAULT_PROFILES_FILE 환경변수를 설정한다. CycloneDDS 사용 시 CYCLONEDDS_URI에 Peers 설정을 추가한다.

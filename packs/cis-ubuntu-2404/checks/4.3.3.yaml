@@ -1,0 +1,22 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.3
+    title: 4.3.3 Ensure iptables are flushed with nftables (Manual)
+    description: nftables is a replacement for iptables, ip6tables, ebtables and arptables
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        It is possible to mix iptables and nftables. However, this increases complexity and also
+        the chance to introduce errors. For simplicity flush out all iptables rules, and ensure it is
+        not loaded
+    fixGuidance: |-
+        Run the following commands to flush iptables:
+        For iptables:
+        # iptables -F
+        For ip6tables:
+        # ip6tables -F

@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.6.5
+    title: 1.6.5 Ensure access to /etc/issue is configured (Automated)
+    description: |-
+        The contents of the /etc/issue file are displayed to users prior to login for local
+        terminals.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        - IF - the /etc/issue file does not have the correct access configured, it could be
+        modified by unauthorized users with incorrect or misleading information.
+    fixGuidance: |-
+        Run the following commands to set mode, owner, and group on /etc/issue:
+        # chown root:root $(readlink -e /etc/issue)
+        # chmod u-x,go-wx $(readlink -e /etc/issue)
+        Default Value:
+        Access: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root)

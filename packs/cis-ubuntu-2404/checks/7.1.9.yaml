@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.1.9
+    title: 7.1.9 Ensure permissions on /etc/shells are configured (Automated)
+    description: |-
+        /etc/shells is a text file which contains the full pathnames of valid login shells. This
+        file is consulted by chsh and available to be queried by other programs.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        It is critical to ensure that the /etc/shells file is protected from unauthorized access.
+        Although it is protected by default, the file permissions could be changed either
+        inadvertently or through malicious actions.
+    fixGuidance: |-
+        Run the following commands to remove excess permissions, set owner, and set group
+        on /etc/shells:
+        # chmod u-x,go-wx /etc/shells
+        # chown root:root /etc/shells
+        Default Value:
+        Access: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root)

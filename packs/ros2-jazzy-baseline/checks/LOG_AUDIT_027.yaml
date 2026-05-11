@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_027
+    title: 커널 모듈 로드/언로드 감사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 커널 모듈 로드/언로드(init_module, finit_module, delete_module, create_module, query_module) 및 kmod 명령 사용을 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(awk '\''/^ *-a *always,exit/ && / -F *arch=b(32|64)/ && (/ -F auid!=unset/||/ -F auid!=-1/||/ -F auid!=4294967295/) && / -S/ && (/init_module/ || /finit_module/ || /delete_module/) && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'\'' /etc/audit/rules.d/*.rules 2>/dev/null 2>&1)"; C2_OUT="$(UID_MIN=$(awk '\''/^\s*UID_MIN/{print $2}'\'' /etc/login.defs); awk "/^ *-a *always,exit/ && (/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) && / -F *auid>=${UID_MIN}/ && / -F *perm=x/ && / -F *path=\/usr\/bin\/kmod/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)" /etc/audit/rules.d/*.rules 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 커널 모듈의 로드/언로드를 감사하면 악의적인 커널 모듈 삽입이나 보안 모듈 제거를 탐지할 수 있다. kmod와 그 심볼릭 링크(lsmod, rmmod, insmod, modinfo, modprobe, depmod)도 함께 감사해야 한다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 규칙을 생성한다:
+
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        printf "
+        -a always,exit -F arch=b64 -S init_module,finit_module,delete_module,create_module,query_module -F auid>=${UID_MIN} -F auid!=unset -k kernel_modules
+        -a always,exit -F path=/usr/bin/kmod -F perm=x -F auid>=${UID_MIN} -F auid!=unset -k kernel_modules
+        " >> /etc/audit/rules.d/50-kernel_modules.rules
+
+        규칙을 로드한다:
+        augenrules --load

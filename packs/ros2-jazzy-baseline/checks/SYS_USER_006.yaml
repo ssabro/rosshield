@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_006
+    title: 중복 GID 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/group에 중복 GID가 없어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(cut -f3 -d: /etc/group | sort -n | uniq -d | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 중복 GID는 그룹 간에 동일한 권한을 공유하게 하여 파일 접근 제어가 의도대로 동작하지 않을 수 있다.
+    fixGuidance: 감사 결과를 분석하여 중복 GID를 고유하게 수정하고, 해당 GID가 소유한 파일의 그룹 소유권을 확인한다.

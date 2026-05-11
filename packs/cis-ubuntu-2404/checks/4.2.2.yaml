@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.2.2
+    title: 4.2.2 Ensure iptables-persistent is not installed with ufw (Automated)
+    description: The iptables-persistent is a boot-time loader for netfilter rules, iptables plugin
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Running both ufw and the services included in the iptables-persistent package may lead
+        to conflict
+    fixGuidance: |-
+        Run the following command to remove the iptables-persistent package:
+        # apt purge iptables-persistent

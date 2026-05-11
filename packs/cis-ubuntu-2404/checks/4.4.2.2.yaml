@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.2.2
+    title: 4.4.2.2 Ensure iptables loopback traffic is configured (Automated)
+    description: |-
+        Configure the loopback interface to accept traffic. Configure all other interfaces to deny
+        traffic to the loopback network (127.0.0.0/8).
+        Note:
+        • Changing firewall settings while connected over network can result in being
+        locked out of the system
+        • Remediation will only affect the active system firewall, be sure to configure the
+        default policy in your firewall management to apply on boot as well
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Loopback traffic is generated between processes on machine and is typically critical to
+        the operation of the system. The loopback interface is the only place that loopback
+        network (127.0.0.0/8) traffic should be seen, all other interfaces should ignore traffic on
+        this network as an anti-spoofing measure.
+    fixGuidance: |-
+        Run the following commands to implement the loopback rules:
+        # iptables -A INPUT -i lo -j ACCEPT
+        # iptables -A OUTPUT -o lo -j ACCEPT
+        # iptables -A INPUT -s 127.0.0.0/8 -j DROP

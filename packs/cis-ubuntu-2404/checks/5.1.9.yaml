@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.9
+    title: 5.1.9 Ensure sshd GSSAPIAuthentication is disabled (Automated)
+    description: |-
+        The GSSAPIAuthentication parameter specifies whether user authentication based on
+        GSSAPI is allowed
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Allowing GSSAPI authentication through SSH exposes the system's GSSAPI to remote
+        hosts, and should be disabled to reduce the attack surface of the system
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set the GSSAPIAuthentication parameter to
+        no above any Include and Match entries as follows:
+        GSSAPIAuthentication no
+        Note: First occurrence of an option takes precedence, Match set statements
+        withstanding. If Include locations are enabled, used, and order of precedence is
+        understood in your environment, the entry may be created in a file in Include location.
+        Default Value:
+        GSSAPIAuthentication no

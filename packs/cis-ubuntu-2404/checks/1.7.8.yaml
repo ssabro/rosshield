@@ -1,0 +1,36 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.7.8
+    title: 1.7.8 Ensure GDM autorun-never is enabled (Automated)
+    description: |-
+        The autorun-never setting allows the GNOME Desktop Display Manager to disable
+        autorun through GDM.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Malware on removable media may taking advantage of Autorun features when the
+        media is inserted into a system and execute.
+    fixGuidance: |-
+        - IF - A user profile exists run the following command to set autorun-never to true for
+        GDM users:
+        # gsettings set org.gnome.desktop.media-handling autorun-never true
+        Note:
+        • gsettings commands in this section MUST be done from a command window
+        on a graphical desktop or an error will be returned.
+        • The system must be restarted after all gsettings configurations have been set
+        in order for CIS-CAT Assessor to appropriately assess.
+        - OR/IF - A user profile does not exist:
+        1. create the file /etc/dconf/db/local.d/locks/00-media-autorun with the
+        following content:
+        [org/gnome/desktop/media-handling]
+        autorun-never=true
+        2. Update the systems databases:
+        # dconf update
+        Note: Users must log out and back in again before the system-wide settings take effect.
+        Default Value:
+        false

@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.2.3
+    title: 7.2.3 Ensure all groups in /etc/passwd exist in /etc/group (Automated)
+    description: |-
+        Over time, system administration errors and changes can lead to groups being defined
+        in /etc/passwd but not in /etc/group .
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Groups defined in the /etc/passwd file but not in the /etc/group file pose a threat to
+        system security since group permissions are not properly managed.
+    fixGuidance: |-
+        Analyze the output of the Audit step above and perform the appropriate action to correct
+        any discrepancies found.

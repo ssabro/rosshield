@@ -1,0 +1,137 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.3.3
+    title: 6.3.3 Ensure cryptographic mechanisms are used to protect the (Automated)
+    description: |-
+        Audit tools include, but are not limited to, vendor-provided and open source audit tools
+        needed to successfully view and manipulate audit information system activity and
+        records. Audit tools include custom queries and report generators.
+        aide.conf is case-sensitive. Leading and trailing white spaces are ignored. Each
+        config lines must end with new line.
+        AIDE uses the backslash character \ as escape character for ' ' (space), '@' and ''
+        (backslash) (e.g. '\ ' or '@'). To literally match a '' in a file path with a regular expression
+        you have to escape the backslash twice (i.e. '\\').
+        There are three types of lines in aide.conf:
+        • The configuration options which are used to set configuration parameters and
+        define groups.
+        • (restricted) rules that are used to indicate which files are added to the database.
+        • Macro lines define or undefine variables within the config file.
+        Note: Lines beginning with # are ignored as comments.
+        @@include <FILE> - Include <FILE>.
+        • The content of the file is used as if it were inserted in this part of the config file.
+        • The maximum depth of nested includes is 16.
+        `@@include <DIRECTORY> <REGEX> - [RULE_PREFIX] (added in AIDE v0.17)
+        • Include all (regular) files found in <DIRECTORY> matching regular expression
+        <REGEX> (sub-directories are ignored).
+        • The file are included in lexical sort order.
+        • If RULE_PREFIX is set, all rules included by the statement are prefixed with given
+        <RULE_PREFIX> (added in AIDE v0.18). Prefixes from nested include
+        statements are concatenated.
+        • The content of the files is used as if it were inserted in this part of the config file.
+        @x_include:
+        • is identical to @@include, except that if a config file is executable is is run and
+        the output is used as config.
+        • If the executable file exits with status greater than zero or writes to stderr aide
+        stops with an error.
+        • For security reasons <DIRECTORY> and each executable config file must be
+        owned by the current user or root. They must not be group- or world-writable.
+        • @@x_include _<FILE>_ (added in AIDE v0.17):
+        • `@@x_include <DIRECTORY> <REGEX> [RULE_PREFIX] (added in AIDE
+        v0.17)
+        @@x_include_setenv <VAR> <VALUE> (added in AIDE v0.17)
+        • Adds the variable <VAR> with the value <VALUE> to the environment used for
+        config file execution.
+        • Environment variable names are limited to alphanumeric characters (A-Za-z0-9)
+        and the underscore '_' and must not begin with a digit.
+    severity: medium
+spec:
+    auditCommand: |-
+        bash -c '#!/usr/bin/env bash
+        {
+        a_output=() a_output2=() l_tool_dir="$(readlink -f /sbin)"
+        a_items=("p" "i" "n" "u" "g" "s" "b" "acl" "xattrs" "sha512")
+        l_aide_cmd="$(whereis aide | awk '\''{print $2}'\'')"
+        a_audit_files=("auditctl" "auditd" "ausearch" "aureport" "autrace"
+        "augenrules")
+        if [ -f "$l_aide_cmd" ] && command -v "$l_aide_cmd" &>/dev/null; then
+        a_aide_conf_files=("$(find -L /etc -type f -name '\''aide.conf'\'')")
+        f_file_par_chk()
+        {
+        a_out2=()
+        for l_item in "${a_items[@]}"; do
+        ! grep -Psiq -- '\''(\h+|\+)'\''"$l_item"'\''(\h+|\+)'\'' <<< "$l_out" && \
+        a_out2+=(" - Missing the \"$l_item\" option")
+        done
+        if [ "${#a_out2[@]}" -gt "0" ]; then
+        a_output2+=(" - Audit tool file: \"$l_file\"" "${a_out2[@]}")
+        else
+        a_output+=(" - Audit tool file: \"$l_file\" includes:" "
+        \"${a_items[*]}\"")
+        fi
+        }
+        for l_file in "${a_audit_files[@]}"; do
+        if [ -f "$l_tool_dir/$l_file" ]; then
+        l_out="$("$l_aide_cmd" --config "${a_aide_conf_files[@]}" -p
+        f:"$l_tool_dir/$l_file")"
+        f_file_par_chk
+        else
+        a_output+=(" - Audit tool file \"$l_file\" doesn'\''t exist")
+        fi
+        done
+        else
+        a_output2+=(" - The command \"aide\" was not found" " Please
+        install AIDE")
+        fi
+        if [ "${#a_output2[@]}" -le 0 ]; then
+        printf '\''%s\n'\'' "" "- Audit Result:" " ** PASS **" "${a_output[@]}" ""
+        else
+        printf '\''%s\n'\'' "" "- Audit Result:" " ** FAIL **" " - Reason(s) for
+        audit failure:" "${a_output2[@]}"
+        [ "${#a_output[@]}" -gt 0 ] && printf '\''%s\n'\'' "" "- Correctly set:"
+        "${a_output[@]}" ""
+        fi
+        }
+        Note: The script is written to read the "winning" configuration setting, to include any
+        configuration settings in files included as part of the @@x_include setting.'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: |-
+        Protecting the integrity of the tools used for auditing purposes is a critical step toward
+        ensuring the integrity of audit information. Audit information includes all information
+        (e.g., audit records, audit settings, and audit reports) needed to successfully audit
+        information system activity.
+        Attackers may replace the audit tools or inject code into the existing tools with the
+        purpose of providing the capability to hide or erase system activity from the audit logs.
+        Audit tools should be cryptographically signed in order to provide the capability to
+        identify when the audit tools have been modified, manipulated, or replaced. An example
+        is a checksum hash of the file or files.
+    fixGuidance: |-
+        Run the following command to determine the absolute path to the non-symlinked
+        version on the audit tools:
+        # readlink -f /sbin
+        The output will be either /usr/sbin - OR - /sbin. Ensure the correct path is used.
+        Edit /etc/aide/aide.conf and add or update the following selection lines replacing
+        <PATH> with the correct path returned in the command above:
+        # Audit Tools
+        <PATH>/auditctl p+i+n+u+g+s+b+acl+xattrs+sha512
+        <PATH>/auditd p+i+n+u+g+s+b+acl+xattrs+sha512
+        <PATH>/ausearch p+i+n+u+g+s+b+acl+xattrs+sha512
+        <PATH>/aureport p+i+n+u+g+s+b+acl+xattrs+sha512
+        <PATH>/autrace p+i+n+u+g+s+b+acl+xattrs+sha512
+        <PATH>/augenrules p+i+n+u+g+s+b+acl+xattrs+sha512
+        Example
+        # printf '%s\n' "" "# Audit Tools" "$(readlink -f /sbin/auditctl)
+        p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/auditd)
+        p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/ausearch)
+        p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/aureport)
+        p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/autrace)
+        p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/augenrules)
+        p+i+n+u+g+s+b+acl+xattrs+sha512" >> /etc/aide/aide.conf
+        Note: - IF - /etc/aide/aide.conf includes a @@x_include statement:
+        • <DIRECTORY> and each executable config file must be owned by the current
+        user or root
+        • They must not be group or world-writable
+        Example:
+        @@x_include /etc/aide.conf.d ^[a-zA-Z0-9_-]+$

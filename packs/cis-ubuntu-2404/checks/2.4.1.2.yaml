@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.4.1.2
+    title: 2.4.1.2 Ensure permissions on /etc/crontab are configured (Automated)
+    description: |-
+        The /etc/crontab file is used by cron to control its own jobs. The commands in this
+        item make sure that root is the user and group owner of the file and that only the owner
+        can access the file.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        This file contains information on what system jobs are run by cron. Write access to
+        these files could provide unprivileged users with the ability to elevate their privileges.
+        Read access to these files could provide users with the ability to gain insight on system
+        jobs that run on the system and could provide them a way to gain unauthorized
+        privileged access.
+    fixGuidance: |-
+        - IF - cron is installed on the system:
+        Run the following commands to set ownership and permissions on /etc/crontab:
+        # chown root:root /etc/crontab
+        # chmod og-rwx /etc/crontab
+        Default Value:
+        Access: (644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root)

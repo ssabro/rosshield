@@ -1,0 +1,31 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.2.7
+    title: 5.2.7 Ensure access to the su command is restricted (Automated)
+    description: |-
+        The su command allows a user to run a command or shell as another user. The
+        program has been superseded by sudo, which allows for more granular control over
+        privileged access. Normally, the su command can be executed by any user. By
+        uncommenting the pam_wheel.so statement in /etc/pam.d/su, the su command will
+        only allow users in a specific groups to execute su. This group should be empty to
+        reinforce the use of sudo for privileged access.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Restricting the use of su , and using sudo in its place, provides system administrators
+        better control of the escalation of user privileges to execute privileged commands. The
+        sudo utility also provides a better logging and audit mechanism, as it can log each
+        command executed via sudo , whereas su can only record that a user executed the su
+        program.
+    fixGuidance: |-
+        Create an empty group that will be specified for use of the su command. The group
+        should be named according to site policy.
+        Example:
+        # groupadd sugroup
+        Add the following line to the /etc/pam.d/su file, specifying the empty group:
+        auth required pam_wheel.so use_uid group=sugroup

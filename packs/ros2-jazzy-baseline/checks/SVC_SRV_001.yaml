@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_001
+    title: autofs 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 autofs 서비스가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 자동 파일시스템 마운트 기능은 비활성화되거나 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s autofs &>/dev/null && echo '\''installed'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled autofs.service 2>/dev/null | grep '\''enabled'\'' 2>&1)"; C3_OUT="$(systemctl is-active autofs.service 2>/dev/null | grep '\''^active'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } || { { [ -z "$C2_OUT" ]; } && { [ -z "$C3_OUT" ]; }; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: autofs 서비스는 특정 디렉터리에 접근 시 원격 또는 로컬 파일시스템을 자동으로 마운트하는 기능을 제공한다. 그러나 이러한 기능은 외부 파일시스템 접근 경로를 추가로 생성하여 공격 표면을 확장시킬 수 있다.
+    fixGuidance: 'autofs 패키지를 제거한다: apt purge -y autofs. 패키지가 의존성으로 필요한 경우 서비스를 중지하고 마스크한다: systemctl stop autofs.service && systemctl mask autofs.service.'

@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_PERM_010
+    title: /etc/security/opasswd 파일 권한 설정 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/security/opasswd 및 /etc/security/opasswd.old 파일(존재하는 경우)의 권한이 0600 이하이고, 소유자가 root:root여야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(if [ -e /etc/security/opasswd ]; then MODE=$(stat -Lc '\''%a'\'' /etc/security/opasswd); OWNER=$(stat -Lc '\''%U:%G'\'' /etc/security/opasswd); [ $(( 0$MODE & 0177 )) -eq 0 ] && [ "$OWNER" = '\''root:root'\'' ] && echo '\''PASS'\'' || echo '\''FAIL'\''; else echo '\''PASS'\''; fi 2>&1)"; C2_OUT="$(if [ -e /etc/security/opasswd.old ]; then MODE=$(stat -Lc '\''%a'\'' /etc/security/opasswd.old); OWNER=$(stat -Lc '\''%U:%G'\'' /etc/security/opasswd.old); [ $(( 0$MODE & 0177 )) -eq 0 ] && [ "$OWNER" = '\''root:root'\'' ] && echo '\''PASS'\'' || echo '\''FAIL'\''; else echo '\''PASS'\''; fi 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: opasswd 파일은 이전 비밀번호 해시를 저장한다. 부적절한 권한은 이전 비밀번호 정보의 유출로 이어질 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 opasswd 파일의 권한과 소유자를 수정한다:
+
+        [ -e "/etc/security/opasswd" ] && chmod u-x,go-rwx /etc/security/opasswd
+        [ -e "/etc/security/opasswd" ] && chown root:root /etc/security/opasswd
+        [ -e "/etc/security/opasswd.old" ] && chmod u-x,go-rwx /etc/security/opasswd.old
+        [ -e "/etc/security/opasswd.old" ] && chown root:root /etc/security/opasswd.old

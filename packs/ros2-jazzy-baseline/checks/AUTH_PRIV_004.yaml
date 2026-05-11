@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PRIV_004
+    title: 권한 상승 시 비밀번호 입력 요구 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 sudo를 통한 권한 상승 시 비밀번호 입력이 요구되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -r '\''^[^#].*NOPASSWD'\'' /etc/sudoers /etc/sudoers.d/ 2>/dev/null || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: NOPASSWD 태그가 있으면 비밀번호 없이 권한 상승이 가능하여, 계정 탈취 시 피해가 확대될 수 있다.
+    fixGuidance: |-
+        NOPASSWD 태그가 포함된 라인을 수정한다.
+
+        visudo -f <파일경로>로 해당 파일을 열어 NOPASSWD 태그를 제거한다.
+
+        예: user ALL=(ALL) NOPASSWD: ALL
+        → user ALL=(ALL) ALL

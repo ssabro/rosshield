@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_003
+    title: /etc/passwd에 참조된 그룹의 존재 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/passwd의 모든 GID가 /etc/group에 존재해야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(awk -F: ''\''''{print $4}''\'''' /etc/passwd | sort -u | while read gid; do grep -q ":${gid}:" /etc/group || echo "MISSING:$gid"; done | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /etc/group에 존재하지 않는 GID를 참조하는 사용자가 있으면 파일 권한 관리에 문제가 발생할 수 있다.
+    fixGuidance: |-
+        감사 결과를 분석하여 누락된 그룹을 생성하거나 사용자의 GID를 수정한다.
+
+        누락된 GID 확인 후:
+        groupadd -g <GID> <group_name>
+        또는
+        usermod -g <valid_GID> <username>

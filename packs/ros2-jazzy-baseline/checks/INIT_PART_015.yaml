@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PART_015
+    title: /var/tmp를 별도 파티션으로 구성
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 /var/tmp 디렉터리가 별도의 파티션으로 구성되어야 한다. /var/tmp는 모든 사용자 및 일부 애플리케이션이 임시 데이터를 저장하는 영역으로, 시스템 재부팅 이후에도 데이터가 유지되는 특성을 가지므로 다른 중요 파일시스템과 분리되어 관리되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(findmnt -kn /var/tmp 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /var/tmp 디렉터리는 world-writable 속성을 가지며, 다양한 프로세스와 사용자가 임시 파일을 생성·보관하는 데 사용된다. 해당 영역이 루트 파일시스템 또는 /var 전체와 분리되지 않은 경우, 임시 파일 누적 또는 악의적인 디스크 자원 고갈로 인해 시스템 안정성이 저하될 수 있다.
+    fixGuidance: 신규 설치 시 설치 과정에서 /var/tmp를 별도 파티션으로 구성한다. 기존 시스템의 경우 새 파티션을 생성하고 /etc/fstab에 /var/tmp 마운트 항목을 추가한다.

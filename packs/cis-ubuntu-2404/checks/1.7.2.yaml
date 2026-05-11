@@ -1,0 +1,51 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.7.2
+    title: 1.7.2 Ensure GDM login banner is configured (Automated)
+    description: |-
+        GDM is the GNOME Display Manager which handles graphical login for GNOME based
+        systems.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Warning messages inform users who are attempting to login to the system of their legal
+        status regarding the system and must include the name of the organization that owns
+        the system and any monitoring policies that are in place.
+    fixGuidance: |-
+        - IF - A user profile is already created run the following commands to set and enable the
+        text banner message on the login screen:
+        # gsettings set org.gnome.login-screen banner-message-text 'Authorized uses
+        only. All activity may be monitored and reported'
+        # gsettings set org.gnome.login-screen banner-message-enable true
+        Note:
+        • banner-message-text may be set in accordance with local site policy
+        • gsettings commands in this section MUST be done from a command window
+        on a graphical desktop or an error will be returned.
+        • The system must be restarted after all gsettings configurations have been set
+        in order for CIS-CAT Assessor to appropriately assess.
+        - OR/IF - A user profile does not exist:
+        1. Create or edit the gdm profile in the /etc/dconf/profile/gdm with the following
+        lines:
+        user-db:user
+        system-db:gdm
+        file-db:/usr/share/gdm/greeter-dconf-defaults
+        Note: gdm is the name of a dconf database.
+        2. Create a gdm keyfile for machine-wide settings in /etc/dconf/db/gdm.d/01-
+        banner-message:
+        [org/gnome/login-screen]
+        banner-message-enable=true
+        banner-message-text='Type the banner message here.'
+        3. Update the system databases
+        # dconf update
+        Note:
+        • Users must log out and back in again before the system-wide settings take effect.
+        • There is no character limit for the banner message. gnome-shell autodetects
+        longer stretches of text and enters two column mode.
+        • The banner message cannot be read from an external file.
+        Default Value:
+        disabled

@@ -1,0 +1,48 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.6
+    title: 5.1.6 Ensure sshd Ciphers are configured (Automated)
+    description: |-
+        This variable limits the ciphers that SSH can use during communication.
+        Notes:
+        • Some organizations may have stricter requirements for approved ciphers.
+        • Ensure that ciphers used are in compliance with site policy.
+        • The only "strong" ciphers currently FIPS 140 compliant are:
+        o aes256-gcm@openssh.com
+        o aes128-gcm@openssh.com
+        o aes256-ctr
+        o aes192-ctr
+        o aes128-ctr
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Weak ciphers that are used for authentication to the cryptographic module cannot be
+        relied upon to provide confidentiality or integrity, and system data may be compromised.
+        • The Triple DES ciphers, as used in SSH, have a birthday bound of approximately
+        four billion blocks, which makes it easier for remote attackers to obtain clear text
+        data via a birthday attack against a long-duration encrypted session, aka a
+        "Sweet32" attack.
+        • Error handling in the SSH protocol; Client and Server, when using a block cipher
+        algorithm in Cipher Block Chaining (CBC) mode, makes it easier for remote
+        attackers to recover certain plain text data from an arbitrary block of cipher text in
+        an SSH session via unknown vectors.
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file and add/modify the Ciphers line to contain a comma
+        separated list of the site unapproved (weak) Ciphers preceded with a - above any
+        Include entries:
+        Example:
+        Ciphers -3des-cbc,aes128-cbc,aes192-cbc,aes256-cbc,chacha20-
+        poly1305@openssh.com
+        - IF - CVE-2023-48795 has been addressed, and it meets local site policy, chacha20-
+        poly1305@openssh.com may be removed from the list of excluded ciphers.
+        Note: First occurrence of an option takes precedence. If Include locations are enabled,
+        used, and order of precedence is understood in your environment, the entry may be
+        created in a file in Include location.
+        Default Value:
+        Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-
+        gcm@openssh.com,aes256-gcm@openssh.com

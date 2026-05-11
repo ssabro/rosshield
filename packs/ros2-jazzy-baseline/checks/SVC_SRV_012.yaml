@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_012
+    title: rpcbind 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 NIS(Network Information Service) 서버 서비스가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 레거시 사용자 및 디렉터리 서비스 기능은 비활성화되거나 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s rpcbind &>/dev/null && echo '\''installed'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled rpcbind.socket rpcbind.service 2>/dev/null | grep '\''enabled'\'' 2>&1)"; C3_OUT="$(systemctl is-active rpcbind.socket rpcbind.service 2>/dev/null | grep '\''^active'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } || { { [ -z "$C2_OUT" ]; } && { [ -z "$C3_OUT" ]; }; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: NIS 서버 서비스는 사용자 계정, 그룹, 호스트 정보를 네트워크를 통해 배포하는 기능을 제공하지만, 평문 기반 통신과 취약한 보안 구조로 인해 자격 증명 노출 및 권한 탈취 위험이 높다. CIS 벤치마크에서는 이러한 이유로 NIS 서버 서비스를 사용하지 않을 것을 권고하고 있다.
+    fixGuidance: rpcbind 패키지를 제거한다. 패키지가 의존성으로 필요한 경우 서비스를 중지하고 마스크한다.

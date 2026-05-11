@@ -1,0 +1,74 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.3.2.2
+    title: 5.3.2.2 Ensure pam_faillock module is enabled (Automated)
+    description: |-
+        The pam_faillock.so module maintains a list of failed authentication attempts per
+        user during a specified interval and locks the account in case there were more than the
+        configured number of consecutive failed authentications (this is defined by the deny
+        parameter in the faillock configuration). It stores the failure records into per-user files in
+        the tally directory.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Locking out user IDs after n unsuccessful consecutive login attempts mitigates brute
+        force password attacks against your systems.
+    fixGuidance: |-
+        Create two pam-auth-update profiles in /usr/share/pam-configs/:
+        1. Create the faillock profile in /usr/share/pam-configs/ with the following
+        lines:
+        Name: Enable pam_faillock to deny access
+        Default: yes
+        Priority: 0
+        Auth-Type: Primary
+        Auth:
+        [default=die] pam_faillock.so authfail
+        Example Script:
+        #!/usr/bin/env bash
+        {
+        arr=('Name: Enable pam_faillock to deny access' 'Default: yes' 'Priority:
+        0' 'Auth-Type: Primary' 'Auth:' ' [default=die]
+        pam_faillock.so authfail')
+        printf '%s\n' "${arr[@]}" > /usr/share/pam-configs/faillock
+        }
+        2. Create the faillock_notify profile in /usr/share/pam-configs/ with the
+        following lines:
+        Name: Notify of failed login attempts and reset count upon success
+        Default: yes
+        Priority: 1024
+        Auth-Type: Primary
+        Auth:
+        requisite pam_faillock.so preauth
+        Account-Type: Primary
+        Account:
+        required pam_faillock.so
+        Example Script:
+        #!/usr/bin/env bash
+        {
+        arr=('Name: Notify of failed login attempts and reset count upon success'
+        'Default: yes' 'Priority: 1024' 'Auth-Type: Primary' 'Auth:' '
+        requisite pam_faillock.so preauth' 'Account-Type:
+        Primary' 'Account:' ' required
+        pam_faillock.so')
+        printf '%s\n' "${arr[@]}" > /usr/share/pam-configs/faillock_notify
+        }
+        Run the following command to update the common-auth and common-account PAM
+        files with the new profiles:
+        # pam-auth-update --enable <profile_filename>
+        Example:
+        # pam-auth-update --enable faillock
+        # pam-auth-update --enable faillock_notify
+        Note:
+        • The name used for the file must be used in the pam-auth-update --enable
+        command
+        • The Name: line should be easily recognizable and understood
+        • The Priority: Line is important as it effects the order of the lines in the
+        /etc/pam.d/ files
+        • If a site specific custom profile is being used in your environment to configure
+        PAM that includes the configuration for the pam_faillock module, enable that
+        module instead

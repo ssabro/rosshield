@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_PERM_001
+    title: /etc/passwd 권한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/passwd 파일의 권한이 0644 이하이고, 소유자가 root:root여야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(MODE=$(stat -Lc '\''%a'\'' /etc/passwd 2>/dev/null) && [ $(( 0$MODE & 00133 )) -eq 0 ] && echo '\''PASS'\'' || echo '\''FAIL'\'' 2>&1)"; C2_OUT="$(stat -Lc '\''%U'\'' /etc/passwd 2>/dev/null 2>&1)"; C3_OUT="$(stat -Lc '\''%G'\'' /etc/passwd 2>/dev/null 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''root'\'' ]; } && { [ "$C3_OUT" = '\''root'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /etc/passwd 파일의 권한이 부적절하면 민감한 시스템 정보가 노출되거나 무단 수정될 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 /etc/passwd의 권한과 소유자를 수정한다:
+
+        chmod u-x,go-wx /etc/passwd
+        chown root:root /etc/passwd

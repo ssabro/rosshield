@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.10
+    title: 2.1.10 Ensure nis server services are not in use (Automated)
+    description: |-
+        The Network Information Service (NIS) (formally known as Yellow Pages) is a client-
+        server directory service protocol for distributing system configuration files. The NIS
+        server is a collection of programs that allow for the distribution of configuration files. The
+        NIS client (ypbind) was used to bind a machine to an NIS server and receive the
+        distributed configuration files.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        ypserv.service is inherently an insecure system that has been vulnerable to DOS
+        attacks, buffer overflows and has poor authentication for querying NIS maps. NIS
+        generally has been replaced by such protocols as Lightweight Directory Access
+        Protocol (LDAP). It is recommended that ypserv.service be removed and other, more
+        secure services be used
+        Impact:
+        There may be packages that are dependent on the ypserv package. If the ypserv
+        package is removed, these dependent packages will be removed as well. Before
+        removing the ypserv package, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask the ypserv.service leaving the
+        ypserv package installed.
+    fixGuidance: |-
+        Run the following commands to stop ypserv.service and remove ypserv package:
+        # systemctl stop ypserv.service
+        # apt purge ypserv
+        - OR -
+        - IF - the ypserv package is required as a dependency:
+        Run the following commands to stop and mask ypserv.service:
+        # systemctl stop ypserv.service
+        # systemctl mask ypserv.service

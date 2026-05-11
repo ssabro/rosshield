@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_004
+    title: 브로드캐스트 ICMP 무시 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 브로드캐스트 주소로 전송되는 ICMP 요청을 무시하도록 구성되어야 한다. 시스템은 브로드캐스트 ICMP 에코 요청에 응답하지 않아야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 브로드캐스트 ICMP 요청에 대한 응답은 공격자가 다수의 시스템으로부터 ICMP 응답을 유도하여 네트워크 대역폭을 소모시키는 스머프(Smurf) 공격에 악용될 수 있다. CIS 벤치마크에서는 이러한 분산 서비스 거부 공격을 방지하기 위해 브로드캐스트 ICMP 요청을 무시하도록 커널 파라미터를 설정할 것을 권고하고 있다.
+    fixGuidance: |-
+        브로드캐스트 ICMP 요청 무시를 활성화한다.
+
+        printf '%s\n' "net.ipv4.icmp_echo_ignore_broadcasts = 1" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1
+        sysctl -w net.ipv4.route.flush=1

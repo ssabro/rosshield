@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_RT_004
+    title: ROS2 노드 인증서 유효성
+    description: ROS2 노드에 할당된 X.509 인증서의 유효기간이 만료되지 않았고 갱신 계획이 수립되었는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(openssl x509 -enddate -noout -in "$ROS_SECURITY_KEYSTORE/public/ca.cert.pem" 2>/dev/null | sed '\''s/notAfter=//'\'' 2>&1)"; C2_OUT="$(openssl x509 -checkend 2592000 -noout -in "$ROS_SECURITY_KEYSTORE/public/ca.cert.pem" 2>/dev/null && echo '\''VALID'\'' || echo '\''EXPIRING'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''VALID'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 만료된 인증서는 SROS2 보안 통신을 중단시켜 노드 간 통신이 불가능해질 수 있음
+    fixGuidance: ros2 security create_keystore 명령으로 키스토어를 재생성하거나, openssl을 사용하여 인증서를 갱신한다. 인증서 자동 갱신 스크립트 구성을 권장한다.

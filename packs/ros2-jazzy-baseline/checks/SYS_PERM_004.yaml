@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_PERM_004
+    title: /etc/group- 권한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/group- 파일의 권한이 0644 이하이고, 소유자가 root:root여야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$([ -f /etc/group- ] && { MODE=$(stat -Lc '\''%a'\'' /etc/group-) && [ $(( 0$MODE & 00133 )) -eq 0 ] && echo '\''PASS'\'' || echo '\''FAIL'\''; } || echo '\''PASS'\'' 2>&1)"; C2_OUT="$([ -f /etc/group- ] && { [ "$(stat -Lc '\''%U'\'' /etc/group-)" = '\''root'\'' ] && echo '\''PASS'\'' || echo '\''FAIL'\''; } || echo '\''PASS'\'' 2>&1)"; C3_OUT="$([ -f /etc/group- ] && { [ "$(stat -Lc '\''%G'\'' /etc/group-)" = '\''root'\'' ] && echo '\''PASS'\'' || echo '\''FAIL'\''; } || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; } && { [ "$C2_OUT" = '\''PASS'\'' ]; } && { [ "$C3_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /etc/group- 파일의 권한이 부적절하면 민감한 시스템 정보가 노출되거나 무단 수정될 수 있다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 /etc/group-의 권한과 소유자를 수정한다:
+
+        chmod u-x,go-wx /etc/group-
+        chown root:root /etc/group-

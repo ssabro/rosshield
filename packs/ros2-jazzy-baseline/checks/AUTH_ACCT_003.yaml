@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ACCT_003
+    title: 비밀번호 만료 경고 기간 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 비밀번호 만료 경고 기간(PASS_WARN_AGE)이 7일 이상으로 설정되어야 한다.
+    severity: medium
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(grep -Pi ''\''''^\s*PASS_WARN_AGE\s+([7-9]|[1-9][0-9]+)\s*$''\'''' /etc/login.defs 2>/dev/null 2>&1)"; C2_OUT="$(awk -F: ''\''''($2~/^\$.+\$/) {if($6 < 7)print $1}''\'''' /etc/shadow 2>/dev/null || echo ''\''''PASS''\'''' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = ''\''''''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 비밀번호 만료 전에 경고를 제공하면 사용자가 미리 비밀번호를 변경할 수 있다.
+    fixGuidance: |-
+        /etc/login.defs에서 PASS_WARN_AGE를 7 이상으로 설정한다.
+
+        sed -i 's/^PASS_WARN_AGE.*/PASS_WARN_AGE 7/' /etc/login.defs
+
+        기존 사용자의 설정을 변경한다:
+        chage --warndays 7 <사용자>
+
+        또는 모든 사용자 일괄 변경:
+        awk -F: '($2~/^\$.+\$/) {if($6 < 7)system("chage --warndays 7 " $1)}' /etc/shadow

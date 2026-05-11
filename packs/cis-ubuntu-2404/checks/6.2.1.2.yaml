@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.1.2
+    title: 6.2.1.2 Ensure auditd service is enabled and active (Automated)
+    description: Turn on the auditd daemon to record system events.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        The capturing of system events provides system administrators with information to allow
+        them to determine if unauthorized access to their system is occurring.
+    fixGuidance: |-
+        Run the following commands to unmask, enable and start auditd:
+        # systemctl unmask auditd
+        # systemctl enable auditd
+        # systemctl start auditd

@@ -1,0 +1,25 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_001
+    title: IP 포워딩 비활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 IPv4 및 IPv6 패킷 포워딩 기능이 비활성화되어야 한다. 시스템은 명시적으로 라우터 역할을 수행하도록 설계되지 않는 한, 네트워크 패킷을 다른 인터페이스로 전달하지 않도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: net.ipv4.ip_forward 및 net.ipv6.conf.all.forwarding 커널 파라미터는 시스템이 패킷을 포워딩할 수 있는지를 제어한다. 해당 값이 활성화되어 있을 경우, 다중 네트워크 인터페이스를 가진 시스템은 라우터처럼 동작할 수 있으며, 이는 의도하지 않은 네트워크 경로를 생성하여 보안 위험을 증가시킬 수 있다.
+    fixGuidance: |-
+        IP 포워딩을 비활성화한다.
+
+        # IPv4
+        printf '%s\n' "net.ipv4.ip_forward = 0" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.ip_forward=0
+        sysctl -w net.ipv4.route.flush=1
+
+        # IPv6 (활성화된 경우)
+        printf '%s\n' "net.ipv6.conf.all.forwarding = 0" >> /etc/sysctl.d/60-netipv6_sysctl.conf
+        sysctl -w net.ipv6.conf.all.forwarding=0
+        sysctl -w net.ipv6.route.flush=1

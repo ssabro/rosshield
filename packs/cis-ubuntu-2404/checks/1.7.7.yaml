@@ -1,0 +1,69 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.7.7
+    title: 1.7.7 Ensure GDM disabling automatic mounting of removable (Automated)
+    description: |-
+        By default GNOME automatically mounts removable media when inserted as a
+        convenience to the user.
+        By using the lockdown mode in dconf, you can prevent users from changing specific
+        settings. To lock down a dconf key or subpath, create a locks subdirectory in the keyfile
+        directory. The files inside this directory contain a list of keys or subpaths to lock. Just as
+        with the keyfiles, you may add any number of files to this directory.
+    severity: medium
+spec:
+    auditCommand: |-
+        bash -c '#!/usr/bin/env bash
+        {
+        a_output=() a_output2=()
+        check_setting()
+        {
+        grep -Psrilq "^\h*$1\h*=\h*false\b" /etc/dconf/db/local.d/locks/* 2>
+        /dev/null && \
+        echo "- \"$3\" is locked and set to false" || echo "- \"$3\" is not
+        locked or not set to false"
+        }
+        declare -A settings=(
+        ["automount"]="org/gnome/desktop/media-handling"
+        ["automount-open"]="org/gnome/desktop/media-handling"
+        )
+        for setting in "${!settings[@]}"; do
+        result=$(check_setting "$setting" "${settings[$setting]}" "$setting")
+        if [[ $result == *"is not locked"* || $result == *"not set to false"*
+        ]]; then
+        a_output2+=("$result")
+        else
+        a_output+=("$result")
+        fi
+        done
+        printf '\''%s\n'\'' "" "- Audit Result:"
+        if [ "${#a_output2[@]}" -gt 0 ]; then
+        printf '\''%s\n'\'' " ** FAIL **" " - Reason(s) for audit failure:"
+        "${a_output2[@]}"
+        [ "${#a_output[@]}" -gt 0 ] && printf '\''%s\n'\'' "" "- Correctly set:"
+        "${a_output[@]}"
+        else
+        printf '\''%s\n'\'' " ** PASS **" "${a_output[@]}"
+        fi
+        }'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: |-
+        With automounting enabled anyone with physical access could attach a USB drive or
+        disc and have its contents available in system even if they lacked permissions to mount
+        it themselves.
+        Impact:
+        The use of portable hard drives is very common for workstation users
+    fixGuidance: |-
+        1. To prevent the user from overriding these settings, create the file
+        /etc/dconf/db/local.d/locks/00-media-automount with the following
+        content:
+        [org/gnome/desktop/media-handling]
+        automount=false
+        automount-open=false
+        2. Update the systems databases:
+        # dconf update
+        Note:
+        • A user profile must exist in order to apply locks.
+        • Users must log out and back in again before the system-wide settings take effect.

@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_003
+    title: 감사 전 프로세스 감사 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 GRUB 부트로더에 audit=1 파라미터가 설정되어 auditd 시작 전 프로세스도 감사되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(find /boot -type f -name '\''grub.cfg'\'' -exec grep -Ph -- '\''^\h*linux'\'' {} + 2>/dev/null | grep -v '\''audit=1'\'' || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: audit=1이 설정되지 않으면 auditd 서비스가 시작되기 전에 실행되는 프로세스들의 활동이 감사되지 않아 부팅 과정의 보안 이벤트를 놓칠 수 있다.
+    fixGuidance: |-
+        /etc/default/grub 파일을 편집하여 GRUB_CMDLINE_LINUX에 audit=1을 추가한다.
+
+        예시:
+        GRUB_CMDLINE_LINUX="audit=1"
+
+        다음 명령어를 실행하여 GRUB 설정을 업데이트한다:
+        update-grub

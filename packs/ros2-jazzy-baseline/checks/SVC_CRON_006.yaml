@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CRON_006
+    title: cron 사용 제한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 cron을 작업 스케줄러로 사용하는 경우, cron 데몬은 활성화되어 있으며 실행 중인 상태여야 한다. 시스템 부팅 시 자동으로 시작되도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: cron 데몬이 비활성화되어 있거나 실행 중이 아닌 경우, 예약된 작업이 정상적으로 수행되지 않아 로그 관리, 정기 점검, 유지보수 작업 등이 누락될 수 있다. CIS 벤치마크에서는 cron을 사용하는 환경에서 스케줄된 작업의 신뢰성을 보장하기 위해 cron 데몬이 항상 활성화 및 실행 상태를 유지하도록 권고하고 있다.
+    fixGuidance: |-
+        /etc/cron.monthly/ 디렉토리의 소유자와 권한을 설정한다.
+
+        chown root:root /etc/cron.monthly/
+        chmod og-rwx /etc/cron.monthly/

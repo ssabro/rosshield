@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_FSMOD_007
+    title: squashfs 커널 모듈 비활성화
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 squashfs 파일시스템의 마운트가 비활성화되어야 한다. 다만, snap 패키지 등 운영 환경에서 squashfs 파일시스템을 사용하는 구성 요소가 존재하는 경우에는 예외적으로 허용될 수 있다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(lsmod | grep squashfs 2>&1)"; C2_OUT="$(modprobe --showconfig | grep -P '\''\binstall\h+squashfs\h+((/usr)?/bin/(true|false))\b'\'' 2>&1)"; C3_OUT="$(modprobe --showconfig | grep -P '\''\bblacklist\h+squashfs\b'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; } && { [ -n "$C3_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: squashfs 파일시스템은 읽기 전용 압축 파일시스템으로, 특정 패키징 방식에서 사용된다. 사용되지 않는 squashfs 파일시스템 지원을 유지할 경우, 해당 구현의 취약점이 공격 경로로 악용될 수 있다.
+    fixGuidance: squashfs 커널 모듈이 시스템에 존재하는 경우, /etc/modprobe.d/ 디렉터리에 install squashfs /bin/false 및 blacklist squashfs 설정 파일을 생성하고, 현재 로드된 모듈을 언로드한다. 모듈이 시스템에 존재하지 않거나 커널에 미리 컴파일된 경우 조치 불필요.

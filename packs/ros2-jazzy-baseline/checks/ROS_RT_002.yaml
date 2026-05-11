@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_RT_002
+    title: ROS2 사용자 그룹 구성
+    description: ROS2 사용자가 필요한 하드웨어 그룹에 속해있는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(getent group ros 2>/dev/null || getent group ros2 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 하드웨어 접근 권한 관리
+    fixGuidance: ROS2 사용자(ros_user)를 하드웨어 접근에 필요한 그룹(dialout, plugdev, video 등)에 추가한다. usermod -aG dialout,plugdev,video ros_user 명령을 실행한다.

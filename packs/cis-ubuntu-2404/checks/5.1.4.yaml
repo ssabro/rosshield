@@ -1,0 +1,61 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.1.4
+    title: 5.1.4 Ensure sshd access is configured (Automated)
+    description: |-
+        There are several options available to limit which users and group can access the
+        system via SSH. It is recommended that at least one of the following options be
+        leveraged:
+        • AllowUsers:
+        o The AllowUsers variable gives the system administrator the option of
+        allowing specific users to ssh into the system. The list consists of space
+        separated user names. Numeric user IDs are not recognized with this
+        variable. If a system administrator wants to restrict user access further by
+        only allowing the allowed users to log in from a particular host, the entry
+        can be specified in the form of user@host.
+        • AllowGroups:
+        o The AllowGroups variable gives the system administrator the option of
+        allowing specific groups of users to ssh into the system. The list consists
+        of space separated group names. Numeric group IDs are not recognized
+        with this variable.
+        • DenyUsers:
+        o The DenyUsers variable gives the system administrator the option of
+        denying specific users to ssh into the system. The list consists of space
+        separated user names. Numeric user IDs are not recognized with this
+        variable. If a system administrator wants to restrict user access further by
+        specifically denying a user's access from a particular host, the entry can
+        be specified in the form of user@host.
+        • DenyGroups:
+        o The DenyGroups variable gives the system administrator the option of
+        denying specific groups of users to ssh into the system. The list consists
+        of space separated group names. Numeric group IDs are not recognized
+        with this variable.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Restricting which users can remotely access the system via SSH will help ensure that
+        only authorized users access the system.
+    fixGuidance: |-
+        Edit the /etc/ssh/sshd_config file to set one or more of the parameters above any
+        Include and Match set statements as follows:
+        AllowUsers <userlist>
+        - AND/OR -
+        AllowGroups <grouplist>
+        Note:
+        • First occurrence of a option takes precedence, Match set statements
+        withstanding. If Include locations are enabled, used, and order of precedence is
+        understood in your environment, the entry may be created in a .conf file in an
+        Include directory.
+        • Be advised that these options are "ANDed" together. If both AllowUsers and
+        AllowGroups are set, connections will be limited to the list of users that are also
+        a member of an allowed group. It is recommended that only one be set for clarity
+        and ease of administration.
+        • It is easier to manage an allow list than a deny list. In a deny list, you could
+        potentially add a user or group and forget to add it to the deny list.
+        Default Value:
+        None

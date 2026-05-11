@@ -1,0 +1,28 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.2.3
+    title: 4.4.2.3 Ensure iptables outbound and established connections (Manual)
+    description: |-
+        Configure the firewall rules for new outbound, and established connections.
+        Note:
+        • Changing firewall settings while connected over network can result in being
+        locked out of the system
+        • Remediation will only affect the active system firewall, be sure to configure the
+        default policy in your firewall management to apply on boot as well
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If rules are not in place for new outbound, and established connections all packets will
+        be dropped by the default policy preventing network usage.
+    fixGuidance: |-
+        Configure iptables in accordance with site policy. The following commands will
+        implement a policy to allow all outbound connections and all established connections:
+        # iptables -A OUTPUT -p tcp -m state --state NEW,ESTABLISHED -j ACCEPT
+        # iptables -A OUTPUT -p udp -m state --state NEW,ESTABLISHED -j ACCEPT
+        # iptables -A INPUT -p tcp -m state --state ESTABLISHED -j ACCEPT
+        # iptables -A INPUT -p udp -m state --state ESTABLISHED -j ACCEPT

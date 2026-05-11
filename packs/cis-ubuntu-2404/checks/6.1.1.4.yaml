@@ -1,0 +1,78 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.1.4
+    title: 6.1.1.4 Ensure only one logging system is in use (Automated)
+    description: |-
+        Best practices recommend that a single centralized logging system be used for log
+        management, choose a single service either rsyslog - OR - journald to be used as a
+        single centralized logging system.
+    severity: medium
+spec:
+    auditCommand: |-
+        bash -c '#!/usr/bin/env bash
+        {
+        l_output="" l_output2="" # Check the status of rsyslog and journald
+        if systemctl is-active --quiet rsyslog; then
+        l_output="$l_output\n - rsyslog is in use\n- follow the
+        recommendations in Configure rsyslog subsection only"
+        elif systemctl is-active --quiet systemd-journald; then
+        l_output="$l_output\n - journald is in use\n- follow the
+        recommendations in Configure journald subsection only"
+        else
+        echo -e “unable to determine system logging”
+        l_output2="$l_output2\n - unable to determine system logging\n-
+        Configure only ONE system logging: rsyslog OR journald"
+        fi
+        if [ -z "$l_output2" ]; then # Provide audit results
+        echo -e "\n- Audit Result:\n ** PASS **\n$l_output\n"
+        else
+        echo -e "\n- Audit Result:\n ** FAIL **\n - Reason(s) for audit
+        failure:\n$l_output2"
+        fi
+        }'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: |-
+        Configuring only one logging service either rsyslog - OR - journald avoids
+        redundancy, optimizes resources, simplifies configuration and management, and
+        ensures consistency.
+        Impact:
+        Transitioning from one logging service to another can be complex and time consuming,
+        it involves reconfiguration and may result in data loss if not managed and reconfigured
+        correctly.
+    fixGuidance: |-
+        1. Determine whether to use journald - OR - rsyslog depending on site needs
+        2. Configure systemd-jounald.service
+        3. Configure only ONE either journald - OR - rsyslog and complete the
+        recommendations in that subsection
+        4. Return to this recommendation to ensure only one logging system is in use
+        6.1.2 Configure journald
+        Included in the systemd suite is a journaling service called systemd-journald.service for
+        the collection and storage of logging data. It creates and maintains structured, indexed
+        journals based on logging information that is received from a variety of sources such as:
+        Classic RFC3164 BSD syslog via the /dev/log socket STDOUT/STDERR of programs
+        via StandardOutput=journal + StandardError=journal in service files (both of which are
+        default settings) Kernel log messages via the /dev/kmsg device node Audit records via
+        the kernel’s audit subsystem Structured log messages via journald’s native protocol Any
+        changes made to the systemd-journald configuration will require a re-start of systemd-
+        journald
+        Note:
+        - IF - rsyslog will be used for remote logging on the system this subsection can be
+        skipped
+        6.1.2.1 Configure systemd-journal-remote
+        The systemd-journal-remote package includes systemd-journal-upload.
+        systemd-journal-upload will upload journal entries to the URL specified with --url=.
+        This program reads journal entries from one or more journal files, similarly to journalctl.
+        systemd-journal-upload transfers the raw content of journal file and uses HTTP as a
+        transport protocol.
+        systemd-journal-upload.service is a system service that uses systemd-journal-
+        upload to upload journal entries to a server. It uses the configuration in journal-
+        upload.conf.
+        Note:
+        • - IF - rsyslog is in use this subsection can be skipped.
+        • systemd-journal-remote package is part of the universe component, this
+        may impact support and update frequency which should be considered when
+        assessing organizational risk.
+        6.1.2.1.1 Ensure systemd-journal-remote is installed (Automated)

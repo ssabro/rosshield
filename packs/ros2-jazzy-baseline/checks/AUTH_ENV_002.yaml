@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_ENV_002
+    title: 쉘 세션 타임아웃(TMOUT) 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 TMOUT이 900초(15분) 이하로 설정되고, readonly 및 export되어 있어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -Prs '\''^\s*([^#]+\s+)?TMOUT=(900|[1-8][0-9][0-9]|[1-9][0-9]|[1-9])\b'\'' /etc/profile /etc/profile.d/*.sh /etc/bashrc /etc/bash.bashrc 2>/dev/null | head -1 2>&1)"; C2_OUT="$(grep -Prs '\''^\s*([^#]+;\s*)?readonly\s+TMOUT(\s|;|$|=)'\'' /etc/profile /etc/profile.d/*.sh /etc/bashrc /etc/bash.bashrc 2>/dev/null | head -1 2>&1)"; C3_OUT="$(grep -Prs '\''^\s*([^#]+;\s*)?export\s+TMOUT(\s|;|$|=)'\'' /etc/profile /etc/profile.d/*.sh /etc/bashrc /etc/bash.bashrc 2>/dev/null | head -1 2>&1)"; C4_OUT="$(grep -Prs '\''^\s*([^#]+\s+)?TMOUT=(9[0-9][1-9]|9[1-9][0-9]|0+|[1-9]\d{3,})\b'\'' /etc/profile /etc/profile.d/*.sh /etc/bashrc /etc/bash.bashrc 2>/dev/null || echo '\''PASS'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; } && { [ -n "$C3_OUT" ]; } && { [ "$C4_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: TMOUT을 설정하면 비활성 쉘 세션이 자동으로 종료되어 무인 터미널을 통한 무단 접근을 방지할 수 있다. readonly로 설정하면 사용자가 값을 변경할 수 없다.
+    fixGuidance: |-
+        /etc/profile.d/ 디렉토리에 .sh 파일을 생성하여 TMOUT을 설정한다:
+
+        cat << 'EOF' > /etc/profile.d/50-tmout.sh
+        TMOUT=900
+        readonly TMOUT
+        export TMOUT
+        EOF
+
+        또는 한 줄로:
+        readonly TMOUT=900 ; export TMOUT
+
+        기존 파일에 900초보다 긴 TMOUT 설정이 있으면 수정하거나 제거한다.

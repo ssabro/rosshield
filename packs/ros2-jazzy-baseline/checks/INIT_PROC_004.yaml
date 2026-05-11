@@ -1,0 +1,19 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PROC_004
+    title: prelink 미설치 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 prelink 패키지가 설치되어 있지 않아야 한다. prelink는 실행 파일과 라이브러리의 주소를 사전에 고정하여 로딩 성능을 향상시키는 도구이다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s prelink &>/dev/null && echo '\''installed'\'' || echo '\''not_installed'\'' 2>&1)"; if { [ "$C1_OUT" = '\''not_installed'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: prelink는 주소 공간 배치 난수화(ASLR)의 효과를 약화시킬 수 있으며, 메모리 주소 예측을 가능하게 만들어 메모리 기반 공격의 성공 가능성을 높일 수 있다. 피지컬 AI 로봇 환경에서는 이러한 공격이 ROS 2 노드 또는 시스템 데몬을 통해 확산될 수 있으므로, prelink 사용은 보안 측면에서 바람직하지 않다.
+    fixGuidance: |-
+        다음 명령어를 실행하여 바이너리를 원래 상태로 복원한다:
+        prelink -ua
+
+        다음 명령어를 실행하여 prelink를 제거한다:
+        apt purge prelink

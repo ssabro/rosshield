@@ -1,0 +1,32 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.20
+    title: 2.1.20 Ensure X window server services are not in use (Automated)
+    description: |-
+        The X Window System provides a Graphical User Interface (GUI) where users can have
+        multiple windows in which to run programs and various add on. The X Windows system
+        is typically used on workstations where users login, but not on servers where users
+        typically do not login.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Unless your organization specifically requires graphical login access via X Windows,
+        remove it to reduce the potential attack surface.
+        Impact:
+        If a Graphical Desktop Manager (GDM) is in use on the system, there may be a
+        dependency on the xorg-x11-server-common package. If the GDM is required and
+        approved by local site policy, the package should not be removed.
+        Many Linux systems run applications which require a Java runtime. Some Linux Java
+        packages have a dependency on specific X Windows xorg-x11-fonts. One workaround
+        to avoid this dependency is to use the "headless" Java packages for your specific Java
+        runtime.
+    fixGuidance: |-
+        - IF - a Graphical Desktop Manager or X-Windows server is not required and approved
+        by local site policy:
+        Run the following command to remove the X Windows Server package:
+        # apt purge xserver-common

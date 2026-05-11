@@ -1,0 +1,17 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PRIV_005
+    title: 권한 상승 재인증 비활성화 미설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 sudo의 !authenticate 태그가 설정되어 있지 않아야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -r '\''^[^#].*!authenticate'\'' /etc/sudoers /etc/sudoers.d/ 2>/dev/null || echo '\''PASS'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: '!authenticate 태그가 있으면 해당 사용자/명령에 대해 인증을 완전히 건너뛰어 보안 위험이 증가한다.'
+    fixGuidance: |-
+        !authenticate 태그가 포함된 라인을 수정한다.
+
+        visudo -f <파일경로>로 해당 파일을 열어 !authenticate 태그를 제거한다.

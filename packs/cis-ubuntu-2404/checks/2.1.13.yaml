@@ -1,0 +1,33 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.13
+    title: 2.1.13 Ensure rsync services are not in use (Automated)
+    description: |-
+        The rsync service can be used to synchronize files between systems over network
+        links.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        rsync.service presents a security risk as the rsync protocol is unencrypted.
+        The rsync package should be removed to reduce the attack area of the system.
+        Impact:
+        There may be packages that are dependent on the rsync package. If the rsync
+        package is removed, these dependent packages will be removed as well. Before
+        removing the rsync package, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask rsync.service leaving the
+        rsync package installed.
+    fixGuidance: |-
+        Run the following commands to stop rsync.service, and remove the rsync package:
+        # systemctl stop rsync.service
+        # apt purge rsync
+        - OR -
+        - IF - the rsync package is required as a dependency:
+        Run the following commands to stop and mask rsync.service:
+        # systemctl stop rsync.service
+        # systemctl mask rsync.service

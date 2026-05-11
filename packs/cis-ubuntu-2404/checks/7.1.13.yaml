@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.1.13
+    title: 7.1.13 Ensure SUID and SGID files are reviewed (Manual)
+    description: |-
+        The owner of a file can set the file's permissions to run with the owner's or group's
+        permissions, even if the user running the program is not the owner or a member of the
+        group. The most common reason for a SUID or SGID program is to enable users to
+        perform functions (such as changing their password) that require root privileges.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        There are valid reasons for SUID and SGID programs, but it is important to identify and
+        review such programs to ensure they are legitimate. Review the files returned by the
+        action in the audit section and check to see if system binaries have a different
+        checksum than what from the package. This is an indication that the binary may have
+        been replaced.
+    fixGuidance: |-
+        Ensure that no rogue SUID or SGID programs have been introduced into the system.
+        Review the files returned by the action in the Audit section and confirm the integrity of
+        these binaries.

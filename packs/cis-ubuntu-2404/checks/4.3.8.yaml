@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.8
+    title: 4.3.8 Ensure nftables default deny firewall policy (Automated)
+    description: |-
+        Base chain policy is the default verdict that will be applied to packets reaching the end
+        of the chain.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        There are two policies: accept (Default) and drop. If the policy is set to accept, the
+        firewall will accept any packet that is not configured to be denied and the packet will
+        continue transversing the network stack.
+        It is easier to allow list acceptable usage than to deny list unacceptable usage.
+        Note:
+        • Allow port 22(ssh) needs to be updated to only allow systems requiring ssh
+        connectivity to connect, as per site policy.
+        • Changing firewall settings while connected over network can result in being
+        locked out of the system.
+        Impact:
+        If configuring nftables over ssh, creating a base chain with a policy of drop will cause
+        loss of connectivity.
+        Ensure that a rule allowing ssh has been added to the base chain prior to setting the
+        base chain's policy to drop
+    fixGuidance: |-
+        Run the following command for the base chains with the input, forward, and output
+        hooks to implement a default DROP policy:
+        # nft chain <table family> <table name> <chain name> { policy drop \; }
+        Example:
+        # nft chain inet filter input { policy drop \; }
+        # nft chain inet filter forward { policy drop \; }
+        # nft chain inet filter output { policy drop \; }
+        Default Value:
+        accept

@@ -1,0 +1,36 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.2.3.2
+    title: 6.2.3.2 Ensure actions as another user are always logged (Automated)
+    description: |-
+        sudo provides users with temporary elevated privileges to perform operations, either as
+        the superuser or another user.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Creating an audit log of users with temporary elevated privileges and the operation(s)
+        they performed is essential to reporting. Administrators will want to correlate the events
+        written to the audit trail with the records written to sudo's logfile to verify if unauthorized
+        commands have been executed.
+    fixGuidance: |-
+        Create audit rules
+        Edit or create a file in the /etc/audit/rules.d/ directory, ending in .rules extension,
+        with the relevant rules to monitor elevated privileges.
+        Example:
+        # printf "
+        -a always,exit -F arch=b64 -C euid!=uid -F auid!=unset -S execve -k
+        user_emulation
+        -a always,exit -F arch=b32 -C euid!=uid -F auid!=unset -S execve -k
+        user_emulation
+        " >> /etc/audit/rules.d/50-user_emulation.rules
+        Load audit rules
+        Merge and load the rules into active configuration:
+        # augenrules --load
+        Check if reboot is required.
+        # if [[ $(auditctl -s | grep "enabled") =~ "2" ]]; then printf "Reboot
+        required to load rules\n"; fi

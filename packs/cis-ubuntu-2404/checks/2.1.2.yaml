@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.2
+    title: 2.1.2 Ensure avahi daemon services are not in use (Automated)
+    description: |-
+        Avahi is a free zeroconf implementation, including a system for multicast DNS/DNS-SD
+        service discovery. Avahi allows programs to publish and discover services and hosts
+        running on a local network with no specific configuration. For example, a user can plug
+        a computer into a network and Avahi automatically finds printers to print to, files to look
+        at and people to talk to, as well as network services running on the machine.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Automatic discovery of network services is not normally required for system
+        functionality. It is recommended to remove this package to reduce the potential attack
+        surface.
+        Impact:
+        There may be packages that are dependent on the avahi package. If the avahi
+        package is removed, these dependent packages will be removed as well. Before
+        removing the avahi package, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask the avahi-daemon.socket and
+        avahi-daemon.service leaving the avahi package installed.
+    fixGuidance: |-
+        Run the following commands to stop avahi-daemon.socket and avahi-
+        daemon.service, and remove the avahi-daemon package:
+        # systemctl stop avahi-daemon.socket avahi-daemon.service
+        # apt purge avahi-daemon
+        - OR -
+        - IF - the avahi-daemon package is required as a dependency:
+        Run the following commands to stop and mask the avahi-daemon.socket and avahi-
+        daemon.service:
+        # systemctl stop avahi-daemon.socket avahi-daemon.service
+        # systemctl mask avahi-daemon.socket avahi-daemon.service

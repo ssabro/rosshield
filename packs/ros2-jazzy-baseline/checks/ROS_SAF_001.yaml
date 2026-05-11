@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: ROS_SAF_001
+    title: Emergency Stop 토픽 보호
+    description: Emergency Stop(비상정지) 토픽이 정의되어 있고 비인가 발행/구독이 차단되는지 확인
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(ros2 topic list 2>/dev/null | grep -iE '\''emergency|e_stop|estop'\'' | head -1 2>&1)"; C2_OUT="$(echo $ROS_SECURITY_ENABLE 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ "$C2_OUT" = '\''true'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 비상정지 토픽의 위변조는 로봇 안전에 직결되며, 악의적 정지 명령 또는 정지 차단으로 물리적 사고 발생 가능
+    fixGuidance: 비상정지 전용 토픽을 정의하고, SROS2 permissions.xml에서 인가된 노드만 발행/구독할 수 있도록 접근제어를 설정한다. QoS를 Reliable로 설정한다.

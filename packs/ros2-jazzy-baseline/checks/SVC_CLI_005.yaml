@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CLI_005
+    title: ldap-utils 패키지 제거 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 LDAP 클라이언트가 설치되어 있지 않아야 한다. 로봇 운용에 필요하지 않은 중앙 디렉터리 서비스 조회 및 인증 클라이언트는 시스템에서 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s ldap-utils &>/dev/null && echo '\''installed'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: LDAP 클라이언트는 원격 디렉터리 서버와 통신하여 사용자 계정, 그룹, 인증 정보를 조회한다. 해당 통신이 암호화되지 않거나 설정이 미흡할 경우 자격 증명 노출, 중간자 공격, 권한 오남용 등의 보안 위협이 발생할 수 있다.
+    fixGuidance: ldap-utils 패키지를 제거한다.

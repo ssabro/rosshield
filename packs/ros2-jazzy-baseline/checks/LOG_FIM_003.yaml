@@ -1,0 +1,29 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_FIM_003
+    title: 감사 및 무결성 검사 도구의 암호학적 보호 적용 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 AIDE가 감사 도구(auditctl, auditd, ausearch, aureport, autrace, augenrules)의 무결성을 암호학적으로 보호하도록 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(TOOL_DIR=$(readlink -f /sbin); MISSING=0; for t in auditctl auditd ausearch aureport autrace augenrules; do grep -q "${TOOL_DIR}/${t}" /etc/aide/aide.conf 2>/dev/null || MISSING=$((MISSING+1)); done; [ $MISSING -eq 0 ] && echo '\''PASS'\'' || echo '\''FAIL'\'' 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 감사 도구가 암호학적으로 보호되지 않으면 공격자가 도구를 변조하여 감사를 무력화할 수 있다. AIDE에서 p, i, n, u, g, s, b, acl, xattrs, sha512 옵션을 사용하여 감사 도구의 무결성을 보호해야 한다.
+    fixGuidance: |-
+        /etc/aide/aide.conf 파일에 다음 규칙을 추가한다.
+        readlink -f /sbin 명령으로 실제 경로를 확인한 후 해당 경로를 사용한다.
+
+        예시 (경로가 /usr/sbin인 경우):
+
+        # Audit Tools
+        /usr/sbin/auditctl p+i+n+u+g+s+b+acl+xattrs+sha512
+        /usr/sbin/auditd p+i+n+u+g+s+b+acl+xattrs+sha512
+        /usr/sbin/ausearch p+i+n+u+g+s+b+acl+xattrs+sha512
+        /usr/sbin/aureport p+i+n+u+g+s+b+acl+xattrs+sha512
+        /usr/sbin/autrace p+i+n+u+g+s+b+acl+xattrs+sha512
+        /usr/sbin/augenrules p+i+n+u+g+s+b+acl+xattrs+sha512
+
+        추가 명령:
+        printf '%s\n' "" "# Audit Tools" "$(readlink -f /sbin/auditctl) p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/auditd) p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/ausearch) p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/aureport) p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/autrace) p+i+n+u+g+s+b+acl+xattrs+sha512" "$(readlink -f /sbin/augenrules) p+i+n+u+g+s+b+acl+xattrs+sha512" >> /etc/aide/aide.conf

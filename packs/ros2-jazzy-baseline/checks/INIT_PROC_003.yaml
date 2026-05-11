@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PROC_003
+    title: 코어 덤프 제한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 프로세스 코어 덤프 생성이 제한되어야 한다. 코어 덤프에는 프로세스 실행 중 메모리 상태가 포함될 수 있으므로, 생성 및 접근이 통제되어야 한다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: 코어 덤프 파일에는 암호, 키, 토큰 등 민감한 정보가 포함될 수 있으며, 해당 파일이 비인가 사용자에게 노출될 경우 추가적인 보안 침해로 이어질 수 있다. 피지컬 AI 로봇 환경에서는 이러한 정보 노출이 로봇 제어 및 네트워크 접근 권한 탈취로 이어질 수 있으므로, 코어 덤프를 제한하는 것이 중요하다.
+    fixGuidance: 1) sysctl -w fs.suid_dumpable=0 명령으로 커널 파라미터를 설정하고 sysctl 설정 파일에 fs.suid_dumpable = 0을 추가한다. 2) /etc/security/limits.conf 또는 /etc/security/limits.d/ 파일에 * hard core 0을 추가한다.

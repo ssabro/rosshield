@@ -1,0 +1,26 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.2.2
+    title: 2.2.2 Ensure rsh client is not installed (Automated)
+    description: The rsh-client package contains the client commands for the rsh services.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        These legacy clients contain numerous security exposures and have been replaced with
+        the more secure SSH package. Even if the server is removed, it is best to ensure the
+        clients are also removed to prevent users from inadvertently attempting to use these
+        commands and therefore exposing their credentials. Note that removing the rsh-
+        client package removes the clients for rsh , rcp and rlogin .
+        Impact:
+        Many insecure service clients are used as troubleshooting tools and in testing
+        environments. Uninstalling them can inhibit capability to test and troubleshoot. If they
+        are required it is advisable to remove the clients after use to prevent accidental or
+        intentional misuse.
+    fixGuidance: |-
+        Uninstall rsh:
+        # apt purge rsh-client

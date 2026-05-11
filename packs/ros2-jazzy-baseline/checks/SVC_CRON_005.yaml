@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_CRON_005
+    title: cron 디렉토리 권한 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서 chrony를 시간 동기화 서비스로 사용하는 경우, chrony 서비스는 활성화되어 있으며 실행 중인 상태여야 한다. 시스템 부팅 시 자동으로 시작되도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: chrony 서비스가 활성화되어 있지 않거나 실행 중이 아닌 경우, 시스템 시간은 기준 시각과 동기화되지 않으며 로그 기록의 신뢰성 저하, 보안 이벤트 분석 오류, 인증 실패, 분산 노드 간 시간 불일치 문제가 발생할 수 있다. CIS 벤치마크에서는 시간 동기화의 연속성과 안정성을 보장하기 위해 선택된 시간 동기화 서비스가 항상 실행 상태를 유지하도록 권고하고 있다.
+    fixGuidance: |-
+        /etc/cron.weekly/ 디렉토리의 소유자와 권한을 설정한다.
+
+        chown root:root /etc/cron.weekly/
+        chmod og-rwx /etc/cron.weekly/

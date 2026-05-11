@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SVC_SRV_010
+    title: nis 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 TFTP 서버 서비스가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 단순 파일 전송 서버 기능은 비활성화되거나 제거되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(dpkg-query -s ypserv &>/dev/null && echo '\''installed'\'' 2>&1)"; C2_OUT="$(systemctl is-enabled ypserv.service 2>/dev/null | grep '\''enabled'\'' 2>&1)"; C3_OUT="$(systemctl is-active ypserv.service 2>/dev/null | grep '\''^active'\'' 2>&1)"; if { [ -z "$C1_OUT" ]; } || { { [ -z "$C2_OUT" ]; } && { [ -z "$C3_OUT" ]; }; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: TFTP 서버 서비스는 인증 절차 없이 파일을 전송하는 구조로 설계되어 있어, 비인가 사용자가 파일을 다운로드하거나 악성 파일을 업로드할 수 있는 위험이 존재한다. 또한 데이터가 평문으로 전송되어 네트워크 도청에 취약하다.
+    fixGuidance: ypserv 패키지를 제거한다. 패키지가 의존성으로 필요한 경우 서비스를 중지하고 마스크한다.

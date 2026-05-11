@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_DEV_003
+    title: 블루투스 서비스 미사용 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 Bluetooth 서비스가 사용되지 않도록 구성되어야 한다. 로봇 운용에 필요하지 않은 Bluetooth 통신 기능은 비활성화되거나 제거되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(if ! dpkg-query -s bluez &>/dev/null; then echo "PASS"; elif ! systemctl is-enabled bluetooth.service 2>/dev/null | grep -q '\''enabled'\'' && ! systemctl is-active bluetooth.service 2>/dev/null | grep -q '\''^active'\''; then echo "PASS"; else echo "FAIL"; fi 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: Bluetooth 서비스는 근거리 무선 통신을 제공하며, 활성화될 경우 무단 연결 시도, 취약한 페어링 절차 악용, 정보 탈취 등의 보안 위협이 발생할 수 있다. CIS 벤치마크에서는 시스템에서 Bluetooth 기능이 필요하지 않은 경우 해당 서비스를 비활성화하여 공격 표면을 최소화할 것을 권고하고 있다.
+    fixGuidance: |-
+        bluez 패키지를 제거하거나 bluetooth.service를 비활성화한다.
+
+        옵션 1 (패키지 제거):
+        systemctl stop bluetooth.service
+        apt purge bluez
+
+        옵션 2 (서비스 비활성화):
+        systemctl stop bluetooth.service
+        systemctl mask bluetooth.service

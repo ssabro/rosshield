@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: SYS_USER_008
+    title: 중복 그룹명 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 /etc/group에 중복 그룹명이 없어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(cut -f1 -d: /etc/group | sort | uniq -d | head -1 | grep -q . && echo ''\''''FAIL''\'''' || echo ''\''''PASS''\'''' 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 중복 그룹명은 어떤 GID에 접근이 부여되는지 혼란을 야기하여 파일 접근 제어를 약화시킨다.
+    fixGuidance: 감사 결과를 분석하여 중복 그룹명을 고유하게 수정한다. GID가 고유하면 파일 그룹 소유권은 자동으로 반영된다.

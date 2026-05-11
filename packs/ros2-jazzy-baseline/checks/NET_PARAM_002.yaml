@@ -1,0 +1,20 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: NET_PARAM_002
+    title: 패킷 리다이렉트 전송 비활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 IPv4 및 IPv6 환경에서 ICMP 패킷 리다이렉트 전송 기능이 비활성화되어야 한다. 시스템은 다른 호스트에게 네트워크 경로 변경을 지시하는 ICMP 리다이렉트 메시지를 전송하지 않도록 구성되어야 한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: ICMP 리다이렉트는 네트워크 경로 최적화를 위해 사용될 수 있으나, 종단 시스템에서는 필요하지 않은 기능이다. 해당 기능이 활성화되어 있을 경우, 공격자가 이를 악용하여 트래픽을 비인가 경로로 우회시키거나 중간자 공격을 수행할 수 있다.
+    fixGuidance: |-
+        ICMP 리다이렉트 전송을 비활성화한다.
+
+        printf '%s\n' "net.ipv4.conf.all.send_redirects = 0" "net.ipv4.conf.default.send_redirects = 0" >> /etc/sysctl.d/60-netipv4_sysctl.conf
+        sysctl -w net.ipv4.conf.all.send_redirects=0
+        sysctl -w net.ipv4.conf.default.send_redirects=0
+        sysctl -w net.ipv4.route.flush=1

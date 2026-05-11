@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.2.5
+    title: 2.2.5 Ensure ldap client is not installed (Automated)
+    description: |-
+        The Lightweight Directory Access Protocol (LDAP) was introduced as a replacement for
+        NIS/YP. It is a service that provides a method for looking up information from a central
+        database.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If the system will not need to act as an LDAP client, it is recommended that the software
+        be removed to reduce the potential attack surface.
+        Impact:
+        Removing the LDAP client will prevent or inhibit using LDAP for authentication in your
+        environment.
+    fixGuidance: |-
+        Uninstall ldap-utils:
+        # apt purge ldap-utils

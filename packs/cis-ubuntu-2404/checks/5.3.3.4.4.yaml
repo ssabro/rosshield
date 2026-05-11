@@ -1,0 +1,56 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.3.3.4.4
+    title: 5.3.3.4.4 Ensure pam_unix includes use_authtok (Automated)
+    description: |-
+        use_authtok - When password changing enforce the module to set the new password
+        to the one provided by a previously stacked password module
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        use_authtok allows multiple pam modules to confirm a new password before it is
+        accepted.
+    fixGuidance: |-
+        Run the following command:
+        # awk '/Password-Type:/{ f = 1;next } /-Type:/{ f = 0 } f {if
+        (/pam_unix\.so/) print FILENAME}' /usr/share/pam-configs/*
+        Edit any returned files add use_authtok to the pam_unix line in the Password section
+        under Password: subsection:
+        Note: The if the file's Password section includes a Password-Initial: subsection,
+        use_authtok should not be added to the pam_unix line in the Password-Initial:
+        subsection
+        Example File:
+        Name: Unix authentication
+        Default: yes
+        Priority: 256
+        Auth-Type: Primary # <- Start of "Auth" section
+        Auth:
+        [success=end default=ignore] pam_unix.so try_first_pass
+        Auth-Initial:
+        [success=end default=ignore] pam_unix.so
+        Account-Type: Primary # <- Start of "Account" section
+        Account:
+        [success=end new_authtok_reqd=done default=ignore] pam_unix.so
+        Account-Initial:
+        [success=end new_authtok_reqd=done default=ignore] pam_unix.so
+        Session-Type: Additional # <- Start of "Session" section
+        Session:
+        required pam_unix.so
+        Session-Initial:
+        required pam_unix.so
+        Password-Type: Primary # <- Start of "Password" section
+        Password:
+        [success=end default=ignore] pam_unix.so obscure use_authtok
+        try_first_pass yescrypt # <- **ensure line includes use_authtok**
+        Password-Initial:
+        [success=end default=ignore] pam_unix.so obscure yescrypt # <-
+        **Password-Initial: subsection does not include use_authtok
+        Run the following command to update the files in the /etc/pam.d/ directory:
+        # pam-auth-update --enable <MODIFIED_PROFILE_NAME>
+        Example:
+        # pam-auth-update --enable unix

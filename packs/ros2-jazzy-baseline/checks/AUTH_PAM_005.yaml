@@ -1,0 +1,42 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_005
+    title: pam_faillock 모듈 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 pam_faillock 모듈이 PAM 설정에서 활성화되어 로그인 실패 시 계정 잠금이 적용되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -P '\''pam_faillock\.so.*preauth'\'' /etc/pam.d/common-auth 2>/dev/null 2>&1)"; C2_OUT="$(grep -P '\''pam_faillock\.so.*authfail'\'' /etc/pam.d/common-auth 2>/dev/null 2>&1)"; C3_OUT="$(grep -P '\''\bpam_faillock\.so\b'\'' /etc/pam.d/common-account 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; } && { [ -n "$C3_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: pam_faillock은 반복적인 인증 실패 시 계정을 잠가 무차별 대입 공격을 방지한다.
+    fixGuidance: |-
+        pam_faillock 모듈을 활성화하기 위해 pam-auth-update 프로필을 생성한다.
+
+        1. /usr/share/pam-configs/faillock 파일 생성:
+        cat > /usr/share/pam-configs/faillock << 'EOF'
+        Name: Enable pam_faillock to deny access
+        Default: yes
+        Priority: 0
+        Auth-Type: Primary
+        Auth:
+         [default=die] pam_faillock.so authfail
+        EOF
+
+        2. /usr/share/pam-configs/faillock_notify 파일 생성:
+        cat > /usr/share/pam-configs/faillock_notify << 'EOF'
+        Name: Notify of failed login attempts and reset count upon success
+        Default: yes
+        Priority: 1024
+        Auth-Type: Primary
+        Auth:
+         requisite pam_faillock.so preauth
+        Account-Type: Primary
+        Account:
+         required pam_faillock.so
+        EOF
+
+        3. 프로필 적용:
+        pam-auth-update --enable faillock
+        pam-auth-update --enable faillock_notify

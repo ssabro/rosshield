@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.1
+    title: 2.1.1 Ensure autofs services are not in use (Automated)
+    description: |-
+        autofs allows automatic mounting of devices, typically including CD/DVDs and USB
+        drives.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        With automounting enabled anyone with physical access could attach a USB drive or
+        disc and have its contents available in the filesystem even if they lacked permissions to
+        mount it themselves.
+        Impact:
+        The use of portable hard drives is very common for workstation users. If your
+        organization allows the use of portable storage or media on workstations and physical
+        access controls to workstations is considered adequate there is little value add in
+        turning off automounting.
+        There may be packages that are dependent on the autofs package. If the autofs
+        package is removed, these dependent packages will be removed as well. Before
+        removing the autofs package, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask the autofs.service leaving the
+        autofs package installed.
+    fixGuidance: |-
+        Run the following commands to stop autofs.service and remove the autofs
+        package:
+        # systemctl stop autofs.service
+        # apt purge autofs
+        - OR -
+        - IF - the autofs package is required as a dependency:
+        Run the following commands to stop and mask autofs.service:
+        # systemctl stop autofs.service
+        # systemctl mask autofs.service

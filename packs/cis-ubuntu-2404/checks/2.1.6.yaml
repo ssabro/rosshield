@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.6
+    title: 2.1.6 Ensure ftp server services are not in use (Automated)
+    description: |-
+        The File Transfer Protocol (FTP) provides networked computers with the ability to
+        transfer files. vsftpd is the Very Secure File Transfer Protocol Daemon.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        FTP does not protect the confidentiality of data or authentication credentials. It is
+        recommended SFTP be used if file transfer is required. Unless there is a need to run
+        the system as a FTP server (for example, to allow anonymous downloads), it is
+        recommended that the package be deleted to reduce the potential attack surface.
+        Impact:
+        There may be packages that are dependent on the vsftpd package. If the vsftpd
+        package is removed, these dependent packages will be removed as well. Before
+        removing the vsftpd package, review any dependent packages to determine if they are
+        required on the system.
+        - IF - a dependent package is required: stop and mask the vsftpd.service leaving the
+        vsftpd package installed.
+    fixGuidance: |-
+        Run the following commands to stop vsftpd.service and remove the vsftpd
+        package:
+        # systemctl stop vsftpd.service
+        # apt purge vsftpd
+        - OR -
+        - IF - the vsftpd package is required as a dependency:
+        Run the following commands to stop and mask the vsftpd.service:
+        # systemctl stop vsftpd.service
+        # systemctl mask vsftpd.service
+        Note: Other ftp server packages may exist. If not required and authorized by local site
+        policy, they should also be removed. If the package is required for a dependency, the
+        service should be stopped and masked.

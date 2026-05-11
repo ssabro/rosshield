@@ -1,0 +1,38 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.18
+    title: 2.1.18 Ensure web server services are not in use (Automated)
+    description: Web servers provide the ability to host web site content.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        Unless there is a local site approved requirement to run a web server service on the
+        system, web server packages should be removed to reduce the potential attack surface.
+        Impact:
+        Removal of web server packages will remove that ability for the server to host web
+        services.
+        - IF - the web server package is required for a dependency, any related service or
+        socket should be stopped and masked.
+        Note: If the remediation steps to mask a service are followed and that package is not
+        installed on the system, the service and/or socket will still be masked. If the package is
+        installed due to an approved requirement to host a web server, the associated service
+        and/or socket would need to be unmasked before it could be enabled and/or started.
+    fixGuidance: |-
+        Run the following commands to stop httpd.socket, httpd.service, and
+        nginx.service, and remove apache2 and nginx packages:
+        # systemctl stop apache2.socket apache2.service nginx.service
+        # apt purge apache2 nginx
+        - OR -
+        - IF - a package is installed and is required for dependencies:
+        Run the following commands to stop and mask apache2.socket, apache2.service,
+        and nginx.service:
+        # systemctl stop apache2.socket apache2.service nginx.service
+        # systemctl mask apache2.socket apache2.service nginx.service
+        Note: Other web server packages may exist. If not required and authorized by local site
+        policy, they should also be removed. If the package is required for a dependency, the
+        service and socket should be stopped and masked.

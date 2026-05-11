@@ -1,0 +1,31 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_014
+    title: 권한 있는 명령 사용 감사 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 SUID/SGID가 설정된 모든 권한 있는 명령의 사용을 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: 'bash -c ''set -o pipefail; C1_OUT="$(WARN=0; for PARTITION in $(findmnt -n -l -k -it $(awk ''\''''/nodev/ { print $2 }''\'''' /proc/filesystems | paste -sd,) | grep -Pv ''\''''noexec|nosuid''\'''' | awk ''\''''{print $1}''\''''); do for PRIVILEGED in $(find "${PARTITION}" -xdev -perm /6000 -type f 2>/dev/null); do grep -qr "${PRIVILEGED}" /etc/audit/rules.d 2>/dev/null || WARN=$((WARN+1)); done; done; [ $WARN -eq 0 ] && echo ''\''''PASS''\'''' || echo "FAIL: ${WARN} files missing" 2>&1)"; if { [ "$C1_OUT" = ''\''''PASS''\'''' ]; }; then echo ''\''''** PASS **''\''''; else echo ''\''''** FAIL **''\''''; fi'''
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: SUID/SGID 비트가 설정된 실행 파일은 높은 권한으로 실행되므로 악용될 수 있다. 이러한 명령의 사용을 감사하면 무단 권한 상승 시도를 탐지할 수 있다.
+    fixGuidance: |-
+        다음 스크립트를 실행하여 모든 SUID/SGID 파일에 대한 감사 규칙을 생성한다:
+
+        UID_MIN=$(awk '/^\s*UID_MIN/{print $2}' /etc/login.defs)
+        AUDIT_RULE_FILE="/etc/audit/rules.d/50-privileged.rules"
+        NEW_DATA=()
+        for PARTITION in $(findmnt -n -l -k -it $(awk '/nodev/ { print $2 }' /proc/filesystems | paste -sd,) | grep -Pv "noexec|nosuid" | awk '{print $1}'); do
+          readarray -t DATA < <(find "${PARTITION}" -xdev -perm /6000 -type f | awk -v UID_MIN=${UID_MIN} '{print "-a always,exit -F path=" $1 " -F perm=x -F auid>="UID_MIN" -F auid!=unset -k privileged"}')
+          for ENTRY in "${DATA[@]}"; do
+            NEW_DATA+=("${ENTRY}")
+          done
+        done
+        readarray &> /dev/null -t OLD_DATA < "${AUDIT_RULE_FILE}"
+        COMBINED_DATA=( "${OLD_DATA[@]}" "${NEW_DATA[@]}" )
+        printf '%s\n' "${COMBINED_DATA[@]}" | sort -u > "${AUDIT_RULE_FILE}"
+
+        규칙을 로드한다:
+        augenrules --load

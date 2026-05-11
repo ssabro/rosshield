@@ -1,0 +1,23 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: LOG_AUDIT_010
+    title: 타 사용자 권한으로 수행된 행위 감사 여부 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 다른 사용자의 권한으로 실행되는 명령(euid!=uid)을 감사하는 규칙이 설정되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(awk '\''/^ *-a *always,exit/ && / -F *arch=b64/ && (/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) && (/ -C *euid!=uid/||/ -C *uid!=euid/) && / -S *execve/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'\'' /etc/audit/rules.d/*.rules 2>/dev/null 2>&1)"; C2_OUT="$(awk '\''/^ *-a *always,exit/ && / -F *arch=b32/ && (/ -F *auid!=unset/||/ -F *auid!=-1/||/ -F *auid!=4294967295/) && (/ -C *euid!=uid/||/ -C *uid!=euid/) && / -S *execve/ && (/ key= *[!-~]* *$/||/ -k *[!-~]* *$/)'\'' /etc/audit/rules.d/*.rules 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 유효 사용자 ID와 실제 사용자 ID가 다른 상태에서 실행되는 명령을 감사하면 권한 상승을 통한 악의적 행위를 추적할 수 있다.
+    fixGuidance: |-
+        /etc/audit/rules.d/ 디렉토리에 규칙 파일을 생성한다:
+
+        printf "
+        -a always,exit -F arch=b64 -C euid!=uid -F auid!=unset -S execve -k user_emulation
+        -a always,exit -F arch=b32 -C euid!=uid -F auid!=unset -S execve -k user_emulation
+        " >> /etc/audit/rules.d/50-user_emulation.rules
+
+        규칙을 로드한다:
+        augenrules --load

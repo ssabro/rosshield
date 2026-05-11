@@ -1,0 +1,30 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.2.1.4
+    title: 6.1.2.1.4 Ensure systemd-journal-remote service is not in use (Automated)
+    description: |-
+        Journald systemd-journal-remote supports the ability to receive messages from
+        remote hosts, thus acting as a log server. Clients should not receive data from other
+        hosts.
+        Note:
+        • The same package, systemd-journal-remote, is used for both sending logs to
+        remote hosts and receiving incoming logs.
+        • With regards to receiving logs, there are two services; systemd-journal-
+        remote.socket and systemd-journal-remote.service.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: contains
+        value: <degraded — Phase 2 fixture required>
+    rationale: |-
+        If a client is configured to also receive data, thus turning it into a server, the client
+        system is acting outside it's operational boundary.
+        Note: This recommendation only applies if journald is the chosen method for
+        client side logging. Do not apply this recommendation if rsyslog is used.
+    fixGuidance: |-
+        Run the following commands to stop and mask systemd-journal-remote.socket and
+        systemd-journal-remote.service:
+        # systemctl stop systemd-journal-remote.socket systemd-journal-remote.service
+        # systemctl mask systemd-journal-remote.socket systemd-journal-remote.service

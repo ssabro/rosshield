@@ -1,0 +1,21 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PRIV_006
+    title: sudo 인증 캐시 타임아웃 설정 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 sudo 인증 캐시 타임아웃이 15분 이하로 설정되어야 한다.
+    severity: medium
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(timeout_val=$(grep -roP '\''timestamp_timeout=\K-?[0-9]+'\'' /etc/sudoers /etc/sudoers.d/ 2>/dev/null | head -1); if [ -z "$timeout_val" ]; then echo "PASS"; elif [ "$timeout_val" -lt 0 ]; then echo "FAIL"; elif [ "$timeout_val" -le 15 ]; then echo "PASS"; else echo "FAIL"; fi 2>&1)"; if { [ "$C1_OUT" = '\''PASS'\'' ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: 인증 캐시 타임아웃이 길면 사용자가 자리를 비운 사이 권한 상승 명령이 악용될 수 있다.
+    fixGuidance: |-
+        /etc/sudoers 파일에 timestamp_timeout 설정을 추가하거나 수정한다.
+
+        visudo로 편집하여 다음과 같이 설정:
+        Defaults timestamp_timeout=15
+
+        또는 env_reset과 함께:
+        Defaults env_reset, timestamp_timeout=15

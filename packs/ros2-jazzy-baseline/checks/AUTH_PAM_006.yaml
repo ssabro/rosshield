@@ -1,0 +1,34 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_006
+    title: pam_pwquality 모듈 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 pam_pwquality 모듈이 PAM 설정에서 활성화되어 비밀번호 품질 검사가 적용되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -P '\''\bpam_pwquality\.so\b'\'' /etc/pam.d/common-password 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: pam_pwquality는 비밀번호 설정 시 복잡도, 길이, 사전 단어 등을 검사하여 약한 비밀번호 사용을 방지한다.
+    fixGuidance: |-
+        pam_pwquality 모듈을 활성화한다.
+
+        1. 프로필 존재 확인:
+        grep -P '\bpam_pwquality\.so\b' /usr/share/pam-configs/*
+
+        2. 프로필이 있으면:
+        pam-auth-update --enable pwquality
+
+        3. 프로필이 없으면 /usr/share/pam-configs/pwquality 생성:
+        cat > /usr/share/pam-configs/pwquality << 'EOF'
+        Name: Pwquality password strength checking
+        Default: yes
+        Priority: 1024
+        Conflicts: cracklib
+        Password-Type: Primary
+        Password:
+         requisite pam_pwquality.so retry=3
+        EOF
+
+        pam-auth-update --enable pwquality

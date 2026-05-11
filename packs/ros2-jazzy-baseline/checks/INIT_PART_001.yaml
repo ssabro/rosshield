@@ -1,0 +1,14 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: INIT_PART_001
+    title: /tmp를 별도 파티션으로 구성
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇을 지원하는 Host 운영체제에서는 /tmp 디렉터리가 별도의 파티션으로 구성되어야 한다. 임시 파일 저장을 위한 영역은 루트( /) 또는 다른 중요 파일시스템과 분리되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(findmnt -kn /tmp 2>&1)"; C2_OUT="$(systemctl is-enabled tmp.mount 2>/dev/null | grep -Pv '\''(masked|disabled)'\'' 2>&1)"; if { [ -n "$C1_OUT" ]; } && { [ -n "$C2_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: /tmp 디렉터리는 다양한 시스템 프로세스 및 애플리케이션에서 임시 파일을 생성하는 데 사용된다. 해당 디렉터리가 별도 파티션으로 분리되지 않은 경우, 대량의 임시 파일 생성 또는 악의적인 디스크 고갈 공격으로 인해 루트 파일시스템이 가득 차 시스템 장애 또는 서비스 중단이 발생할 수 있다.
+    fixGuidance: 'systemd가 부팅 시 /tmp를 마운트하도록 구성한다. 1) systemctl unmask tmp.mount 명령으로 tmp.mount 서비스의 마스크를 해제한다. 2) /etc/fstab에 /tmp 마운트 항목을 추가하거나 수정한다. tmpfs 사용 예: tmpfs /tmp tmpfs defaults,rw,nosuid,nodev,noexec,relatime,size=2G 0 0 디스크/볼륨 사용 예: <device> /tmp <fstype> defaults,nodev,nosuid,noexec 0 0 환경에 맞게 파티션 크기와 마운트 옵션을 조정해야 한다.'

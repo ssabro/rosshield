@@ -1,0 +1,33 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: AUTH_PAM_007
+    title: pam_pwhistory 모듈 활성화 확인
+    description: ROS 2 Jazzy 기반 피지컬 AI 로봇 Host 운영체제에서 pam_pwhistory 모듈이 PAM 설정에서 활성화되어 비밀번호 이력 검사가 적용되어야 한다.
+    severity: high
+spec:
+    auditCommand: bash -c 'set -o pipefail; C1_OUT="$(grep -P '\''\bpam_pwhistory\.so\b'\'' /etc/pam.d/common-password 2>/dev/null 2>&1)"; if { [ -n "$C1_OUT" ]; }; then echo '\''** PASS **'\''; else echo '\''** FAIL **'\''; fi'
+    evaluationRule:
+        op: contains
+        value: '** PASS **'
+    rationale: pam_pwhistory는 이전에 사용한 비밀번호의 재사용을 방지하여 비밀번호 보안을 강화한다.
+    fixGuidance: |-
+        pam_pwhistory 모듈을 활성화한다.
+
+        1. 프로필 존재 확인:
+        grep -P '\bpam_pwhistory\.so\b' /usr/share/pam-configs/*
+
+        2. 프로필이 있으면:
+        pam-auth-update --enable pwhistory
+
+        3. 프로필이 없으면 /usr/share/pam-configs/pwhistory 생성:
+        cat > /usr/share/pam-configs/pwhistory << 'EOF'
+        Name: pwhistory password history checking
+        Default: yes
+        Priority: 1024
+        Password-Type: Primary
+        Password:
+         requisite pam_pwhistory.so remember=24 enforce_for_root try_first_pass use_authtok
+        EOF
+
+        pam-auth-update --enable pwhistory
