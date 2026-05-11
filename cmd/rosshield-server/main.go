@@ -148,6 +148,11 @@ func newMux(p *Platform) http.Handler {
 
 	// E9 Stage B — chi 라우터로 API mount.
 	apiRouter := chi.NewRouter()
+	// E25 Stage 3 — HA 활성 시 write request leader gate (method 기반).
+	// rp == nil이면 미들웨어가 모든 request 통과 — single-instance 호환.
+	if p.HA != nil {
+		apiRouter.Use(handlers.RequireLeaderForWrites(p.HA))
+	}
 	h := handlers.New(handlers.Deps{
 		Storage:           p.Storage,
 		Clock:             p.Clock,
