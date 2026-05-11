@@ -189,6 +189,39 @@ export const usePacks = () => {
   })
 }
 
+export interface PackCheck {
+  id: string
+  checkId: string
+  title: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  description?: string
+}
+
+export interface PackDetail extends PackMeta {
+  checks: PackCheck[]
+}
+
+// usePack(packKey) — 단일 pack의 메타 + checks. /packs/{packKey} 페이지에서 사용.
+export const usePack = (packKey: string) => {
+  return useQuery({
+    queryKey: ['pack', packKey],
+    queryFn: async (): Promise<PackDetail> => {
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/packs/{packKey}',
+        { params: { path: { packKey } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as PackDetail
+    },
+    enabled: !!packKey,
+  })
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // 3) Robots
 // ────────────────────────────────────────────────────────────────────────

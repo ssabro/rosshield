@@ -10,6 +10,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sort"
 
@@ -98,6 +99,94 @@ func (h *Handlers) collectPacks(ctx context.Context, tenantID storage.TenantID,
 		}
 		return nil
 	})
+}
+
+// packDetailResponse는 GET /api/v1/packs/{packKey} 응답 본문입니다.
+//
+// ListPacks는 메타만, Detail은 checks 포함 — 별 endpoint(N+1 회피).
+type packDetailResponse struct {
+	packResponse
+	Checks []checkResponse `json:"checks"`
+}
+
+type checkResponse struct {
+	ID          string `json:"id"`
+	CheckID     string `json:"checkId"`
+	Title       string `json:"title"`
+	Severity    string `json:"severity"`
+	Description string `json:"description,omitempty"`
+}
+
+// GetPack은 GET /api/v1/packs/{packKey} 핸들러입니다.
+//
+// systemTenant 우선 조회 → 호출자 tenant fallback. 둘 다 없으면 404.
+// IsBuiltin은 적중한 tenant scope으로 결정.
+func (h *Handlers) GetPack(w http.ResponseWriter, r *http.Request, packKey string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.Benchmark == nil {
+		writeError(w, http.StatusServiceUnavailable, "benchmark service not configured")
+		return
+	}
+	if packKey == "" {
+		writeError(w, http.StatusBadRequest, "packKey required")
+		return
+	}
+
+	// 1) systemTenant 시도 (built-in)
+	pack, isBuiltin, err := h.fetchPackByKey(r.Context(), systemTenantID, packKey)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		writeError(w, errorStatusFor(err), "get system pack failed")
+		return
+	}
+	if errors.Is(err, storage.ErrNotFound) && tenantID != systemTenantID {
+		// 2) 호출자 tenant 시도
+		pack, isBuiltin, err = h.fetchPackByKey(r.Context(), tenantID, packKey)
+		if err != nil {
+			writeError(w, errorStatusFor(err), "get pack failed")
+			return
+		}
+	}
+	_ = isBuiltin // fetchPackByKey가 isBuiltin도 결정 (systemTenant scope 여부)
+
+	out := packDetailResponse{
+		packResponse: toPackResponse(pack, isBuiltin),
+		Checks:       toCheckResponses(pack.Checks),
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (h *Handlers) fetchPackByKey(ctx context.Context, tenantID storage.TenantID, packKey string) (benchmark.Pack, bool, error) {
+	tenantCtx := storage.WithTenantID(ctx, tenantID)
+	var pack benchmark.Pack
+	err := h.deps.Storage.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		p, e := h.deps.Benchmark.GetPackByKey(ctx, tx, tenantID, packKey)
+		if e != nil {
+			return e
+		}
+		pack = p
+		return nil
+	})
+	return pack, tenantID == systemTenantID, err
+}
+
+func toCheckResponses(checks []benchmark.Check) []checkResponse {
+	out := make([]checkResponse, 0, len(checks))
+	for _, c := range checks {
+		out = append(out, checkResponse{
+			ID:          c.ID,
+			CheckID:     c.CheckID,
+			Title:       c.Title,
+			Severity:    string(c.Severity),
+			Description: c.Description,
+		})
+	}
+	// 결정성: CheckID 알파벳 정렬
+	sort.Slice(out, func(i, j int) bool { return out[i].CheckID < out[j].CheckID })
+	return out
 }
 
 func toPackResponse(p benchmark.Pack, isBuiltin bool) packResponse {

@@ -493,6 +493,36 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/packs/{packKey}:
+    get:
+      tags: [benchmark]
+      operationId: getPack
+      summary: 단일 벤치마크 팩 + checks 상세 (E12 Stage 5)
+      description: |
+        systemTenant 우선 → 호출자 tenant fallback. checks는 CheckID 알파벳 정렬.
+      x-status: phase5
+      parameters:
+        - in: path
+          name: packKey
+          required: true
+          schema: { type: string }
+          description: vendor-name-version 합성 키
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackDetail"
+        "404":
+          description: Pack not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/audit/head:
     get:
       tags: [audit]
@@ -2021,6 +2051,28 @@ components:
         packs:
           type: array
           items: { $ref: "#/components/schemas/PackMeta" }
+
+    PackCheck:
+      type: object
+      required: [id, checkId, title, severity]
+      description: 단일 check 메타 — pack 안의 검사 항목.
+      properties:
+        id:          { type: string, description: "ck_<ULID>" }
+        checkId:     { type: string, description: "팩 내 식별자 (예: CIS-1.1.1.1)" }
+        title:       { type: string }
+        severity:    { type: string, enum: [low, medium, high, critical] }
+        description: { type: string }
+
+    PackDetail:
+      allOf:
+        - $ref: "#/components/schemas/PackMeta"
+        - type: object
+          required: [checks]
+          properties:
+            checks:
+              type: array
+              description: CheckID 알파벳 정렬
+              items: { $ref: "#/components/schemas/PackCheck" }
 
     # ─── Webhook test (E29) ──────────────────────────────────────────────
     WebhookTestResponse:

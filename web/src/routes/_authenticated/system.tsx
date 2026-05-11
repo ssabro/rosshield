@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/errors'
@@ -120,7 +120,13 @@ function PacksCard(): React.ReactElement {
               >
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-foreground">{p.name}</span>
+                    <Link
+                      to="/packs/$packKey"
+                      params={{ packKey: p.packKey }}
+                      className="font-medium text-foreground hover:underline"
+                    >
+                      {p.name}
+                    </Link>
                     <Badge variant="secondary">{p.version}</Badge>
                     {p.isBuiltin && <Badge variant="outline">built-in</Badge>}
                   </div>

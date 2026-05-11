@@ -161,6 +161,10 @@ func (h *Handlers) Mount(r chi.Router) {
 		// E12 Stage 3 — Pack list (built-in + tenant pack). 모든 인증 사용자 read.
 		// systemTenant pack(cross-tenant 공유, §4.2)과 호출자 tenant pack 합쳐 반환.
 		r.Get("/api/v1/packs", h.ListPacks)
+		// E12 Stage 5 — Pack detail (checks 포함). systemTenant 우선 → caller fallback.
+		r.Get("/api/v1/packs/{packKey}", func(w http.ResponseWriter, req *http.Request) {
+			h.GetPack(w, req, chi.URLParam(req, "packKey"))
+		})
 
 		// E20-A Phase 3 — SSO scaffold (OIDC + SAML, 옵트인).
 		// 본 stage는 protected group에 mount — 후속 stage에서 비인증 진입(사용자가 패스워드 모름)

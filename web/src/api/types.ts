@@ -327,6 +327,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/packs/{packKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 단일 벤치마크 팩 + checks 상세 (E12 Stage 5)
+         * @description systemTenant 우선 → 호출자 tenant fallback. checks는 CheckID 알파벳 정렬.
+         */
+        get: operations["getPack"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/head": {
         parameters: {
             query?: never;
@@ -1268,6 +1288,21 @@ export interface components {
         PackListResponse: {
             packs: components["schemas"]["PackMeta"][];
         };
+        /** @description 단일 check 메타 — pack 안의 검사 항목. */
+        PackCheck: {
+            /** @description ck_<ULID> */
+            id: string;
+            /** @description 팩 내 식별자 (예: CIS-1.1.1.1) */
+            checkId: string;
+            title: string;
+            /** @enum {string} */
+            severity: "low" | "medium" | "high" | "critical";
+            description?: string;
+        };
+        PackDetail: components["schemas"]["PackMeta"] & {
+            /** @description CheckID 알파벳 정렬 */
+            checks: components["schemas"]["PackCheck"][];
+        };
         /**
          * @description Result of a one-off ping. `success=true` iff the upstream returned a 2xx
          *     status. Transport-level failures (DNS, TLS, timeout) populate `error` with
@@ -1932,6 +1967,39 @@ export interface operations {
                     "application/json": {
                         packs: components["schemas"]["PackMeta"][];
                     };
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPack: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description vendor-name-version 합성 키 */
+                packKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackDetail"];
+                };
+            };
+            /** @description Pack not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

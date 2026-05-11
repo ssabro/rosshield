@@ -107,6 +107,98 @@ func TestListPacksRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestGetPackReturnsChecks(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	installSamplePack(t, f)
+	token := f.loginAndGetToken(t)
+
+	// 먼저 ListPacks로 packKey 확인.
+	listReq, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/packs", nil)
+	listReq.Header.Set("Authorization", "Bearer "+token)
+	listResp, err := http.DefaultClient.Do(listReq)
+	if err != nil {
+		t.Fatalf("GET /api/v1/packs: %v", err)
+	}
+	defer func() { _ = listResp.Body.Close() }()
+	var list struct {
+		Packs []struct {
+			PackKey string `json:"packKey"`
+		} `json:"packs"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(list.Packs) == 0 {
+		t.Fatal("ListPacks returned 0 packs")
+	}
+	packKey := list.Packs[0].PackKey
+
+	// GET /api/v1/packs/{packKey}
+	req, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/packs/"+packKey, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/v1/packs/%s: %v", packKey, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var detail struct {
+		PackKey string `json:"packKey"`
+		Vendor  string `json:"vendor"`
+		Checks  []struct {
+			ID       string `json:"id"`
+			CheckID  string `json:"checkId"`
+			Title    string `json:"title"`
+			Severity string `json:"severity"`
+		} `json:"checks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if detail.PackKey != packKey {
+		t.Errorf("PackKey = %q, want %q", detail.PackKey, packKey)
+	}
+	if len(detail.Checks) == 0 {
+		t.Fatal("Checks empty (built-in pack should have many checks)")
+	}
+	for _, c := range detail.Checks {
+		if c.ID == "" || c.CheckID == "" || c.Title == "" {
+			t.Errorf("check has empty fields: %+v", c)
+			break
+		}
+	}
+	// 결정성: CheckID 알파벳 정렬 검증
+	for i := 1; i < len(detail.Checks); i++ {
+		if detail.Checks[i-1].CheckID > detail.Checks[i].CheckID {
+			t.Errorf("checks not sorted: %q > %q", detail.Checks[i-1].CheckID, detail.Checks[i].CheckID)
+			break
+		}
+	}
+}
+
+func TestGetPackNotFound(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	req, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/packs/nonexistent-key-123", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestListPacksReturnsEmptyWhenNoneSeeded(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()
