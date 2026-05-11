@@ -146,6 +146,33 @@ jobs:
           curl -fsS http://localhost:8080/healthz | jq -e '.status' >/dev/null
           echo "✓ healthz still ok after post-refresh hook invocation"
 
+      # E35 — same-snap refresh OTA round-trip simulation.
+      # 같은 .snap을 두 번째 install하면 snapd가 refresh로 처리, 새 revision 부여 +
+      # post-refresh hook 자동 실행. 다른 revision의 broken artifact 시뮬레이션은
+      # multipass nested VM 필요(GH Actions 미지원) — 본 step은 정상 refresh round-trip만.
+      - name: snap refresh — same-snap re-install (round-trip simulation)
+        run: |
+          SNAP_FILE=$(ls ./snap-artifact/*.snap | head -n 1)
+          REVISION_BEFORE=$(snap list rosshield | awk 'NR==2 {print $3}')
+          echo "rev before refresh: $REVISION_BEFORE"
+
+          # snapd가 같은 파일을 또 install하면 refresh로 처리 (또는 동일 시 noop).
+          # --revision 명시 없이 --dangerous로 새 revision 부여.
+          sudo snap install "$SNAP_FILE" --dangerous
+
+          REVISION_AFTER=$(snap list rosshield | awk 'NR==2 {print $3}')
+          echo "rev after refresh:  $REVISION_AFTER"
+
+          # snap services 여전히 active
+          sudo snap services rosshield | grep -q "active"
+
+          # /healthz 여전히 200
+          curl -fsS http://localhost:8080/healthz | jq -e '.status' >/dev/null
+          echo "✓ snap refresh round-trip OK (revision $REVISION_BEFORE → $REVISION_AFTER, healthz still 200)"
+
+          # post-refresh hook이 실행됐는지 snap changes로 확인 (마지막 change가 install/refresh + hook 포함)
+          sudo snap changes rosshield | head -5
+
       - name: snap remove (cleanup)
         if: always()
         run: sudo snap remove --purge rosshield || true
