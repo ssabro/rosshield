@@ -266,7 +266,7 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 
 - [x] enterprise build tag scaffold + 양 빌드 CI 그린 (E31, 2026-05-11 `5c08f42`)
 - [ ] KR 우선출원 완료 + 1순위 결합 청구항 코드 분리 (E32 + O11)
-- [ ] Ubuntu Core snap install + healthz (E33)
+- [x] Ubuntu Core snap install + healthz (E33, 2026-05-11 `616403c`) — 1차 amd64 빌드 + LXD smoke test CI workflow 자동화. arm64·snap store 발행은 후속 stage.
 - [ ] TPM 키 봉인 + Secure Boot 동작 (E34)
 - [ ] A/B OTA + 자동 롤백 시연 (E35)
 - [ ] 레퍼런스 HW 2 모델 burn-in (E36)
@@ -284,7 +284,7 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - **R40-2** TPM 시뮬레이터 — ✅ **2026-05-11**: `swtpm` 결정 (Linux 표준, Ubuntu apt 패키지, KVM/QEMU 호환, CI testcontainers 친화).
 - **R40-3** WASM 런타임 — ✅ **2026-05-11**: `wazero` 결정 (Pure Go, CGO=0 유지, cross-compile 손쉬움. 일부 advanced WASM 기능은 미지원이지만 D8-C1 sandboxed check evaluator 요구는 충족).
 - **R40-4** 첫 customer SKU — ✅ **2026-05-11**: `Onprem` 결정 (Compose/단일 서버 multi-user, v0.2.0 release 형태, E38 onboarding 자료 onprem 가정과 일관, enterprise 확장성).
-- **R40-5** D1 후보 어휘 풀 — 🟡 **진행 중**: `docs/design/notes/d1-brand-candidates.md` sub-agent 작성 중. 사용자가 Top 3 검토 후 변리사 정밀 검색 의뢰 → 출원 후 확정.
+- **R40-5** D1 후보 어휘 풀 — ✅ **2026-05-11** (`2d66ae9`): `docs/design/notes/d1-brand-candidates.md` 12 후보 + WebSearch 11회 + Top 3 = Custos·Lodestar·Praxis. 5개 폐기(Sentinel·Aegis·Helix·Vector·Axiom). 변리사 정밀 검색 의뢰 + D1 확정은 출원 잠금(D8-4) 해제 후.
 
 ---
 
