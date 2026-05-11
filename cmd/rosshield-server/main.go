@@ -172,6 +172,14 @@ func newMux(p *Platform) http.Handler {
 		Invitation:        p.Invitation,
 	})
 	h.Mount(apiRouter)
+
+	// B7 후속 — GET /api/v1/backups (chi 직접 mount, AuthMiddleware 통과 후).
+	// openapi spec 표면 추가 + RBAC role check + download endpoint는 Stage 2 후속.
+	apiRouter.Group(func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.Get("/api/v1/backups", listBackupsHandler(p))
+	})
+
 	mux.Handle("/api/v1/", apiRouter)
 
 	// E10 Stage D — Web Console 정적 자산 서빙 (R12-11 single binary).
@@ -248,6 +256,9 @@ func main() {
 	haLeaderID := flag.String("ha-leader-id", "", "HA instance identifier (E25). Empty = auto (hostname:pid).")
 	haAdvertised := flag.String("ha-advertised-addr", "", "HA advertised URL for redirect from followers (E25, optional).")
 	keystoreType := flag.String("keystore", "file", "KeyStore adapter (E34): file (default, soft.LoadOrCreate) | tpm (Stage 1 placeholder — Stage 2+ TPM 2.0 PCR-sealed).")
+	backupSchedule := flag.String("backup-schedule", "", "Auto backup cron spec (B7 후속). Empty = disabled. Examples: '@every 24h', '0 15 3 * * *' (daily 03:15 UTC).")
+	backupDir := flag.String("backup-dir", "", "Auto backup output directory (B7 후속). Empty = <data-dir>/backups.")
+	backupSkipEvidence := flag.Bool("backup-skip-evidence", false, "Auto backup excludes evidence/ (faster, smaller, metadata-only).")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
@@ -308,6 +319,9 @@ func main() {
 		HALeaderID:          *haLeaderID,
 		HAAdvertisedAddr:    *haAdvertised,
 		KeystoreType:        *keystoreType,
+		BackupSchedule:      *backupSchedule,
+		BackupDir:           *backupDir,
+		BackupSkipEvidence:  *backupSkipEvidence,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

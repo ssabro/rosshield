@@ -179,6 +179,15 @@ type Config struct {
 	//
 	// R40-2 결정(2026-05-11): TPM 시뮬레이터 = swtpm. R41 결정 후 본격 구현.
 	KeystoreType string
+
+	// B7 후속 — 자동 백업 schedule (Phase 5).
+	//
+	// BackupSchedule이 비지 않으면 cronsched에 자동 백업 job 등록. HA 활성 환경은
+	// cronsched가 follower tick을 silent skip(E25 Stage 4a)하므로 leader만 백업 수행.
+	// BackupDir 빈 값이면 DataDir/backups. BackupSkipEvidence=true면 메타데이터만 백업.
+	BackupSchedule     string // cron spec (예: "@every 24h" 또는 "0 15 3 * * *"). 빈 값 = 자동 백업 비활성.
+	BackupDir          string // 빈 값이면 DataDir/backups.
+	BackupSkipEvidence bool
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -215,6 +224,7 @@ type Platform struct {
 	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
 	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
 	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
+	BackupDir         string                   // B7 후속 — 자동 백업 디렉터리 (handlers/backup이 list 시 사용)
 
 	systemTenant storage.TenantID
 
@@ -1096,6 +1106,18 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
 	}
 
+	// B7 후속 — 자동 백업 schedule (옵트인). BackupSchedule="" → no-op.
+	// HA 활성 시 cronsched의 RoleProvider gate(E25 Stage 4a)가 follower tick을 silent skip.
+	resolvedBackupDir := cfg.BackupDir
+	if resolvedBackupDir == "" {
+		resolvedBackupDir = filepath.Join(cfg.DataDir, "backups")
+	}
+	if err := registerBackupJob(sch, cfg.BackupSchedule, cfg.DataDir, resolvedBackupDir, cfg.BackupSkipEvidence, logger); err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: register backup job: %w", err)
+	}
+
 	// E20-D + E20-C + O5 — SSO 도메인 결선 (Provider CRUD + OIDC + SAML + IdentityResolver).
 	// O5(Phase 4): IdentityResolver를 tenant.Service.ProvisionExternalUser로 결선 → SSO 첫 로그인
 	// 시 user 자동 생성 + 기본 role(operator) 할당.
@@ -1195,6 +1217,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Metrics:           metricsReg,
 		MetricsBridge:     metricsBridge,
 		Keystore:          ks,
+		BackupDir:         resolvedBackupDir,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}

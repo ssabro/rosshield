@@ -91,37 +91,55 @@ func runBackup(args []string) int {
 		return code
 	}
 
-	dbPath := filepath.Join(opts.dataDir, "data.db")
-	if _, err := os.Stat(dbPath); err != nil {
-		fmt.Fprintf(os.Stderr, "backup: source db not found at %s: %v\n", dbPath, err)
+	out, err := executeBackup(context.Background(), opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "backup: %v\n", err)
 		return 1
 	}
+	emitBackupJSON(os.Stdout, out)
+	return 0
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
+// executeBackup은 backupOptions 기반 일관 스냅샷을 tar.gz으로 생성합니다 (E28 + B7 후속).
+//
+// CLI 서브커맨드(runBackup) + scheduler 자동 backup(BackupRunner) 둘 다 본 함수를 사용 —
+// 동작·에러 의미 일치 보장.
+//
+// 호출자 책임:
+//   - opts.output 디렉터리 사전 생성
+//   - opts.dataDir 존재 + data.db 가용성 확인은 본 함수가 수행 (없으면 에러)
+//
+// ctx는 VACUUM INTO + tar 작성 전체에 적용. 호출자 timeout으로 5분 권장.
+func executeBackup(ctx context.Context, opts backupOptions) (backupOutput, error) {
+	dbPath := filepath.Join(opts.dataDir, "data.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		return backupOutput{}, fmt.Errorf("source db not found at %s: %w", dbPath, err)
+	}
+
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
+	}
 
 	tmpDB, err := snapshotDatabase(ctx, dbPath, opts.dataDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "backup: snapshot db: %v\n", err)
-		return 1
+		return backupOutput{}, fmt.Errorf("snapshot db: %w", err)
 	}
 	defer func() { _ = os.Remove(tmpDB) }()
 
 	size, sum, err := writeBackupArchive(opts, tmpDB)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "backup: write archive: %v\n", err)
-		return 1
+		return backupOutput{}, fmt.Errorf("write archive: %w", err)
 	}
 
-	out := backupOutput{
+	return backupOutput{
 		Path:             opts.output,
 		Size:             size,
 		SHA256:           sum,
 		IncludesEvidence: !opts.skipEvidence,
 		GeneratedAt:      time.Now().UTC().Format(time.RFC3339Nano),
-	}
-	emitBackupJSON(os.Stdout, out)
-	return 0
+	}, nil
 }
 
 // parseBackupFlags는 flag 파싱 + 필수 옵션 누락 여부 체크입니다.
