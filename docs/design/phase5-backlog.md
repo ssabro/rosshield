@@ -273,7 +273,8 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [ ] D1 제품명 확정 + public 전환 (E37)
 - [x] HA 2 인스턴스 leader/follower (E25, 2026-05-11) — Stage 1~4 모두 마감 (Manager + audit gate + middleware + scheduler + testcontainers + compose-ha + 운영 docs)
 - [x] PG-native repo 분리 1차 (E22-F, 2026-05-11 `f3bf23f`) — R30-1=C 하이브리드, 핫 path 3 컬럼 회수. BOOLEAN/A Big bang은 customer query plan 분석 후 점진
-- [x] B6+B7 통합 /system 운영 dashboard 페이지 (Phase 4 web 갭, 2026-05-11 `4d8a7a8`) — 헬스·HA·라이선스·백업 4 카드, 백엔드 변경 0. B7 후속(자동 백업 schedule + 백업 목록 API)은 별 epic
+- [x] B6+B7 통합 /system 운영 dashboard 페이지 (Phase 4 web 갭, 2026-05-11 `4d8a7a8`) — 헬스·HA·라이선스·백업 4 카드, 백엔드 변경 0
+- [x] B7 후속 Stage 1 — 자동 백업 schedule + GET /api/v1/backups list (2026-05-11 `d1bf511`) — executeBackup 헬퍼 추출 + registerBackupJob cronsched 결선(HA leader-only 자동) + listBackups 디렉터리 스캔 + handler envelope. Stage 2(download + UI + RBAC)는 후속.
 - [ ] 첫 customer 30일 운영 + incident 0 (E38) — onboarding 사전 자료 ✅ 2026-05-11 `58b5e81`
 
 ---
