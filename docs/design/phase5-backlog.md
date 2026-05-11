@@ -278,13 +278,13 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 
 ---
 
-## R40 결정 후보
+## R40 결정 후보 / 결정 항목
 
-- **R40-1** snap base — `core22` vs `core24`. core24가 새 기능 많지만 LTS 안정성 < core22. (E33 시작 전 결정)
-- **R40-2** TPM 시뮬레이터 — swtpm vs IBM tpm-emulator. CI에서 사용. (E34 시작 전 결정)
-- **R40-3** WASM 런타임 — wazero(Pure Go) vs wasmtime-go(C dep). wazero가 CGO=0 유지에 유리. (E32 시작 전 결정)
-- **R40-4** 첫 customer SKU — desktop vs onprem 어느 쪽 우선 onboarding. 포지셔닝 영향 크다. (E38 시작 전 결정)
-- **R40-5** D1 후보 어휘 풀 — 1차 도메인 검증 전 사용자 합의 필요. (E37 시작 전 결정)
+- **R40-1** snap base — ✅ **2026-05-11**: `core22` 결정 (LTS 안정성 우선, 2027까지 지원, snap store 검증).
+- **R40-2** TPM 시뮬레이터 — ✅ **2026-05-11**: `swtpm` 결정 (Linux 표준, Ubuntu apt 패키지, KVM/QEMU 호환, CI testcontainers 친화).
+- **R40-3** WASM 런타임 — ✅ **2026-05-11**: `wazero` 결정 (Pure Go, CGO=0 유지, cross-compile 손쉬움. 일부 advanced WASM 기능은 미지원이지만 D8-C1 sandboxed check evaluator 요구는 충족).
+- **R40-4** 첫 customer SKU — ✅ **2026-05-11**: `Onprem` 결정 (Compose/단일 서버 multi-user, v0.2.0 release 형태, E38 onboarding 자료 onprem 가정과 일관, enterprise 확장성).
+- **R40-5** D1 후보 어휘 풀 — 🟡 **진행 중**: `docs/design/notes/d1-brand-candidates.md` sub-agent 작성 중. 사용자가 Top 3 검토 후 변리사 정밀 검색 의뢰 → 출원 후 확정.
 
 ---
 
