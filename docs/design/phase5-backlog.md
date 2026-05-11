@@ -267,9 +267,9 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [x] enterprise build tag scaffold + 양 빌드 CI 그린 (E31, 2026-05-11 `5c08f42`)
 - [ ] KR 우선출원 완료 + 1순위 결합 청구항 코드 분리 (E32 + O11)
 - [x] Ubuntu Core snap install + healthz (E33, 2026-05-11 `616403c`) — 1차 amd64 빌드 + LXD smoke test CI workflow 자동화. arm64·snap store 발행은 후속 stage.
-- [ ] TPM 키 봉인 + Secure Boot 동작 (E34) — 🟡 Stage 1+2 (2026-05-11 `7550656`+`6563d6a`+`07c6d83`+`e96937c` — keystore 추상 + file/tpm 어댑터 + R41 결정 + go-tpm-tools v0.4.8 PCR-sealed seal/unseal 본체 + simulator integration test 5건 + .github/workflows/ci.yml tpm-integration job + bootstrap.buildKeystore 갱신). Stage 3(Secure Boot enrollment 가이드)는 후속, Stage 4(E36 실 TPM 검증)는 별 epic.
+- [x] TPM 키 봉인 + Secure Boot 동작 (E34) — Stage 1+2+3 완료 (2026-05-11 `7550656`+`6563d6a`+`07c6d83`+`e96937c`+`101c618`): keystore 추상 + file/tpm 어댑터 + R41 결정 + go-tpm-tools v0.4.8 PCR-sealed seal/unseal 본체 + simulator integration test 5건 + ci.yml tpm-integration job + bootstrap.buildKeystore 갱신 + Secure Boot enrollment 가이드 docs(456줄, mokutil + tpm2-tools + PCR 변조 시나리오 5종 복구). Stage 4(E36 실 TPM 검증)는 사용자 hands-on 별 epic.
 - [x] A/B OTA + 자동 롤백 시연 (E35, 2026-05-11 `c0f8a4b`) — snap post-refresh hook이 healthz 60s polling, 실패 시 exit 1 → snapd 자동 revert. configure hook으로 healthz-url/healthz-timeout 운영자 조정 가능. multipass 실 OTA round-trip 검증은 snap-smoke.yml 확장 후속.
-- [ ] 레퍼런스 HW 2 모델 burn-in (E36)
+- [ ] 레퍼런스 HW 2 모델 burn-in (E36) — 🟡 docs scaffolding 완료 (2026-05-11 `5bd0d0f` — 4 모델 매트릭스 + 10 측정 항목 + 6단 절차 + 52 TBD placeholder + 트러블슈팅 9 + 5년 TCO). 실 측정 hands-on은 사용자 측 작업.
 - [ ] D1 제품명 확정 + public 전환 (E37)
 - [x] HA 2 인스턴스 leader/follower (E25, 2026-05-11) — Stage 1~4 모두 마감 (Manager + audit gate + middleware + scheduler + testcontainers + compose-ha + 운영 docs)
 - [x] PG-native repo 분리 1차 (E22-F, 2026-05-11 `f3bf23f`) — R30-1=C 하이브리드, 핫 path 3 컬럼 회수. BOOLEAN/A Big bang은 customer query plan 분석 후 점진
