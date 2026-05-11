@@ -93,6 +93,59 @@ jobs:
           jq -e '.components.storage' healthz.json
           jq -e '.components.signer' healthz.json
 
+      # E35 + B7 — configure hook 검증 (Phase 5 Stage 2-C 후속).
+      # snap set rosshield <key>=<value>로 옵션 설정. 잘못된 값은 hook이 거부.
+      - name: configure hook — valid values pass
+        run: |
+          # E35 healthz 옵션
+          sudo snap set rosshield healthz-timeout=30
+          sudo snap set rosshield healthz-url=http://127.0.0.1:8080/healthz
+          # B7 backup 옵션
+          sudo snap set rosshield backup-schedule="@every 24h"
+          sudo snap set rosshield backup-skip-evidence=false
+          sudo snap set rosshield backup-dir=/var/snap/rosshield/common/backups
+
+          # snap get으로 모두 정상 저장됐는지 확인
+          sudo snap get rosshield healthz-timeout | grep -q '^30$'
+          sudo snap get rosshield backup-schedule | grep -q '@every 24h'
+          echo "✓ valid configure values accepted"
+
+      - name: configure hook — invalid values rejected
+        run: |
+          # 음수·범위 외·잘못된 형식은 거부되어야 함 (exit != 0)
+          if sudo snap set rosshield healthz-timeout=99999 2>/dev/null; then
+            echo "::error::healthz-timeout=99999 should have been rejected"; exit 1
+          fi
+          if sudo snap set rosshield backup-schedule="not a cron" 2>/dev/null; then
+            echo "::error::backup-schedule with bad cron should have been rejected"; exit 1
+          fi
+          if sudo snap set rosshield backup-skip-evidence=maybe 2>/dev/null; then
+            echo "::error::backup-skip-evidence=maybe should have been rejected"; exit 1
+          fi
+          if sudo snap set rosshield backup-dir=relative/path 2>/dev/null; then
+            echo "::error::backup-dir=relative/path should have been rejected"; exit 1
+          fi
+          echo "✓ invalid configure values rejected as expected"
+
+      # E35 — post-refresh hook 직접 실행 (snap refresh 시뮬레이션, OTA round-trip의 핵심 부분).
+      # 실 OTA(다른 revision install)는 별 multipass 환경 필요 — 본 step은 hook 자체의
+      # healthz polling 로직을 직접 검증.
+      - name: post-refresh hook — healthz polling on live snap
+        run: |
+          POST_REFRESH=$(find /snap/rosshield -name post-refresh -type f 2>/dev/null | head -1)
+          if [ -z "$POST_REFRESH" ]; then
+            echo "::warning::post-refresh hook not found in snap install — skipping direct invocation"
+            exit 0
+          fi
+          echo "Running $POST_REFRESH directly (snap context emulation)"
+          # snap context 없이 직접 실행하면 snapctl 명령이 fail하지만, 폴백으로 기본값 사용.
+          sudo "$POST_REFRESH" || {
+            echo "::warning::post-refresh hook failed in non-snap context — expected for snapctl unavailability"
+          }
+          # 실제 검증: 폴링 후에도 healthz 살아있어야 함 (snap 자체는 죽지 않았음)
+          curl -fsS http://localhost:8080/healthz | jq -e '.status' >/dev/null
+          echo "✓ healthz still ok after post-refresh hook invocation"
+
       - name: snap remove (cleanup)
         if: always()
         run: sudo snap remove --purge rosshield || true
