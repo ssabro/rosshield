@@ -381,33 +381,34 @@ memory `feedback_parallel_agents.md`에 따라 Stage 4의 docs 작성은 별 age
 
 ---
 
-## 10. 결정 요청 항목
+## 10. 결정 요청 항목 → ✅ 모두 결정 완료 (2026-05-11)
 
-사용자 합의 후 본 문서 §3·§5를 "결정 완료"로 갱신하고 Stage 1 PR 진행.
+사용자가 본 design doc 권고 3종 모두 채택. Stage 2 (실 PCR seal/unseal 본체)
+sub-agent worktree dispatch 시작.
 
-### R41-1: KeyStore 모델 — Signer vs Keystore 추상화
+### R41-1: KeyStore 모델 — ✅ B (TPM Keystore + soft Signer)
 
-- **A) TPM Signer 어댑터** — Signer 인터페이스 자체를 TPM 직접 호출로
-- **B) TPM Keystore + soft Signer** ✅ **권고** — TPM이 sealed blob 보관, soft signer가 in-memory로 사용
-- C) 두 모드 모두 지원 — `--keystore=tpm-direct` (A) + `--keystore=tpm-sealed` (B)
+- ~~A) TPM Signer 어댑터~~ — D5 enterprise build tag로 후속 epic 분리 (R41-1.후속 후보)
+- **B) TPM Keystore + soft Signer** ✅ **결정** (2026-05-11) — 호환성·코드 변경 최소
+- ~~C) 두 모드 모두 지원~~ — Phase 5 1차 over-engineering, 2 customer 이상 명시 요청 시 추가
 
-권고 근거: §2 표 참조. Phase 5 1차는 호환성·코드 변경량이 결정적. A는 D5 enterprise build tag로 후속 epic에 분리. C는 운영 복잡도가 두 배 — 2 customer 이상이 TPM-direct를 명시 요청하면 그때 추가.
+근거: 모든 TPM 2.0 칩 호환 + 성능 OK + Stage 1 keystore 추상에 자연스럽게 fit.
 
-### R41-2: Go TPM 라이브러리 선택
+### R41-2: Go TPM 라이브러리 — ✅ google/go-tpm-tools
 
-- **A) google/go-tpm-tools** ✅ **권고** — high-level seal/unseal 헬퍼, GCP 메인 사용처
-- B) canonical/go-tpm2 — snap·Ubuntu Core와 동일 라이브러리, 디버깅 친화
-- C) google/go-tpm low-level — raw TPM2 command, 유연성 최대
+- **A) google/go-tpm-tools** ✅ **결정** (2026-05-11) — high-level seal/unseal 헬퍼
+- ~~B) canonical/go-tpm2~~ — snap FDE 키와 충돌 가능성 점검 필요 (Phase 5 carryover 후보)
+- ~~C) google/go-tpm low-level~~ — boilerplate 폭증, 1.5주 추정 위험
 
-권고 근거: §3 참조. boilerplate 최소화로 1.5주 추정 안전 확보. B는 snap FDE 키와 충돌 가능성 점검 필요 — Phase 5 carryover 후보로 메모 가능.
+근거: GCP Confidential VM 메인 사용처, Pure Go (CGO=0 유지), boilerplate 최소.
 
-### R41-3: 기본 PCR set
+### R41-3: 기본 PCR set — ✅ [0, 2, 4, 7]
 
-- **A) `[0, 2, 4, 7]`** ✅ **권고** — BIOS·OPROM·EFI·Secure Boot policy
-- B) `[0, 2, 4, 7, 11, 12]` (strict) — snap base·kernel 포함
-- C) custom — 운영자가 `--keystore-pcr=0,2,4,7,11`로 직접 지정
+- **A) `[0, 2, 4, 7]`** ✅ **결정** (2026-05-11) — BIOS·OPROM·EFI·Secure Boot policy
+- ~~B) `[0, 2, 4, 7, 11, 12]` (strict)~~ — enterprise strict 옵션으로 후속 분리 (snap update reseal hook 필요)
+- ~~C) custom~~ — 미래 옵션 (운영자 사고 위험으로 Phase 5 1차 비활성)
 
-권고 근거: §5.2 참조. A는 일상 OS·snap 업데이트에 영향 없으면서 §1의 세 위협을 모두 차단. B는 snap update마다 reseal hook 필요 → enterprise strict 옵션으로 분리. C는 미래 옵션으로 두되 Phase 5 1차 비활성 — 운영자가 "잘 모르는 PCR을 묶어서 부팅 실패"하는 사고 회피.
+근거: 일상 OS·snap 업데이트 무관 + §1 세 위협(디스크 도난·부트 변조·환경 침해) 모두 차단.
 
 ---
 

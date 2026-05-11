@@ -278,11 +278,11 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 
 ---
 
-## R41 결정 후보 (E34 TPM 본격 구현 진입 전, design doc `e34-tpm-design.md` 권고)
+## R41 결정 / 결정 항목 (E34 TPM 본격 구현, design doc `e34-tpm-design.md` 권고 모두 채택)
 
-- **R41-1** KeyStore 모델 — 권고 = **B (TPM Keystore + soft Signer)**, A(TPM Signer 직접) vs B vs Hybrid. 호환·코드 변경 최소.
-- **R41-2** Go TPM 라이브러리 — 권고 = **google/go-tpm-tools**, vs canonical/go-tpm2 vs google/go-tpm low-level. high-level seal/unseal.
-- **R41-3** 기본 PCR set — 권고 = **[0, 2, 4, 7]** (BIOS·OPROM·EFI·Secure Boot policy), strict는 [0,2,4,7,11,12]에 snap 포함.
+- **R41-1** KeyStore 모델 — ✅ **2026-05-11**: **B (TPM Keystore + soft Signer)**. 모든 TPM 2.0 칩 호환 + Stage 1 keystore 추상과 일관.
+- **R41-2** Go TPM 라이브러리 — ✅ **2026-05-11**: **google/go-tpm-tools** v0.4.8. high-level seal/unseal, GCP Confidential VM 메인 사용처, CGO=0 유지.
+- **R41-3** 기본 PCR set — ✅ **2026-05-11**: **[0, 2, 4, 7]** (BIOS·OPROM·EFI·Secure Boot policy). strict는 enterprise 옵션 후속.
 
 ## R40 결정 후보 / 결정 항목
 
