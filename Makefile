@@ -3,13 +3,21 @@ BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
 AUDIT_VERIFY_BIN := $(BIN_DIR)/rosshield-audit-verify
 
-.PHONY: all build audit-verify-build test vet fmt tidy lint ci clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
+.PHONY: all build build-enterprise audit-verify-build test test-enterprise vet vet-enterprise fmt tidy lint ci ci-enterprise clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
 
 all: ci
 
 build:
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(SERVER_BIN) ./cmd/rosshield-server
+
+# E31 — enterprise build tag (`rosshield_enterprise`).
+# D8 1순위 결합 청구항(A-1+B-1+C-1+D-3) 코드 분리 베이스. 출원 잠금(D8-4) 해제 후
+# E32에서 실 알고리즘이 internal/enterprise/* 에 채워짐. 현재는 7 placeholder
+# 패키지 + EditionTag 상수만.
+build-enterprise:
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -tags rosshield_enterprise -o $(BIN_DIR)/rosshield-server-enterprise ./cmd/rosshield-server
 
 # E30 — 외부 감사인용 standalone 검증 binary (R30-4).
 # stdlib + crypto/ed25519만 사용. 외부 의존 0 — release page에 단독 게시 가능.
@@ -23,8 +31,16 @@ test:
 test-race:
 	$(GO) test -race -count=1 ./...
 
+# E31 — enterprise build tag 적용 테스트 (코어 테스트 + enterprise 표면 sanity).
+test-enterprise:
+	$(GO) test -tags rosshield_enterprise -count=1 ./...
+
 vet:
 	$(GO) vet ./...
+
+# E31 — enterprise build tag 적용 vet.
+vet-enterprise:
+	$(GO) vet -tags rosshield_enterprise ./...
 
 fmt:
 	gofmt -l -w .

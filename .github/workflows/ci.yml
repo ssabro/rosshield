@@ -72,6 +72,26 @@ jobs:
       - name: Vitest
         run: pnpm exec vitest run
 
+  go-enterprise:
+    name: Go build·test (enterprise build tag)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Vet (enterprise)
+        run: go vet -tags rosshield_enterprise ./...
+
+      - name: Build (enterprise)
+        run: go build -tags rosshield_enterprise ./...
+
+      - name: Test (enterprise)
+        run: go test -tags rosshield_enterprise -race -count=1 ./...
+
   pg-integration:
     name: PG integration (testcontainers)
     runs-on: ubuntu-latest
