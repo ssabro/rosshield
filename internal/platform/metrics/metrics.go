@@ -44,6 +44,15 @@ type Registry struct {
 	// === histogram ===
 
 	EventPublishDuration *prometheus.HistogramVec // label: topic
+
+	// === HA leader-election (E25 Stage 4 잔여, R30-2 PG advisory lock) ===
+	//
+	// HARole: 0=follower, 1=leader. HAEnabled=false 시 emit 안 함 (gauge 부재).
+	// HALeaderEpoch: 현재 보유 fence token (PG sequence nextval). follower면 0.
+	// HAFailoverTotal: 누적 leader 승격 횟수 (재부팅 후 0부터 시작 — process scope).
+	HARole          prometheus.Gauge
+	HALeaderEpoch   prometheus.Gauge
+	HAFailoverTotal prometheus.Counter
 }
 
 // New는 새 Registry를 만듭니다.
@@ -101,6 +110,27 @@ func New() *Registry {
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"topic"})
 
+	r.HARole = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "rosshield",
+		Subsystem: "ha",
+		Name:      "role",
+		Help:      "Current HA role of this instance (0=follower, 1=leader). Emitted only when --ha-enabled.",
+	})
+
+	r.HALeaderEpoch = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "rosshield",
+		Subsystem: "ha",
+		Name:      "leader_epoch",
+		Help:      "Current leader epoch (fence token from leader_epoch_seq). 0 when this instance is follower.",
+	})
+
+	r.HAFailoverTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "rosshield",
+		Subsystem: "ha",
+		Name:      "failover_total",
+		Help:      "Cumulative number of leader promotions on this instance (process scope, resets on restart).",
+	})
+
 	reg.MustRegister(
 		r.ScansStartedTotal,
 		r.WebhookDeliveriesTotal,
@@ -108,6 +138,9 @@ func New() *Registry {
 		r.InvitationsAcceptedTotal,
 		r.AuditChainHeadSeq,
 		r.EventPublishDuration,
+		r.HARole,
+		r.HALeaderEpoch,
+		r.HAFailoverTotal,
 	)
 
 	return r

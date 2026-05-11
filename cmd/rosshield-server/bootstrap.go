@@ -1236,6 +1236,14 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		auditSvc.SetRoleProvider(haMgr)
 		// E25 Stage 4a — scheduler tick leader-gate. follower는 cron tick silent skip.
 		sch.SetRoleProvider(haMgr)
+		// E25 Stage 4 잔여 — HA metric bridge (Grafana dashboard placeholder 활성).
+		// promote/demote callback에서 rosshield_ha_role/leader_epoch/failover_total 갱신.
+		haMgr.OnLeaderAcquired(func() {
+			metricsReg.OnHAPromoted(haMgr.CurrentEpoch())
+		})
+		haMgr.OnLeaderLost(func() {
+			metricsReg.OnHADemoted()
+		})
 		platform.HA.Start(context.Background())
 		logger.Info("ha enabled — leader-election started",
 			"lockId", haCfgLockID(cfg),

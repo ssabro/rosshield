@@ -60,7 +60,7 @@ scrape_configs:
 
 ### 2.1 HA 환경 (leader + follower)
 
-[`ha-deployment.md`](../../docs/operations/ha-deployment.md) 구성에서는 leader·follower **둘 다** `/metrics`를 노출하며, 둘 다 scrape해야 합니다. 추후 도입될 `rosshield_ha_role` gauge(0=follower, 1=leader)로 dashboard에서 구분합니다.
+[`ha-deployment.md`](../../docs/operations/ha-deployment.md) 구성에서는 leader·follower **둘 다** `/metrics`를 노출하며, 둘 다 scrape해야 합니다. `rosshield_ha_role` gauge(0=follower, 1=leader)로 dashboard에서 구분합니다.
 
 ```yaml
   - job_name: rosshield
@@ -72,7 +72,7 @@ scrape_configs:
     metrics_path: /metrics
 ```
 
-> Phase 5 E25 stage 4+에서 `rosshield_ha_role` 등 HA 메트릭이 추가되기 전까지는 follower도 leader와 동일한 도메인 counter를 노출합니다. 도메인 트래픽은 leader에서만 처리되므로 follower의 counter는 0이 일반적입니다.
+> follower 인스턴스는 도메인 트래픽을 처리하지 않으므로(leader-only gate) 도메인 counter(scan/webhook/invitation/audit)는 0이 일반적입니다. `rosshield_ha_role` 으로 follower/leader를 구분해 panel filter 가능.
 
 ### 2.2 reload
 
@@ -132,7 +132,7 @@ URL: `https://grafana.example.internal/d/rosshield-ops/rosshield-operational-das
 | | Invitation flow — sent vs accepted | timeseries | sent·accepted 2 시리즈 overlay | 초대 funnel |
 | **Latency** | EventBus publish latency (heatmap) | heatmap | `sum by (le) (rate(..._bucket[5m]))` | 백프레셔·느린 subscriber 탐지 |
 | **Audit chain** | Audit chain head — per tenant | table | `rosshield_audit_chain_head_seq` (instant, table format) | tenant별 head seq, 정체 식별 |
-| **HA status (placeholder)** | HA role (placeholder) | gauge | `rosshield_ha_role` (0/1) | **Phase 5 E25 stage 4+ 도입 후 활성** |
+| **HA status** | HA role | gauge | `rosshield_ha_role` (0=follower, 1=leader) | --ha-enabled 시 활성 |
 | | Leader epoch (placeholder) | stat | `max(rosshield_ha_leader_epoch)` | **동상** |
 | | Failover count 24h (placeholder) | stat | `sum(increase(rosshield_ha_failover_total[24h]))` | **동상** — 3건 이상이면 P1 |
 
@@ -192,7 +192,7 @@ curl -s 'http://prometheus.internal:9090/api/v1/label/tenant/values'
 
 | 한계 | 분류 | 추적 |
 |---|---|---|
-| HA 메트릭 (`rosshield_ha_role`/`leader_epoch`/`failover_total`) 미구현 | Phase 5 E25 stage 4+ | placeholder panel 3개로 자리만 잡아둠 |
+| HA 메트릭 — 단일 인스턴스 환경 | --ha-enabled 미사용 시 | gauge 미emit, panel 'No data' (정상) |
 | 라이선스 사용량 메트릭 (`rosshield_license_seats_used` 등) | 별 epic (Phase 5 후반) | 미정 |
 | Per-handler HTTP latency (`rosshield_http_request_duration_seconds`) | 별 epic | 미정 |
 | Per-tenant rate-limit reject 카운터 | 별 epic | 미정 |

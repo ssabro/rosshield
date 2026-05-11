@@ -54,6 +54,10 @@ func TestMetricsEndpointExposesAllExpectedSeries(t *testing.T) {
 		"rosshield_invitation_accepted_total",
 		"rosshield_audit_chain_head_seq",
 		"rosshield_event_publish_duration_seconds",
+		// E25 Stage 4 잔여 — HA leader-election metrics (gauge·counter는 빈 registry에서도 노출)
+		"rosshield_ha_role",
+		"rosshield_ha_leader_epoch",
+		"rosshield_ha_failover_total",
 		// process + go runtime collector
 		"go_goroutines",
 	} {
@@ -112,6 +116,63 @@ func TestIncWebhookDeliveryByStatus(t *testing.T) {
 	}
 	if !strings.Contains(body, `rosshield_webhook_deliveries_total{status="failed"} 2`) {
 		t.Errorf("missing failed=2 in body")
+	}
+}
+
+// E25 Stage 4 잔여 — HA 메트릭 promote/demote callback 검증.
+func TestHAPromoteAndDemoteUpdatesMetrics(t *testing.T) {
+	t.Parallel()
+	reg := metrics.New()
+
+	// 부팅 직후 — 모두 0.
+	scrape := func() string {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		reg.Handler().ServeHTTP(rec, req)
+		return rec.Body.String()
+	}
+	body := scrape()
+	if !strings.Contains(body, "rosshield_ha_role 0") {
+		t.Errorf("initial body missing 'rosshield_ha_role 0': %s", body)
+	}
+	if !strings.Contains(body, "rosshield_ha_failover_total 0") {
+		t.Errorf("initial body missing 'rosshield_ha_failover_total 0'")
+	}
+
+	// 첫 promote — role=1, epoch=42, failover_total=1.
+	reg.OnHAPromoted(42)
+	body = scrape()
+	if !strings.Contains(body, "rosshield_ha_role 1") {
+		t.Errorf("after promote: body missing 'rosshield_ha_role 1'")
+	}
+	if !strings.Contains(body, "rosshield_ha_leader_epoch 42") {
+		t.Errorf("after promote: body missing 'rosshield_ha_leader_epoch 42'")
+	}
+	if !strings.Contains(body, "rosshield_ha_failover_total 1") {
+		t.Errorf("after promote: body missing 'rosshield_ha_failover_total 1'")
+	}
+
+	// demote — role=0, epoch=0, failover_total은 그대로 1 (demote는 미증가).
+	reg.OnHADemoted()
+	body = scrape()
+	if !strings.Contains(body, "rosshield_ha_role 0") {
+		t.Errorf("after demote: body missing 'rosshield_ha_role 0'")
+	}
+	if !strings.Contains(body, "rosshield_ha_leader_epoch 0") {
+		t.Errorf("after demote: body missing 'rosshield_ha_leader_epoch 0'")
+	}
+	if !strings.Contains(body, "rosshield_ha_failover_total 1") {
+		t.Errorf("after demote: failover_total should remain 1 (demote no-op for counter)")
+	}
+
+	// 두 번째 promote — failover_total=2, epoch=43.
+	reg.OnHAPromoted(43)
+	body = scrape()
+	if !strings.Contains(body, "rosshield_ha_failover_total 2") {
+		t.Errorf("after re-promote: body missing 'rosshield_ha_failover_total 2'")
+	}
+	if !strings.Contains(body, "rosshield_ha_leader_epoch 43") {
+		t.Errorf("after re-promote: body missing 'rosshield_ha_leader_epoch 43'")
 	}
 }
 

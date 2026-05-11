@@ -923,7 +923,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "HA role gauge. 0 = follower, 1 = leader. PLACEHOLDER PANEL — series rosshield_ha_role is not yet emitted; available after Phase 5 E25 stage 4+ ha metrics emit. Panel will show 'No data' until then.",
+      "description": "HA role gauge. 0 = follower, 1 = leader. Active when rosshield-server runs with --ha-enabled (single-instance deployments will show 'No data').",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1010,7 +1010,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Current leader epoch. Increments on each successful failover. PLACEHOLDER PANEL — series rosshield_ha_leader_epoch is not yet emitted; available after Phase 5 E25 stage 4+ ha metrics emit.",
+      "description": "Current leader epoch (PG sequence nextval('leader_epoch_seq')). Increments on each successful failover. Active when --ha-enabled.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1075,7 +1075,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Failover events in the last 24h. >=3/hour suggests cluster instability. PLACEHOLDER PANEL — series rosshield_ha_failover_total is not yet emitted; available after Phase 5 E25 stage 4+ ha metrics emit.",
+      "description": "Failover events in the last 24h. >=3/hour suggests cluster instability. Counter is process-scope (resets on restart). Active when --ha-enabled.",
       "fieldConfig": {
         "defaults": {
           "color": {

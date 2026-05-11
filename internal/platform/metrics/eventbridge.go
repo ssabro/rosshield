@@ -127,3 +127,23 @@ func (b *MetricsBridge) handleAuditCheckpoint(_ context.Context, evt eventbus.Ev
 func (r *Registry) IncWebhookDelivery(status string) {
 	r.WebhookDeliveriesTotal.WithLabelValues(status).Inc()
 }
+
+// === HA leader-election metric helpers (E25 Stage 4 잔여) ===
+
+// OnHAPromoted는 ha.Manager OnLeaderAcquired callback에서 호출됩니다.
+//
+// HARole=1, HALeaderEpoch=epoch, HAFailoverTotal+1.
+// 본 helper는 race-safe — Prometheus client_golang의 atomic 업데이트.
+func (r *Registry) OnHAPromoted(epoch int64) {
+	r.HARole.Set(1)
+	r.HALeaderEpoch.Set(float64(epoch))
+	r.HAFailoverTotal.Inc()
+}
+
+// OnHADemoted는 ha.Manager OnLeaderLost callback에서 호출됩니다.
+//
+// HARole=0, HALeaderEpoch=0. HAFailoverTotal는 promotion에서만 증가 — demotion은 미증가.
+func (r *Registry) OnHADemoted() {
+	r.HARole.Set(0)
+	r.HALeaderEpoch.Set(0)
+}
