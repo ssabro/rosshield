@@ -108,6 +108,8 @@ openapi.bundle.yaml
 packs/*.pack
 packs/*.pack.tar.gz
 packs/**/SIGNATURE
+# E12 — built-in pack //go:embed dist (make pack-archive로 cp).
+internal/builtin/packs/_archives/*.tar.gz
 
 # ─── Logs ───────────────────────────────────────────────
 logs/

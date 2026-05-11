@@ -1095,6 +1095,16 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	if systemTenant == "" {
 		systemTenant = "system"
 	}
+
+	// E12 — first-boot built-in pack seed loader (idempotent).
+	// internal/builtin/packs._archives 의 dev signer 서명 pack을 systemTenant에 자동 install.
+	// 이미 install된 pack은 ErrPackAlreadyInstalled로 silent skip. 비-fatal — seed 실패해도
+	// server boot 유지(운영자가 수동 install 가능).
+	if err := seedBuiltinPacks(ctx, store, benchmarkSvc, systemTenant, logger); err != nil {
+		logger.Warn("bootstrap: seed builtin packs failed (non-fatal, server boot continues)",
+			"err", err)
+	}
+
 	checkpointSpec := cfg.CheckpointSpec
 	if checkpointSpec == "" {
 		checkpointSpec = "@every 1h"

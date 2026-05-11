@@ -330,6 +330,36 @@ func TestBootstrapFailsWhenDataDirEmpty(t *testing.T) {
 	}
 }
 
+// E12 — first-boot built-in pack seed loader가 systemTenant에 자동 install 했는지 확인.
+//
+// _archives/ 비어 있으면 (첫 dev clone) ErrNoBuiltinsEmbedded → seed warn skip → 0 packs.
+// 이 경우 t.Skip — make pack-archive 실행 후 테스트 가치. CI는 ci 타깃이 pack-archive 의존.
+func TestBootstrapSeedsBuiltinPacks(t *testing.T) {
+	t.Parallel()
+	p := newTestPlatform(t)
+
+	const tenantID storage.TenantID = "system"
+	ctx := storage.WithTenantID(context.Background(), tenantID)
+	var packCount int
+	err := p.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		packs, e := p.Benchmark.ListPacks(ctx, tx, tenantID)
+		if e != nil {
+			return e
+		}
+		packCount = len(packs)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ListPacks: %v", err)
+	}
+	if packCount == 0 {
+		t.Skip("no built-in packs embedded — run 'make pack-archive' before testing seed loader")
+	}
+	if packCount < 2 {
+		t.Errorf("ListPacks: got %d packs, want >= 2 (cis + ros2)", packCount)
+	}
+}
+
 // E25 — sqlite + HAEnabled 조합은 부팅 거부 (R30-2 부속2 결정).
 // PG advisory lock 동등 기능 부재로 audit chain 손상 위험 → 조용한 fallback 금지(원칙 §11).
 func TestBootstrapRejectsHaEnabledOnSqlite(t *testing.T) {

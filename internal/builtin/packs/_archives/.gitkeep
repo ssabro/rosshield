@@ -1,0 +1,3 @@
+// _archives/ 는 //go:embed dist 디렉터리입니다.
+// .gitignore가 _archives/*.tar.gz를 제외 — make pack-archive로 빌드 시 cp.
+// 본 .gitkeep은 디렉터리 구조 유지용.

@@ -39,17 +39,21 @@ DEV_PACK_SIGNER_KEY ?= scripts/dev-pack-signer.key
 PACKS_SOURCE := packs/cis-ubuntu-2404 packs/ros2-jazzy-baseline
 PACKS_ARCHIVE := $(addsuffix .tar.gz,$(PACKS_SOURCE))
 
+PACK_EMBED_DIR := internal/builtin/packs/_archives
+
 pack-archive: pack-tools-build
 	@test -f $(DEV_PACK_SIGNER_KEY) || { \
 		echo "ERROR: $(DEV_PACK_SIGNER_KEY) not found."; \
 		echo "  Run: $(BIN_DIR)/pack-tools keygen -out $(DEV_PACK_SIGNER_KEY) -pub-out scripts/dev-pack-signer.pub.hex"; \
 		exit 1; \
 	}
+	@mkdir -p $(PACK_EMBED_DIR)
 	@for src in $(PACKS_SOURCE); do \
 		echo "Archiving $$src ..."; \
 		$(BIN_DIR)/pack-tools archive -input $$src -signer-key $(DEV_PACK_SIGNER_KEY) -output $$src.tar.gz -force || exit 1; \
+		cp $$src.tar.gz $(PACK_EMBED_DIR)/; \
 	done
-	@echo "✓ Built $(words $(PACKS_ARCHIVE)) pack archives ($(PACKS_ARCHIVE))"
+	@echo "✓ Built $(words $(PACKS_ARCHIVE)) pack archives + copied to $(PACK_EMBED_DIR)/"
 
 test:
 	$(GO) test -count=1 ./...
@@ -87,7 +91,7 @@ openapi:
 	cd internal/api && oapi-codegen -config config.yaml ../../openapi/openapi.yaml
 	@echo "✓ Generated internal/api/gen/openapi.gen.go"
 
-ci: vet test build
+ci: pack-archive vet test build
 
 # Web Console (E10) — pnpm 기반.
 # 설계: docs/design/09-ui-and-clients.md §9.2.
