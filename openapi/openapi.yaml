@@ -559,6 +559,41 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/packs/{packKey}/checks/{checkId}/selftest:
+    get:
+      tags: [benchmark]
+      operationId: getCheckSelftest
+      summary: 단일 check의 selftest fixture (E12 Stage 7)
+      description: |
+        builtin pack scope 한정 — pack converter가 만든 selftest yaml 케이스
+        (input + expectedOutcome) 반환. tenant 임포트 pack은 selftest 정보가
+        InstallPack 시점에 버려지므로 404. degraded check(자동 변환 실패)도 404.
+      x-status: phase5
+      parameters:
+        - in: path
+          name: packKey
+          required: true
+          schema: { type: string }
+        - in: path
+          name: checkId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckSelftest"
+        "404":
+          description: builtin pack 아님 또는 selftest 부재
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/audit/head:
     get:
       tags: [audit]
@@ -2124,6 +2159,27 @@ components:
               additionalProperties: true
             rationale:      { type: string, description: 검사 정당성·근거 }
             fixGuidance:    { type: string, description: 수정 가이드 (운영자 친화적 절차) }
+
+    SelftestCase:
+      type: object
+      required: [name, input, expectedOutcome]
+      properties:
+        name:   { type: string, description: "케이스 이름 (예: 'passes when stdout contains ** PASS **')" }
+        input:
+          type: object
+          description: SSH 실행 결과 시뮬레이션 (stdout/stderr/exitCode)
+          additionalProperties: true
+        expectedOutcome: { type: string, enum: [PASS, FAIL, INDETERMINATE, ERROR, SKIPPED] }
+
+    CheckSelftest:
+      type: object
+      required: [checkId, packKey, cases]
+      properties:
+        checkId: { type: string }
+        packKey: { type: string }
+        cases:
+          type: array
+          items: { $ref: "#/components/schemas/SelftestCase" }
 
     # ─── Webhook test (E29) ──────────────────────────────────────────────
     WebhookTestResponse:

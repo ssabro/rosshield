@@ -23,10 +23,14 @@
 package builtinpacks
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"embed"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path"
 	"sort"
@@ -124,3 +128,85 @@ func Builtins() ([]SeedPack, error) {
 // bootstrap은 본 에러를 warn 로그로 처리하고 seed 단계 skip — 운영자가 명시적으로
 // pack upload 하면 됨 (degraded mode, 비-fatal).
 var ErrNoBuiltinsEmbedded = errors.New("builtinpacks: no archives embedded (run 'make pack-archive' before 'go build')")
+
+// ErrSelftestNotFound는 archive에 해당 checkId의 selftest yaml이 없을 때 반환됩니다.
+//
+// pack converter가 selftest를 만들 수 있는 check만 selftest 디렉터리에 출력 — degraded
+// (manual·no-marker) check는 selftest 미보유.
+var ErrSelftestNotFound = errors.New("builtinpacks: selftest yaml not found")
+
+// SelftestYAML은 archive의 selftest/<checkId>.yaml raw bytes를 반환합니다.
+//
+// builtin pack scope 한정 — tenant 임포트 pack은 InstallPack 시점에 selftest 정보가
+// 버려짐(현재 도메인 모델). 호출자가 yaml.Unmarshal로 cases 추출.
+//
+// packFilename은 SeedPack.Filename(예: "cis-ubuntu-2404.tar.gz"). checkId는 packMeta
+// 내 식별자(예: "1.1.1.1"). 두 값이 정확히 일치해야 추출 — pack converter가 만든
+// "selftest/<checkId>.yaml" 경로를 in-memory tar walk으로 찾음.
+func SelftestYAML(packFilename, checkID string) ([]byte, error) {
+	if packFilename == "" || checkID == "" {
+		return nil, fmt.Errorf("builtinpacks: SelftestYAML requires non-empty packFilename and checkID")
+	}
+	data, err := fs.ReadFile(archives, path.Join("_archives", packFilename))
+	if err != nil {
+		return nil, fmt.Errorf("builtinpacks: read %s: %w", packFilename, err)
+	}
+	gr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("builtinpacks: gzip %s: %w", packFilename, err)
+	}
+	defer func() { _ = gr.Close() }()
+	tr := tar.NewReader(gr)
+	target := path.Join("selftest", checkID+".yaml")
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("builtinpacks: tar walk: %w", err)
+		}
+		if h.Name == target {
+			buf, err := io.ReadAll(tr)
+			if err != nil {
+				return nil, fmt.Errorf("builtinpacks: read selftest entry: %w", err)
+			}
+			return buf, nil
+		}
+	}
+	return nil, ErrSelftestNotFound
+}
+
+// FilenameForPackKey는 packKey(예: "rosshield-cis-ubuntu-2404-1.0.0")로 builtin pack
+// archive 파일명("cis-ubuntu-2404.tar.gz" 등)을 매핑합니다.
+//
+// 실제 매핑은 archive 안 pack.yaml의 metadata.name과 packKey의 매핑 규칙에 의존하지만,
+// 본 helper는 archive 파일명에서 vendor prefix와 version suffix를 stripping해 비교하는
+// 단순 휴리스틱: builtin packKey "rosshield-<name>-<version>" → archive "<name>.tar.gz" 매핑 시도.
+//
+// 매칭 실패 시 빈 string + ErrSelftestNotFound (caller가 unsupported로 처리).
+func FilenameForPackKey(packKey string) (string, error) {
+	if !strings.HasPrefix(packKey, "rosshield-") {
+		return "", ErrSelftestNotFound
+	}
+	stripped := strings.TrimPrefix(packKey, "rosshield-")
+	// version suffix는 마지막 dash 뒤 — 최소 1번의 dash 필요(name-version 분리).
+	idx := strings.LastIndex(stripped, "-")
+	if idx <= 0 {
+		return "", ErrSelftestNotFound
+	}
+	name := stripped[:idx]
+
+	// archive 디렉터리에 <name>.tar.gz 존재 확인.
+	candidate := name + ".tar.gz"
+	entries, err := fs.ReadDir(archives, "_archives")
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		if e.Name() == candidate {
+			return candidate, nil
+		}
+	}
+	return "", ErrSelftestNotFound
+}

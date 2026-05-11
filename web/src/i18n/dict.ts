@@ -396,6 +396,10 @@ export const ko = {
   'checks.detail.field.packKey': '팩 키',
   'checks.detail.field.severity': '심각도',
   'checks.detail.field.description': '설명',
+  'checks.detail.selftest': 'Selftest 픽스처',
+  'checks.detail.selftest.empty': '이 검사에 selftest 케이스가 없습니다',
+  'checks.detail.selftest.unsupported': 'Selftest는 built-in 팩에서만 지원됩니다 (또는 자동 변환 실패한 검사)',
+  'checks.detail.selftest.error': 'Selftest 정보를 가져오지 못했습니다',
 
   'system.backups.section': '백업 (E28)',
   'system.backups.intro':
@@ -1056,6 +1060,10 @@ export const en: Record<keyof typeof ko, string> = {
   'checks.detail.field.packKey': 'Pack Key',
   'checks.detail.field.severity': 'Severity',
   'checks.detail.field.description': 'Description',
+  'checks.detail.selftest': 'Selftest Fixture',
+  'checks.detail.selftest.empty': 'No selftest cases for this check',
+  'checks.detail.selftest.unsupported': 'Selftest only available for built-in packs (or auto-converted checks)',
+  'checks.detail.selftest.error': 'Failed to load selftest',
 
   'system.backups.section': 'Backups (E28)',
   'system.backups.intro':

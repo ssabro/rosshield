@@ -169,6 +169,10 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/packs/{packKey}/checks/{checkId}", func(w http.ResponseWriter, req *http.Request) {
 			h.GetCheck(w, req, chi.URLParam(req, "packKey"), chi.URLParam(req, "checkId"))
 		})
+		// E12 Stage 7 — Selftest fixture (builtin pack 한정).
+		r.Get("/api/v1/packs/{packKey}/checks/{checkId}/selftest", func(w http.ResponseWriter, req *http.Request) {
+			h.GetCheckSelftest(w, req, chi.URLParam(req, "packKey"), chi.URLParam(req, "checkId"))
+		})
 
 		// E20-A Phase 3 — SSO scaffold (OIDC + SAML, 옵트인).
 		// 본 stage는 protected group에 mount — 후속 stage에서 비인증 진입(사용자가 패스워드 모름)

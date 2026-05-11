@@ -230,6 +230,41 @@ export interface CheckDetail extends PackCheck {
   fixGuidance?: string
 }
 
+export interface SelftestCase {
+  name: string
+  input: { stdout?: string; stderr?: string; exitCode?: number; [key: string]: unknown }
+  expectedOutcome: 'PASS' | 'FAIL' | 'INDETERMINATE' | 'ERROR' | 'SKIPPED'
+}
+
+export interface CheckSelftest {
+  checkId: string
+  packKey: string
+  cases: SelftestCase[]
+}
+
+// useCheckSelftest(packKey, checkId) — builtin pack 한정 selftest fixture.
+//   tenant pack 또는 degraded check면 404 → ApiError. 호출자가 빈 cases 처리.
+export const useCheckSelftest = (packKey: string, checkId: string) => {
+  return useQuery({
+    queryKey: ['check-selftest', packKey, checkId],
+    queryFn: async (): Promise<CheckSelftest> => {
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/packs/{packKey}/checks/{checkId}/selftest',
+        { params: { path: { packKey, checkId } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as CheckSelftest
+    },
+    enabled: !!packKey && !!checkId,
+    retry: false, // 404 흔함 (degraded·tenant pack), 자동 retry 비효율
+  })
+}
+
 // useCheck(packKey, checkId) — 단일 check의 audit cmd + eval rule + rationale + fix.
 export const useCheck = (packKey: string, checkId: string) => {
   return useQuery({

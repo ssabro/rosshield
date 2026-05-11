@@ -97,6 +97,66 @@ func TestPublicKeyHexConstantsValid(t *testing.T) {
 	}
 }
 
+func TestFilenameForPackKey(t *testing.T) {
+	cases := []struct {
+		packKey    string
+		wantSubstr string
+		wantErr    bool
+	}{
+		{packKey: "rosshield-cis-ubuntu-2404-1.0.0", wantSubstr: "cis-ubuntu-2404", wantErr: false},
+		{packKey: "rosshield-ros2-jazzy-baseline-1.1.0", wantSubstr: "ros2-jazzy-baseline", wantErr: false},
+		{packKey: "tenant-custom-pack-1.0", wantErr: true},               // non-rosshield prefix
+		{packKey: "rosshield-nonexistent-pack-1.0.0", wantErr: true},     // archive missing
+		{packKey: "rosshield", wantErr: true},                            // no version
+	}
+	for _, tc := range cases {
+		t.Run(tc.packKey, func(t *testing.T) {
+			got, err := builtinpacks.FilenameForPackKey(tc.packKey)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("got %q, want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Skipf("FilenameForPackKey: %v (likely _archives empty — run 'make pack-archive')", err)
+			}
+			if !contains(got, tc.wantSubstr) {
+				t.Errorf("got %q, want substring %q", got, tc.wantSubstr)
+			}
+		})
+	}
+}
+
+func TestSelftestYAML(t *testing.T) {
+	filename, err := builtinpacks.FilenameForPackKey("rosshield-cis-ubuntu-2404-1.0.0")
+	if err != nil {
+		t.Skipf("no built-in packs embedded: %v", err)
+	}
+	// 1.5.1은 selftest 보유 (변환 stage A에서 자동 변환된 fixture).
+	yaml, err := builtinpacks.SelftestYAML(filename, "1.5.1")
+	if err != nil {
+		t.Fatalf("SelftestYAML(1.5.1): %v", err)
+	}
+	if len(yaml) == 0 {
+		t.Error("returned empty selftest yaml")
+	}
+	// degraded check (selftest 부재) — ErrSelftestNotFound 회귀.
+	_, err = builtinpacks.SelftestYAML(filename, "nonexistent-check-id-9999")
+	if err == nil {
+		t.Error("expected ErrSelftestNotFound, got nil")
+	}
+}
+
+func contains(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDevAndReleasePublicKeysAreDistinct(t *testing.T) {
 	packs, err := builtinpacks.Builtins()
 	if err != nil {

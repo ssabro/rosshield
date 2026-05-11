@@ -15,6 +15,9 @@ import (
 	"net/http"
 	"sort"
 
+	"gopkg.in/yaml.v3"
+
+	builtinpacks "github.com/ssabro/rosshield/internal/builtin/packs"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
@@ -128,6 +131,68 @@ type checkDetailResponse struct {
 	EvaluationRule json.RawMessage `json:"evaluationRule"`
 	Rationale      string          `json:"rationale,omitempty"`
 	FixGuidance    string          `json:"fixGuidance,omitempty"`
+}
+
+// selftestCase는 selftest yaml의 한 케이스입니다.
+type selftestCase struct {
+	Name            string                 `json:"name"`
+	Input           map[string]interface{} `json:"input"`
+	ExpectedOutcome string                 `json:"expectedOutcome"`
+}
+
+type selftestResponse struct {
+	CheckID string         `json:"checkId"`
+	PackKey string         `json:"packKey"`
+	Cases   []selftestCase `json:"cases"`
+}
+
+// GetCheckSelftest은 GET /api/v1/packs/{packKey}/checks/{checkId}/selftest 핸들러입니다.
+//
+// builtin pack archive에서 selftest/<checkId>.yaml을 in-memory로 추출 + parse.
+// builtin scope 한정 — tenant 임포트 pack은 InstallPack 시점에 selftest 정보 버려짐 → 404.
+//
+// pack converter가 자동 변환 가능한 check만 selftest 보유 — degraded(manual·no-marker)
+// check는 ErrSelftestNotFound → 404. 호출자(Web)는 빈 cases 또는 unsupported 안내.
+func (h *Handlers) GetCheckSelftest(w http.ResponseWriter, r *http.Request, packKey, checkID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if packKey == "" || checkID == "" {
+		writeError(w, http.StatusBadRequest, "packKey and checkId required")
+		return
+	}
+
+	filename, err := builtinpacks.FilenameForPackKey(packKey)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "selftest only available for built-in packs")
+		return
+	}
+	yamlBytes, err := builtinpacks.SelftestYAML(filename, checkID)
+	if errors.Is(err, builtinpacks.ErrSelftestNotFound) {
+		writeError(w, http.StatusNotFound, "selftest not found for this check")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load selftest failed")
+		return
+	}
+
+	var raw struct {
+		Spec struct {
+			Cases []selftestCase `yaml:"cases"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+		writeError(w, http.StatusInternalServerError, "parse selftest yaml failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, selftestResponse{
+		CheckID: checkID,
+		PackKey: packKey,
+		Cases:   raw.Spec.Cases,
+	})
 }
 
 // GetCheck은 GET /api/v1/packs/{packKey}/checks/{checkId} 핸들러입니다.

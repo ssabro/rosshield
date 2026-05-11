@@ -368,6 +368,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/packs/{packKey}/checks/{checkId}/selftest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 단일 check의 selftest fixture (E12 Stage 7)
+         * @description builtin pack scope 한정 — pack converter가 만든 selftest yaml 케이스
+         *     (input + expectedOutcome) 반환. tenant 임포트 pack은 selftest 정보가
+         *     InstallPack 시점에 버려지므로 404. degraded check(자동 변환 실패)도 404.
+         */
+        get: operations["getCheckSelftest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/head": {
         parameters: {
             query?: never;
@@ -1338,6 +1360,21 @@ export interface components {
             /** @description 수정 가이드 (운영자 친화적 절차) */
             fixGuidance?: string;
         };
+        SelftestCase: {
+            /** @description 케이스 이름 (예: 'passes when stdout contains ** PASS **') */
+            name: string;
+            /** @description SSH 실행 결과 시뮬레이션 (stdout/stderr/exitCode) */
+            input: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            expectedOutcome: "PASS" | "FAIL" | "INDETERMINATE" | "ERROR" | "SKIPPED";
+        };
+        CheckSelftest: {
+            checkId: string;
+            packKey: string;
+            cases: components["schemas"]["SelftestCase"][];
+        };
         /**
          * @description Result of a one-off ping. `success=true` iff the upstream returned a 2xx
          *     status. Transport-level failures (DNS, TLS, timeout) populate `error` with
@@ -2064,6 +2101,39 @@ export interface operations {
                 };
             };
             /** @description Pack or check not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getCheckSelftest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                packKey: string;
+                checkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckSelftest"];
+                };
+            };
+            /** @description builtin pack 아님 또는 selftest 부재 */
             404: {
                 headers: {
                     [name: string]: unknown;

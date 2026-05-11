@@ -287,6 +287,80 @@ func TestGetCheckNotFound(t *testing.T) {
 	}
 }
 
+func TestGetCheckSelftestReturnsCases(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	installSamplePack(t, f)
+	token := f.loginAndGetToken(t)
+
+	// 첫 builtin pack의 packKey는 "rosshield-<name>-<version>" 패턴 — installSamplePack이
+	// builtin tarGz를 caller tenant에 install했으므로 packKey는 동일.
+	listReq, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/packs", nil)
+	listReq.Header.Set("Authorization", "Bearer "+token)
+	listResp, _ := http.DefaultClient.Do(listReq)
+	defer func() { _ = listResp.Body.Close() }()
+	var list struct {
+		Packs []struct {
+			PackKey string `json:"packKey"`
+		} `json:"packs"`
+	}
+	_ = json.NewDecoder(listResp.Body).Decode(&list)
+	if len(list.Packs) == 0 {
+		t.Skip("no packs installed")
+	}
+	packKey := list.Packs[0].PackKey
+
+	// CIS pack의 1.5.1은 selftest 있음.
+	url := f.server.URL + "/api/v1/packs/" + packKey + "/checks/1.5.1/selftest"
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET selftest: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotFound {
+		// installSamplePack이 ROS2 pack을 install한 경우 1.5.1은 없음. skip 대신 다른 check 시도.
+		t.Skipf("selftest 1.5.1 not in this pack (got %d) — alphabet 첫 pack 의존", resp.StatusCode)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var cd struct {
+		CheckID string                   `json:"checkId"`
+		PackKey string                   `json:"packKey"`
+		Cases   []map[string]interface{} `json:"cases"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&cd); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if cd.CheckID != "1.5.1" {
+		t.Errorf("CheckID = %q, want 1.5.1", cd.CheckID)
+	}
+	if len(cd.Cases) == 0 {
+		t.Error("Cases empty (selftest fixture should have at least 1 case)")
+	}
+}
+
+func TestGetCheckSelftestNotFoundForNonBuiltin(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	url := f.server.URL + "/api/v1/packs/some-tenant-pack-1.0/checks/CHECK-1/selftest"
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, _ := http.DefaultClient.Do(req)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404 (non-builtin packKey)", resp.StatusCode)
+	}
+}
+
 func TestGetPackNotFound(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()

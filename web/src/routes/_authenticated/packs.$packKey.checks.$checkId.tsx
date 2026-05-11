@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { ApiError } from '@/api/errors'
-import { useCheck } from '@/api/hooks'
+import { useCheck, useCheckSelftest } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -132,7 +132,112 @@ function CheckDetailPage(): React.ReactElement {
           </CardContent>
         </Card>
       )}
+
+      <SelftestCard packKey={packKey} checkId={checkId} />
     </div>
+  )
+}
+
+// SelftestCard — builtin pack 한정. 404 시 unsupported 안내, 데이터 시 케이스 리스트.
+function SelftestCard({ packKey, checkId }: { packKey: string; checkId: string }): React.ReactElement {
+  const t = useT()
+  const q = useCheckSelftest(packKey, checkId)
+
+  if (q.isPending) return <></>
+  if (q.isError) {
+    const status = q.error instanceof ApiError ? q.error.status : 0
+    if (status === 404) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('checks.detail.selftest')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">{t('checks.detail.selftest.unsupported')}</p>
+          </CardContent>
+        </Card>
+      )
+    }
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('checks.detail.selftest')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">{t('checks.detail.selftest.error')}</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const cases = q.data?.cases ?? []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {t('checks.detail.selftest')} ({cases.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {cases.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('checks.detail.selftest.empty')}</p>
+        ) : (
+          <ul className="space-y-3">
+            {cases.map((c, idx) => (
+              <SelftestCaseRow key={idx} idx={idx} case_={c} />
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function SelftestCaseRow({
+  idx,
+  case_,
+}: {
+  idx: number
+  case_: { name: string; input: { stdout?: string; stderr?: string; exitCode?: number }; expectedOutcome: string }
+}): React.ReactElement {
+  const outcomeVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+    PASS: 'default',
+    FAIL: 'destructive',
+    INDETERMINATE: 'secondary',
+    ERROR: 'destructive',
+    SKIPPED: 'outline',
+  }
+  return (
+    <li className="rounded-md border border-border bg-muted/30 p-3 text-xs">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="font-medium">#{idx + 1}</span>
+        <span className="text-muted-foreground">{case_.name}</span>
+        <Badge variant={outcomeVariant[case_.expectedOutcome] ?? 'outline'}>
+          → {case_.expectedOutcome}
+        </Badge>
+      </div>
+      <div className="grid grid-cols-1 gap-1 sm:grid-cols-[6rem_1fr]">
+        {case_.input.stdout !== undefined && (
+          <>
+            <span className="text-muted-foreground">stdout</span>
+            <pre className="break-all font-mono">{JSON.stringify(case_.input.stdout)}</pre>
+          </>
+        )}
+        {case_.input.stderr !== undefined && case_.input.stderr !== '' && (
+          <>
+            <span className="text-muted-foreground">stderr</span>
+            <pre className="break-all font-mono">{JSON.stringify(case_.input.stderr)}</pre>
+          </>
+        )}
+        {case_.input.exitCode !== undefined && (
+          <>
+            <span className="text-muted-foreground">exitCode</span>
+            <pre className="font-mono">{case_.input.exitCode}</pre>
+          </>
+        )}
+      </div>
+    </li>
   )
 }
 
