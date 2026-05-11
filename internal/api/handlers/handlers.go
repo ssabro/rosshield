@@ -117,47 +117,27 @@ func (h *Handlers) Mount(r chi.Router) {
 				FleetId: stringPtrOrNil(req.URL.Query().Get("fleetId")),
 			})
 		})
-		r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
-			h.CreateScan(w, req, gen.CreateScanParams{})
-		})
 		r.Get("/api/v1/reports", h.ListReports)
 
 		// 미구현 endpoint들 (gen.Unimplemented 위임 — 자동 501)
 		r.Get("/api/v1/audit/head", h.GetAuditHead)
-		r.Post("/api/v1/audit/verify", h.VerifyAuditChain)
 		r.Get("/api/v1/tenants/current", h.GetCurrentTenant)
-		r.Post("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
-			h.CreateRobot(w, req, gen.CreateRobotParams{})
-		})
 		r.Get("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
 			h.GetRobot(w, req, chi.URLParam(req, "robotId"))
 		})
 		r.Get("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
 			h.ListScans(w, req, gen.ListScansParams{})
 		})
-		r.Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
-			h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
-		})
 
-		// E17 Phase 2 — Insight 도메인 표면.
+		// E17 Phase 2 — Insight read.
 		r.Get("/api/v1/insights", func(w http.ResponseWriter, req *http.Request) {
 			h.ListInsights(w, req, parseListInsightsParams(req))
 		})
-		r.Post("/api/v1/insights/{insightId}:dismiss", func(w http.ResponseWriter, req *http.Request) {
-			h.DismissInsight(w, req, chi.URLParam(req, "insightId"))
-		})
-		r.Post("/api/v1/fleets/{fleetId}/insights:run", func(w http.ResponseWriter, req *http.Request) {
-			h.RunFleetInsights(w, req, chi.URLParam(req, "fleetId"))
-		})
 
-		// E17 Phase 2 — Compliance 도메인 표면.
+		// E17 Phase 2 — Compliance read.
 		r.Get("/api/v1/compliance/profiles", h.ListComplianceProfiles)
-		r.Post("/api/v1/compliance/profiles", h.CreateComplianceProfile)
 		r.Get("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
 			h.ListComplianceSnapshots(w, req, chi.URLParam(req, "profileId"), parseListSnapshotsParams(req))
-		})
-		r.Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
-			h.GenerateComplianceSnapshot(w, req, chi.URLParam(req, "profileId"))
 		})
 
 		// E16 Phase 2 / E19-3 — Advisor 도메인 표면 (옵트인).
@@ -203,19 +183,20 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/webhooks/{endpointId}", h.getWebhookEndpointFromChi)
 		r.Get("/api/v1/webhooks/{endpointId}/deliveries", h.listWebhookDeliveriesFromChi)
 
-		// RBAC Stage 1 — admin role 전용 mutation 그룹.
-		// SSO Provider CRUD + Invitation CRUD + Webhook CRUD + test ping 모두 admin만.
+		// RBAC Stage 1+2 — admin role 전용 mutation 그룹.
 		// Phase 5 1차는 admin/operator 2-tier 단순화. auditor 별 read-only 그룹은 후속.
 		r.Group(func(r chi.Router) {
 			r.Use(h.RequireRole("admin"))
 
-			// Invitation mutation (E21)
+			// === Stage 1 (E21·E20-D·E23-C) ===
+
+			// Invitation mutation
 			r.Post("/api/v1/invitations", h.CreateInvitation)
 			r.Delete("/api/v1/invitations/{invitationId}", func(w http.ResponseWriter, req *http.Request) {
 				h.RevokeInvitation(w, req, chi.URLParam(req, "invitationId"))
 			})
 
-			// SSO Provider mutation (E20-D)
+			// SSO Provider mutation
 			r.Post("/api/v1/sso/providers", h.CreateSSOProvider)
 			r.Put("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
 				h.UpdateSSOProvider(w, req, chi.URLParam(req, "providerId"))
@@ -224,11 +205,45 @@ func (h *Handlers) Mount(r chi.Router) {
 				h.DeleteSSOProvider(w, req, chi.URLParam(req, "providerId"))
 			})
 
-			// Webhook mutation + test (E23-C + E29)
+			// Webhook mutation + test (E29)
 			r.Post("/api/v1/webhooks", h.CreateWebhookEndpoint)
 			r.Put("/api/v1/webhooks/{endpointId}", h.updateWebhookEndpointFromChi)
 			r.Delete("/api/v1/webhooks/{endpointId}", h.deleteWebhookEndpointFromChi)
 			r.Post("/api/v1/webhooks/{endpointId}/test", h.testWebhookEndpointFromChi)
+
+			// === Stage 2 (Robot·Scan·Audit·Report·Insight·Compliance mutation) ===
+
+			// Robot 등록 (시스템 자산 추가)
+			r.Post("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
+				h.CreateRobot(w, req, gen.CreateRobotParams{})
+			})
+
+			// Scan 실행 (시스템 자원 소비)
+			r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
+				h.CreateScan(w, req, gen.CreateScanParams{})
+			})
+
+			// Audit verify (감사 작업)
+			r.Post("/api/v1/audit/verify", h.VerifyAuditChain)
+
+			// Report verify (감사 작업)
+			r.Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
+				h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
+			})
+
+			// Insight mutation
+			r.Post("/api/v1/insights/{insightId}:dismiss", func(w http.ResponseWriter, req *http.Request) {
+				h.DismissInsight(w, req, chi.URLParam(req, "insightId"))
+			})
+			r.Post("/api/v1/fleets/{fleetId}/insights:run", func(w http.ResponseWriter, req *http.Request) {
+				h.RunFleetInsights(w, req, chi.URLParam(req, "fleetId"))
+			})
+
+			// Compliance mutation
+			r.Post("/api/v1/compliance/profiles", h.CreateComplianceProfile)
+			r.Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
+				h.GenerateComplianceSnapshot(w, req, chi.URLParam(req, "profileId"))
+			})
 		})
 	})
 }
