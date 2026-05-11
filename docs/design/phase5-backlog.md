@@ -271,7 +271,7 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [x] A/B OTA + 자동 롤백 시연 (E35, 2026-05-11 `c0f8a4b`) — snap post-refresh hook이 healthz 60s polling, 실패 시 exit 1 → snapd 자동 revert. configure hook으로 healthz-url/healthz-timeout 운영자 조정 가능. multipass 실 OTA round-trip 검증은 snap-smoke.yml 확장 후속.
 - [ ] 레퍼런스 HW 2 모델 burn-in (E36) — 🟡 docs scaffolding 완료 (2026-05-11 `5bd0d0f` — 4 모델 매트릭스 + 10 측정 항목 + 6단 절차 + 52 TBD placeholder + 트러블슈팅 9 + 5년 TCO). 실 측정 hands-on은 사용자 측 작업.
 - [ ] D1 제품명 확정 + public 전환 (E37)
-- [x] HA 2 인스턴스 leader/follower (E25, 2026-05-11) — Stage 1~4 모두 마감 (Manager + audit gate + middleware + scheduler + testcontainers + compose-ha + 운영 docs)
+- [x] HA 2 인스턴스 leader/follower (E25, 2026-05-11) — Stage 1~4 모두 마감 + 잔여 metric emit(`a8acbf1`) — Manager + audit gate + middleware + scheduler + testcontainers + compose-ha + 운영 docs + Prometheus rosshield_ha_role/leader_epoch/failover_total
 - [x] PG-native repo 분리 1차 (E22-F, 2026-05-11 `f3bf23f`) — R30-1=C 하이브리드, 핫 path 3 컬럼 회수. BOOLEAN/A Big bang은 customer query plan 분석 후 점진
 - [x] B6+B7 통합 /system 운영 dashboard 페이지 (Phase 4 web 갭, 2026-05-11 `4d8a7a8`) — 헬스·HA·라이선스·백업 4 카드, 백엔드 변경 0
 - [x] B7 후속 Stage 1 — 자동 백업 schedule + GET /api/v1/backups list (2026-05-11 `d1bf511`) — executeBackup 헬퍼 추출 + registerBackupJob cronsched 결선(HA leader-only 자동) + listBackups 디렉터리 스캔 + handler envelope.
