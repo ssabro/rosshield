@@ -153,6 +153,43 @@ export const useIsAuditor = (): boolean => useHasRole('auditor')
 export const useIsAdminOrAuditor = (): boolean => useHasRole('admin', 'auditor')
 
 // ────────────────────────────────────────────────────────────────────────
+// 2-Packs) Benchmark Packs (E12 Stage 3)
+// ────────────────────────────────────────────────────────────────────────
+
+export interface PackMeta {
+  id: string
+  tenantId: string
+  packKey: string
+  name: string
+  vendor: string
+  version: string
+  description?: string
+  schemaVersion: number
+  signerKeyId?: string
+  installedAt: string
+  isBuiltin: boolean
+}
+
+// usePacks — built-in + tenant pack 합쳐 반환 (packKey 알파벳순).
+//   scans 페이지 Pack Select 드롭다운 + system 페이지 PacksCard에서 사용.
+export const usePacks = () => {
+  return useQuery({
+    queryKey: ['packs'],
+    queryFn: async (): Promise<PackMeta[]> => {
+      const { data, error, response } = await apiClient.GET('/api/v1/packs')
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const payload = data as { packs: PackMeta[] }
+      return payload.packs
+    },
+  })
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // 3) Robots
 // ────────────────────────────────────────────────────────────────────────
 

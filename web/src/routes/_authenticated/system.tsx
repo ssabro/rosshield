@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/errors'
 import { API_BASE_PATH } from '@/api/client'
-import { useBackups, useIsAdminOrAuditor, useLicenseInfo } from '@/api/hooks'
+import { useBackups, useIsAdminOrAuditor, useLicenseInfo, usePacks } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
@@ -82,8 +82,65 @@ function SystemPage(): React.ReactElement {
       <HealthCard />
       <HACard />
       <LicenseUsageCard />
+      <PacksCard />
       <BackupsCard />
     </div>
+  )
+}
+
+// PacksCard — built-in + tenant 벤치마크 팩 표시 (E12 Stage 3).
+//
+// 운영자가 어떤 pack이 install되어 있는지 한눈에 확인. /scans 페이지의 Pack 선택
+// 드롭다운은 같은 데이터를 사용 — 본 카드는 운영 시각화 용도.
+function PacksCard(): React.ReactElement {
+  const t = useT()
+  const packsQuery = usePacks()
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('system.packs.title')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {packsQuery.isPending ? (
+          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        ) : packsQuery.isError ? (
+          <p className="text-sm text-destructive">
+            {packsQuery.error instanceof Error
+              ? packsQuery.error.message
+              : t('system.packs.error')}
+          </p>
+        ) : (packsQuery.data?.length ?? 0) === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('system.packs.empty')}</p>
+        ) : (
+          <ul className="space-y-2">
+            {packsQuery.data?.map((p) => (
+              <li
+                key={p.id}
+                className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">{p.name}</span>
+                    <Badge variant="secondary">{p.version}</Badge>
+                    {p.isBuiltin && <Badge variant="outline">built-in</Badge>}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {t('system.packs.vendor')}: {p.vendor} · {t('system.packs.installedAt')}:{' '}
+                    {new Date(p.installedAt).toLocaleString()}
+                  </span>
+                  {p.description && (
+                    <span className="text-xs text-muted-foreground">{p.description}</span>
+                  )}
+                </div>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {p.packKey}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

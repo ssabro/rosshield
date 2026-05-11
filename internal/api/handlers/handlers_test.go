@@ -31,6 +31,8 @@ import (
 	advisorrepo "github.com/ssabro/rosshield/internal/domain/advisor/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/benchmark"
+	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	compliancerepo "github.com/ssabro/rosshield/internal/domain/compliance/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/insight"
@@ -61,6 +63,7 @@ type testFixture struct {
 	tenant     tenant.Service
 	robot      robot.Service
 	scan       scan.Service
+	bench      benchmark.Service // E12 Stage 3
 	auditSvc   audit.Service
 	insight    insight.Service    // E17 Phase 2
 	compliance compliance.Service // E17 Phase 2
@@ -134,6 +137,14 @@ func newFixture(t *testing.T) *testFixture {
 		Clock: clk,
 		IDGen: ids,
 		Audit: &nullAuditEmitter{},
+	})
+
+	// E12 Stage 3 — benchmark service (test 모드에서는 InstallPack 호출 없음, ListPacks만).
+	benchSvc := benchmarkrepo.New(benchmarkrepo.Deps{
+		Clock:              clk,
+		IDGen:              ids,
+		Audit:              &nullAuditEmitter{},
+		DefaultSignerKeyID: "test-pack-signer",
 	})
 
 	reportingSvc := reportingrepo.New(reportingrepo.Deps{
@@ -214,6 +225,7 @@ func newFixture(t *testing.T) *testFixture {
 		Tenant:     tenantSvc,
 		Robot:      robotSvc,
 		Scan:       scanSvc,
+		Benchmark:  benchSvc,
 		Reporting:  reportingSvc,
 		Insight:    insightSvc,
 		Compliance: complianceSvc,
@@ -233,6 +245,7 @@ func newFixture(t *testing.T) *testFixture {
 		tenant:     tenantSvc,
 		robot:      robotSvc,
 		scan:       scanSvc,
+		bench:      benchSvc,
 		auditSvc:   auditSvc,
 		insight:    insightSvc,
 		compliance: complianceSvc,
@@ -810,6 +823,12 @@ func (n *nullAuditEmitter) EmitToolCalled(_ context.Context, _ storage.Tx, _ adv
 	return nil
 }
 func (n *nullAuditEmitter) EmitAdvisorResponded(_ context.Context, _ storage.Tx, _ advisor.Turn) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitPackInstalled(_ context.Context, _ storage.Tx, _ benchmark.Pack, _ string) error {
+	return nil
+}
+func (n *nullAuditEmitter) EmitPackLifecycleChanged(_ context.Context, _ storage.Tx, _ string, _, _ benchmark.State, _, _ string) error {
 	return nil
 }
 

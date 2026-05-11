@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
-import { useIsAdmin, useScanProgress, useStartScan } from '@/api/hooks'
+import { useIsAdmin, usePacks, useScanProgress, useStartScan } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
@@ -40,6 +40,7 @@ function ScansPage(): React.ReactElement {
   const [error, setError] = useState('')
   const t = useT()
   const isAdmin = useIsAdmin()
+  const packsQuery = usePacks()
 
   const startScan = useStartScan()
 
@@ -87,13 +88,34 @@ function ScansPage(): React.ReactElement {
             </div>
             <div className="space-y-2">
               <Label htmlFor="packId">{t('scans.form.pack')}</Label>
-              <Input
-                id="packId"
-                required
-                value={packId}
-                onChange={(e) => setPackId(e.target.value)}
-                placeholder={t('scans.form.pack.placeholder')}
-              />
+              {packsQuery.isPending ? (
+                <Input
+                  id="packId"
+                  disabled
+                  placeholder={t('scans.form.pack.loading')}
+                />
+              ) : packsQuery.isError || (packsQuery.data?.length ?? 0) === 0 ? (
+                <Input
+                  id="packId"
+                  required
+                  value={packId}
+                  onChange={(e) => setPackId(e.target.value)}
+                  placeholder={t('scans.form.pack.placeholder')}
+                />
+              ) : (
+                <Select value={packId} onValueChange={setPackId}>
+                  <SelectTrigger id="packId">
+                    <SelectValue placeholder={t('scans.form.pack.placeholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {packsQuery.data?.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name} ({p.version}){p.isBuiltin ? ' · built-in' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="trigger">{t('scans.form.trigger')}</Label>

@@ -28,6 +28,7 @@ import (
 	"github.com/ssabro/rosshield/internal/app/webhookrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/audit"
+	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
@@ -52,6 +53,7 @@ type Deps struct {
 	Tenant            tenant.Service
 	Robot             robot.Service
 	Scan              scan.Service
+	Benchmark         benchmark.Service // E12 Stage 3 — GET /api/v1/packs (built-in + tenant pack 표시)
 	Reporting         reporting.Service
 	Insight           insight.Service          // E17 Phase 2
 	Compliance        compliance.Service       // E17 Phase 2
@@ -155,6 +157,10 @@ func (h *Handlers) Mount(r chi.Router) {
 
 		// E24 — License info (B5 Web Console 지원).
 		r.Get("/api/v1/license", h.GetLicenseInfo)
+
+		// E12 Stage 3 — Pack list (built-in + tenant pack). 모든 인증 사용자 read.
+		// systemTenant pack(cross-tenant 공유, §4.2)과 호출자 tenant pack 합쳐 반환.
+		r.Get("/api/v1/packs", h.ListPacks)
 
 		// E20-A Phase 3 — SSO scaffold (OIDC + SAML, 옵트인).
 		// 본 stage는 protected group에 mount — 후속 stage에서 비인증 진입(사용자가 패스워드 모름)

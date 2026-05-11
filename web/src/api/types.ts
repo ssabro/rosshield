@@ -303,6 +303,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Built-in + tenant 벤치마크 팩 목록 (E12 Stage 3)
+         * @description 호출자 tenant pack과 systemTenant("system") cross-tenant 공유 pack을 합쳐 반환.
+         *     systemTenant pack은 §4.2에서 명시된 cross-tenant 공유 자산(built-in seed 또는
+         *     운영자 system tenant install). 결과는 packKey 알파벳 정렬, checks 미포함(메타만).
+         *
+         *     scans 페이지 Pack 선택 드롭다운 + system 페이지 PacksCard에서 사용.
+         */
+        get: operations["listPacks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/head": {
         parameters: {
             query?: never;
@@ -1219,6 +1243,32 @@ export interface components {
             backups: components["schemas"]["BackupMeta"][];
         };
         /**
+         * @description 벤치마크 팩 메타. checks 미포함 — 자세한 정보는 (후속) GET /api/v1/packs/{id}.
+         *     IsBuiltin=true이면 systemTenant 소속(cross-tenant 공유, §4.2) — built-in seed
+         *     또는 운영자가 명시적으로 system tenant에 install.
+         */
+        PackMeta: {
+            /** @description pack_<ULID> */
+            id: string;
+            /** @description 소유 tenant ID — 'system'이면 cross-tenant 공유 */
+            tenantId: string;
+            /** @description vendor-name-version 합성 unique 키 */
+            packKey: string;
+            name: string;
+            vendor: string;
+            version: string;
+            description?: string;
+            schemaVersion: number;
+            signerKeyId?: string;
+            /** Format: date-time */
+            installedAt: string;
+            /** @description true이면 systemTenant 소속(built-in 또는 cross-tenant 공유) */
+            isBuiltin: boolean;
+        };
+        PackListResponse: {
+            packs: components["schemas"]["PackMeta"][];
+        };
+        /**
          * @description Result of a one-off ping. `success=true` iff the upstream returned a 2xx
          *     status. Transport-level failures (DNS, TLS, timeout) populate `error` with
          *     a human-readable message and leave `status=0`.
@@ -1858,6 +1908,29 @@ export interface operations {
                             /** @description 0 = unlimited */
                             llmTokensPerDay?: number;
                         };
+                    };
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listPacks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        packs: components["schemas"]["PackMeta"][];
                     };
                 };
             };
