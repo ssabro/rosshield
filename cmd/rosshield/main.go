@@ -47,6 +47,10 @@ func run(args []string) int {
 		return runInvite(args[1:])
 	case "webhook":
 		return runWebhook(args[1:])
+	case "ha":
+		return runHA(args[1:])
+	case "backup":
+		return runBackup(args[1:])
 	case "help", "--help", "-h":
 		usage()
 		return 0
@@ -81,6 +85,9 @@ Online 서브커맨드 (Stage C — config 토큰 사용):
   invite list [-o ...]                         테넌트 초대 목록
   invite revoke <id>                           초대 즉시 만료
   webhook list [-o ...]                        Webhook endpoint 조회 (E29)
+  ha status [-o ...] [--server URL]            HA leader/follower 상태 (E25, /healthz fetch)
+  backup list [-o ...]                         자동 백업 목록 (B7)
+  backup download <filename> [--output P]      자동 백업 다운로드 (B7)
 
 Online 서브커맨드 (Stage D — 합류 예정):
   scan status <id> / audit verify
