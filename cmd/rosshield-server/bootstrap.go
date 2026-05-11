@@ -874,8 +874,12 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: keystore: %w", err)
 	}
 
-	keyPath := filepath.Join(cfg.DataDir, "keys", "platform.ed25519")
-	platformPriv, err := ks.LoadOrCreatePrivateKey(keyPath)
+	// E34 — 어댑터별 handle 형식 분기.
+	//   file 어댑터: handle = 전체 디스크 경로 (현재 동작 호환, $DataDir/keys/platform.ed25519)
+	//   tpm  어댑터: handle = 단순 식별자 ("platform" → SealingDir/platform.sealed)
+	// 동일 KeyStore 인터페이스에 두 형식이 공존 — bootstrap 단에서 결정.
+	platformHandle := keyHandle(cfg, "platform")
+	platformPriv, err := ks.LoadOrCreatePrivateKey(platformHandle)
 	if err != nil {
 		_ = ks.Close()
 		_ = store.Close()
@@ -886,8 +890,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	// JWT 별도 키 — audit checkpoint 키와 분리(B4 결정).
 	// 키 회전 주기·키 손실 영향이 다르므로 결선 단계에서 두 개 별도 키.
 	// jwt 라이브러리(`golang-jwt/jwt/v5`)는 raw ed25519.PrivateKey/PublicKey를 요구.
-	jwtKeyPath := filepath.Join(cfg.DataDir, "keys", "jwt.ed25519")
-	jwtPrivateKey, err := ks.LoadOrCreatePrivateKey(jwtKeyPath)
+	jwtHandle := keyHandle(cfg, "jwt")
+	jwtPrivateKey, err := ks.LoadOrCreatePrivateKey(jwtHandle)
 	if err != nil {
 		_ = ks.Close()
 		_ = store.Close()
@@ -1149,7 +1153,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	logger.Info("platform bootstrap complete",
 		"dataDir", cfg.DataDir,
 		"dbPath", dbPath,
-		"keyPath", keyPath,
+		"keyHandle", platformHandle,
+		"keystoreType", keystoreLogLabel(cfg.KeystoreType),
 		"signerKeyId", sgn.KeyID(),
 		"kekKeyId", kek.KeyID(),
 		"blobRoot", blobRoot,
@@ -1218,18 +1223,47 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	return platform, nil
 }
 
+// keystoreLogLabel은 빈 KeystoreType을 "file"로 정규화합니다 (관측 일관성).
+func keystoreLogLabel(t string) string {
+	if t == "" {
+		return "file"
+	}
+	return t
+}
+
+// keyHandle은 cfg.KeystoreType에 따라 KeyStore에 전달할 handle을 만듭니다 (E34).
+//
+// file 어댑터: handle = 전체 디스크 경로 ($DataDir/keys/<name>.ed25519)
+// tpm  어댑터: handle = 단순 식별자 (<name>) — SealingDir/<name>.sealed로 매핑
+func keyHandle(cfg Config, name string) string {
+	if cfg.KeystoreType == "tpm" {
+		return name
+	}
+	return filepath.Join(cfg.DataDir, "keys", name+".ed25519")
+}
+
 // buildKeystore는 cfg.KeystoreType 기반으로 KeyStore 어댑터를 생성합니다 (E34).
 //
 // "" / "file" → file 어댑터 (현재 동작, soft.LoadOrCreatePrivateKey 위임)
-// "tpm" → TPM 2.0 어댑터 (Stage 1 placeholder — LoadOrCreate 호출 시 ErrTpmNotImplemented)
-//
-// 후속 stage에서 tpm 어댑터에 PCR selection·EK/SRK 옵션이 추가됨.
+// "tpm" → TPM 2.0 PCR-sealed 어댑터 (Stage 2-B):
+//   - SealingDir = $DataDir/keys/tpm/
+//   - PCRSelection = R41-3 기본 [0,2,4,7]
+//   - DevicePath = "" (Linux 기본 /dev/tpmrm0 → /dev/tpm0)
+//   - Linux 외 환경 또는 TPM 디바이스 부재 시 ErrTpmDeviceNotAvailable로 부팅 실패
+//     (조용한 file fallback 금지 — 디스크 평문 키 위협 노출 방지).
 func buildKeystore(cfg Config) (keystore.KeyStore, error) {
 	switch cfg.KeystoreType {
 	case "", "file":
 		return keystorefile.New(), nil
 	case "tpm":
-		return keystoretpm.New(), nil
+		opts := keystoretpm.Options{
+			SealingDir: filepath.Join(cfg.DataDir, "keys", "tpm"),
+		}
+		store, err := keystoretpm.New(opts)
+		if err != nil {
+			return nil, err
+		}
+		return store, nil
 	default:
 		return nil, fmt.Errorf("%w: %q (allowed: file|tpm)", keystore.ErrUnsupportedDriver, cfg.KeystoreType)
 	}

@@ -352,8 +352,12 @@ func TestBootstrapRejectsHaEnabledOnSqlite(t *testing.T) {
 	}
 }
 
-// E34 — KeystoreType="tpm"은 Stage 1 placeholder라 첫 LoadOrCreatePrivateKey 호출에서
-// 부팅 실패 (조용한 fallback 금지).
+// E34 Stage 2-B — KeystoreType="tpm"은 Linux + TPM 디바이스 환경에서만 부팅 성공.
+// 본 단위 테스트는 cross-platform 호환성 우선:
+//   - Windows·macOS: 항상 ErrTpmDeviceNotAvailable로 부팅 실패 (조용한 fallback 금지)
+//   - Linux: /dev/tpm* 부재 시 동일 에러 — CI runner가 TPM이 없으므로 동일하게 실패
+//
+// 실 simulator round-trip은 store_linux_test.go의 tpm_integration build tag로 수행.
 func TestBootstrapKeystoreTpmReturnsNotImplemented(t *testing.T) {
 	t.Parallel()
 	cfg := Config{
@@ -363,7 +367,7 @@ func TestBootstrapKeystoreTpmReturnsNotImplemented(t *testing.T) {
 	}
 	_, err := Bootstrap(context.Background(), cfg)
 	if err == nil {
-		t.Fatal("expected bootstrap failure with KeystoreType=tpm (Stage 1 placeholder)")
+		t.Fatal("expected bootstrap failure with KeystoreType=tpm (no TPM device in test env)")
 	}
 	if !strings.Contains(err.Error(), "TPM") && !strings.Contains(err.Error(), "tpm") {
 		t.Errorf("error does not mention TPM: %v", err)
