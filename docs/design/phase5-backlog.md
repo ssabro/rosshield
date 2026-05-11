@@ -267,7 +267,7 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [x] enterprise build tag scaffold + 양 빌드 CI 그린 (E31, 2026-05-11 `5c08f42`)
 - [ ] KR 우선출원 완료 + 1순위 결합 청구항 코드 분리 (E32 + O11)
 - [x] Ubuntu Core snap install + healthz (E33, 2026-05-11 `616403c`) — 1차 amd64 빌드 + LXD smoke test CI workflow 자동화. arm64·snap store 발행은 후속 stage.
-- [ ] TPM 키 봉인 + Secure Boot 동작 (E34)
+- [ ] TPM 키 봉인 + Secure Boot 동작 (E34) — 🟡 Stage 1/5 (2026-05-11 `7550656`+`6563d6a` — keystore 추상 + file 어댑터 + tpm placeholder + design doc + R41 결정 후보 권고). Stage 2~5(go-tpm-tools 본체·bootstrap 거부·swtpm CI·E36 실 TPM)는 R41 결정 후 진입.
 - [ ] A/B OTA + 자동 롤백 시연 (E35)
 - [ ] 레퍼런스 HW 2 모델 burn-in (E36)
 - [ ] D1 제품명 확정 + public 전환 (E37)
@@ -277,6 +277,12 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [ ] 첫 customer 30일 운영 + incident 0 (E38) — onboarding 사전 자료 ✅ 2026-05-11 `58b5e81`
 
 ---
+
+## R41 결정 후보 (E34 TPM 본격 구현 진입 전, design doc `e34-tpm-design.md` 권고)
+
+- **R41-1** KeyStore 모델 — 권고 = **B (TPM Keystore + soft Signer)**, A(TPM Signer 직접) vs B vs Hybrid. 호환·코드 변경 최소.
+- **R41-2** Go TPM 라이브러리 — 권고 = **google/go-tpm-tools**, vs canonical/go-tpm2 vs google/go-tpm low-level. high-level seal/unseal.
+- **R41-3** 기본 PCR set — 권고 = **[0, 2, 4, 7]** (BIOS·OPROM·EFI·Secure Boot policy), strict는 [0,2,4,7,11,12]에 snap 포함.
 
 ## R40 결정 후보 / 결정 항목
 
