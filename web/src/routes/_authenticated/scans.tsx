@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
-import { useScanProgress, useStartScan } from '@/api/hooks'
+import { useIsAdmin, useScanProgress, useStartScan } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
@@ -39,6 +39,7 @@ function ScansPage(): React.ReactElement {
   const [lastSession, setLastSession] = useState<ScanSession | null>(null)
   const [error, setError] = useState('')
   const t = useT()
+  const isAdmin = useIsAdmin()
 
   const startScan = useStartScan()
 
@@ -117,7 +118,11 @@ function ScansPage(): React.ReactElement {
                 {error}
               </p>
             )}
-            <Button type="submit" disabled={startScan.isPending}>
+            <Button
+              type="submit"
+              disabled={startScan.isPending || !isAdmin}
+              title={!isAdmin ? t('common.role.required.admin') : undefined}
+            >
               {startScan.isPending
                 ? t('scans.form.submitting')
                 : t('scans.form.submit')}

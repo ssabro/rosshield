@@ -9,6 +9,7 @@ import {
   useComplianceSnapshots,
   useCreateComplianceProfile,
   useGenerateSnapshot,
+  useIsAdmin,
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -182,6 +183,7 @@ function CreateProfileForm(): React.ReactElement {
   const [version, setVersion] = useState('')
   const create = useCreateComplianceProfile()
   const t = useT()
+  const isAdmin = useIsAdmin()
 
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
@@ -233,7 +235,8 @@ function CreateProfileForm(): React.ReactElement {
       </div>
       <Button
         type="submit"
-        disabled={!framework || !version.trim() || create.isPending}
+        disabled={!framework || !version.trim() || create.isPending || !isAdmin}
+        title={!isAdmin ? t('common.role.required.admin') : undefined}
       >
         {create.isPending
           ? t('compliance.profile.adding')
@@ -371,6 +374,7 @@ function GenerateSnapshotForm({
   const [sessionId, setSessionId] = useState('')
   const generate = useGenerateSnapshot()
   const t = useT()
+  const isAdmin = useIsAdmin()
 
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
@@ -395,7 +399,11 @@ function GenerateSnapshotForm({
           onChange={(e) => setSessionId(e.target.value)}
         />
       </div>
-      <Button type="submit" disabled={!sessionId.trim() || generate.isPending}>
+      <Button
+        type="submit"
+        disabled={!sessionId.trim() || generate.isPending || !isAdmin}
+        title={!isAdmin ? t('common.role.required.admin') : undefined}
+      >
         {generate.isPending
           ? t('compliance.snapshot.generating')
           : t('compliance.snapshot.generate')}

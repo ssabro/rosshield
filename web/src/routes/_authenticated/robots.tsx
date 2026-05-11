@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Server } from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
-import { useCreateRobot, useRobots } from '@/api/hooks'
+import { useCreateRobot, useIsAdmin, useRobots } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -41,6 +41,7 @@ function RobotsPage(): React.ReactElement {
   const trimmed = fleetId.trim()
   const robots = useRobots(trimmed.length > 0 ? trimmed : undefined)
   const t = useT()
+  const isAdmin = useIsAdmin()
 
   return (
     <div className="space-y-4">
@@ -52,13 +53,15 @@ function RobotsPage(): React.ReactElement {
             variant={showForm ? 'outline' : 'default'}
             size="sm"
             onClick={() => setShowForm((v) => !v)}
+            disabled={!isAdmin}
+            title={!isAdmin ? t('common.role.required.admin') : undefined}
           >
             {showForm ? t('robots.form.toggle.hide') : t('robots.form.toggle.show')}
           </Button>
         }
       />
 
-      {showForm && <CreateRobotForm onCreated={() => setShowForm(false)} />}
+      {showForm && isAdmin && <CreateRobotForm onCreated={() => setShowForm(false)} />}
 
       <div className="flex max-w-sm flex-col gap-2">
         <Label htmlFor="fleet-filter">{t('robots.filter.fleet')}</Label>
@@ -163,6 +166,7 @@ function CreateRobotForm({
 }): React.ReactElement {
   const t = useT()
   const create = useCreateRobot()
+  const isAdmin = useIsAdmin()
   const [vars, setVars] = useState<CreateRobotVars>({
     fleetId: '',
     name: '',
@@ -353,7 +357,11 @@ function CreateRobotForm({
       )}
 
       <div className="md:col-span-2 flex justify-end">
-        <Button type="submit" disabled={create.isPending}>
+        <Button
+          type="submit"
+          disabled={create.isPending || !isAdmin}
+          title={!isAdmin ? t('common.role.required.admin') : undefined}
+        >
           {create.isPending ? t('robots.form.submitting') : t('robots.form.submit')}
         </Button>
       </div>

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Inbox } from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
-import { useDismissInsight, useInsights } from '@/api/hooks'
+import { useDismissInsight, useInsights, useIsAdmin } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -152,6 +152,7 @@ function FindingsPage(): React.ReactElement {
 function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
   const dismiss = useDismissInsight()
   const t = useT()
+  const isAdmin = useIsAdmin()
 
   const onDismiss = (): void => {
     const reason = window.prompt(
@@ -189,7 +190,8 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
           size="sm"
           variant="outline"
           onClick={onDismiss}
-          disabled={dismiss.isPending}
+          disabled={dismiss.isPending || !isAdmin}
+          title={!isAdmin ? t('common.role.required.admin') : undefined}
         >
           {dismiss.isPending
             ? t('findings.action.dismissing')
