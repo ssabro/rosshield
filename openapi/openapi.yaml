@@ -38,6 +38,8 @@ tags:
   - { name: reporting,  description: Signed reports }
   - { name: audit,      description: Hash-chained audit log }
   - { name: webhook,    description: Outbound webhook endpoints + delivery log (E23) }
+  - { name: sso,        description: SSO providers + OIDC/SAML login flows (E20) }
+  - { name: invitation, description: Tenant invitations and accept-by-token (E21) }
 
 security:
   - bearerAuth: []
@@ -853,6 +855,505 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  # E29 — one-off ping endpoint: dispatcher.PingEndpoint() to validate URL/secret/network
+  # without inserting a delivery row. Operator-facing diagnostic only.
+  /api/v1/webhooks/{endpointId}/test:
+    post:
+      tags: [webhook]
+      operationId: testWebhookEndpoint
+      summary: Send a one-off ping to a webhook endpoint (E29)
+      description: |
+        POSTs a synthetic payload to the configured URL with HMAC signature, returning
+        the upstream HTTP status, latency, and any transport error. **No delivery row
+        is inserted** — purely an ad-hoc diagnostic for operators verifying URL/secret
+        configuration. Returns 503 if the dispatcher is not configured.
+      x-status: phase3
+      parameters:
+        - { in: path, name: endpointId, required: true, schema: { type: string, pattern: "^wh_[A-Z0-9]+$" } }
+      responses:
+        "200":
+          description: OK — ping completed (success may be false if upstream returned non-2xx)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookTestResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Dispatcher not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  # ─── E20 SSO Provider CRUD + login flows ─────────────────────────────
+  # Provider CRUD requires authenticated tenant. Login flows are unauthenticated
+  # (state parameter binds the attempt). chi-direct mounted; gen.Unimplemented
+  # is never invoked.
+  /api/v1/sso/providers:
+    get:
+      tags: [sso]
+      operationId: listSSOProviders
+      summary: List SSO providers for the current tenant
+      x-status: phase3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSSOProvidersResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "503":
+          description: SSO service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [sso]
+      operationId: createSSOProvider
+      summary: Register a new SSO provider (OIDC or SAML)
+      description: |
+        Creates a provider record bound to the current tenant. `config` is a raw JSON
+        object validated by the provider type (OIDC: issuer/clientId/clientSecret/...;
+        SAML: entityId/ssoUrl/certificate). Returns 409 if a provider with the same
+        name already exists in the tenant.
+      x-status: phase3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SSOProviderCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOProvider"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          description: Provider name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: SSO service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/sso/providers/{providerId}:
+    parameters:
+      - { in: path, name: providerId, required: true, schema: { type: string } }
+    get:
+      tags: [sso]
+      operationId: getSSOProvider
+      summary: Get an SSO provider
+      x-status: phase3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOProvider"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    put:
+      tags: [sso]
+      operationId: updateSSOProvider
+      summary: Update an SSO provider (partial — name/enabled/config independently optional)
+      description: |
+        All body fields are optional; omitted fields are not modified. `config` if
+        present fully replaces the existing JSON document.
+      x-status: phase3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SSOProviderUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOProvider"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      tags: [sso]
+      operationId: deleteSSOProvider
+      summary: Delete an SSO provider (hard delete + audit emit)
+      x-status: phase3
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/sso/{providerId}/login:
+    get:
+      tags: [sso]
+      operationId: startSSOLogin
+      summary: Begin SSO login flow (returns IdP redirect URL or 302)
+      description: |
+        Initiates an SSO authorization attempt. For OIDC providers with a configured
+        IdP client the response is a 302 redirect to the authorization endpoint. In
+        scaffold mode (no client) or for SAML, returns a 200 JSON body containing the
+        opaque `state` token to be carried back via the callback. Authentication is
+        not required — the `state` token binds the attempt to a tenant on completion.
+      x-status: phase3
+      security: []
+      parameters:
+        - { in: path,  name: providerId,    required: true,  schema: { type: string } }
+        - { in: query, name: redirectAfter, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: OK (scaffold or SAML — JSON body with state)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOStartLoginResponse"
+        "302":
+          description: Redirect to IdP authorization endpoint
+          headers:
+            Location:
+              schema: { type: string }
+        "404":
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: SSO service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/sso/{providerId}/callback:
+    get:
+      tags: [sso]
+      operationId: completeSSOLoginOIDC
+      summary: OIDC authorization-code callback (state + code via query string)
+      description: |
+        Completes an OIDC authorization attempt. State is validated against the active
+        attempt row (CSRF + replay protection). Authorization code is exchanged with
+        the IdP token endpoint, id_token verified, and an external identity record
+        upserted. Token issuance for the resulting user is performed in a follow-up
+        stage (E20-D). Authentication is not required — `state` is the capability.
+      x-status: phase3
+      security: []
+      parameters:
+        - { in: path,  name: providerId, required: true,  schema: { type: string } }
+        - { in: query, name: state,      required: true,  schema: { type: string } }
+        - { in: query, name: code,       required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOCallbackResponse"
+        "400":
+          description: Invalid/expired state, IdP mismatch, or id_token verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Upstream IdP HTTP failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: SSO service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/auth/sso/{providerId}/saml/acs:
+    post:
+      tags: [sso]
+      operationId: completeSSOLoginSAML
+      summary: SAML SP-initiated POST binding endpoint (Assertion Consumer Service)
+      description: |
+        Accepts a `application/x-www-form-urlencoded` body with `SAMLResponse` and
+        `RelayState` fields per SAML POST binding spec. RelayState is the state token
+        produced by `startSSOLogin`. Assertion verification (signature + NameID
+        extraction) is performed by the SAML adapter. Authentication is not required.
+      x-status: phase3
+      security: []
+      parameters:
+        - { in: path, name: providerId, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [SAMLResponse, RelayState]
+              properties:
+                SAMLResponse: { type: string, description: "Base64 SAML assertion" }
+                RelayState:   { type: string, description: "State token from startSSOLogin" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOCallbackResponse"
+        "400":
+          description: Invalid form, state, or SAML assertion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: SSO service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  # ─── E21 Invitation CRUD + accept-by-token ───────────────────────────
+  # CRUD requires authenticated tenant admin. by-token endpoints are unauthenticated
+  # (the token itself is the capability). Accept performs Bootstrap Tx (no tenant ctx).
+  /api/v1/invitations:
+    get:
+      tags: [invitation]
+      operationId: listInvitations
+      summary: List invitations for the current tenant (pending + accepted + expired)
+      x-status: phase3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListInvitationsResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "503":
+          description: Invitation service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [invitation]
+      operationId: createInvitation
+      summary: Create a tenant invitation (admin)
+      description: |
+        Generates a single-use cryptographic token bound to (email, roleName).
+        The token is included in the **response body once** — caller must transport it
+        out-of-band to the invited user (email/Slack/secret manager). Default TTL is
+        7 days when `expiresInHours` is omitted or zero.
+      x-status: phase3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationCreateResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          description: Email already has an active invitation or registered user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Invitation service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/invitations/{invitationId}:
+    parameters:
+      - { in: path, name: invitationId, required: true, schema: { type: string } }
+    delete:
+      tags: [invitation]
+      operationId: revokeInvitation
+      summary: Revoke an invitation (immediately marks expired)
+      x-status: phase3
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/invitations/by-token/{token}:
+    parameters:
+      - { in: path, name: token, required: true, schema: { type: string } }
+    get:
+      tags: [invitation]
+      operationId: getInvitationByToken
+      summary: Preview an invitation by token (unauthenticated)
+      description: |
+        Returns minimal preview (email + roleName + expiresAt + accepted flag) so the
+        accept page can render before the user submits credentials. The token itself
+        is the capability — no auth header required. Lookup is via Bootstrap Tx since
+        the tenant context is unknown at request time.
+      x-status: phase3
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationCapabilityResponse"
+        "404":
+          description: Token not found, expired, or already used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Invitation service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/invitations/by-token/{token}/accept:
+    parameters:
+      - { in: path, name: token, required: true, schema: { type: string } }
+    post:
+      tags: [invitation]
+      operationId: acceptInvitation
+      summary: Accept an invitation (creates user + assigns role)
+      description: |
+        Creates a local user with the supplied password + display name, then assigns
+        the role specified by the invitation. The invitation is marked accepted
+        atomically. **No auth tokens are issued** — the accepted user must hit
+        `/auth/login` separately to obtain access/refresh tokens. Unauthenticated.
+      x-status: phase3
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationAcceptRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationAcceptResponse"
+        "400":
+          description: Invalid body, password too short, role mismatch, or email mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Invitation service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   # B7 Stage 2-C — 자동 백업 archive list + download.
   #
   # 백업 schedule(--backup-schedule cron)이 BackupDir에 .tar.gz를 적층 — 본 endpoint는
@@ -1463,3 +1964,174 @@ components:
         backups:
           type: array
           items: { $ref: "#/components/schemas/BackupMeta" }
+
+    # ─── Webhook test (E29) ──────────────────────────────────────────────
+    WebhookTestResponse:
+      type: object
+      required: [success, status, latencyMs]
+      description: |
+        Result of a one-off ping. `success=true` iff the upstream returned a 2xx
+        status. Transport-level failures (DNS, TLS, timeout) populate `error` with
+        a human-readable message and leave `status=0`.
+      properties:
+        success:   { type: boolean }
+        status:    { type: integer, description: "HTTP status (0 if transport error)" }
+        error:     { type: string,  description: "Transport or upstream error message" }
+        latencyMs: { type: integer, format: int64, description: "Round-trip time in milliseconds" }
+
+    # ─── SSO (E20) ───────────────────────────────────────────────────────
+    SSOProviderType:
+      type: string
+      description: |
+        Provider protocol type. `oidc` uses Authorization Code + PKCE; `saml` uses
+        SP-initiated HTTP-POST binding.
+      enum: [oidc, saml]
+
+    SSOProvider:
+      type: object
+      required: [id, type, name, enabled, config, createdAt, updatedAt]
+      properties:
+        id:        { type: string }
+        type:      { $ref: "#/components/schemas/SSOProviderType" }
+        name:      { type: string, description: "Operator-visible label, unique within tenant" }
+        enabled:   { type: boolean }
+        config:
+          description: |
+            Provider-specific configuration document. For `oidc`: issuer, clientId,
+            clientSecret, redirectUri, scopes. For `saml`: entityId, ssoUrl,
+            certificate. Schema is enforced by the domain validator at create/update.
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SSOProviderCreate:
+      type: object
+      required: [type, name, enabled, config]
+      properties:
+        type:    { $ref: "#/components/schemas/SSOProviderType" }
+        name:    { type: string, minLength: 1 }
+        enabled: { type: boolean }
+        config:
+          type: object
+          additionalProperties: true
+
+    SSOProviderUpdate:
+      type: object
+      description: |
+        All fields optional. `config`, when present, fully replaces the existing
+        document. Omitted fields leave the current value untouched.
+      properties:
+        name:    { type: string }
+        enabled: { type: boolean }
+        config:
+          type: object
+          additionalProperties: true
+
+    ListSSOProvidersResponse:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items: { $ref: "#/components/schemas/SSOProvider" }
+
+    SSOStartLoginResponse:
+      type: object
+      required: [state, providerId]
+      description: |
+        Returned only when the OIDC client is not configured (scaffold) or for SAML.
+        For configured OIDC, the server responds with 302 instead.
+      properties:
+        state:       { type: string, description: "Opaque attempt identifier (CSRF + replay binding)" }
+        redirectUrl: { type: string, description: "IdP authorization endpoint URL (empty in scaffold)" }
+        providerId:  { type: string }
+        stub:        { type: boolean, description: "True when the response is from scaffold mode" }
+
+    SSOCallbackResponse:
+      type: object
+      required: [state]
+      properties:
+        state:   { type: string }
+        subject: { type: string, description: "External identity subject (sub claim / NameID)" }
+        email:   { type: string, format: email }
+        userId:  { type: string, description: "Mapped local user ID (empty if mapping not yet performed)" }
+        stub:    { type: boolean, description: "True when no IdP client/SAML adapter is configured" }
+
+    # ─── Invitation (E21) ────────────────────────────────────────────────
+    Invitation:
+      type: object
+      required: [id, email, roleName, invitedBy, expiresAt, createdAt]
+      description: |
+        Invitation metadata. The token itself is **never** returned by list/get —
+        it is exposed only in the create response and must be transported out-of-band.
+      properties:
+        id:         { type: string }
+        email:      { type: string, format: email }
+        roleName:   { type: string, description: "admin | auditor | operator | <custom>" }
+        invitedBy:  { type: string, description: "User ID of the issuer" }
+        expiresAt:  { type: string, format: date-time }
+        acceptedAt: { type: string, format: date-time }
+        acceptedBy: { type: string, description: "Resolved user ID once accepted" }
+        createdAt:  { type: string, format: date-time }
+
+    ListInvitationsResponse:
+      type: object
+      required: [invitations]
+      properties:
+        invitations:
+          type: array
+          items: { $ref: "#/components/schemas/Invitation" }
+
+    InvitationCreateRequest:
+      type: object
+      required: [email, roleName]
+      properties:
+        email:          { type: string, format: email }
+        roleName:       { type: string, minLength: 1 }
+        expiresInHours: { type: integer, minimum: 0, description: "0 → server default (7 days)" }
+
+    InvitationCreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/Invitation"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: |
+                Single-use cryptographic token. Returned only on creation — store and
+                transport out-of-band. Server retains only the hash (token cannot be
+                recovered later).
+
+    InvitationCapabilityResponse:
+      type: object
+      required: [email, roleName, expiresAt, accepted]
+      description: Minimal preview shown on the accept page. The token itself is in the path.
+      properties:
+        email:     { type: string, format: email }
+        roleName:  { type: string }
+        expiresAt: { type: string, format: date-time }
+        accepted:  { type: boolean }
+
+    InvitationAcceptRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email:       { type: string, format: email, description: "Must equal the invited email" }
+        password:    { type: string, format: password, minLength: 8 }
+        displayName: { type: string, minLength: 1 }
+
+    InvitationAcceptResponse:
+      type: object
+      required: [userId, email, displayName, roles]
+      description: |
+        Returned after successful accept. **No auth tokens are issued** — the user must
+        call `/auth/login` separately to obtain access/refresh tokens.
+      properties:
+        userId:      { type: string }
+        email:       { type: string, format: email }
+        displayName: { type: string }
+        roles:
+          type: array
+          items: { type: string }

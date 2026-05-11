@@ -555,6 +555,242 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/{endpointId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a one-off ping to a webhook endpoint (E29)
+         * @description POSTs a synthetic payload to the configured URL with HMAC signature, returning
+         *     the upstream HTTP status, latency, and any transport error. **No delivery row
+         *     is inserted** — purely an ad-hoc diagnostic for operators verifying URL/secret
+         *     configuration. Returns 503 if the dispatcher is not configured.
+         */
+        post: operations["testWebhookEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sso/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List SSO providers for the current tenant */
+        get: operations["listSSOProviders"];
+        put?: never;
+        /**
+         * Register a new SSO provider (OIDC or SAML)
+         * @description Creates a provider record bound to the current tenant. `config` is a raw JSON
+         *     object validated by the provider type (OIDC: issuer/clientId/clientSecret/...;
+         *     SAML: entityId/ssoUrl/certificate). Returns 409 if a provider with the same
+         *     name already exists in the tenant.
+         */
+        post: operations["createSSOProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sso/providers/{providerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        /** Get an SSO provider */
+        get: operations["getSSOProvider"];
+        /**
+         * Update an SSO provider (partial — name/enabled/config independently optional)
+         * @description All body fields are optional; omitted fields are not modified. `config` if
+         *     present fully replaces the existing JSON document.
+         */
+        put: operations["updateSSOProvider"];
+        post?: never;
+        /** Delete an SSO provider (hard delete + audit emit) */
+        delete: operations["deleteSSOProvider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/{providerId}/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin SSO login flow (returns IdP redirect URL or 302)
+         * @description Initiates an SSO authorization attempt. For OIDC providers with a configured
+         *     IdP client the response is a 302 redirect to the authorization endpoint. In
+         *     scaffold mode (no client) or for SAML, returns a 200 JSON body containing the
+         *     opaque `state` token to be carried back via the callback. Authentication is
+         *     not required — the `state` token binds the attempt to a tenant on completion.
+         */
+        get: operations["startSSOLogin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/{providerId}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * OIDC authorization-code callback (state + code via query string)
+         * @description Completes an OIDC authorization attempt. State is validated against the active
+         *     attempt row (CSRF + replay protection). Authorization code is exchanged with
+         *     the IdP token endpoint, id_token verified, and an external identity record
+         *     upserted. Token issuance for the resulting user is performed in a follow-up
+         *     stage (E20-D). Authentication is not required — `state` is the capability.
+         */
+        get: operations["completeSSOLoginOIDC"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/{providerId}/saml/acs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * SAML SP-initiated POST binding endpoint (Assertion Consumer Service)
+         * @description Accepts a `application/x-www-form-urlencoded` body with `SAMLResponse` and
+         *     `RelayState` fields per SAML POST binding spec. RelayState is the state token
+         *     produced by `startSSOLogin`. Assertion verification (signature + NameID
+         *     extraction) is performed by the SAML adapter. Authentication is not required.
+         */
+        post: operations["completeSSOLoginSAML"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List invitations for the current tenant (pending + accepted + expired) */
+        get: operations["listInvitations"];
+        put?: never;
+        /**
+         * Create a tenant invitation (admin)
+         * @description Generates a single-use cryptographic token bound to (email, roleName).
+         *     The token is included in the **response body once** — caller must transport it
+         *     out-of-band to the invited user (email/Slack/secret manager). Default TTL is
+         *     7 days when `expiresInHours` is omitted or zero.
+         */
+        post: operations["createInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invitations/{invitationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an invitation (immediately marks expired) */
+        delete: operations["revokeInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invitations/by-token/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview an invitation by token (unauthenticated)
+         * @description Returns minimal preview (email + roleName + expiresAt + accepted flag) so the
+         *     accept page can render before the user submits credentials. The token itself
+         *     is the capability — no auth header required. Lookup is via Bootstrap Tx since
+         *     the tenant context is unknown at request time.
+         */
+        get: operations["getInvitationByToken"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invitations/by-token/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation (creates user + assigns role)
+         * @description Creates a local user with the supplied password + display name, then assigns
+         *     the role specified by the invitation. The invitation is marked accepted
+         *     atomically. **No auth tokens are issued** — the accepted user must hit
+         *     `/auth/login` separately to obtain access/refresh tokens. Unauthenticated.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/backups": {
         parameters: {
             query?: never;
@@ -981,6 +1217,163 @@ export interface components {
         };
         BackupListResponse: {
             backups: components["schemas"]["BackupMeta"][];
+        };
+        /**
+         * @description Result of a one-off ping. `success=true` iff the upstream returned a 2xx
+         *     status. Transport-level failures (DNS, TLS, timeout) populate `error` with
+         *     a human-readable message and leave `status=0`.
+         */
+        WebhookTestResponse: {
+            success: boolean;
+            /** @description HTTP status (0 if transport error) */
+            status: number;
+            /** @description Transport or upstream error message */
+            error?: string;
+            /**
+             * Format: int64
+             * @description Round-trip time in milliseconds
+             */
+            latencyMs: number;
+        };
+        /**
+         * @description Provider protocol type. `oidc` uses Authorization Code + PKCE; `saml` uses
+         *     SP-initiated HTTP-POST binding.
+         * @enum {string}
+         */
+        SSOProviderType: "oidc" | "saml";
+        SSOProvider: {
+            id: string;
+            type: components["schemas"]["SSOProviderType"];
+            /** @description Operator-visible label, unique within tenant */
+            name: string;
+            enabled: boolean;
+            /**
+             * @description Provider-specific configuration document. For `oidc`: issuer, clientId,
+             *     clientSecret, redirectUri, scopes. For `saml`: entityId, ssoUrl,
+             *     certificate. Schema is enforced by the domain validator at create/update.
+             */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        SSOProviderCreate: {
+            type: components["schemas"]["SSOProviderType"];
+            name: string;
+            enabled: boolean;
+            config: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description All fields optional. `config`, when present, fully replaces the existing
+         *     document. Omitted fields leave the current value untouched.
+         */
+        SSOProviderUpdate: {
+            name?: string;
+            enabled?: boolean;
+            config?: {
+                [key: string]: unknown;
+            };
+        };
+        ListSSOProvidersResponse: {
+            providers: components["schemas"]["SSOProvider"][];
+        };
+        /**
+         * @description Returned only when the OIDC client is not configured (scaffold) or for SAML.
+         *     For configured OIDC, the server responds with 302 instead.
+         */
+        SSOStartLoginResponse: {
+            /** @description Opaque attempt identifier (CSRF + replay binding) */
+            state: string;
+            /** @description IdP authorization endpoint URL (empty in scaffold) */
+            redirectUrl?: string;
+            providerId: string;
+            /** @description True when the response is from scaffold mode */
+            stub?: boolean;
+        };
+        SSOCallbackResponse: {
+            state: string;
+            /** @description External identity subject (sub claim / NameID) */
+            subject?: string;
+            /** Format: email */
+            email?: string;
+            /** @description Mapped local user ID (empty if mapping not yet performed) */
+            userId?: string;
+            /** @description True when no IdP client/SAML adapter is configured */
+            stub?: boolean;
+        };
+        /**
+         * @description Invitation metadata. The token itself is **never** returned by list/get —
+         *     it is exposed only in the create response and must be transported out-of-band.
+         */
+        Invitation: {
+            id: string;
+            /** Format: email */
+            email: string;
+            /** @description admin | auditor | operator | <custom> */
+            roleName: string;
+            /** @description User ID of the issuer */
+            invitedBy: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            acceptedAt?: string;
+            /** @description Resolved user ID once accepted */
+            acceptedBy?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ListInvitationsResponse: {
+            invitations: components["schemas"]["Invitation"][];
+        };
+        InvitationCreateRequest: {
+            /** Format: email */
+            email: string;
+            roleName: string;
+            /** @description 0 → server default (7 days) */
+            expiresInHours?: number;
+        };
+        InvitationCreateResponse: components["schemas"]["Invitation"] & {
+            /**
+             * @description Single-use cryptographic token. Returned only on creation — store and
+             *     transport out-of-band. Server retains only the hash (token cannot be
+             *     recovered later).
+             */
+            token: string;
+        };
+        /** @description Minimal preview shown on the accept page. The token itself is in the path. */
+        InvitationCapabilityResponse: {
+            /** Format: email */
+            email: string;
+            roleName: string;
+            /** Format: date-time */
+            expiresAt: string;
+            accepted: boolean;
+        };
+        InvitationAcceptRequest: {
+            /**
+             * Format: email
+             * @description Must equal the invited email
+             */
+            email: string;
+            /** Format: password */
+            password: string;
+            displayName: string;
+        };
+        /**
+         * @description Returned after successful accept. **No auth tokens are issued** — the user must
+         *     call `/auth/login` separately to obtain access/refresh tokens.
+         */
+        InvitationAcceptResponse: {
+            userId: string;
+            /** Format: email */
+            email: string;
+            displayName: string;
+            roles: string[];
         };
     };
     responses: {
@@ -1922,6 +2315,591 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListWebhookDeliveriesResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    testWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — ping completed (success may be false if upstream returned non-2xx) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookTestResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Endpoint not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispatcher not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listSSOProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSSOProvidersResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description SSO service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createSSOProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSOProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSOProvider"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            /** @description Provider name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description SSO service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getSSOProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSOProvider"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateSSOProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSOProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSOProvider"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteSSOProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    startSSOLogin: {
+        parameters: {
+            query?: {
+                redirectAfter?: string;
+            };
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK (scaffold or SAML — JSON body with state) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSOStartLoginResponse"];
+                };
+            };
+            /** @description Redirect to IdP authorization endpoint */
+            302: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description SSO service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    completeSSOLoginOIDC: {
+        parameters: {
+            query: {
+                state: string;
+                code?: string;
+            };
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSOCallbackResponse"];
+                };
+            };
+            /** @description Invalid/expired state, IdP mismatch, or id_token verification failed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Upstream IdP HTTP failure */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description SSO service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    completeSSOLoginSAML: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /** @description Base64 SAML assertion */
+                    SAMLResponse: string;
+                    /** @description State token from startSSOLogin */
+                    RelayState: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSOCallbackResponse"];
+                };
+            };
+            /** @description Invalid form, state, or SAML assertion */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description SSO service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListInvitationsResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Invitation service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationCreateResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            /** @description Email already has an active invitation or registered user */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    revokeInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invitationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Invitation not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getInvitationByToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationCapabilityResponse"];
+                };
+            };
+            /** @description Token not found, expired, or already used */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationAcceptResponse"];
+                };
+            };
+            /** @description Invalid body, password too short, role mismatch, or email mismatch */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Token not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Email already registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
