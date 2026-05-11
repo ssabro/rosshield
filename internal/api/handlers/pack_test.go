@@ -32,7 +32,9 @@ func installSamplePack(t *testing.T, f *testFixture) {
 	p := seeded[0]
 	tenantCtx := storage.WithTenantID(context.Background(), f.tenantID)
 	err = f.storage.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
-		_, e := f.bench.InstallPack(ctx, tx, f.tenantID, p.TarGz, p.PublicKey, p.SignerKeyID, "test-actor")
+		// 첫 trust 키(dev signer)로 install — dev 빌드 archive와 매칭.
+		te := p.TrustBundle[0]
+		_, e := f.bench.InstallPack(ctx, tx, f.tenantID, p.TarGz, te.PublicKey, te.SignerKeyID, "test-actor")
 		return e
 	})
 	if err != nil {

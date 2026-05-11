@@ -156,7 +156,9 @@ func TestE2EWithSeededBuiltinPack(t *testing.T) {
 	tenantCtx := storage.WithTenantID(context.Background(), h.tenantID)
 	var installedPack benchmark.Pack
 	if err := h.store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
-		p, e := benchSvc.InstallPack(ctx, tx, h.tenantID, first.TarGz, first.PublicKey, first.SignerKeyID, "test-actor")
+		// 첫 trust 키(dev signer)로 install — dev 빌드 archive와 매칭.
+		te := first.TrustBundle[0]
+		p, e := benchSvc.InstallPack(ctx, tx, h.tenantID, first.TarGz, te.PublicKey, te.SignerKeyID, "test-actor")
 		if e != nil {
 			return e
 		}

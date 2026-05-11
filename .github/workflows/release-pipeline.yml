@@ -84,6 +84,49 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      - name: Build pack-tools (E12)
+        run: go build -o bin/pack-tools ./cmd/pack-tools
+
+      - name: Decode release pack signer key (ROSSHIELD_PACK_SIGNER_KEY → raw 64B)
+        env:
+          PACK_SIGNER_KEY_B64: ${{ secrets.ROSSHIELD_PACK_SIGNER_KEY }}
+        run: |
+          set -e
+          if [ -z "$PACK_SIGNER_KEY_B64" ]; then
+            echo "::warning::ROSSHIELD_PACK_SIGNER_KEY secret not set — falling back to dev signer (release binary will trust dev pubkey only)"
+            # Fallback: 본 repo에 commit된 dev signer 키는 .gitignore라 워크플로우에서 직접 사용 불가.
+            # release secret 미설정 시 임시 dev signer 새로 생성 + dev pubkey가 binary에 embed된 trust bundle과 매칭.
+            ./bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex -force
+            # WARNING: 이 keygen은 매 release run마다 새 키 → dev pubkey 상수와 mismatch
+            # → seed loader가 dev trust 시도 실패 후 release trust로 fallback할 것 (release secret 없는 한 그것도 실패)
+            # → 결과: built-in pack 0개로 부팅 (degraded mode). 사용자가 secret 등록하면 production 동작.
+            echo "::warning::No release secret + dev signer fresh-generated → built-in pack will fail signature verification at first boot. Set ROSSHIELD_PACK_SIGNER_KEY for production builds."
+          else
+            mkdir -p scripts
+            # base64로 등록된 secret을 raw 64B 파일로 decode.
+            echo "$PACK_SIGNER_KEY_B64" | base64 -d > scripts/release-pack-signer.key
+            chmod 600 scripts/release-pack-signer.key
+            # KEY 사이즈 검증 (raw 64B ed25519).
+            SIZE=$(wc -c < scripts/release-pack-signer.key)
+            if [ "$SIZE" != "64" ]; then
+              echo "::error::release pack signer key has size $SIZE, want 64 bytes (raw Ed25519 private key)"
+              exit 1
+            fi
+            echo "Release signer key decoded ($SIZE bytes)."
+          fi
+
+      - name: Build built-in pack archives (E12 Stage E)
+        env:
+          DEV_PACK_SIGNER_KEY: scripts/release-pack-signer.key
+        run: |
+          set -e
+          # release secret이 있으면 그 키로, 없으면 fallback dev key로.
+          if [ ! -f scripts/release-pack-signer.key ]; then
+            export DEV_PACK_SIGNER_KEY=scripts/dev-pack-signer.key
+          fi
+          make pack-archive
+          ls -la internal/builtin/packs/_archives/
+
       - name: Resolve build metadata
         id: meta
         run: |

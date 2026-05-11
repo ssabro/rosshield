@@ -1,16 +1,21 @@
 // Package builtinpacks는 binary에 embed된 built-in 벤치마크 팩 자산을 제공합니다 (E12 Stage E).
 //
-// First-boot seed loader가 본 패키지의 Builtins()를 호출해 dev signer 신뢰 하의
-// pack을 자동 InstallPack한다. 사용자는 별도 pack upload 없이 즉시 스캔 가능.
+// First-boot seed loader가 본 패키지의 Builtins()를 호출해 trust bundle 안의 pubKey
+// 한 개로 InstallPack한다. 사용자는 별도 pack upload 없이 즉시 스캔 가능.
 //
-// 운영 모델:
-//   - dev signer (본 패키지에 pubKey 상수): 본 repo에서 빌드된 binary가 신뢰
-//     scripts/dev-pack-signer.pub.hex와 동기화 — 키 회전 시 본 상수도 갱신
-//   - release signer (별 epic): GitHub Actions secret으로 release 시 별도 archive
-//     production binary는 release pubKey도 trust bundle에 포함 (별 commit)
+// 운영 모델 (dev + release 두 trust):
+//   - dev signer (DevSignerKeyID, scripts/dev-pack-signer.pub.hex와 동기화):
+//     본 repo에서 빌드된 binary가 신뢰. 키 회전 시 본 상수도 갱신.
+//   - release signer (ReleaseSignerKeyID, scripts/release-pack-signer.pub.hex):
+//     GitHub Actions release-pipeline workflow가 ROSSHIELD_PACK_SIGNER_KEY secret으로
+//     archive — production binary는 dev + release 두 trust 모두 보유.
+//
+// caller(seed_packs.go)는 SeedPack.TrustBundle을 차례로 시도 — 첫 통과 키로 install.
+// 모두 ErrSignatureInvalid면 archive가 어떤 trust로도 검증 안 되는 의심 archive.
 //
 // 빌드 흐름:
-//   make pack-archive  → packs/*.tar.gz 생성 + cp internal/builtin/packs/_archives/
+//   make pack-archive  → packs/*.tar.gz 생성 (dev signer) + cp internal/builtin/packs/_archives/
+//   release-pipeline   → ROSSHIELD_PACK_SIGNER_KEY → packs/*.tar.gz (release signer) + cp _archives/
 //   go build           → //go:embed가 _archives/*.tar.gz를 binary에 포함
 //
 // _archives/ 디렉터리는 _ prefix로 Go 패키지 스캔에서 제외 — 같은 디렉터리에 두지만
@@ -28,36 +33,43 @@ import (
 	"strings"
 )
 
-// DevSignerKeyID는 dev signer의 keyID 식별자입니다.
-//
-// benchmark.InstallPack의 signerKeyID 인자로 전달 — audit log·pack metadata에 기록.
-const DevSignerKeyID = "rosshield-dev-pack-signer-2026"
+// SignerKeyID 식별자.
+const (
+	DevSignerKeyID     = "rosshield-dev-pack-signer-2026"
+	ReleaseSignerKeyID = "rosshield-release-pack-signer-2026"
+)
 
-// devSignerPublicKeyHex는 scripts/dev-pack-signer.pub.hex와 동기화된 hex 문자열입니다.
+// Public key hex 상수 — scripts/{dev,release}-pack-signer.pub.hex와 동기화.
 //
 // 키 회전 시 두 위치 모두 갱신:
-//   1. bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex -force
+//   1. bin/pack-tools keygen -out scripts/<role>-pack-signer.key -pub-out scripts/<role>-pack-signer.pub.hex -force
 //   2. 본 상수를 새 .pub.hex 내용으로 교체
-const devSignerPublicKeyHex = "f074a51dac239cc2496b927b1d8a363cd2ca8db59b6e29fec6123bc4929d6478"
+const (
+	devSignerPublicKeyHex     = "f074a51dac239cc2496b927b1d8a363cd2ca8db59b6e29fec6123bc4929d6478"
+	releaseSignerPublicKeyHex = "482ea7964e48fee1e25ff0a907cb3861c9d2a2d1688f935cb8d643d6920760fb"
+)
 
 //go:embed _archives/*.tar.gz
 var archives embed.FS
 
+// TrustEntry는 한 개 신뢰 키입니다.
+type TrustEntry struct {
+	PublicKey   []byte // 32 bytes ed25519 public key
+	SignerKeyID string // benchmark.InstallPack의 signerKeyID 인자에 전달
+}
+
 // SeedPack은 first-boot seed loader가 InstallPack에 전달할 단일 built-in 팩입니다.
 type SeedPack struct {
 	// Filename은 packs/<filename>의 원본 파일명입니다 (예: "cis-ubuntu-2404.tar.gz").
-	// 디버그·로그용 — InstallPack은 Bytes만 사용.
+	// 디버그·로그용 — InstallPack은 TarGz만 사용.
 	Filename string
 
-	// TarGz는 archive 내용(Ed25519 서명 검증된 MANIFEST + SIGNATURE 포함)입니다.
+	// TarGz는 archive 내용(MANIFEST + SIGNATURE 포함)입니다.
 	TarGz []byte
 
-	// PublicKey는 archive 서명 검증에 쓰는 32-byte ed25519 public key입니다.
-	// 본 Stage는 모든 built-in pack이 dev signer로 서명 → 동일 키 반복.
-	PublicKey []byte
-
-	// SignerKeyID는 InstallPack(signerKeyID) 인자로 전달됩니다.
-	SignerKeyID string
+	// TrustBundle은 archive 검증을 시도할 trust 키 list입니다.
+	// 호출 순서: dev → release. 첫 통과 키로 install + 종료.
+	TrustBundle []TrustEntry
 }
 
 // Builtins는 binary에 embed된 모든 built-in pack을 반환합니다.
@@ -65,9 +77,17 @@ type SeedPack struct {
 // 결정성: 파일명 알파벳순 정렬. 빈 결과면 nil + ErrNoBuiltinsEmbedded
 // (build flow에서 make pack-archive 누락이거나, dist 누락 빌드).
 func Builtins() ([]SeedPack, error) {
-	pubKey, err := hex.DecodeString(devSignerPublicKeyHex)
+	devPub, err := hex.DecodeString(devSignerPublicKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("builtinpacks: decode dev signer pubkey: %w", err)
+	}
+	relPub, err := hex.DecodeString(releaseSignerPublicKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("builtinpacks: decode release signer pubkey: %w", err)
+	}
+	bundle := []TrustEntry{
+		{PublicKey: devPub, SignerKeyID: DevSignerKeyID},
+		{PublicKey: relPub, SignerKeyID: ReleaseSignerKeyID},
 	}
 
 	entries, err := fs.ReadDir(archives, "_archives")
@@ -87,8 +107,7 @@ func Builtins() ([]SeedPack, error) {
 		out = append(out, SeedPack{
 			Filename:    e.Name(),
 			TarGz:       data,
-			PublicKey:   pubKey,
-			SignerKeyID: DevSignerKeyID,
+			TrustBundle: bundle,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Filename < out[j].Filename })
