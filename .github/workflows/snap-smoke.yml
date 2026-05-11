@@ -1,0 +1,98 @@
+name: Snap Smoke Test
+
+# rosshield snap install + healthz smoke test (E33.T2 Phase 5).
+#
+# Trigger:
+#   - snap-build.yml 완료 후 자동 (workflow_run)
+#   - workflow_dispatch (수동)
+#
+# 검증:
+#   - snap install --dangerous (서명 없는 dev snap 허용)
+#   - snap services rosshield (active)
+#   - /healthz 200 OK 응답
+#
+# 한계:
+#   - LXD 기반 snap install은 GitHub Actions ubuntu-22.04에서 nested virtualization 없이도 동작.
+#   - Multipass 시도는 KVM 의존, GitHub Actions 무지원 — LXD로 단순화.
+#   - 본 smoke는 single-instance + sqlite + HA 비활성 가정.
+
+on:
+  workflow_run:
+    workflows: ['Snap Build']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+
+jobs:
+  smoke:
+    name: snap install + healthz smoke
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download snap artifact (from snap-build run)
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          name: rosshield-snap-amd64
+          path: ./snap-artifact
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download snap artifact (manual dispatch — latest snap-build run)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 가장 최근 성공한 Snap Build run에서 artifact 다운로드.
+          mkdir -p ./snap-artifact
+          RUN_ID=$(gh run list --workflow=snap-build.yml --status=success --limit=1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::no successful snap-build run found"
+            exit 1
+          fi
+          gh run download "$RUN_ID" -n rosshield-snap-amd64 -D ./snap-artifact
+
+      - name: List artifact
+        run: ls -lh ./snap-artifact
+
+      - name: snap install (dangerous, dev signature)
+        run: |
+          SNAP_FILE=$(ls ./snap-artifact/*.snap | head -n 1)
+          if [ -z "$SNAP_FILE" ]; then
+            echo "::error::no .snap file found in artifact"
+            exit 1
+          fi
+          echo "Installing $SNAP_FILE"
+          sudo snap install "$SNAP_FILE" --dangerous
+
+      - name: snap services
+        run: |
+          sudo snap services rosshield
+          sudo snap logs rosshield --no-color | tail -n 30
+
+      - name: Wait for /healthz
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
+              echo "✓ /healthz responded after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/healthz did not respond within 30s"
+          sudo snap logs rosshield --no-color | tail -n 100
+          exit 1
+
+      - name: /healthz body
+        run: |
+          curl -fsS http://localhost:8080/healthz | tee healthz.json
+          # 핵심 필드 존재 확인
+          jq -e '.status' healthz.json
+          jq -e '.components.storage' healthz.json
+          jq -e '.components.signer' healthz.json
+
+      - name: snap remove (cleanup)
+        if: always()
+        run: sudo snap remove --purge rosshield || true

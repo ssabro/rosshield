@@ -1,0 +1,111 @@
+name: rosshield
+base: core22
+adopt-info: rosshield-server
+summary: ROS2 fleet security audit platform (codename rosshield)
+description: |
+  rosshield is a deterministic security audit platform for ROS2 robot fleets.
+  This snap packages the rosshield-server binary with strict confinement for
+  Ubuntu Core 22 appliances and classic Ubuntu desktops.
+
+  Key features in this snap:
+    - Single binary server (rosshield-server) — embeds web console + API.
+    - SQLite default storage at /var/snap/rosshield/common/data/data.db.
+    - PostgreSQL backend opt-in via ROSSHIELD_DATABASE_URL.
+    - Cosign keyless signed releases (Sigstore Rekor public log).
+
+  Configuration:
+    snap set rosshield addr=127.0.0.1:8080
+    snap set rosshield storage=sqlite
+    snap set rosshield log-level=info
+    snap restart rosshield.server
+
+  Documentation: https://github.com/ssabro/rosshield (visibility TBD).
+
+  Design: docs/design/notes/e25-ha-design.md, docs/operations/ha-deployment.md.
+
+# rosshield-server는 strict confinement에 적합 — 외부 명령 실행 없음, 자체 web 서빙.
+# 후속에 SSH 기반 robot scan executor가 추가되면 plugs(network)는 이미 충분.
+confinement: strict
+grade: stable
+
+# R40-1 결정 (2026-05-11): core22 LTS 안정성 우선. core24 전환은 customer 환경 검증 후.
+# 설계: docs/design/phase5-backlog.md §E33.
+
+architectures:
+  - build-on: amd64
+    build-for: amd64
+  - build-on: amd64
+    build-for: arm64
+  - build-on: arm64
+    build-for: arm64
+
+apps:
+  server:
+    command: bin/rosshield-server
+    daemon: simple
+    restart-condition: on-failure
+    install-mode: enable
+    plugs:
+      - network         # API 서빙 + outbound webhook + LLM API
+      - network-bind    # 8080 listen
+      - home            # --data-dir 사용자 home 옵션
+    environment:
+      ROSSHIELD_DATA_DIR: $SNAP_COMMON/data
+      # ROSSHIELD_DATABASE_URL은 운영자가 snap set으로 설정
+      # ROSSHIELD_LICENSE_TOKEN도 동일
+
+  cli:
+    command: bin/rosshield
+    plugs:
+      - network         # CLI는 server 호출 (login·invite·webhook 등)
+      - home
+
+  audit-verify:
+    command: bin/rosshield-audit-verify
+    plugs:
+      - home            # report bundle을 home에서 읽음
+
+parts:
+  rosshield-server:
+    plugin: nil
+    source: .
+    build-snaps:
+      - go/1.22/stable      # Go 1.22+ (1.26는 snap channel 미존재 시 1.22로 fallback)
+      - node/20/stable      # web 빌드용
+    build-packages:
+      - git                  # version ldflags용
+    override-pull: |
+      craftctl default
+      # version 메타 추출 (release-pipeline.yml과 동일 패턴)
+      VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-dev")
+      COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+      BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      craftctl set version="${VERSION#v}"
+    override-build: |
+      set -e
+      # 1) Web Console 빌드 (Vite + tsc) — internal/web/dist에 산출.
+      if [ -d web ] && [ -f web/package.json ]; then
+        echo "==> Building web console"
+        npm install -g pnpm@10
+        cd web
+        pnpm install --frozen-lockfile
+        pnpm build
+        cd ..
+      fi
+
+      # 2) Go 바이너리 3종 빌드 (server·CLI·audit-verify).
+      VERSION="$(craftctl get version)"
+      COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+      BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      LDFLAGS="-s -w \
+        -X 'github.com/ssabro/rosshield/cmd/rosshield.Version=${VERSION}' \
+        -X 'github.com/ssabro/rosshield/cmd/rosshield.BuildCommit=${COMMIT}' \
+        -X 'github.com/ssabro/rosshield/cmd/rosshield.BuildTime=${BUILD_TIME}'"
+
+      mkdir -p "$CRAFT_PART_INSTALL/bin"
+      go build -trimpath -ldflags "$LDFLAGS" -o "$CRAFT_PART_INSTALL/bin/rosshield-server" ./cmd/rosshield-server
+      go build -trimpath -ldflags "$LDFLAGS" -o "$CRAFT_PART_INSTALL/bin/rosshield" ./cmd/rosshield
+      go build -trimpath -ldflags "$LDFLAGS" -o "$CRAFT_PART_INSTALL/bin/rosshield-audit-verify" ./cmd/rosshield-audit-verify
+
+# snap configure는 후속 stage(E34 TPM·E35 OTA)에서 추가 — 본 stage는 minimal 단일 daemon.
+# 사용자 정의 config는 snap set rosshield <key>=<value> + 자체 hook 처리.

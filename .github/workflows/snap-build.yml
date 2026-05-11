@@ -1,0 +1,87 @@
+name: Snap Build
+
+# rosshield Ubuntu Core / Classic snap 빌드 (E33 Phase 5).
+#
+# Trigger:
+#   - tag push v*.*.* (release pipeline과 동일 트리거)
+#   - workflow_dispatch (수동, ref=v* 권장)
+#
+# 산출:
+#   - rosshield_<version>_amd64.snap (1차 — arm64는 후속 stage)
+#   - GitHub Release에 자동 attach (release pipeline과 동일 release tag에 추가)
+#
+# R40-1 결정 (2026-05-11): core22 base. snap channel `latest/stable` 발행은
+# customer 검증 후 수동 (`snapcraft upload --release=stable rosshield_<v>_amd64.snap`).
+#
+# 외부 검증 (R30-4 — private repo + binary verify):
+#   sudo snap install rosshield_<version>_amd64.snap --dangerous
+#   snap info rosshield     # 메타 확인
+#   sudo snap services      # rosshield.server (active)
+#   curl -s http://localhost:8080/healthz | jq .
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '빌드할 ref (예: v0.2.0). 비우면 dispatch ref 사용.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write     # release attach
+  id-token: write     # 향후 cosign 서명 옵션
+
+jobs:
+  snap:
+    name: Build snap (amd64)
+    runs-on: ubuntu-22.04   # core22 base와 일관
+    steps:
+      - name: Resolve ref
+        id: ref
+        run: |
+          if [ -n "${{ github.event.inputs.ref }}" ]; then
+            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.ref.outputs.ref }}
+          fetch-depth: 0   # snapcraft adopt-info용 git describe
+
+      - name: Build snap
+        id: build
+        uses: snapcore/action-build@v1
+        with:
+          path: .
+          snapcraft-channel: 8.x/stable
+
+      - name: Snap info
+        run: |
+          ls -lh "${{ steps.build.outputs.snap }}"
+          file "${{ steps.build.outputs.snap }}"
+
+      - name: Upload snap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rosshield-snap-amd64
+          path: ${{ steps.build.outputs.snap }}
+          retention-days: 30
+
+      - name: Attach to existing release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          # release가 이미 존재해야 함 (release-pipeline.yml이 먼저 생성).
+          # 없으면 본 step은 fail — 운영자가 release-pipeline 완료 확인 후 본 workflow 재실행.
+          if gh release view "$REF" >/dev/null 2>&1; then
+            gh release upload "$REF" "${{ steps.build.outputs.snap }}" --clobber
+            echo "✓ snap attached to release $REF"
+          else
+            echo "::warning::release $REF not found — snap artifact uploaded but not attached. Run release-pipeline first then re-run this workflow."
+          fi
