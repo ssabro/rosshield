@@ -45,6 +45,7 @@ var expectedSequences = []string{
 	"0020_sso",
 	"0021_invitations",
 	"0022_leader_epoch",
+	"0023_audit_leader_epoch",
 }
 
 // noopSequences 는 E22-E 폐기 — TestPGConversionMarkersPresent 함께 폐기됐으므로 미사용.

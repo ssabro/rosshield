@@ -29,6 +29,11 @@ import (
 // Deps는 어댑터 의존성입니다.
 type Deps struct {
 	Clock clock.Clock
+
+	// E25 — HA RoleProvider (옵션). nil이면 HA 비활성으로 간주, 모든 Append가 통과.
+	// non-nil이면 매 Append 시작 시 IsLeader() 체크 → false면 ErrNotLeader.
+	// LeaderEpoch는 CurrentEpoch()에서 자동 채움.
+	Role audit.RoleProvider
 }
 
 // Repo는 audit.Service의 SQLite 구현입니다.
@@ -41,6 +46,16 @@ func New(deps Deps) *Repo {
 	return &Repo{deps: deps}
 }
 
+// SetRoleProvider는 HA RoleProvider를 lazy 주입합니다 (E25 Stage 2).
+//
+// bootstrap에서 audit 생성 후에 HAManager가 만들어지므로, 생성 시점에는 nil이 주입되고
+// HA enabled 시 본 메서드로 후속 주입. nil 전달은 unset(=HA 비활성).
+//
+// 동시성: bootstrap 단일 thread에서 한 번만 호출. heartbeat goroutine 시작 전에 호출되어야 함.
+func (r *Repo) SetRoleProvider(rp audit.RoleProvider) {
+	r.deps.Role = rp
+}
+
 // Append는 audit.Service.Append 구현입니다.
 func (r *Repo) Append(ctx context.Context, tx storage.Tx, req audit.AppendRequest) (audit.Entry, error) {
 	if err := validateAppend(req); err != nil {
@@ -48,6 +63,16 @@ func (r *Repo) Append(ctx context.Context, tx storage.Tx, req audit.AppendReques
 	}
 	if tx.TenantID() != "" && tx.TenantID() != req.TenantID {
 		return audit.Entry{}, audit.ErrTenantMismatch
+	}
+
+	// E25 — HA leader gate. RoleProvider가 nil이면 single-instance 가정 → 통과.
+	var leaderEpoch *int64
+	if r.deps.Role != nil {
+		if !r.deps.Role.IsLeader() {
+			return audit.Entry{}, audit.ErrNotLeader
+		}
+		ep := r.deps.Role.CurrentEpoch()
+		leaderEpoch = &ep
 	}
 
 	head, err := readHead(ctx, tx, req.TenantID)
@@ -67,6 +92,7 @@ func (r *Repo) Append(ctx context.Context, tx storage.Tx, req audit.AppendReques
 		Outcome:       req.Outcome,
 		Error:         req.Error,
 		PrevHash:      head.Hash,
+		LeaderEpoch:   leaderEpoch,
 	}
 
 	hash, err := audit.ComputeEntryHash(entry.PrevHash, entry.PayloadDigest, entry)
@@ -125,7 +151,7 @@ func (r *Repo) Verify(ctx context.Context, tx storage.Tx, tenantID storage.Tenan
 SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
        action, target_type, target_id,
        payload_digest, outcome, error_code, error_message,
-       prev_hash, hash
+       prev_hash, hash, leader_epoch
   FROM audit_entries
  WHERE tenant_id = ? AND seq BETWEEN ? AND ?
  ORDER BY seq ASC`,
@@ -250,7 +276,7 @@ func (r *Repo) Export(ctx context.Context, tx storage.Tx, tenantID storage.Tenan
 SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
        action, target_type, target_id,
        payload_digest, outcome, error_code, error_message,
-       prev_hash, hash
+       prev_hash, hash, leader_epoch
   FROM audit_entries
  WHERE tenant_id = ? AND seq BETWEEN ? AND ?
  ORDER BY seq ASC`,
@@ -320,6 +346,12 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 func (r *Repo) WriteCheckpoint(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, sgn signer.Signer) (audit.Checkpoint, error) {
 	if sgn == nil {
 		return audit.Checkpoint{}, fmt.Errorf("audit: WriteCheckpoint requires non-nil signer")
+	}
+	// E25 — checkpoint INSERT도 leader-only. follower가 cron에서 시도하면 차단.
+	// (RegisterCheckpointJob의 cron tick은 모든 인스턴스에서 발생 — Stage 4에서 스케줄러
+	// 자체를 leader-only로 만들 예정이지만, 도메인 레벨 가드가 우선)
+	if r.deps.Role != nil && !r.deps.Role.IsLeader() {
+		return audit.Checkpoint{}, audit.ErrNotLeader
 	}
 	head, err := readHead(ctx, tx, tenantID)
 	if err != nil {
@@ -430,12 +462,13 @@ func scanEntry(rows interface {
 		outcome              string
 		errCode, errMessage  sql.NullString
 		prevHash, hash       []byte
+		leaderEpoch          sql.NullInt64
 	)
 	if err := rows.Scan(&seq, &occurredStr,
 		&actorType, &actorID, &actorIP, &actorUA,
 		&action, &targetType, &targetID,
 		&payloadDigest, &outcome, &errCode, &errMessage,
-		&prevHash, &hash); err != nil {
+		&prevHash, &hash, &leaderEpoch); err != nil {
 		return audit.Entry{}, fmt.Errorf("audit: scan entry: %w", err)
 	}
 
@@ -473,6 +506,10 @@ func scanEntry(rows interface {
 	copy(e.PayloadDigest[:], payloadDigest)
 	copy(e.PrevHash[:], prevHash)
 	copy(e.Hash[:], hash)
+	if leaderEpoch.Valid {
+		ep := leaderEpoch.Int64
+		e.LeaderEpoch = &ep
+	}
 	return e, nil
 }
 
@@ -529,19 +566,25 @@ func insertEntry(ctx context.Context, tx storage.Tx, e audit.Entry) error {
 		actorUA = &e.Actor.UserAgent
 	}
 
+	// E25 Stage 2 — leader_epoch nullable column. HA 비활성 시 nil → SQL NULL.
+	var leaderEpochArg any
+	if e.LeaderEpoch != nil {
+		leaderEpochArg = *e.LeaderEpoch
+	}
+
 	_, err := tx.Exec(ctx, `
 INSERT INTO audit_entries (
     tenant_id, seq, occurred_at,
     actor_type, actor_id, actor_ip, actor_ua,
     action, target_type, target_id,
     payload_digest, outcome, error_code, error_message,
-    prev_hash, hash
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    prev_hash, hash, leader_epoch
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(e.TenantID), e.Seq, e.OccurredAt.UTC().Format(time.RFC3339Nano),
 		string(e.Actor.Type), e.Actor.ID, actorIP, actorUA,
 		e.Action, e.Target.Type, e.Target.ID,
 		e.PayloadDigest[:], string(e.Outcome), errCode, errMessage,
-		e.PrevHash[:], e.Hash[:])
+		e.PrevHash[:], e.Hash[:], leaderEpochArg)
 	if err != nil {
 		return fmt.Errorf("audit: insert entry: %w", err)
 	}

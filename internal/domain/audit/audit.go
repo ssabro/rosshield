@@ -87,6 +87,10 @@ type Entry struct {
 	Error         *ErrorInfo // outcome != success 시
 	PrevHash      Hash
 	Hash          Hash
+	// LeaderEpoch는 E25 HA fence token입니다. nil이면 HA 비활성 상태에서 INSERT됨.
+	// 양수면 INSERT 시점의 leader_epoch.current=1 row epoch과 일치 — 향후 stale write
+	// 검증·split-brain 분석에 사용.
+	LeaderEpoch *int64
 }
 
 // AppendRequest는 호출자가 Append에 전달하는 입력입니다.
@@ -177,4 +181,18 @@ var (
 	ErrInvalidOutcome   = errors.New("audit: Outcome is not a known value")
 	ErrNoEntries        = errors.New("audit: chain has no entries to checkpoint")
 	ErrCheckpointExists = errors.New("audit: checkpoint already exists for this seq")
+
+	// ErrNotLeader는 HA 활성 환경에서 follower 인스턴스가 Append를 시도할 때 반환됩니다.
+	// API middleware는 이를 503 Service Unavailable + NOT_LEADER 코드로 매핑합니다 (Stage 3).
+	ErrNotLeader = errors.New("audit: instance is not leader (HA single-writer)")
 )
+
+// RoleProvider는 audit가 HA 활성 시 leader 여부 + 현재 fence token(epoch)을
+// 질의할 수 있는 minimal interface입니다.
+//
+// nil 가능 — 그 경우 HA 비활성으로 간주하고 모든 Append를 leader-gate 없이 통과시킵니다.
+// platform/ha.Manager가 본 interface를 자동 만족 (duck typing — audit는 ha 패키지 미import).
+type RoleProvider interface {
+	IsLeader() bool
+	CurrentEpoch() int64
+}

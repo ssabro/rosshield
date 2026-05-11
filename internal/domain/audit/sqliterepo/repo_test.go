@@ -70,6 +70,77 @@ func appendOne(t *testing.T, store storage.Storage, repo *sqliterepo.Repo, req a
 	return out
 }
 
+// E25 Stage 2 — RoleProvider gate (HA leader-only).
+
+type fakeRole struct {
+	leader bool
+	epoch  int64
+}
+
+func (f *fakeRole) IsLeader() bool      { return f.leader }
+func (f *fakeRole) CurrentEpoch() int64 { return f.epoch }
+
+// 기본 동작(RoleProvider nil)에서 LeaderEpoch는 nil로 INSERT됨 (HA 비활성).
+func TestAppendNoRoleProviderProducesNullEpoch(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+	entry := appendOne(t, store, repo, sampleReq("compat.action"))
+	if entry.LeaderEpoch != nil {
+		t.Errorf("LeaderEpoch = %d, want nil (HA disabled)", *entry.LeaderEpoch)
+	}
+}
+
+// HA 활성 + leader → LeaderEpoch 자동 채움 + INSERT 성공.
+func TestAppendLeaderRoleRecordsEpoch(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "audit.db")
+	store, err := sqlite.Open(storage.Config{Driver: "sqlite", DSN: dbPath})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	role := &fakeRole{leader: true, epoch: 42}
+	repo := sqliterepo.New(sqliterepo.Deps{Clock: clock.System(), Role: role})
+
+	entry := appendOne(t, store, repo, sampleReq("ha.action"))
+	if entry.LeaderEpoch == nil {
+		t.Fatal("LeaderEpoch is nil, want 42")
+	}
+	if *entry.LeaderEpoch != 42 {
+		t.Errorf("LeaderEpoch = %d, want 42", *entry.LeaderEpoch)
+	}
+}
+
+// HA 활성 + follower → ErrNotLeader, INSERT 차단.
+func TestAppendFollowerRoleReturnsErrNotLeader(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "audit.db")
+	store, err := sqlite.Open(storage.Config{Driver: "sqlite", DSN: dbPath})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	role := &fakeRole{leader: false}
+	repo := sqliterepo.New(sqliterepo.Deps{Clock: clock.System(), Role: role})
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	err = store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.Append(ctx, tx, sampleReq("blocked.action"))
+		return e
+	})
+	if !errors.Is(err, audit.ErrNotLeader) {
+		t.Fatalf("expected ErrNotLeader, got %v", err)
+	}
+}
+
 // E2.T1
 func TestAppendInitializesGenesis(t *testing.T) {
 	t.Parallel()
