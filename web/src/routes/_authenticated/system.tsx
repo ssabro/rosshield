@@ -6,6 +6,7 @@ import { API_BASE_PATH } from '@/api/client'
 import { useBackups, useIsAdminOrAuditor, useLicenseInfo } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { requireRole } from '@/lib/route-guards'
 import { formatBytes } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -418,5 +419,6 @@ function Row({
 }
 
 export const Route = createFileRoute('/_authenticated/system')({
+  beforeLoad: () => requireRole('admin', 'auditor'),
   component: SystemPage,
 })

@@ -13,6 +13,7 @@ import {
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { requireRole } from '@/lib/route-guards'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -482,5 +483,6 @@ function createInvitationErrorMessage(
 }
 
 export const Route = createFileRoute('/_authenticated/users')({
+  beforeLoad: () => requireRole('admin'),
   component: UsersPage,
 })

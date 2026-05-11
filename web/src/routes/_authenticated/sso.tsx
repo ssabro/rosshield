@@ -14,6 +14,7 @@ import {
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { requireRole } from '@/lib/route-guards'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -681,5 +682,6 @@ function samlFromConfig(cfg: Record<string, unknown> | undefined): {
 }
 
 export const Route = createFileRoute('/_authenticated/sso')({
+  beforeLoad: () => requireRole('admin'),
   component: SSOPage,
 })
