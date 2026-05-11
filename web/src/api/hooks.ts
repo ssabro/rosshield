@@ -189,17 +189,16 @@ export const useLicenseInfo = () => {
   return useQuery({
     queryKey: ['license', 'info'],
     queryFn: async (): Promise<LicenseInfo> => {
-      const r = await fetch(`${API_BASE_PATH}/license`, {
-        credentials: 'include',
-        headers: {
-          'X-Cookie-Auth': 'true',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-      })
-      if (!r.ok) {
-        throw new ApiError(r.status, `license: ${r.statusText}`)
+      const { data, error, response } = await apiClient.GET('/api/v1/license')
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
       }
-      return (await r.json()) as LicenseInfo
+      // gen schema는 모든 필드가 optional(quotas 포함) — 호출자가 다루기 쉬운
+      // LicenseInfo interface로 좁힘 (useAuditHead와 동일 one-shot cast 패턴).
+      return data as unknown as LicenseInfo
     },
     enabled: !!accessToken,
   })
@@ -208,7 +207,7 @@ export const useLicenseInfo = () => {
 // useBackups — B7 Stage 2 /system 페이지 BackupsCard용. 인증 사용자.
 //   GET /api/v1/backups → { ok: true, value: { backups: [...] } } envelope.
 //   30s polling — Stage 1 자동 schedule(--backup-schedule cron) 결과 reflect.
-//   openapi spec 미정의 → 직접 fetch (Stage 2-C에서 spec 정합 예정).
+//   B7 Stage 2-C에서 openapi spec 추가됨 → typed apiClient 경유.
 export interface BackupMeta {
   filename: string
   size: number
@@ -222,17 +221,16 @@ export const useBackups = () => {
   return useQuery({
     queryKey: ['backups'],
     queryFn: async (): Promise<BackupMeta[]> => {
-      const r = await fetch(`${API_BASE_PATH}/backups`, {
-        credentials: 'include',
-        headers: {
-          'X-Cookie-Auth': 'true',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
-      })
-      if (!r.ok) {
-        throw new ApiError(r.status, `backups: ${r.statusText}`)
+      const { data, error, response } = await apiClient.GET('/api/v1/backups')
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
       }
-      const body = (await r.json()) as { ok: boolean; value: { backups: BackupMeta[] } }
+      // 응답은 { ok: true, value: { backups: BackupMeta[] } } envelope.
+      // openapi-fetch는 envelope를 자동 unwrap하지 않으므로 .value.backups 추출.
+      const body = data as { ok: true; value: { backups: BackupMeta[] } }
       return body.value?.backups ?? []
     },
     enabled: !!accessToken,
