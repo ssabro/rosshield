@@ -10,6 +10,7 @@ import {
   summarizeDeliveries,
   useCreateWebhook,
   useDeleteWebhook,
+  useIsAdmin,
   useTestWebhookEndpoint,
   useWebhookDeliveries,
   useWebhookEndpoints,
@@ -56,6 +57,7 @@ import type { DictKey } from '@/i18n/dict'
 function IntegrationsPage(): React.ReactElement {
   const t = useT()
   const endpoints = useWebhookEndpoints()
+  const isAdmin = useIsAdmin()
   const [showForm, setShowForm] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -71,6 +73,8 @@ function IntegrationsPage(): React.ReactElement {
             variant={showForm ? 'outline' : 'default'}
             size="sm"
             onClick={() => setShowForm((v) => !v)}
+            disabled={!isAdmin}
+            title={!isAdmin ? t('common.role.required.admin') : undefined}
           >
             {showForm
               ? t('integrations.form.toggle.hide')
@@ -79,7 +83,7 @@ function IntegrationsPage(): React.ReactElement {
         }
       />
 
-      {showForm && (
+      {showForm && isAdmin && (
         <CreateEndpointForm
           onCreated={() => {
             setShowForm(false)
@@ -94,6 +98,7 @@ function IntegrationsPage(): React.ReactElement {
         error={endpoints.error}
         selectedId={selectedId}
         onSelect={(id) => setSelectedId(id)}
+        canMutate={isAdmin}
       />
 
       <DeliveriesSection
@@ -111,6 +116,7 @@ function EndpointsTable({
   error,
   selectedId,
   onSelect,
+  canMutate,
 }: {
   endpoints: WebhookEndpoint[]
   isPending: boolean
@@ -118,6 +124,7 @@ function EndpointsTable({
   error: unknown
   selectedId: string | null
   onSelect: (id: string) => void
+  canMutate: boolean
 }): React.ReactElement {
   const t = useT()
   return (
@@ -173,6 +180,7 @@ function EndpointsTable({
                 endpoint={ep}
                 selected={ep.id === selectedId}
                 onSelect={() => onSelect(ep.id)}
+                canMutate={canMutate}
               />
             ))}
         </TableBody>
@@ -185,10 +193,12 @@ function EndpointRow({
   endpoint,
   selected,
   onSelect,
+  canMutate,
 }: {
   endpoint: WebhookEndpoint
   selected: boolean
   onSelect: () => void
+  canMutate: boolean
 }): React.ReactElement {
   const t = useT()
   const del = useDeleteWebhook()
@@ -201,6 +211,7 @@ function EndpointRow({
   }
   const events = endpoint.events ?? []
   const name = endpointDisplayName(endpoint)
+  const adminTooltip = !canMutate ? t('common.role.required.admin') : undefined
   return (
     <TableRow data-selected={selected ? 'true' : undefined}>
       <TableCell className="font-medium">{name}</TableCell>
@@ -247,12 +258,13 @@ function EndpointRow({
           >
             {t('integrations.action.select')}
           </Button>
-          <TestButton endpointId={endpoint.id} />
+          <TestButton endpointId={endpoint.id} canMutate={canMutate} />
           <Button
             size="sm"
             variant="outline"
             onClick={handleDelete}
-            disabled={del.isPending}
+            disabled={del.isPending || !canMutate}
+            title={adminTooltip}
           >
             {del.isPending
               ? t('integrations.action.deleting')
@@ -265,7 +277,13 @@ function EndpointRow({
 }
 
 // TestButton — endpoint one-off ping (O7, E29 backend POST /webhooks/{id}/test).
-function TestButton({ endpointId }: { endpointId: string }): React.ReactElement {
+function TestButton({
+  endpointId,
+  canMutate,
+}: {
+  endpointId: string
+  canMutate: boolean
+}): React.ReactElement {
   const t = useT()
   const test = useTestWebhookEndpoint()
   const handle = (e: React.MouseEvent): void => {
@@ -298,8 +316,12 @@ function TestButton({ endpointId }: { endpointId: string }): React.ReactElement 
       size="sm"
       variant="outline"
       onClick={handle}
-      disabled={test.isPending}
-      title={t('integrations.action.test.tooltip')}
+      disabled={test.isPending || !canMutate}
+      title={
+        !canMutate
+          ? t('common.role.required.admin')
+          : t('integrations.action.test.tooltip')
+      }
     >
       {test.isPending
         ? t('integrations.action.test.sending')

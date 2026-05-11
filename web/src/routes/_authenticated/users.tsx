@@ -8,6 +8,7 @@ import {
   useCreateInvitation,
   useDeleteInvitation,
   useInvitations,
+  useIsAdmin,
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -50,6 +51,7 @@ import type { DictKey } from '@/i18n/dict'
 function UsersPage(): React.ReactElement {
   const t = useT()
   const invitations = useInvitations()
+  const isAdmin = useIsAdmin()
   const [created, setCreated] = useState<CreateInvitationResponse | null>(null)
 
   return (
@@ -61,6 +63,7 @@ function UsersPage(): React.ReactElement {
 
       <CreateInvitationForm
         onCreated={(res) => setCreated(res)}
+        canCreate={isAdmin}
       />
 
       {created && (
@@ -75,6 +78,7 @@ function UsersPage(): React.ReactElement {
         isPending={invitations.isPending}
         isError={invitations.isError}
         error={invitations.error}
+        canRevoke={isAdmin}
       />
     </div>
   )
@@ -83,8 +87,10 @@ function UsersPage(): React.ReactElement {
 // CreateInvitationForm — email + roleName + expiresInHours 폼.
 function CreateInvitationForm({
   onCreated,
+  canCreate,
 }: {
   onCreated: (res: CreateInvitationResponse) => void
+  canCreate: boolean
 }): React.ReactElement {
   const t = useT()
   const create = useCreateInvitation()
@@ -170,7 +176,11 @@ function CreateInvitationForm({
       )}
 
       <div className="md:col-span-4 flex justify-end">
-        <Button type="submit" disabled={create.isPending}>
+        <Button
+          type="submit"
+          disabled={create.isPending || !canCreate}
+          title={!canCreate ? t('common.role.required.admin') : undefined}
+        >
           {create.isPending
             ? t('users.invite.submitting')
             : t('users.invite.submit')}
@@ -250,11 +260,13 @@ function InvitationsTable({
   isPending,
   isError,
   error,
+  canRevoke,
 }: {
   invitations: InvitationView[]
   isPending: boolean
   isError: boolean
   error: unknown
+  canRevoke: boolean
 }): React.ReactElement {
   const t = useT()
   return (
@@ -305,7 +317,13 @@ function InvitationsTable({
           )}
           {!isPending &&
             !isError &&
-            invitations.map((inv) => <InvitationRow key={inv.id} invitation={inv} />)}
+            invitations.map((inv) => (
+              <InvitationRow
+                key={inv.id}
+                invitation={inv}
+                canRevoke={canRevoke}
+              />
+            ))}
         </TableBody>
       </Table>
     </div>
@@ -314,8 +332,10 @@ function InvitationsTable({
 
 function InvitationRow({
   invitation,
+  canRevoke,
 }: {
   invitation: InvitationView
+  canRevoke: boolean
 }): React.ReactElement {
   const t = useT()
   const del = useDeleteInvitation()
@@ -332,6 +352,7 @@ function InvitationRow({
   }
 
   const isTerminal = status === 'accepted' || status === 'expired'
+  const adminTooltip = !canRevoke ? t('common.role.required.admin') : undefined
 
   return (
     <TableRow>
@@ -366,7 +387,8 @@ function InvitationRow({
           size="sm"
           variant="outline"
           onClick={handleDelete}
-          disabled={del.isPending || isTerminal}
+          disabled={del.isPending || isTerminal || !canRevoke}
+          title={adminTooltip}
         >
           {del.isPending
             ? t('users.action.deleting')

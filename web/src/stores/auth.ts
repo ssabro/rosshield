@@ -13,6 +13,11 @@ export interface User {
   email: string
   displayName: string
   tenantId: string
+  // RBAC Stage 2-B (Phase 5) — Login·/me 응답이 함께 내려주는 사용자 role 셋.
+  // Web UI button conditional render(useIsAdmin·useHasRole)에 사용. 서버 측 admin/auditor
+  // gate는 RBAC Stage 1+2-A에서 이미 강제 — 본 필드는 UX 선차단 용도.
+  // 백엔드 호환을 위해 optional — 구버전 응답은 빈 셋으로 취급.
+  roles?: string[]
 }
 
 interface AuthState {

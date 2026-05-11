@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/errors'
 import { API_BASE_PATH } from '@/api/client'
-import { useBackups, useLicenseInfo } from '@/api/hooks'
+import { useBackups, useIsAdminOrAuditor, useLicenseInfo } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { formatBytes } from '@/lib/utils'
@@ -244,6 +244,7 @@ function LicenseUsageCard(): React.ReactElement {
 function BackupsCard(): React.ReactElement {
   const t = useT()
   const q = useBackups()
+  const canDownload = useIsAdminOrAuditor()
   // 최근 5개만 표시 (생성 시각 desc) — 더 많이 보고 싶으면 Stage 2-C에서 페이지네이션 추가.
   const recent = q.data
     ? [...q.data]
@@ -293,7 +294,11 @@ function BackupsCard(): React.ReactElement {
           {q.isSuccess && recent.length > 0 && (
             <ul className="divide-y divide-border rounded-md border border-border">
               {recent.map((b) => (
-                <BackupRow key={b.filename} backup={b} />
+                <BackupRow
+                  key={b.filename}
+                  backup={b}
+                  canDownload={canDownload}
+                />
               ))}
             </ul>
           )}
@@ -317,10 +322,13 @@ function BackupsCard(): React.ReactElement {
 // BackupRow — 단일 백업 메타 + 다운로드 버튼.
 //   다운로드: Stage 2-A `/api/v1/backups/{filename}/download` (Content-Disposition: attachment).
 //   동일 origin + cookie 인증이라 별 Authorization 헤더 불필요 (anchor download 속성 사용).
+//   RBAC Stage 2-B: admin·auditor만 활성. 그 외는 disabled span으로 렌더 + tooltip.
 function BackupRow({
   backup,
+  canDownload,
 }: {
   backup: import('@/api/hooks').BackupMeta
+  canDownload: boolean
 }): React.ReactElement {
   const t = useT()
   const downloadUrl = `${API_BASE_PATH}/backups/${encodeURIComponent(backup.filename)}/download`
@@ -358,14 +366,24 @@ function BackupRow({
           </span>
         </div>
       </div>
-      <a
-        href={downloadUrl}
-        download={backup.filename}
-        aria-label={t('system.backups.download.aria', { filename: backup.filename })}
-        className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:self-start"
-      >
-        {t('system.backups.download')}
-      </a>
+      {canDownload ? (
+        <a
+          href={downloadUrl}
+          download={backup.filename}
+          aria-label={t('system.backups.download.aria', { filename: backup.filename })}
+          className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:self-start"
+        >
+          {t('system.backups.download')}
+        </a>
+      ) : (
+        <span
+          aria-disabled="true"
+          title={t('common.role.required.adminOrAuditor')}
+          className="inline-flex cursor-not-allowed items-center justify-center rounded-md border border-input bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm sm:self-start"
+        >
+          {t('system.backups.download')}
+        </span>
+      )}
     </li>
   )
 }

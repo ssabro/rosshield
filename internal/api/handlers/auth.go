@@ -32,11 +32,16 @@ type loginRequest struct {
 }
 
 // userResponse는 응답에 포함되는 user 메타입니다.
+//
+// Roles는 RBAC Stage 2-B(Phase 5)에서 추가됨 — Web UI가 button conditional
+// render에 사용. JWT의 AccessClaims.Roles와 동일 셋. 서버 측 admin/auditor gate
+// 적용 endpoint는 RBAC Stage 1+2-A 참조.
 type userResponse struct {
-	ID          string `json:"id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"displayName"`
-	TenantID    string `json:"tenantId,omitempty"`
+	ID          string   `json:"id"`
+	Email       string   `json:"email"`
+	DisplayName string   `json:"displayName"`
+	TenantID    string   `json:"tenantId,omitempty"`
+	Roles       []string `json:"roles,omitempty"`
 }
 
 // loginResponse는 POST /api/v1/auth/login 성공 응답 본문입니다.
@@ -211,6 +216,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 			Email:       result.User.Email,
 			DisplayName: result.User.DisplayName,
 			TenantID:    string(result.User.TenantID),
+			Roles:       roleNames(result.Roles),
 		},
 	}
 	if isCookieAuth(r) {
@@ -316,12 +322,30 @@ func (h *Handlers) GetCurrentSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Roles는 AccessClaims(JWT)에서 직접 추출 — DB 재조회 회피 (회전 시점은 다음 refresh).
+	// RBAC Stage 2-B: Web UI button conditional render에 사용.
 	writeJSON(w, http.StatusOK, userResponse{
 		ID:          user.ID,
 		Email:       user.Email,
 		DisplayName: user.DisplayName,
 		TenantID:    string(user.TenantID),
+		Roles:       append([]string{}, claims.Roles...),
 	})
+}
+
+// roleNames는 LoginResult.Roles ([]tenant.Role)에서 .Name만 뽑아 string slice로 변환합니다.
+//
+// nil 입력은 nil 반환(omitempty가 응답에서 필드를 누락). RBAC Stage 2-B에서 Login·Me 응답
+// userResponse.Roles에 사용.
+func roleNames(roles []tenant.Role) []string {
+	if len(roles) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, r.Name)
+	}
+	return out
 }
 
 // lookupTenantByEmail은 email로 tenantID를 조회합니다 (Bootstrap Tx — tenant 미상 시점).

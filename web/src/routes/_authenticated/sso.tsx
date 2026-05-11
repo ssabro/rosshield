@@ -7,6 +7,7 @@ import { ApiError } from '@/api/errors'
 import {
   useCreateSSOProvider,
   useDeleteSSOProvider,
+  useIsAdmin,
   useSSOProviders,
   useUpdateSSOProvider,
 } from '@/api/hooks'
@@ -51,6 +52,7 @@ import type { DictKey } from '@/i18n/dict'
 function SSOPage(): React.ReactElement {
   const t = useT()
   const providers = useSSOProviders()
+  const isAdmin = useIsAdmin()
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<SSOProvider | null>(null)
 
@@ -80,6 +82,8 @@ function SSOPage(): React.ReactElement {
                 setShowForm(true)
               }
             }}
+            disabled={!isAdmin}
+            title={!isAdmin ? t('common.role.required.admin') : undefined}
           >
             {showForm
               ? t('sso.form.toggle.hide')
@@ -88,7 +92,7 @@ function SSOPage(): React.ReactElement {
         }
       />
 
-      {showForm && (
+      {showForm && isAdmin && (
         <ProviderForm
           editing={editing}
           onDone={closeForm}
@@ -101,6 +105,7 @@ function SSOPage(): React.ReactElement {
         isError={providers.isError}
         error={providers.error}
         onEdit={handleEdit}
+        canMutate={isAdmin}
       />
     </div>
   )
@@ -113,12 +118,14 @@ function ProvidersTable({
   isError,
   error,
   onEdit,
+  canMutate,
 }: {
   providers: SSOProvider[]
   isPending: boolean
   isError: boolean
   error: unknown
   onEdit: (p: SSOProvider) => void
+  canMutate: boolean
 }): React.ReactElement {
   const t = useT()
   return (
@@ -166,7 +173,12 @@ function ProvidersTable({
           {!isPending &&
             !isError &&
             providers.map((p) => (
-              <ProviderRow key={p.id} provider={p} onEdit={() => onEdit(p)} />
+              <ProviderRow
+                key={p.id}
+                provider={p}
+                onEdit={() => onEdit(p)}
+                canMutate={canMutate}
+              />
             ))}
         </TableBody>
       </Table>
@@ -177,9 +189,11 @@ function ProvidersTable({
 function ProviderRow({
   provider,
   onEdit,
+  canMutate,
 }: {
   provider: SSOProvider
   onEdit: () => void
+  canMutate: boolean
 }): React.ReactElement {
   const t = useT()
   const del = useDeleteSSOProvider()
@@ -190,6 +204,7 @@ function ProviderRow({
     }
     del.mutate(provider.id)
   }
+  const adminTooltip = !canMutate ? t('common.role.required.admin') : undefined
   return (
     <TableRow>
       <TableCell className="font-mono text-xs text-muted-foreground" title={provider.id}>
@@ -223,14 +238,21 @@ function ProviderRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="inline-flex gap-1">
-          <Button size="sm" variant="outline" onClick={onEdit}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onEdit}
+            disabled={!canMutate}
+            title={adminTooltip}
+          >
             {t('sso.action.edit')}
           </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={handleDelete}
-            disabled={del.isPending}
+            disabled={del.isPending || !canMutate}
+            title={adminTooltip}
           >
             {del.isPending
               ? t('sso.action.deleting')

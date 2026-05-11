@@ -51,6 +51,11 @@ export const ko = {
   'common.empty.generic': '데이터가 없습니다',
   'common.error.unknown': '알 수 없는 오류가 발생했습니다',
 
+  // RBAC Stage 2-B (Phase 5) — role 부족 시 disabled 버튼 tooltip 메시지.
+  'common.role.required.admin': '관리자 권한이 필요합니다',
+  'common.role.required.adminOrAuditor': '관리자 또는 감사인 권한이 필요합니다',
+  'common.role.disabled.tooltip': '권한이 부족합니다',
+
   'pages.robots.title': '로봇',
   'pages.robots.description': '테넌트에 등록된 로봇 목록입니다.',
   'robots.filter.fleet': 'Fleet ID 필터',
@@ -660,6 +665,11 @@ export const en: Record<keyof typeof ko, string> = {
   'common.loading': 'Loading…',
   'common.empty.generic': 'No data',
   'common.error.unknown': 'An unknown error occurred',
+
+  // RBAC Stage 2-B (Phase 5) — disabled button tooltip messages for missing role.
+  'common.role.required.admin': 'admin role required',
+  'common.role.required.adminOrAuditor': 'admin or auditor role required',
+  'common.role.disabled.tooltip': 'insufficient permission',
 
   'pages.robots.title': 'Robots',
   'pages.robots.description': 'Robots registered to your tenant.',

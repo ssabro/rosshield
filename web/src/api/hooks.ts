@@ -109,6 +109,50 @@ export const useMe = () => {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// 2-RBAC) Role helpers — RBAC Stage 2-B (Phase 5) Web UI button conditional render.
+//
+// 서버 측 admin/auditor gate(RBAC Stage 1+2-A)를 web UI에서 미리 표시·차단해
+// 사용자가 403을 받기 전에 의도된 권한 부족을 알 수 있게 한다. 본 helper는
+// useMe 응답의 user.roles만 검사 — 새 fetch 없음(이미 캐시된 me query 활용).
+//
+// 결정론: roles가 아직 로드되지 않았거나(useMe.isPending) 응답에 roles가 누락이면
+// 안전 측면에서 false 반환 (gate 동작 가정). 따라서 me query 도착 전 잠깐 disabled가
+// 표시될 수 있지만, useMe는 router-level prefetch + persisted accessToken 흐름에서
+// 첫 paint 직전 hydrate 되므로 UX 영향 미미.
+//
+// 단위 테스트 가능 형태 — 순수 함수 hasAnyRole(roles, allowed) 분리.
+// ────────────────────────────────────────────────────────────────────────
+
+// hasAnyRole — roles 배열 중 하나라도 allowed에 포함되면 true. 케이스 sensitive.
+//   nil/빈 입력은 false (안전 default — 권한 없음).
+export function hasAnyRole(
+  roles: ReadonlyArray<string> | undefined | null,
+  allowed: ReadonlyArray<string>,
+): boolean {
+  if (!roles || roles.length === 0 || allowed.length === 0) return false
+  for (const r of roles) {
+    if (allowed.includes(r)) return true
+  }
+  return false
+}
+
+// useHasRole — 현재 사용자가 allowed role 중 하나라도 가지면 true.
+//   useMe 캐시를 그대로 사용 — 추가 네트워크 호출 없음.
+export const useHasRole = (...allowed: string[]): boolean => {
+  const me = useMe()
+  return hasAnyRole(me.data?.roles, allowed)
+}
+
+// useIsAdmin — 현재 사용자가 admin role을 가지면 true.
+export const useIsAdmin = (): boolean => useHasRole('admin')
+
+// useIsAuditor — 현재 사용자가 auditor role을 가지면 true.
+export const useIsAuditor = (): boolean => useHasRole('auditor')
+
+// useIsAdminOrAuditor — admin 또는 auditor (예: backup download — 시스템 다운로드).
+export const useIsAdminOrAuditor = (): boolean => useHasRole('admin', 'auditor')
+
+// ────────────────────────────────────────────────────────────────────────
 // 3) Robots
 // ────────────────────────────────────────────────────────────────────────
 
