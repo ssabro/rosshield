@@ -189,37 +189,47 @@ func (h *Handlers) Mount(r chi.Router) {
 			h.CompleteSSOLoginSAML(w, req, chi.URLParam(req, "providerId"))
 		})
 
-		// E21 Phase 3 — Invitation CRUD (admin operations).
-		r.Post("/api/v1/invitations", h.CreateInvitation)
+		// E21 Phase 3 — Invitation read (모든 인증 사용자), mutation은 admin gate (RBAC Stage 1).
 		r.Get("/api/v1/invitations", h.ListInvitations)
-		r.Delete("/api/v1/invitations/{invitationId}", func(w http.ResponseWriter, req *http.Request) {
-			h.RevokeInvitation(w, req, chi.URLParam(req, "invitationId"))
-		})
 
-		// E20-D Phase 3 — SSO Provider CRUD (B4 /sso 페이지 의존).
-		// admin role gate는 후속 stage(E21 invitation·RBAC) 도입 시 r.Use(h.RequireRole("admin")).
-		r.Post("/api/v1/sso/providers", h.CreateSSOProvider)
+		// E20-D Phase 3 — SSO Provider read (모든 인증 사용자), mutation은 admin gate.
 		r.Get("/api/v1/sso/providers", h.ListSSOProviders)
 		r.Get("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
 			h.GetSSOProvider(w, req, chi.URLParam(req, "providerId"))
 		})
-		r.Put("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
-			h.UpdateSSOProvider(w, req, chi.URLParam(req, "providerId"))
-		})
-		r.Delete("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
-			h.DeleteSSOProvider(w, req, chi.URLParam(req, "providerId"))
-		})
 
-		// E23-C Phase 3 — Webhook CRUD HTTP 표면.
-		// chi 직접 mount — gen 래퍼 없이 path param/query 직접 추출.
-		r.Post("/api/v1/webhooks", h.CreateWebhookEndpoint)
+		// E23-C Phase 3 — Webhook read (모든 인증 사용자), mutation은 admin gate.
 		r.Get("/api/v1/webhooks", h.ListWebhookEndpoints)
 		r.Get("/api/v1/webhooks/{endpointId}", h.getWebhookEndpointFromChi)
-		r.Put("/api/v1/webhooks/{endpointId}", h.updateWebhookEndpointFromChi)
-		r.Delete("/api/v1/webhooks/{endpointId}", h.deleteWebhookEndpointFromChi)
 		r.Get("/api/v1/webhooks/{endpointId}/deliveries", h.listWebhookDeliveriesFromChi)
-		// E29 — webhook test (one-off ping, no delivery row)
-		r.Post("/api/v1/webhooks/{endpointId}/test", h.testWebhookEndpointFromChi)
+
+		// RBAC Stage 1 — admin role 전용 mutation 그룹.
+		// SSO Provider CRUD + Invitation CRUD + Webhook CRUD + test ping 모두 admin만.
+		// Phase 5 1차는 admin/operator 2-tier 단순화. auditor 별 read-only 그룹은 후속.
+		r.Group(func(r chi.Router) {
+			r.Use(h.RequireRole("admin"))
+
+			// Invitation mutation (E21)
+			r.Post("/api/v1/invitations", h.CreateInvitation)
+			r.Delete("/api/v1/invitations/{invitationId}", func(w http.ResponseWriter, req *http.Request) {
+				h.RevokeInvitation(w, req, chi.URLParam(req, "invitationId"))
+			})
+
+			// SSO Provider mutation (E20-D)
+			r.Post("/api/v1/sso/providers", h.CreateSSOProvider)
+			r.Put("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
+				h.UpdateSSOProvider(w, req, chi.URLParam(req, "providerId"))
+			})
+			r.Delete("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
+				h.DeleteSSOProvider(w, req, chi.URLParam(req, "providerId"))
+			})
+
+			// Webhook mutation + test (E23-C + E29)
+			r.Post("/api/v1/webhooks", h.CreateWebhookEndpoint)
+			r.Put("/api/v1/webhooks/{endpointId}", h.updateWebhookEndpointFromChi)
+			r.Delete("/api/v1/webhooks/{endpointId}", h.deleteWebhookEndpointFromChi)
+			r.Post("/api/v1/webhooks/{endpointId}/test", h.testWebhookEndpointFromChi)
+		})
 	})
 }
 
