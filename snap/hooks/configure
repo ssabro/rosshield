@@ -9,11 +9,14 @@
 #
 # 본 hook은 값 검증만 수행 — 실제 사용은 post-refresh hook에서 snapctl get으로 읽음.
 #
-# Phase 5 1차는 healthz 옵션 2종만 지원. 향후 stage에서:
+# Phase 5 1차는 healthz 옵션 2종 + B7 backup 옵션 3종만 지원. 향후 stage에서:
 #   - addr (rosshield-server --addr)
 #   - storage (sqlite|postgres)
 #   - log-level
 #   등 확장 (configure → systemd Environment 또는 wrapper script 갱신).
+#
+# Phase 5 1차는 값 검증만 수행. systemd Environment 자동 주입(snap restart로 반영)은
+# wrapper script 도입 후속 stage. 운영자가 snap set 후 별도로 systemctl edit으로 적용.
 
 set -e
 
@@ -39,6 +42,48 @@ if [ -n "$URL" ]; then
 		http://*|https://*) : ;;
 		*)
 			echo "configure: healthz-url must start with http:// or https:// (got: $URL)" >&2
+			exit 1
+			;;
+	esac
+fi
+
+# B7 — backup-schedule 검증: cron spec(robfig/cron 형식) 또는 "@every <duration>" 또는 빈 값.
+# 정밀 cron syntax 검증은 server 측에서 수행 — 본 hook은 prefix·기본 형식만.
+SCHEDULE="$(snapctl get backup-schedule 2>/dev/null || true)"
+if [ -n "$SCHEDULE" ]; then
+	case "$SCHEDULE" in
+		'@every '*|'@hourly'|'@daily'|'@weekly'|'@monthly'|'@yearly'|'@annually'|'@midnight')
+			: ;;
+		*)
+			# 5-field cron (분 시 일 월 요일) 또는 6-field (초 포함). 공백 분리 필드 5~6개.
+			fields=$(echo "$SCHEDULE" | awk '{print NF}')
+			if [ "$fields" -lt 5 ] || [ "$fields" -gt 6 ]; then
+				echo "configure: backup-schedule must be cron spec (5~6 fields) or @every/@daily etc (got: $SCHEDULE)" >&2
+				exit 1
+			fi
+			;;
+	esac
+fi
+
+# B7 — backup-skip-evidence 검증: 빈 값 또는 true/false (boolean string).
+SKIP="$(snapctl get backup-skip-evidence 2>/dev/null || true)"
+if [ -n "$SKIP" ]; then
+	case "$SKIP" in
+		true|false) : ;;
+		*)
+			echo "configure: backup-skip-evidence must be 'true' or 'false' (got: $SKIP)" >&2
+			exit 1
+			;;
+	esac
+fi
+
+# B7 — backup-dir 검증: 빈 값 또는 절대 경로.
+BDIR="$(snapctl get backup-dir 2>/dev/null || true)"
+if [ -n "$BDIR" ]; then
+	case "$BDIR" in
+		/*) : ;;
+		*)
+			echo "configure: backup-dir must be an absolute path (got: $BDIR)" >&2
 			exit 1
 			;;
 	esac

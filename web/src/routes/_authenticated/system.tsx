@@ -6,6 +6,7 @@ import { API_BASE_PATH } from '@/api/client'
 import { useBackups, useLicenseInfo } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { formatBytes } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
   Card,
@@ -367,23 +368,6 @@ function BackupRow({
       </a>
     </li>
   )
-}
-
-// formatBytes — 1024-base human-readable size (B / KB / MB / GB / TB).
-//   testless 헬퍼 — Stage 2-C에서 lib/utils.ts로 승격하며 단위 테스트 추가 가능.
-function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return '—'
-  if (n < 1024) return `${n} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let v = n / 1024
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i += 1
-  }
-  // 두 자리 미만은 소수점 1자리, 그 이상은 정수.
-  const formatted = v >= 100 ? Math.round(v).toString() : v.toFixed(1)
-  return `${formatted} ${units[i]}`
 }
 
 function haRoleLabelKey(role: 'leader' | 'follower'): DictKey {
