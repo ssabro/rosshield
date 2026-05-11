@@ -267,7 +267,7 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [x] enterprise build tag scaffold + 양 빌드 CI 그린 (E31, 2026-05-11 `5c08f42`)
 - [ ] KR 우선출원 완료 + 1순위 결합 청구항 코드 분리 (E32 + O11)
 - [x] Ubuntu Core snap install + healthz (E33, 2026-05-11 `616403c`) — 1차 amd64 빌드 + LXD smoke test CI workflow 자동화. arm64·snap store 발행은 후속 stage.
-- [ ] TPM 키 봉인 + Secure Boot 동작 (E34) — 🟡 Stage 1/5 (2026-05-11 `7550656`+`6563d6a` — keystore 추상 + file 어댑터 + tpm placeholder + design doc + R41 결정 후보 권고). Stage 2~5(go-tpm-tools 본체·bootstrap 거부·swtpm CI·E36 실 TPM)는 R41 결정 후 진입.
+- [ ] TPM 키 봉인 + Secure Boot 동작 (E34) — 🟡 Stage 1+2 (2026-05-11 `7550656`+`6563d6a`+`07c6d83`+`e96937c` — keystore 추상 + file/tpm 어댑터 + R41 결정 + go-tpm-tools v0.4.8 PCR-sealed seal/unseal 본체 + simulator integration test 5건 + .github/workflows/ci.yml tpm-integration job + bootstrap.buildKeystore 갱신). Stage 3(Secure Boot enrollment 가이드)는 후속, Stage 4(E36 실 TPM 검증)는 별 epic.
 - [ ] A/B OTA + 자동 롤백 시연 (E35)
 - [ ] 레퍼런스 HW 2 모델 burn-in (E36)
 - [ ] D1 제품명 확정 + public 전환 (E37)
