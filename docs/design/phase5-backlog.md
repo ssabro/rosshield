@@ -264,16 +264,16 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 
 ## Phase 5 Exit 체크리스트
 
-- [ ] enterprise build tag 양 빌드 모두 CI 그린 (E31)
+- [x] enterprise build tag scaffold + 양 빌드 CI 그린 (E31, 2026-05-11 `5c08f42`)
 - [ ] KR 우선출원 완료 + 1순위 결합 청구항 코드 분리 (E32 + O11)
 - [ ] Ubuntu Core snap install + healthz (E33)
 - [ ] TPM 키 봉인 + Secure Boot 동작 (E34)
 - [ ] A/B OTA + 자동 롤백 시연 (E35)
 - [ ] 레퍼런스 HW 2 모델 burn-in (E36)
 - [ ] D1 제품명 확정 + public 전환 (E37)
-- [ ] HA 2 인스턴스 leader/follower (E25 carryover)
+- [ ] HA design doc + R30-2 권고안 작성 (E25 design, 2026-05-11 `46cf600`) → R30-2 사용자 확정 후 구현
 - [ ] PG-native repo 분리 (E22-F carryover)
-- [ ] 첫 customer 30일 운영 + incident 0 (E38)
+- [ ] 첫 customer 30일 운영 + incident 0 (E38) — onboarding 사전 자료 ✅ 2026-05-11 `58b5e81`
 
 ---
 
@@ -291,8 +291,12 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 
 - [x] phase4-backlog.md → archive로 이전 (2026-05-11)
 - [x] phase5-backlog.md(본 문서) 신규 작성 (2026-05-11)
+- [x] E31 enterprise build tag scaffold + 양 빌드 CI 그린 (2026-05-11 `5c08f42`)
+- [x] E25 HA design doc + R30-2 권고안 — PG advisory lock + leader/follower (2026-05-11 `46cf600`)
+- [x] E38 onboarding 사전 자료 (README + quickstart + intake template) (2026-05-11 `58b5e81`)
+- [ ] R30-2 사용자 확정 (HA 메커니즘 + lock_id 정책 + sqlite 거부 방식)
 - [ ] R40-3 WASM 런타임 결정 (E32 의존)
-- [ ] D8 변리사 컨설팅 의뢰 (O9 — 출원 잠금 해제의 critical path)
+- [ ] D8 변리사 컨설팅 의뢰 (O9 — 출원 잠금 해제의 critical path, 사용자 외부 위임 트랙)
 - [ ] R40-4 첫 customer SKU 결정 (E38 진입 시)
 
 ---
