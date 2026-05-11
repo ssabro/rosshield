@@ -1,0 +1,90 @@
+# E25 Stage 4 — rosshield HA(Leader/Follower) 데모 docker-compose.
+# PG advisory lock 기반 leader-election + nginx LB(503 자동 라우팅) 데모용.
+#
+# 사용:
+#   ROSSHIELD_PG_PASSWORD=... ROSSHIELD_LICENSE_TOKEN=... \
+#     docker compose -f deploy/compose/compose-ha.yml up -d
+#
+# 검증:
+#   curl -s http://localhost:8443/healthz | jq .value.ha
+#   # → { "enabled": true, "role": "leader|follower", "epoch": N, ... }
+#
+# 비목표: PG 자체 HA(streaming replication 별도 구성 가정), TLS, secrets engine.
+
+services:
+  ## 의도: 공유 메타데이터 저장소. advisory lock 호스팅 + audit chain · 멀티테넌트
+  ## 데이터의 single source of truth. 운영 환경에서는 별도 PG primary + standby 권장.
+  postgres:
+    image: postgres:16
+    container_name: rosshield-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rosshield
+      POSTGRES_USER: rosshield
+      POSTGRES_PASSWORD: "${ROSSHIELD_PG_PASSWORD:?ROSSHIELD_PG_PASSWORD must be set}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rosshield -d rosshield"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ## 의도: rosshield-server 인스턴스 A. 부팅 직후 PG advisory lock 12345 획득 시도.
+  ## 성공 시 leader, 실패 시 follower. --ha-leader-id 미지정 → hostname:pid 자동.
+  rosshield-a:
+    image: rosshield/server:dev
+    container_name: rosshield-a
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ROSSHIELD_DATABASE_URL: "postgres://rosshield:${ROSSHIELD_PG_PASSWORD}@postgres:5432/rosshield?sslmode=disable"
+      ROSSHIELD_LICENSE_TOKEN: "${ROSSHIELD_LICENSE_TOKEN:?ROSSHIELD_LICENSE_TOKEN must be set}"
+    command:
+      - "--addr=0.0.0.0:8080"
+      - "--storage=postgres"
+      - "--ha-enabled"
+      - "--ha-lock-id=12345"
+      - "--ha-heartbeat-interval=5s"
+      - "--ha-advertised-addr=http://rosshield-a:8080"
+
+  ## 의도: rosshield-server 인스턴스 B. A와 동일 설정. lock 경합 시 한쪽만 leader.
+  ## A crash → B가 약 5~15s 내 승격(epoch +1). 운영 환경에서는 3 인스턴스 권장.
+  rosshield-b:
+    image: rosshield/server:dev
+    container_name: rosshield-b
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ROSSHIELD_DATABASE_URL: "postgres://rosshield:${ROSSHIELD_PG_PASSWORD}@postgres:5432/rosshield?sslmode=disable"
+      ROSSHIELD_LICENSE_TOKEN: "${ROSSHIELD_LICENSE_TOKEN:?ROSSHIELD_LICENSE_TOKEN must be set}"
+    command:
+      - "--addr=0.0.0.0:8080"
+      - "--storage=postgres"
+      - "--ha-enabled"
+      - "--ha-lock-id=12345"
+      - "--ha-heartbeat-interval=5s"
+      - "--ha-advertised-addr=http://rosshield-b:8080"
+
+  ## 의도: L7 LB. follower의 503 NOT_LEADER 응답을 보고 다음 upstream(leader)으로
+  ## 자동 retry. Stage 3 RequireLeaderForWrites middleware와 짝을 이룸.
+  ## 실 환경에서는 ssl + cert + access log 추가.
+  nginx:
+    image: nginx:1.27
+    container_name: rosshield-lb
+    restart: unless-stopped
+    depends_on:
+      - rosshield-a
+      - rosshield-b
+    volumes:
+      - ./nginx-ha.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8443:8443"
+
+volumes:
+  pgdata:
+    name: rosshield-pgdata
