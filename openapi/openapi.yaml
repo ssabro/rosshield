@@ -523,6 +523,42 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/packs/{packKey}/checks/{checkId}:
+    get:
+      tags: [benchmark]
+      operationId: getCheck
+      summary: 단일 check 상세 (audit cmd + eval rule + rationale + fix) (E12 Stage 6)
+      description: |
+        pack 안의 단일 check 메타 + 실행 명령 + 평가 규칙 AST + 정당성 + 수정
+        가이드 반환. systemTenant 우선 → caller fallback.
+      x-status: phase5
+      parameters:
+        - in: path
+          name: packKey
+          required: true
+          schema: { type: string }
+          description: vendor-name-version 합성 키
+        - in: path
+          name: checkId
+          required: true
+          schema: { type: string }
+          description: 팩 내 식별자 (예 CIS-1.1.1.1)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckDetail"
+        "404":
+          description: Pack or check not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/audit/head:
     get:
       tags: [audit]
@@ -2073,6 +2109,21 @@ components:
               type: array
               description: CheckID 알파벳 정렬
               items: { $ref: "#/components/schemas/PackCheck" }
+
+    CheckDetail:
+      allOf:
+        - $ref: "#/components/schemas/PackCheck"
+        - type: object
+          required: [packKey, auditCommand, evaluationRule]
+          properties:
+            packKey:        { type: string, description: 소속 pack의 packKey }
+            auditCommand:   { type: string, description: SSH 실행 명령 (bash 직번역) }
+            evaluationRule:
+              type: object
+              description: 평가 규칙 AST (sealed white-list)
+              additionalProperties: true
+            rationale:      { type: string, description: 검사 정당성·근거 }
+            fixGuidance:    { type: string, description: 수정 가이드 (운영자 친화적 절차) }
 
     # ─── Webhook test (E29) ──────────────────────────────────────────────
     WebhookTestResponse:

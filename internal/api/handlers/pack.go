@@ -10,6 +10,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
@@ -115,6 +116,70 @@ type checkResponse struct {
 	Title       string `json:"title"`
 	Severity    string `json:"severity"`
 	Description string `json:"description,omitempty"`
+}
+
+// checkDetailResponse는 GET /api/v1/packs/{packKey}/checks/{checkId} 응답입니다.
+//
+// listChecks(packDetailResponse.Checks)는 메타만, detail은 audit/eval/rationale/fix까지.
+type checkDetailResponse struct {
+	checkResponse
+	PackKey        string          `json:"packKey"`
+	AuditCommand   string          `json:"auditCommand"`
+	EvaluationRule json.RawMessage `json:"evaluationRule"`
+	Rationale      string          `json:"rationale,omitempty"`
+	FixGuidance    string          `json:"fixGuidance,omitempty"`
+}
+
+// GetCheck은 GET /api/v1/packs/{packKey}/checks/{checkId} 핸들러입니다.
+//
+// pack 안의 단일 check 메타 + audit command + eval rule + rationale + fix guidance 반환.
+// systemTenant 우선 → caller fallback 패턴은 GetPack과 동일.
+func (h *Handlers) GetCheck(w http.ResponseWriter, r *http.Request, packKey, checkID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.Benchmark == nil {
+		writeError(w, http.StatusServiceUnavailable, "benchmark service not configured")
+		return
+	}
+	if packKey == "" || checkID == "" {
+		writeError(w, http.StatusBadRequest, "packKey and checkId required")
+		return
+	}
+
+	pack, _, err := h.fetchPackByKey(r.Context(), systemTenantID, packKey)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		writeError(w, errorStatusFor(err), "get system pack failed")
+		return
+	}
+	if errors.Is(err, storage.ErrNotFound) && tenantID != systemTenantID {
+		pack, _, err = h.fetchPackByKey(r.Context(), tenantID, packKey)
+		if err != nil {
+			writeError(w, errorStatusFor(err), "get pack failed")
+			return
+		}
+	}
+
+	for _, c := range pack.Checks {
+		if c.CheckID == checkID {
+			out := checkDetailResponse{
+				checkResponse: checkResponse{
+					ID: c.ID, CheckID: c.CheckID, Title: c.Title,
+					Severity: string(c.Severity), Description: c.Description,
+				},
+				PackKey:        pack.PackKey,
+				AuditCommand:   c.AuditCommand,
+				EvaluationRule: c.EvaluationRule,
+				Rationale:      c.Rationale,
+				FixGuidance:    c.FixGuidance,
+			}
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "check not found")
 }
 
 // GetPack은 GET /api/v1/packs/{packKey} 핸들러입니다.

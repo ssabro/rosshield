@@ -182,6 +182,111 @@ func TestGetPackReturnsChecks(t *testing.T) {
 	}
 }
 
+func TestGetCheckReturnsDetail(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	installSamplePack(t, f)
+	token := f.loginAndGetToken(t)
+
+	// pack의 첫 check id 추출.
+	listReq, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/packs", nil)
+	listReq.Header.Set("Authorization", "Bearer "+token)
+	listResp, _ := http.DefaultClient.Do(listReq)
+	defer func() { _ = listResp.Body.Close() }()
+	var list struct {
+		Packs []struct {
+			PackKey string `json:"packKey"`
+		} `json:"packs"`
+	}
+	_ = json.NewDecoder(listResp.Body).Decode(&list)
+	packKey := list.Packs[0].PackKey
+
+	detailReq, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/packs/"+packKey, nil)
+	detailReq.Header.Set("Authorization", "Bearer "+token)
+	detailResp, _ := http.DefaultClient.Do(detailReq)
+	defer func() { _ = detailResp.Body.Close() }()
+	var detail struct {
+		Checks []struct {
+			CheckID string `json:"checkId"`
+		} `json:"checks"`
+	}
+	_ = json.NewDecoder(detailResp.Body).Decode(&detail)
+	if len(detail.Checks) == 0 {
+		t.Fatal("pack has no checks")
+	}
+	checkID := detail.Checks[0].CheckID
+
+	// GET /api/v1/packs/{packKey}/checks/{checkId}
+	req, _ := http.NewRequest(http.MethodGet,
+		f.server.URL+"/api/v1/packs/"+packKey+"/checks/"+checkID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET check detail: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var cd struct {
+		ID             string          `json:"id"`
+		CheckID        string          `json:"checkId"`
+		PackKey        string          `json:"packKey"`
+		Title          string          `json:"title"`
+		Severity       string          `json:"severity"`
+		AuditCommand   string          `json:"auditCommand"`
+		EvaluationRule json.RawMessage `json:"evaluationRule"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&cd); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if cd.CheckID != checkID {
+		t.Errorf("CheckID = %q, want %q", cd.CheckID, checkID)
+	}
+	if cd.PackKey != packKey {
+		t.Errorf("PackKey = %q, want %q", cd.PackKey, packKey)
+	}
+	if cd.AuditCommand == "" {
+		t.Error("AuditCommand empty")
+	}
+	if len(cd.EvaluationRule) == 0 {
+		t.Error("EvaluationRule empty")
+	}
+}
+
+func TestGetCheckNotFound(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	installSamplePack(t, f)
+	token := f.loginAndGetToken(t)
+
+	// 실 packKey 추출.
+	listReq, _ := http.NewRequest(http.MethodGet, f.server.URL+"/api/v1/packs", nil)
+	listReq.Header.Set("Authorization", "Bearer "+token)
+	listResp, _ := http.DefaultClient.Do(listReq)
+	defer func() { _ = listResp.Body.Close() }()
+	var list struct {
+		Packs []struct {
+			PackKey string `json:"packKey"`
+		} `json:"packs"`
+	}
+	_ = json.NewDecoder(listResp.Body).Decode(&list)
+	packKey := list.Packs[0].PackKey
+
+	req, _ := http.NewRequest(http.MethodGet,
+		f.server.URL+"/api/v1/packs/"+packKey+"/checks/nonexistent-check-9999", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, _ := http.DefaultClient.Do(req)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestGetPackNotFound(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()

@@ -382,6 +382,21 @@ export const ko = {
   'packs.detail.col.severity': '심각도',
   'packs.detail.col.title': '제목',
 
+  'checks.detail.notFound': '해당 검사 항목을 찾을 수 없습니다',
+  'checks.detail.error': '검사 정보를 가져오지 못했습니다',
+  'checks.detail.backToPack': '팩 페이지로 돌아가기',
+  'checks.detail.viewPack': '팩 보기',
+  'checks.detail.meta': '메타',
+  'checks.detail.auditCommand': 'Audit Command (실행 명령)',
+  'checks.detail.evaluationRule': 'Evaluation Rule (평가 규칙 AST)',
+  'checks.detail.rationale': 'Rationale (정당성)',
+  'checks.detail.fixGuidance': 'Fix Guidance (수정 가이드)',
+  'checks.detail.field.checkId': '검사 ID',
+  'checks.detail.field.id': '내부 ID (ULID)',
+  'checks.detail.field.packKey': '팩 키',
+  'checks.detail.field.severity': '심각도',
+  'checks.detail.field.description': '설명',
+
   'system.backups.section': '백업 (E28)',
   'system.backups.intro':
     '서버 실행 중에도 SQLite VACUUM INTO + tar.gz로 일관 스냅샷을 떠낼 수 있습니다.',
@@ -1026,6 +1041,21 @@ export const en: Record<keyof typeof ko, string> = {
   'packs.detail.col.checkId': 'Check ID',
   'packs.detail.col.severity': 'Severity',
   'packs.detail.col.title': 'Title',
+
+  'checks.detail.notFound': 'Check not found',
+  'checks.detail.error': 'Failed to load check details',
+  'checks.detail.backToPack': 'Back to Pack',
+  'checks.detail.viewPack': 'View pack',
+  'checks.detail.meta': 'Metadata',
+  'checks.detail.auditCommand': 'Audit Command',
+  'checks.detail.evaluationRule': 'Evaluation Rule (AST)',
+  'checks.detail.rationale': 'Rationale',
+  'checks.detail.fixGuidance': 'Fix Guidance',
+  'checks.detail.field.checkId': 'Check ID',
+  'checks.detail.field.id': 'Internal ID (ULID)',
+  'checks.detail.field.packKey': 'Pack Key',
+  'checks.detail.field.severity': 'Severity',
+  'checks.detail.field.description': 'Description',
 
   'system.backups.section': 'Backups (E28)',
   'system.backups.intro':

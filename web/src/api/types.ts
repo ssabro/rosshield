@@ -347,6 +347,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/packs/{packKey}/checks/{checkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 단일 check 상세 (audit cmd + eval rule + rationale + fix) (E12 Stage 6)
+         * @description pack 안의 단일 check 메타 + 실행 명령 + 평가 규칙 AST + 정당성 + 수정
+         *     가이드 반환. systemTenant 우선 → caller fallback.
+         */
+        get: operations["getCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/head": {
         parameters: {
             query?: never;
@@ -1303,6 +1324,20 @@ export interface components {
             /** @description CheckID 알파벳 정렬 */
             checks: components["schemas"]["PackCheck"][];
         };
+        CheckDetail: components["schemas"]["PackCheck"] & {
+            /** @description 소속 pack의 packKey */
+            packKey: string;
+            /** @description SSH 실행 명령 (bash 직번역) */
+            auditCommand: string;
+            /** @description 평가 규칙 AST (sealed white-list) */
+            evaluationRule: {
+                [key: string]: unknown;
+            };
+            /** @description 검사 정당성·근거 */
+            rationale?: string;
+            /** @description 수정 가이드 (운영자 친화적 절차) */
+            fixGuidance?: string;
+        };
         /**
          * @description Result of a one-off ping. `success=true` iff the upstream returned a 2xx
          *     status. Transport-level failures (DNS, TLS, timeout) populate `error` with
@@ -1994,6 +2029,41 @@ export interface operations {
                 };
             };
             /** @description Pack not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description vendor-name-version 합성 키 */
+                packKey: string;
+                /** @description 팩 내 식별자 (예 CIS-1.1.1.1) */
+                checkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckDetail"];
+                };
+            };
+            /** @description Pack or check not found */
             404: {
                 headers: {
                     [name: string]: unknown;

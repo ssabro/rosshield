@@ -222,6 +222,35 @@ export const usePack = (packKey: string) => {
   })
 }
 
+export interface CheckDetail extends PackCheck {
+  packKey: string
+  auditCommand: string
+  evaluationRule: Record<string, unknown>
+  rationale?: string
+  fixGuidance?: string
+}
+
+// useCheck(packKey, checkId) — 단일 check의 audit cmd + eval rule + rationale + fix.
+export const useCheck = (packKey: string, checkId: string) => {
+  return useQuery({
+    queryKey: ['check', packKey, checkId],
+    queryFn: async (): Promise<CheckDetail> => {
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/packs/{packKey}/checks/{checkId}',
+        { params: { path: { packKey, checkId } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as CheckDetail
+    },
+    enabled: !!packKey && !!checkId,
+  })
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // 3) Robots
 // ────────────────────────────────────────────────────────────────────────

@@ -105,7 +105,7 @@ function PackDetailPage(): React.ReactElement {
               </TableHeader>
               <TableBody>
                 {pack.checks.map((c) => (
-                  <CheckRow key={c.id} check={c} />
+                  <CheckRow key={c.id} check={c} packKey={pack.packKey} />
                 ))}
               </TableBody>
             </Table>
@@ -125,10 +125,18 @@ function Meta({ label, value, mono }: { label: string; value: string; mono?: boo
   )
 }
 
-function CheckRow({ check }: { check: PackCheck }): React.ReactElement {
+function CheckRow({ check, packKey }: { check: PackCheck; packKey: string }): React.ReactElement {
   return (
     <TableRow>
-      <TableCell className="font-mono text-xs">{check.checkId}</TableCell>
+      <TableCell className="font-mono text-xs">
+        <Link
+          to="/packs/$packKey/checks/$checkId"
+          params={{ packKey, checkId: check.checkId }}
+          className="hover:underline"
+        >
+          {check.checkId}
+        </Link>
+      </TableCell>
       <TableCell>
         <SeverityBadge severity={check.severity} />
       </TableCell>
