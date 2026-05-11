@@ -274,7 +274,8 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [x] HA 2 인스턴스 leader/follower (E25, 2026-05-11) — Stage 1~4 모두 마감 (Manager + audit gate + middleware + scheduler + testcontainers + compose-ha + 운영 docs)
 - [x] PG-native repo 분리 1차 (E22-F, 2026-05-11 `f3bf23f`) — R30-1=C 하이브리드, 핫 path 3 컬럼 회수. BOOLEAN/A Big bang은 customer query plan 분석 후 점진
 - [x] B6+B7 통합 /system 운영 dashboard 페이지 (Phase 4 web 갭, 2026-05-11 `4d8a7a8`) — 헬스·HA·라이선스·백업 4 카드, 백엔드 변경 0
-- [x] B7 후속 Stage 1 — 자동 백업 schedule + GET /api/v1/backups list (2026-05-11 `d1bf511`) — executeBackup 헬퍼 추출 + registerBackupJob cronsched 결선(HA leader-only 자동) + listBackups 디렉터리 스캔 + handler envelope. Stage 2(download + UI + RBAC)는 후속.
+- [x] B7 후속 Stage 1 — 자동 백업 schedule + GET /api/v1/backups list (2026-05-11 `d1bf511`) — executeBackup 헬퍼 추출 + registerBackupJob cronsched 결선(HA leader-only 자동) + listBackups 디렉터리 스캔 + handler envelope.
+- [x] B7 후속 Stage 2 — download endpoint + web BackupsCard 동적 (2026-05-11 `54f0384`+`aa4cc0a`) — Stage 2-A(download handler + path traversal 방어 + http.ServeContent + 5 단위) + Stage 2-B(useBackups hook + BackupsCard 동적 5개 표시 + Download anchor + 12 i18n 키). Stage 2-C(openapi spec + RBAC + snap configure + schedule UI)는 후속.
 - [ ] 첫 customer 30일 운영 + incident 0 (E38) — onboarding 사전 자료 ✅ 2026-05-11 `58b5e81`
 
 ---
