@@ -1,0 +1,44 @@
+#!/bin/sh
+# E35 — snap post-refresh hook (Phase 5 A/B OTA + 자동 rollback).
+#
+# snap이 새 revision을 install한 직후 실행됩니다. healthz 폴링으로 새 revision의
+# 정상 부팅을 검증 — 실패 시 exit 1로 종료하면 snapd가 자동으로 이전 revision으로
+# 복원 (snap의 standard rollback 메커니즘).
+#
+# 검증 절차:
+#   1. snap services rosshield.server가 active되기까지 최대 SNAP_HEALTHZ_TIMEOUT 대기.
+#   2. /healthz 응답에 "status":"ok" 포함 확인.
+#   3. SNAP_HEALTHZ_TIMEOUT (기본 60s) 안에 OK 못 받으면 exit 1 → snapd 자동 rollback.
+#
+# 환경 변수 (snap set rosshield <key>=<value>로 설정):
+#   - healthz-url    (기본 http://127.0.0.1:8080/healthz)
+#   - healthz-timeout (기본 60s)
+#
+# 권한:
+#   - plugs: [network] — curl localhost healthz 가능 (snap interface 자동 연결)
+#
+# snap docs: post-refresh hook이 비정상 종료(exit != 0)하면 snapd가 refresh 자체를
+# 실패로 간주하고 이전 revision으로 자동 복원. 운영자가 snap revert 명령 호출 불필요.
+#
+# 설계: docs/design/phase5-backlog.md §E35.
+
+set -e
+
+HEALTHZ_URL="$(snapctl get healthz-url 2>/dev/null || true)"
+HEALTHZ_URL="${HEALTHZ_URL:-http://127.0.0.1:8080/healthz}"
+HEALTHZ_TIMEOUT="$(snapctl get healthz-timeout 2>/dev/null || true)"
+HEALTHZ_TIMEOUT="${HEALTHZ_TIMEOUT:-60}"
+
+logger -t rosshield-post-refresh "checking $HEALTHZ_URL with ${HEALTHZ_TIMEOUT}s timeout"
+
+deadline=$(( $(date +%s) + HEALTHZ_TIMEOUT ))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+	if curl -fsS --max-time 5 "$HEALTHZ_URL" 2>/dev/null | grep -q '"status":"ok"'; then
+		logger -t rosshield-post-refresh "healthz OK after refresh"
+		exit 0
+	fi
+	sleep 2
+done
+
+logger -t rosshield-post-refresh "healthz did not return ok within ${HEALTHZ_TIMEOUT}s — refusing refresh (snapd will auto-revert)"
+exit 1

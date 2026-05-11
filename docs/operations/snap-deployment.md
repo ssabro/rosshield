@@ -117,7 +117,7 @@ rosshield-server backup --output ...  # 백업 (E28)
 rosshield-audit-verify --bundle ...   # 외부 감사인 검증 (E30)
 ```
 
-## 7. 업데이트 (snap refresh)
+## 7. 업데이트 (snap refresh) + 자동 rollback (E35)
 
 `snap channel` 발행이 있으면 자동 업데이트:
 
@@ -126,7 +126,55 @@ sudo snap refresh rosshield
 sudo snap refresh --hold=72h rosshield   # 72시간 holding
 ```
 
-자동 롤백은 E35 stage(별 epic)에서 추가.
+### 7.1 자동 rollback 메커니즘 (E35)
+
+snap이 새 revision을 install한 직후 `snap/hooks/post-refresh`가 실행됩니다.
+healthz 폴링으로 새 revision의 정상 부팅을 검증 — **실패 시 snapd가 자동으로
+이전 revision으로 복원**합니다 (snap의 standard rollback, 운영자 개입 불필요).
+
+기본 동작:
+- `/healthz`에 최대 60s 폴링 (2s 간격 + 5s curl timeout)
+- 응답 본문에 `"status":"ok"` 발견 시 OK
+- 60s 안에 OK 못 받으면 hook이 exit 1 → snapd 자동 revert
+
+### 7.2 healthz 폴링 정책 조정
+
+```bash
+# 기본 60s를 120s로 늘림 (느린 부팅 환경)
+sudo snap set rosshield healthz-timeout=120
+
+# 별도 healthz endpoint (예: /metrics 포트와 분리)
+sudo snap set rosshield healthz-url=http://127.0.0.1:9090/healthz
+
+# 현재 값 확인
+sudo snap get rosshield
+```
+
+`healthz-timeout`은 5~600초 범위. `healthz-url`은 `http://` 또는 `https://`
+prefix 필수. 잘못된 값은 `configure` hook이 거부.
+
+### 7.3 수동 rollback
+
+자동 rollback이 동작하지 않거나(예: hook 자체 버그) 운영자가 강제로 이전 버전을
+원할 때:
+
+```bash
+sudo snap revert rosshield                    # 즉시 이전 revision으로 복원
+sudo snap list rosshield --all                # 보유 revision 목록 확인
+sudo snap revert rosshield --revision=<N>     # 특정 revision으로 복원
+```
+
+snap은 기본 2 revision을 보유합니다(`snap set system refresh.retain=3`로 늘림).
+
+### 7.4 채널 정책
+
+| Channel | 용도 | 권장 운영 |
+|---|---|---|
+| `latest/edge` | 매 commit 빌드 | 개발자·QA — production 사용 금지 |
+| `latest/candidate` | tag rc 빌드 | staging 환경, 1주 burn-in |
+| `latest/stable` | tag stable release | production |
+
+운영자는 `sudo snap refresh --channel=latest/stable rosshield`로 채널 잠금 가능.
 
 ## 8. 트러블슈팅
 

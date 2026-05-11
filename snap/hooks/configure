@@ -1,0 +1,47 @@
+#!/bin/sh
+# E35 — snap configure hook (Phase 5).
+#
+# `snap set rosshield <key>=<value>` 호출 시 실행됩니다. 운영자가 healthz polling
+# 정책 등을 조정 가능:
+#
+#   sudo snap set rosshield healthz-url=http://127.0.0.1:9090/healthz
+#   sudo snap set rosshield healthz-timeout=120
+#
+# 본 hook은 값 검증만 수행 — 실제 사용은 post-refresh hook에서 snapctl get으로 읽음.
+#
+# Phase 5 1차는 healthz 옵션 2종만 지원. 향후 stage에서:
+#   - addr (rosshield-server --addr)
+#   - storage (sqlite|postgres)
+#   - log-level
+#   등 확장 (configure → systemd Environment 또는 wrapper script 갱신).
+
+set -e
+
+# healthz-timeout 검증: 양의 정수.
+TIMEOUT="$(snapctl get healthz-timeout 2>/dev/null || true)"
+if [ -n "$TIMEOUT" ]; then
+	case "$TIMEOUT" in
+		''|*[!0-9]*)
+			echo "configure: healthz-timeout must be a positive integer (got: $TIMEOUT)" >&2
+			exit 1
+			;;
+	esac
+	if [ "$TIMEOUT" -lt 5 ] || [ "$TIMEOUT" -gt 600 ]; then
+		echo "configure: healthz-timeout must be between 5 and 600 seconds (got: $TIMEOUT)" >&2
+		exit 1
+	fi
+fi
+
+# healthz-url 검증: http(s) URL prefix 점검 (정밀 URL 검증은 후속).
+URL="$(snapctl get healthz-url 2>/dev/null || true)"
+if [ -n "$URL" ]; then
+	case "$URL" in
+		http://*|https://*) : ;;
+		*)
+			echo "configure: healthz-url must start with http:// or https:// (got: $URL)" >&2
+			exit 1
+			;;
+	esac
+fi
+
+exit 0

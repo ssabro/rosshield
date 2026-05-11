@@ -107,5 +107,15 @@ parts:
       go build -trimpath -ldflags "$LDFLAGS" -o "$CRAFT_PART_INSTALL/bin/rosshield" ./cmd/rosshield
       go build -trimpath -ldflags "$LDFLAGS" -o "$CRAFT_PART_INSTALL/bin/rosshield-audit-verify" ./cmd/rosshield-audit-verify
 
-# snap configure는 후속 stage(E34 TPM·E35 OTA)에서 추가 — 본 stage는 minimal 단일 daemon.
-# 사용자 정의 config는 snap set rosshield <key>=<value> + 자체 hook 처리.
+# E35 — snap hooks (post-refresh + configure)는 snap/hooks/ 디렉터리에서 자동 인식.
+# plugs는 명시 필요:
+hooks:
+  post-refresh:
+    plugs:
+      - network    # curl localhost healthz
+  configure:
+    plugs: []      # snapctl get/set만 — 외부 자원 접근 X
+
+# 향후 stage(E34 후속·E37 D1):
+#   - configure hook 확장 (snap set rosshield addr=... storage=... 등)
+#   - layout 추가 (TPM device path) — keystore=tpm 사용 시
