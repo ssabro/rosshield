@@ -173,11 +173,12 @@ func newMux(p *Platform) http.Handler {
 	})
 	h.Mount(apiRouter)
 
-	// B7 후속 — GET /api/v1/backups (chi 직접 mount, AuthMiddleware 통과 후).
-	// openapi spec 표면 추가 + RBAC role check + download endpoint는 Stage 2 후속.
+	// B7 후속 — GET /api/v1/backups + GET /api/v1/backups/{filename}/download.
+	// chi 직접 mount, AuthMiddleware 통과 후. openapi spec 표면 추가 + RBAC는 Stage 2-C 후속.
 	apiRouter.Group(func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
 		r.Get("/api/v1/backups", listBackupsHandler(p))
+		r.Get("/api/v1/backups/{filename}/download", downloadBackupHandler(p))
 	})
 
 	mux.Handle("/api/v1/", apiRouter)
