@@ -885,50 +885,20 @@ export interface UpdateWebhookEndpointVars {
   enabled?: boolean
 }
 
-// webhookFetch는 Bearer 인증 + JSON 헤더를 포함한 fetch wrapper입니다.
-//
-// 401 시 세션 클리어, 비-OK는 ApiError throw, 204는 undefined 반환.
-// 별도 함수로 두는 이유: openapi-fetch typed client는 path param + body 결합 시
-// 매번 cast가 필요해 hooks 측 호출이 verbose해짐. webhook은 6 endpoint 단순 CRUD.
-async function webhookFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const accessToken = useAuthStore.getState().accessToken
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((init?.headers as Record<string, string> | undefined) ?? {}),
-  }
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`
-  }
-  const res = await fetch(path, { ...init, headers })
-  if (res.status === 401) {
-    useAuthStore.getState().clearSession()
-  }
-  if (res.status === 204) {
-    return undefined as unknown as T
-  }
-  if (!res.ok) {
-    let message = res.statusText
-    try {
-      const body: unknown = await res.json()
-      message = extractErrorMessage(body, res.statusText)
-    } catch {
-      /* JSON 파싱 실패 시 statusText fallback */
-    }
-    throw new ApiError(res.status, message)
-  }
-  return (await res.json()) as T
-}
-
 export const useWebhookEndpoints = () => {
   return useQuery({
     queryKey: ['webhooks'],
     queryFn: async (): Promise<WebhookEndpoint[]> => {
-      const body = await webhookFetch<{ endpoints: WebhookEndpoint[] }>(
-        `${API_BASE_PATH}/webhooks`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/webhooks',
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as unknown as { endpoints: WebhookEndpoint[] }
       return body.endpoints ?? []
     },
   })
@@ -938,10 +908,17 @@ export const useCreateWebhook = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: CreateWebhookEndpointVars): Promise<WebhookEndpoint> => {
-      return webhookFetch<WebhookEndpoint>(`${API_BASE_PATH}/webhooks`, {
-        method: 'POST',
-        body: JSON.stringify(vars),
-      })
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/webhooks',
+        { body: vars as unknown as never },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as WebhookEndpoint
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['webhooks'] })
@@ -954,10 +931,20 @@ export const useUpdateWebhook = () => {
   return useMutation({
     mutationFn: async (vars: UpdateWebhookEndpointVars): Promise<WebhookEndpoint> => {
       const { endpointId, ...body } = vars
-      return webhookFetch<WebhookEndpoint>(
-        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}`,
-        { method: 'PUT', body: JSON.stringify(body) },
+      const { data, error, response } = await apiClient.PUT(
+        '/api/v1/webhooks/{endpointId}',
+        {
+          params: { path: { endpointId } },
+          body: body as unknown as never,
+        },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as WebhookEndpoint
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['webhooks'] })
@@ -970,10 +957,16 @@ export const useDeleteWebhook = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (endpointId: string): Promise<void> => {
-      await webhookFetch<void>(
-        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}`,
-        { method: 'DELETE' },
+      const { error, response } = await apiClient.DELETE(
+        '/api/v1/webhooks/{endpointId}',
+        { params: { path: { endpointId } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['webhooks'] })
@@ -988,9 +981,17 @@ export const useWebhookDeliveries = (endpointId?: string) => {
       if (!endpointId) {
         return []
       }
-      const body = await webhookFetch<{ deliveries: WebhookDelivery[] }>(
-        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}/deliveries`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/webhooks/{endpointId}/deliveries',
+        { params: { path: { endpointId } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as unknown as { deliveries: WebhookDelivery[] }
       return body.deliveries ?? []
     },
     enabled: !!endpointId,
@@ -1047,10 +1048,17 @@ export const useTestWebhookEndpoint = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (endpointId: string): Promise<WebhookTestResult> => {
-      return webhookFetch<WebhookTestResult>(
-        `${API_BASE_PATH}/webhooks/${encodeURIComponent(endpointId)}/test`,
-        { method: 'POST' },
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/webhooks/{endpointId}/test',
+        { params: { path: { endpointId } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as WebhookTestResult
     },
     onSettled: (_data, _err, endpointId) => {
       // ping 후 deliveries 캐시 무효화 — UI 새 row 표시 (현재 backend는 INSERT 안 함).
@@ -1119,51 +1127,20 @@ export interface UpdateSSOProviderVars {
   config?: Record<string, unknown>
 }
 
-// ssoFetch — webhookFetch와 동일 패턴. SSO endpoint는 OpenAPI spec에 미정의이므로
-//   typed openapi-fetch 대신 직접 fetch + Bearer 헤더.
-async function ssoFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const accessToken = useAuthStore.getState().accessToken
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((init?.headers as Record<string, string> | undefined) ?? {}),
-  }
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`
-  }
-  const res = await fetch(path, {
-    ...init,
-    headers,
-    credentials: 'include',
-  })
-  if (res.status === 401) {
-    useAuthStore.getState().clearSession()
-  }
-  if (res.status === 204) {
-    return undefined as unknown as T
-  }
-  if (!res.ok) {
-    let message = res.statusText
-    try {
-      const body: unknown = await res.json()
-      message = extractErrorMessage(body, res.statusText)
-    } catch {
-      /* JSON 파싱 실패 시 statusText fallback */
-    }
-    throw new ApiError(res.status, message)
-  }
-  return (await res.json()) as T
-}
-
 export const useSSOProviders = () => {
   return useQuery({
     queryKey: ['sso', 'providers'],
     queryFn: async (): Promise<SSOProvider[]> => {
-      const body = await ssoFetch<{ providers: SSOProvider[] }>(
-        `${API_BASE_PATH}/sso/providers`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/sso/providers',
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as unknown as { providers: SSOProvider[] }
       return body.providers ?? []
     },
   })
@@ -1173,10 +1150,17 @@ export const useCreateSSOProvider = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: CreateSSOProviderVars): Promise<SSOProvider> => {
-      return ssoFetch<SSOProvider>(`${API_BASE_PATH}/sso/providers`, {
-        method: 'POST',
-        body: JSON.stringify(vars),
-      })
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/sso/providers',
+        { body: vars as unknown as never },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as SSOProvider
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sso', 'providers'] })
@@ -1189,10 +1173,20 @@ export const useUpdateSSOProvider = () => {
   return useMutation({
     mutationFn: async (vars: UpdateSSOProviderVars): Promise<SSOProvider> => {
       const { providerId, ...body } = vars
-      return ssoFetch<SSOProvider>(
-        `${API_BASE_PATH}/sso/providers/${encodeURIComponent(providerId)}`,
-        { method: 'PUT', body: JSON.stringify(body) },
+      const { data, error, response } = await apiClient.PUT(
+        '/api/v1/sso/providers/{providerId}',
+        {
+          params: { path: { providerId } },
+          body: body as unknown as never,
+        },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as SSOProvider
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sso', 'providers'] })
@@ -1204,10 +1198,16 @@ export const useDeleteSSOProvider = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (providerId: string): Promise<void> => {
-      await ssoFetch<void>(
-        `${API_BASE_PATH}/sso/providers/${encodeURIComponent(providerId)}`,
-        { method: 'DELETE' },
+      const { error, response } = await apiClient.DELETE(
+        '/api/v1/sso/providers/{providerId}',
+        { params: { path: { providerId } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sso', 'providers'] })
@@ -1220,9 +1220,17 @@ export const useSSOProvider = (providerId?: string) => {
     queryKey: ['sso', 'providers', providerId ?? null],
     queryFn: async (): Promise<SSOProvider | null> => {
       if (!providerId) return null
-      return ssoFetch<SSOProvider>(
-        `${API_BASE_PATH}/sso/providers/${encodeURIComponent(providerId)}`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/sso/providers/{providerId}',
+        { params: { path: { providerId } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as SSOProvider
     },
     enabled: !!providerId,
   })
@@ -1282,75 +1290,20 @@ export interface AcceptInvitationResponse {
   roles: string[]
 }
 
-// invitationFetch — 인증이 필요한 invitation endpoint용 fetch wrapper.
-//   ssoFetch와 동일 패턴 — 401 시 세션 클리어, 비-OK는 ApiError throw.
-async function invitationFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const accessToken = useAuthStore.getState().accessToken
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((init?.headers as Record<string, string> | undefined) ?? {}),
-  }
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`
-  }
-  const res = await fetch(path, {
-    ...init,
-    headers,
-    credentials: 'include',
-  })
-  if (res.status === 401) {
-    useAuthStore.getState().clearSession()
-  }
-  if (res.status === 204) {
-    return undefined as unknown as T
-  }
-  if (!res.ok) {
-    let message = res.statusText
-    try {
-      const body: unknown = await res.json()
-      message = extractErrorMessage(body, res.statusText)
-    } catch {
-      /* JSON 파싱 실패 시 statusText fallback */
-    }
-    throw new ApiError(res.status, message)
-  }
-  return (await res.json()) as T
-}
-
-// publicFetch — 비인증 invitation endpoint(by-token 경로) 전용.
-//   Authorization 헤더 미부착, credentials는 'omit' 또는 default — 토큰 capability만 사용.
-async function publicFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((init?.headers as Record<string, string> | undefined) ?? {}),
-  }
-  const res = await fetch(path, { ...init, headers })
-  if (!res.ok) {
-    let message = res.statusText
-    try {
-      const body: unknown = await res.json()
-      message = extractErrorMessage(body, res.statusText)
-    } catch {
-      /* JSON 파싱 실패 시 statusText fallback */
-    }
-    throw new ApiError(res.status, message)
-  }
-  return (await res.json()) as T
-}
-
 export const useInvitations = () => {
   return useQuery({
     queryKey: ['invitations'],
     queryFn: async (): Promise<InvitationView[]> => {
-      const body = await invitationFetch<{ invitations: InvitationView[] }>(
-        `${API_BASE_PATH}/invitations`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/invitations',
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as unknown as { invitations: InvitationView[] }
       return body.invitations ?? []
     },
   })
@@ -1362,13 +1315,17 @@ export const useCreateInvitation = () => {
     mutationFn: async (
       vars: CreateInvitationVars,
     ): Promise<CreateInvitationResponse> => {
-      return invitationFetch<CreateInvitationResponse>(
-        `${API_BASE_PATH}/invitations`,
-        {
-          method: 'POST',
-          body: JSON.stringify(vars),
-        },
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/invitations',
+        { body: vars as unknown as never },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as CreateInvitationResponse
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['invitations'] })
@@ -1380,10 +1337,16 @@ export const useDeleteInvitation = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (invitationId: string): Promise<void> => {
-      await invitationFetch<void>(
-        `${API_BASE_PATH}/invitations/${encodeURIComponent(invitationId)}`,
-        { method: 'DELETE' },
+      const { error, response } = await apiClient.DELETE(
+        '/api/v1/invitations/{invitationId}',
+        { params: { path: { invitationId } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['invitations'] })
@@ -1391,14 +1354,25 @@ export const useDeleteInvitation = () => {
   })
 }
 
+// 비인증 endpoint — token이 capability. apiClient는 인증 토큰이 있을 때만 부착하므로
+//   미인증 사용자는 자연 통과. 이미 로그인한 사용자가 호출해도 backend(handlers.go)는
+//   /api/v1/invitations/by-token/* 를 protected group 밖에 mount해 헤더를 무시한다.
 export const useInvitationByToken = (token?: string) => {
   return useQuery({
     queryKey: ['invitations', 'by-token', token ?? null],
     queryFn: async (): Promise<InvitationPreview | null> => {
       if (!token) return null
-      return publicFetch<InvitationPreview>(
-        `${API_BASE_PATH}/invitations/by-token/${encodeURIComponent(token)}`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/invitations/by-token/{token}',
+        { params: { path: { token } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as InvitationPreview
     },
     enabled: !!token,
     retry: false,
@@ -1411,13 +1385,20 @@ export const useAcceptInvitation = () => {
       vars: AcceptInvitationVars,
     ): Promise<AcceptInvitationResponse> => {
       const { token, ...body } = vars
-      return publicFetch<AcceptInvitationResponse>(
-        `${API_BASE_PATH}/invitations/by-token/${encodeURIComponent(token)}/accept`,
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/invitations/by-token/{token}/accept',
         {
-          method: 'POST',
-          body: JSON.stringify(body),
+          params: { path: { token } },
+          body: body as unknown as never,
         },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as AcceptInvitationResponse
     },
   })
 }
