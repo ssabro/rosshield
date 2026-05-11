@@ -17,19 +17,27 @@ import {
   Webhook,
 } from 'lucide-react'
 
+import { useIsAdmin, useIsAdminOrAuditor } from '@/api/hooks'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useT } from '@/i18n/t'
 import { cn } from '@/lib/utils'
 
 import type { DictKey } from '@/i18n/dict'
 
-// 좌측 사이드바 — 6 메뉴 + 하단 빌드 버전(브랜드 영역).
+// 좌측 사이드바 — 메뉴 + 하단 빌드 버전.
 // `_authenticated` 셸 안에서만 렌더링된다.
 //
 // 디자인 노트 (1차 폴리시):
 //   - 브랜드 영역에 작은 부제 ("Security Console") 추가
 //   - 활성 메뉴는 좌측 indicator bar + 강조 배경 + 아이콘 색
 //   - 로그아웃은 헤더로 이동(중복 방지) — 본 사이드바는 메뉴+브랜드만
+//
+// RBAC Stage 2-D — 메뉴 자체 가시성 (UX 정리, 보안 경계는 server 강제):
+//   - requires 'admin'        → admin role만 메뉴 표시 (sso·users)
+//   - requires 'admin/auditor' → admin·auditor만 표시 (system 운영 dashboard)
+//   - requires 미설정         → 모든 인증 사용자에게 표시 (read 가능 또는 advisor 등)
+type RoleRequirement = 'admin' | 'admin/auditor'
+
 const items: ReadonlyArray<{
   to:
     | '/overview'
@@ -48,6 +56,7 @@ const items: ReadonlyArray<{
     | '/settings'
   labelKey: DictKey
   icon: typeof Server
+  requires?: RoleRequirement
 }> = [
   { to: '/overview', labelKey: 'nav.overview', icon: LayoutDashboard },
   { to: '/robots', labelKey: 'nav.robots', icon: Server },
@@ -58,15 +67,31 @@ const items: ReadonlyArray<{
   { to: '/reports', labelKey: 'nav.reports', icon: FileText },
   { to: '/audit', labelKey: 'nav.audit', icon: ScrollText },
   { to: '/integrations', labelKey: 'nav.integrations', icon: Webhook },
-  { to: '/sso', labelKey: 'nav.sso', icon: KeyRound },
-  { to: '/users', labelKey: 'nav.users', icon: Users },
+  { to: '/sso', labelKey: 'nav.sso', icon: KeyRound, requires: 'admin' },
+  { to: '/users', labelKey: 'nav.users', icon: Users, requires: 'admin' },
   { to: '/license', labelKey: 'nav.license', icon: Award },
-  { to: '/system', labelKey: 'nav.system', icon: Activity },
+  { to: '/system', labelKey: 'nav.system', icon: Activity, requires: 'admin/auditor' },
   { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ]
 
 export function Sidebar(): React.ReactElement {
   const t = useT()
+  const isAdmin = useIsAdmin()
+  const isAdminOrAuditor = useIsAdminOrAuditor()
+
+  // RBAC Stage 2-D — admin/admin-or-auditor 페이지 메뉴 필터.
+  // 보안 경계는 server에서 admin gate로 강제 — 본 필터는 UX 정리.
+  const visibleItems = items.filter((item) => {
+    switch (item.requires) {
+      case 'admin':
+        return isAdmin
+      case 'admin/auditor':
+        return isAdminOrAuditor
+      default:
+        return true
+    }
+  })
+
   // 로그아웃은 Header에 통합 — 본 사이드바는 메뉴+브랜드 전용.
   return (
     <aside className="flex w-60 flex-col border-r border-border bg-card">
@@ -84,7 +109,7 @@ export function Sidebar(): React.ReactElement {
 
       <ScrollArea className="flex-1">
         <nav aria-label={t('app.brand')} className="flex flex-col gap-0.5 p-3">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <Link
               key={item.to}
               to={item.to}
