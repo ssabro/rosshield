@@ -279,6 +279,7 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [x] B7 후속 Stage 2-C — openapi spec + snap configure + formatBytes 승격 (2026-05-11 `0d065f7`+`2420ec3`) — openapi.yaml +104줄(GET /api/v1/backups + /download endpoint + BackupMeta·BackupListResponse schema) + Go gen + TS types 재생성 + snap/hooks/configure에 backup-schedule/skip-evidence/dir 검증 + web/src/lib/utils.ts에 formatBytes export + 단위 10건. **잔여 후속**: useBackups apiClient 전환(useLicenseInfo와 일괄 별 epic) + RBAC role check.
 - [x] snap-smoke CI 확장 (2026-05-11 `96f58bc`) — configure hook valid/invalid + post-refresh 직접 실행. bash hook 회귀 보호. 실 OTA round-trip은 customer 환경 hands-on.
 - [x] E27 후속 Grafana dashboard JSON template (2026-05-11 `a8ebe6f`, sub-agent) — `deploy/grafana/rosshield-dashboard.json` 1254줄 (5 row + 12 panel, 메트릭 6/6 활용 + HA placeholder 3) + `deploy/grafana/README.md` 211줄 (8 섹션 — 사전 준비·scrape config·datasource·import·dashboard 구조·alerting·트러블슈팅·한계). Grafana 11.x 즉시 import.
+- [x] E29 후속 — rosshield ha status + backup list/download CLI (2026-05-11 `57fc492`) — 운영자 친화 3 명령. `ha status`는 /healthz fetch + ha 필드 표시, ha 비활성 시 안내. `backup list`는 GET /api/v1/backups 표 5열, `backup download`는 path traversal client 사전 검증 + --output/--force. 비제공: ha promote/demote(split-brain 위험) + tpm reseal(secure-boot-enrollment.md 절차 충분). 단위 9 신규.
 - [ ] 첫 customer 30일 운영 + incident 0 (E38) — onboarding 사전 자료 ✅ 2026-05-11 `58b5e81`
 
 ---
