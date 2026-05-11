@@ -205,6 +205,41 @@ export const useLicenseInfo = () => {
   })
 }
 
+// useBackups — B7 Stage 2 /system 페이지 BackupsCard용. 인증 사용자.
+//   GET /api/v1/backups → { ok: true, value: { backups: [...] } } envelope.
+//   30s polling — Stage 1 자동 schedule(--backup-schedule cron) 결과 reflect.
+//   openapi spec 미정의 → 직접 fetch (Stage 2-C에서 spec 정합 예정).
+export interface BackupMeta {
+  filename: string
+  size: number
+  sha256: string
+  generatedAt: string
+  includesEvidence: boolean
+}
+
+export const useBackups = () => {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery({
+    queryKey: ['backups'],
+    queryFn: async (): Promise<BackupMeta[]> => {
+      const r = await fetch(`${API_BASE_PATH}/backups`, {
+        credentials: 'include',
+        headers: {
+          'X-Cookie-Auth': 'true',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+      })
+      if (!r.ok) {
+        throw new ApiError(r.status, `backups: ${r.statusText}`)
+      }
+      const body = (await r.json()) as { ok: boolean; value: { backups: BackupMeta[] } }
+      return body.value?.backups ?? []
+    },
+    enabled: !!accessToken,
+    refetchInterval: 30_000,
+  })
+}
+
 // useAuditHead — B1 Web UI Audit 페이지. tenant scope chain head.
 export interface AuditHead {
   tenantId: string

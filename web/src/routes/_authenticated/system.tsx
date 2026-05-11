@@ -2,7 +2,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/errors'
-import { useLicenseInfo } from '@/api/hooks'
+import { API_BASE_PATH } from '@/api/client'
+import { useBackups, useLicenseInfo } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
@@ -241,6 +242,13 @@ function LicenseUsageCard(): React.ReactElement {
 
 function BackupsCard(): React.ReactElement {
   const t = useT()
+  const q = useBackups()
+  // 최근 5개만 표시 (생성 시각 desc) — 더 많이 보고 싶으면 Stage 2-C에서 페이지네이션 추가.
+  const recent = q.data
+    ? [...q.data]
+        .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
+        .slice(0, 5)
+    : []
 
   return (
     <Card>
@@ -251,7 +259,46 @@ function BackupsCard(): React.ReactElement {
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground">{t('system.backups.intro')}</p>
-        <div className="space-y-1">
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">
+              {t('system.backups.list.section')}
+            </p>
+            {q.isFetching && q.isSuccess && (
+              <span className="text-[10px] text-muted-foreground">
+                {t('system.backups.refreshing')}
+              </span>
+            )}
+          </div>
+
+          {q.isPending && (
+            <p className="text-xs text-muted-foreground">
+              {t('system.backups.list.loading')}
+            </p>
+          )}
+          {q.isError && (
+            <p className="text-xs text-destructive">
+              {q.error instanceof ApiError
+                ? q.error.message
+                : t('system.backups.list.error')}
+            </p>
+          )}
+          {q.isSuccess && recent.length === 0 && (
+            <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              {t('system.backups.list.empty')}
+            </p>
+          )}
+          {q.isSuccess && recent.length > 0 && (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {recent.map((b) => (
+                <BackupRow key={b.filename} backup={b} />
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="space-y-1 border-t border-border pt-3">
           <p className="text-xs text-muted-foreground">{t('system.backups.cli.label')}</p>
           <pre className="rounded-md bg-muted px-3 py-2 text-xs font-mono break-all">
             {t('system.backups.cli.example')}
@@ -264,6 +311,79 @@ function BackupsCard(): React.ReactElement {
       </CardContent>
     </Card>
   )
+}
+
+// BackupRow — 단일 백업 메타 + 다운로드 버튼.
+//   다운로드: Stage 2-A `/api/v1/backups/{filename}/download` (Content-Disposition: attachment).
+//   동일 origin + cookie 인증이라 별 Authorization 헤더 불필요 (anchor download 속성 사용).
+function BackupRow({
+  backup,
+}: {
+  backup: import('@/api/hooks').BackupMeta
+}): React.ReactElement {
+  const t = useT()
+  const downloadUrl = `${API_BASE_PATH}/backups/${encodeURIComponent(backup.filename)}/download`
+  const generated = (() => {
+    const d = new Date(backup.generatedAt)
+    return Number.isNaN(d.getTime()) ? backup.generatedAt : d.toLocaleString()
+  })()
+  const sha256Short = backup.sha256.slice(0, 16)
+
+  return (
+    <li className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="break-all font-mono text-xs text-foreground">
+            {backup.filename}
+          </span>
+          <Badge variant={backup.includesEvidence ? 'default' : 'secondary'} className="text-[10px]">
+            {backup.includesEvidence
+              ? t('system.backups.evidence.included')
+              : t('system.backups.evidence.metadata.only')}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground sm:grid-cols-3">
+          <span>
+            <span className="text-muted-foreground/70">{t('system.backups.col.size')}: </span>
+            <span className="font-mono text-foreground">{formatBytes(backup.size)}</span>
+          </span>
+          <span>
+            <span className="text-muted-foreground/70">{t('system.backups.col.generatedAt')}: </span>
+            <span className="text-foreground">{generated}</span>
+          </span>
+          <span title={backup.sha256}>
+            <span className="text-muted-foreground/70">{t('system.backups.col.sha256')}: </span>
+            <span className="font-mono text-foreground">{sha256Short}…</span>
+          </span>
+        </div>
+      </div>
+      <a
+        href={downloadUrl}
+        download={backup.filename}
+        aria-label={t('system.backups.download.aria', { filename: backup.filename })}
+        className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:self-start"
+      >
+        {t('system.backups.download')}
+      </a>
+    </li>
+  )
+}
+
+// formatBytes — 1024-base human-readable size (B / KB / MB / GB / TB).
+//   testless 헬퍼 — Stage 2-C에서 lib/utils.ts로 승격하며 단위 테스트 추가 가능.
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return '—'
+  if (n < 1024) return `${n} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let v = n / 1024
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i += 1
+  }
+  // 두 자리 미만은 소수점 1자리, 그 이상은 정수.
+  const formatted = v >= 100 ? Math.round(v).toString() : v.toFixed(1)
+  return `${formatted} ${units[i]}`
 }
 
 function haRoleLabelKey(role: 'leader' | 'follower'): DictKey {

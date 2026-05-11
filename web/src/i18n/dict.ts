@@ -358,6 +358,20 @@ export const ko = {
     'rosshield-server backup --output /backups/$(date +%Y%m%d).tar.gz',
   'system.backups.cron': '운영 권장: cron으로 매일 03:15 KST 백업 + S3 업로드. 자세한 설정은 README §"Backup·Restore" 참조.',
   'system.backups.future': '향후 자동 백업·web에서 다운로드는 별도 epic으로 추가 예정 (B7 후속).',
+  'system.backups.list.section': '최근 백업',
+  'system.backups.list.empty': '아직 백업이 없습니다. 자동 백업을 활성화하거나 CLI로 수동 생성하세요.',
+  'system.backups.list.loading': '백업 목록을 불러오는 중…',
+  'system.backups.list.error': '백업 목록을 가져오지 못했습니다',
+  'system.backups.col.filename': '파일명',
+  'system.backups.col.size': '크기',
+  'system.backups.col.generatedAt': '생성 시각',
+  'system.backups.col.sha256': 'SHA-256',
+  'system.backups.col.evidence': '증거 포함',
+  'system.backups.evidence.included': 'evidence',
+  'system.backups.evidence.metadata.only': 'metadata',
+  'system.backups.download': '다운로드',
+  'system.backups.download.aria': '백업 다운로드: {filename}',
+  'system.backups.refreshing': '갱신 중…',
 
   'pages.settings.title': '설정',
   'pages.settings.description':
@@ -959,6 +973,21 @@ export const en: Record<keyof typeof ko, string> = {
     'Recommended ops: daily 03:15 KST backup + S3 upload via cron. See README §"Backup·Restore".',
   'system.backups.future':
     'Automatic backups + web download will be added in a follow-up epic (B7 follow-up).',
+  'system.backups.list.section': 'Recent backups',
+  'system.backups.list.empty':
+    'No backups yet. Enable auto schedule or create one with the CLI.',
+  'system.backups.list.loading': 'Loading backups…',
+  'system.backups.list.error': 'Failed to load backups',
+  'system.backups.col.filename': 'Filename',
+  'system.backups.col.size': 'Size',
+  'system.backups.col.generatedAt': 'Generated',
+  'system.backups.col.sha256': 'SHA-256',
+  'system.backups.col.evidence': 'Evidence',
+  'system.backups.evidence.included': 'evidence',
+  'system.backups.evidence.metadata.only': 'metadata',
+  'system.backups.download': 'Download',
+  'system.backups.download.aria': 'Download backup: {filename}',
+  'system.backups.refreshing': 'Refreshing…',
 
   'pages.settings.title': 'Settings',
   'pages.settings.description':
