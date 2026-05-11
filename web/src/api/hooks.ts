@@ -660,7 +660,8 @@ export function useScanProgress(sessionId?: string): UseScanProgressResult {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// 5-pre/3) Advisor (E19-3) — spec 미정의. 직접 fetch 경유.
+// 5-pre/3) Advisor (E19-3) — listAdvisorConversations / getAdvisorConversation /
+//   askAdvisor. typed apiClient 경유.
 // ────────────────────────────────────────────────────────────────────────
 
 export interface AdvisorConversation {
@@ -707,42 +708,20 @@ export interface AdvisorAskResponse {
   turns: AdvisorTurn[]
 }
 
-async function advisorFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const accessToken = useAuthStore.getState().accessToken
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((init?.headers as Record<string, string> | undefined) ?? {}),
-  }
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`
-  }
-  const res = await fetch(path, { ...init, headers })
-  if (res.status === 401) {
-    useAuthStore.getState().clearSession()
-  }
-  if (!res.ok) {
-    let message = res.statusText
-    try {
-      const body: unknown = await res.json()
-      message = extractErrorMessage(body, res.statusText)
-    } catch {
-      /* fallback */
-    }
-    throw new ApiError(res.status, message)
-  }
-  return (await res.json()) as T
-}
-
 export const useAdvisorConversations = () => {
   return useQuery({
     queryKey: ['advisor', 'conversations'],
     queryFn: async (): Promise<AdvisorConversation[]> => {
-      const body = await advisorFetch<{ conversations: AdvisorConversation[] }>(
-        `${API_BASE_PATH}/advisor/conversations`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/advisor/conversations',
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as unknown as { conversations: AdvisorConversation[] }
       return body.conversations ?? []
     },
   })
@@ -765,9 +744,17 @@ export const useAdvisorConversation = (conversationId?: string) => {
           turns: [],
         }
       }
-      return advisorFetch<AdvisorConversationDetail>(
-        `${API_BASE_PATH}/advisor/conversations/${encodeURIComponent(conversationId)}`,
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/advisor/conversations/{conversationId}',
+        { params: { path: { conversationId } } },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as AdvisorConversationDetail
     },
     enabled: !!conversationId,
   })
@@ -783,13 +770,17 @@ export const useAskAdvisor = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: AskAdvisorVars): Promise<AdvisorAskResponse> => {
-      return advisorFetch<AdvisorAskResponse>(
-        `${API_BASE_PATH}/advisor/conversations:ask`,
-        {
-          method: 'POST',
-          body: JSON.stringify(vars),
-        },
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/advisor/conversations:ask',
+        { body: vars },
       )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as AdvisorAskResponse
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['advisor', 'conversations'] })
@@ -801,7 +792,7 @@ export const useAskAdvisor = () => {
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// 5) Reports — spec 미정의. 직접 fetch 경유.
+// 5) Reports — listReports operation. typed apiClient 경유.
 // ────────────────────────────────────────────────────────────────────────
 
 export interface Report {
@@ -820,35 +811,20 @@ export const useReports = (sessionId?: string) => {
   return useQuery({
     queryKey: ['reports', sessionId ?? null],
     queryFn: async (): Promise<Report[]> => {
-      const url = new URL(`${API_BASE_PATH}/reports`, window.location.origin)
-      if (sessionId) {
-        url.searchParams.set('sessionId', sessionId)
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/reports',
+        {
+          params: { query: sessionId ? { sessionId } : {} },
+        },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
       }
-
-      const accessToken = useAuthStore.getState().accessToken
-      const headers: HeadersInit = {}
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`
-      }
-
-      // 상대 경로로 fetch (절대 URL은 prod 동일 origin에서 무관, dev에서는
-      // proxy 적용을 위해 pathname+search만 사용).
-      const res = await fetch(url.pathname + url.search, { headers })
-      if (res.status === 401) {
-        useAuthStore.getState().clearSession()
-      }
-      if (!res.ok) {
-        let message = res.statusText
-        try {
-          const body: unknown = await res.json()
-          message = extractErrorMessage(body, res.statusText)
-        } catch {
-          /* JSON 파싱 실패 시 statusText fallback */
-        }
-        throw new ApiError(res.status, message)
-      }
-      const body = (await res.json()) as { reports: Report[] }
-      return body.reports
+      const body = data as unknown as { reports: Report[] }
+      return body.reports ?? []
     },
   })
 }
@@ -911,7 +887,7 @@ export interface UpdateWebhookEndpointVars {
 
 // webhookFetch는 Bearer 인증 + JSON 헤더를 포함한 fetch wrapper입니다.
 //
-// advisorFetch와 동일 패턴 — 401 시 세션 클리어, 비-OK는 ApiError throw.
+// 401 시 세션 클리어, 비-OK는 ApiError throw, 204는 undefined 반환.
 // 별도 함수로 두는 이유: openapi-fetch typed client는 path param + body 결합 시
 // 매번 cast가 필요해 hooks 측 호출이 verbose해짐. webhook은 6 endpoint 단순 CRUD.
 async function webhookFetch<T>(
