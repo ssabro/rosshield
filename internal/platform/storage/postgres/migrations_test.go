@@ -20,7 +20,8 @@ import (
 )
 
 // expectedSequences 는 본 stage 에서 작성·embed 되어야 하는 마이그레이션 시퀀스입니다.
-// 0001 은 E22-A 에서 작성됨, 0002~0019 는 E22-B 에서 변환, 0020·0021 는 E22-C/D 에서 추가.
+// 0001 은 E22-A 에서 작성됨, 0002~0019 는 E22-B 에서 변환, 0020·0021 는 E22-C/D 에서 추가,
+// 0022 는 E25 (HA leader-election fence token) 에서 추가.
 var expectedSequences = []string{
 	"0001_tenant_init",
 	"0002_audit",
@@ -43,6 +44,7 @@ var expectedSequences = []string{
 	"0019_webhooks",
 	"0020_sso",
 	"0021_invitations",
+	"0022_leader_epoch",
 }
 
 // noopSequences 는 E22-E 폐기 — TestPGConversionMarkersPresent 함께 폐기됐으므로 미사용.

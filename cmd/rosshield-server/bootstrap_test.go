@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -326,6 +327,51 @@ func TestBootstrapFailsWhenDataDirEmpty(t *testing.T) {
 	_, err := Bootstrap(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error for empty DataDir")
+	}
+}
+
+// E25 — sqlite + HAEnabled 조합은 부팅 거부 (R30-2 부속2 결정).
+// PG advisory lock 동등 기능 부재로 audit chain 손상 위험 → 조용한 fallback 금지(원칙 §11).
+func TestBootstrapRejectsHaEnabledOnSqlite(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		DataDir:       t.TempDir(),
+		Logger:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		StorageDriver: "sqlite",
+		HAEnabled:     true,
+	}
+	_, err := Bootstrap(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error for --ha-enabled with sqlite storage")
+	}
+	if !strings.Contains(err.Error(), "ha-enabled") {
+		t.Errorf("error message does not mention ha-enabled: %v", err)
+	}
+	if !strings.Contains(err.Error(), "postgres") {
+		t.Errorf("error message does not mention postgres requirement: %v", err)
+	}
+}
+
+// E25 — HAEnabled 기본값 false → 단일 인스턴스 정상 부팅.
+func TestBootstrapDefaultHaDisabledNormalBoot(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := Config{
+		DataDir: dir,
+		Logger:  slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		// HAEnabled 명시 X (기본값 false).
+	}
+	p, err := Bootstrap(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = p.Shutdown(ctx)
+	}()
+	if p.HA != nil {
+		t.Errorf("expected p.HA == nil when HAEnabled=false, got non-nil")
 	}
 }
 

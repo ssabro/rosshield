@@ -25,6 +25,7 @@ type healthResponse struct {
 	Status     string            `json:"status"`
 	Components componentStatuses `json:"components"`
 	Audit      auditHealth       `json:"audit"`
+	HA         *haHealth         `json:"ha,omitempty"` // E25 — HA 활성 시에만 노출.
 }
 
 type componentStatuses struct {
@@ -39,6 +40,17 @@ type auditHealth struct {
 	HeadSeq        int64  `json:"headSeq"`
 	LastCheckpoint int64  `json:"lastCheckpointSeq"` // 0이면 아직 없음
 	Status         string `json:"status"`            // "ok" | "no-entries" | "error: ..."
+}
+
+// haHealth는 E25 HA 상태입니다 (HAEnabled 시에만 응답에 포함).
+//
+// LB·운영자가 follower vs leader를 구분하는 1차 신호. write 라우팅·재시작 결정에 사용.
+type haHealth struct {
+	Enabled         bool   `json:"enabled"`
+	Role            string `json:"role"`            // "leader" | "follower"
+	Epoch           int64  `json:"epoch"`           // 0이면 아직 leader 아님
+	LeaderID        string `json:"leaderId"`        // 본 인스턴스 ID
+	LastHeartbeatAt string `json:"lastHeartbeatAt"` // RFC3339, 빈 문자열이면 첫 tick 전
 }
 
 func healthHandler(p *Platform) http.HandlerFunc {
@@ -100,6 +112,21 @@ func healthHandler(p *Platform) http.HandlerFunc {
 		if storageOK != "ok" {
 			body.Status = "degraded"
 			status = http.StatusServiceUnavailable
+		}
+
+		// E25 — HA 활성 시 role/epoch/leaderId 노출. LB가 follower 자동 제외에 사용.
+		if p.HA != nil {
+			st := p.HA.State()
+			ha := &haHealth{
+				Enabled:  st.Enabled,
+				Role:     st.Role.String(),
+				Epoch:    st.Epoch,
+				LeaderID: st.LeaderID,
+			}
+			if !st.LastHeartbeatAt.IsZero() {
+				ha.LastHeartbeatAt = st.LastHeartbeatAt.UTC().Format(time.RFC3339)
+			}
+			body.HA = ha
 		}
 
 		w.WriteHeader(status)
@@ -210,6 +237,11 @@ func main() {
 	smtpPassword := flag.String("email-smtp-password", "", "SMTP password for AUTH PLAIN. Prefer env ROSSHIELD_SMTP_PASSWORD.")
 	smtpFrom := flag.String("email-from", "", "Email From header (e.g. 'rosshield <noreply@example.com>'). Required when --email-provider=smtp.")
 	publicBaseURL := flag.String("public-base-url", "", "Public base URL used to build invite accept links (e.g. https://app.example.com). Empty = Notifier receives empty acceptURL.")
+	haEnabled := flag.Bool("ha-enabled", false, "Enable HA leader-election (E25, R30-2 = PG advisory lock). Requires --storage=postgres. Default: single-instance.")
+	haLockID := flag.Int64("ha-lock-id", 0, "PG advisory lock ID for leader-election (E25). 0 = default 12345. Single value per cluster.")
+	haHeartbeat := flag.Duration("ha-heartbeat-interval", 0, "HA heartbeat interval (E25). 0 = default 5s.")
+	haLeaderID := flag.String("ha-leader-id", "", "HA instance identifier (E25). Empty = auto (hostname:pid).")
+	haAdvertised := flag.String("ha-advertised-addr", "", "HA advertised URL for redirect from followers (E25, optional).")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
@@ -264,6 +296,11 @@ func main() {
 		SMTPPassword:        smtpPw,
 		SMTPFrom:            *smtpFrom,
 		PublicBaseURL:       *publicBaseURL,
+		HAEnabled:           *haEnabled,
+		HALockID:            *haLockID,
+		HAHeartbeatInterval: *haHeartbeat,
+		HALeaderID:          *haLeaderID,
+		HAAdvertisedAddr:    *haAdvertised,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

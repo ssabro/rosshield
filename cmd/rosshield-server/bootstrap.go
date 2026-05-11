@@ -49,6 +49,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/email"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
+	"github.com/ssabro/rosshield/internal/platform/ha"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
 	"github.com/ssabro/rosshield/internal/platform/license"
 	"github.com/ssabro/rosshield/internal/platform/llm"
@@ -155,6 +156,18 @@ type Config struct {
 	SMTPPassword  string
 	SMTPFrom      string // "rosshield <noreply@example.com>" 또는 단순 주소.
 	PublicBaseURL string // 예: "https://app.example.com" (trailing slash 없이).
+
+	// E25 — HA(High Availability) 옵션 (Phase 5, R30-2 = PG advisory lock + leader/follower).
+	//
+	// HAEnabled = true일 때 PG advisory lock 기반 leader-election 활성. sqlite와 조합 시
+	// 부팅 거부(R30-2 부속2). 두 인스턴스 이상이 같은 HALockID로 동시 실행되면 단일 leader 유지.
+	//
+	// HAEnabled = false (기본)일 때 단일 인스턴스 가정 — leader-election 없이 모든 write 활성.
+	HAEnabled           bool
+	HALockID            int64         // PG advisory lock ID. 0이면 기본값 12345.
+	HAHeartbeatInterval time.Duration // leader heartbeat 주기. 0이면 5초.
+	HALeaderID          string        // 본 인스턴스 식별자 ("hostname:pid"). 빈 값이면 자동 생성.
+	HAAdvertisedAddr    string        // 다른 인스턴스가 redirect 시 사용할 URL (옵션, Stage 3 사용).
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -189,6 +202,7 @@ type Platform struct {
 	Invitation        tenant.InvitationService // E21 — 초대·역할 관리
 	Metrics           *metrics.Registry        // E27 — Prometheus exposition (옵트인)
 	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
+	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
 
 	systemTenant storage.TenantID
 
@@ -804,6 +818,19 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, errors.New("bootstrap: DataDir is required")
 	}
 
+	// E25 — sqlite + HAEnabled 조합 거부 (R30-2 부속2 = 부팅 실패).
+	// PG advisory lock 동등 기능이 없는 sqlite에서 HA를 켜면 audit chain 손상 위험.
+	if cfg.HAEnabled {
+		switch cfg.StorageDriver {
+		case "", "sqlite":
+			return nil, errors.New("bootstrap: --ha-enabled requires --storage=postgres (sqlite has no advisory lock equivalent — single-instance only)")
+		case "postgres", "pg":
+			// OK
+		default:
+			return nil, fmt.Errorf("bootstrap: --ha-enabled with unknown storage driver %q", cfg.StorageDriver)
+		}
+	}
+
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -1108,7 +1135,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"llmProvider", llmAdapter.Provider(),
 		"licenseEdition", licenseEdition)
 
-	return &Platform{
+	platform := &Platform{
 		Logger:            logger,
 		Clock:             clk,
 		IDGen:             ids,
@@ -1140,8 +1167,69 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		MetricsBridge:     metricsBridge,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
-	}, nil
+	}
+
+	// E25 — HA leader-election (R30-2 = PG advisory lock + leader/follower).
+	// HAEnabled=true + storage=postgres 조합에서만 결선 (sqlite 거부는 위에서 체크).
+	if cfg.HAEnabled {
+		haMgr, err := buildHAManager(cfg, store, logger)
+		if err != nil {
+			_ = platform.Shutdown(ctx)
+			return nil, fmt.Errorf("bootstrap: ha manager: %w", err)
+		}
+		platform.HA = haMgr
+		platform.HA.Start(context.Background())
+		logger.Info("ha enabled — leader-election started",
+			"lockId", haCfgLockID(cfg),
+			"interval", haCfgInterval(cfg),
+			"leaderId", haMgr.LeaderID())
+	}
+
+	return platform, nil
 }
+
+// buildHAManager는 PG advisory lock 기반 HA Manager를 생성합니다.
+// storage가 PG 어댑터가 아니면 에러 (Bootstrap 진입 가드와 중복이지만 안전).
+func buildHAManager(cfg Config, store storage.Storage, logger *slog.Logger) (*ha.Manager, error) {
+	pg, ok := store.(*postgres.Postgres)
+	if !ok {
+		return nil, errors.New("ha requires postgres storage")
+	}
+	lockID := haCfgLockID(cfg)
+	interval := haCfgInterval(cfg)
+	leaderID := cfg.HALeaderID
+	if leaderID == "" {
+		host, err := os.Hostname()
+		if err != nil || host == "" {
+			host = "unknown-host"
+		}
+		leaderID = fmt.Sprintf("%s:%d", host, os.Getpid())
+	}
+	pgLock := ha.NewPGLock(pg.Pool(), lockID)
+	return ha.NewManager(pgLock, leaderID, interval, &slogHALogger{l: logger}), nil
+}
+
+func haCfgLockID(cfg Config) int64 {
+	if cfg.HALockID == 0 {
+		return 12345
+	}
+	return cfg.HALockID
+}
+
+func haCfgInterval(cfg Config) time.Duration {
+	if cfg.HAHeartbeatInterval <= 0 {
+		return 5 * time.Second
+	}
+	return cfg.HAHeartbeatInterval
+}
+
+// slogHALogger는 *slog.Logger를 ha.Logger interface로 어댑팅합니다.
+// 도메인 경계: ha 패키지가 platform/logger를 import하지 않게 하기 위한 결선 글루.
+type slogHALogger struct{ l *slog.Logger }
+
+func (s *slogHALogger) Info(msg string, args ...any)  { s.l.Info(msg, args...) }
+func (s *slogHALogger) Warn(msg string, args ...any)  { s.l.Warn(msg, args...) }
+func (s *slogHALogger) Error(msg string, args ...any) { s.l.Error(msg, args...) }
 
 // buildLLMAdapter는 cfg.LLMProvider 기반으로 어댑터 1개를 생성합니다 (R14-1 옵트인).
 //
@@ -1202,6 +1290,14 @@ func (p *Platform) Shutdown(ctx context.Context) error {
 		// E19 — subscription 먼저 cancel하면 EventBus.Close 시 worker가 깨끗이 종료됨.
 		if p.insightAutorunSub != nil {
 			p.insightAutorunSub.Cancel()
+		}
+
+		// E25 — HA leader-election 정지 + advisory lock 해제. Scheduler·Storage 종료 전에
+		// release해 다음 인스턴스가 즉시 leader를 가져갈 수 있게 함.
+		if p.HA != nil {
+			if err := p.HA.Stop(ctx); err != nil {
+				errs = append(errs, fmt.Errorf("ha stop: %w", err))
+			}
 		}
 
 		if err := p.Scheduler.Close(ctx); err != nil {
