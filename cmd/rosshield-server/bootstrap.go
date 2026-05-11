@@ -1181,6 +1181,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		// E25 Stage 2 — audit append/checkpoint leader-gate. Start() 전에 주입해
 		// heartbeat goroutine이 promote 콜백으로 진입하기 전부터 follower 상태에서 차단.
 		auditSvc.SetRoleProvider(haMgr)
+		// E25 Stage 4a — scheduler tick leader-gate. follower는 cron tick silent skip.
+		sch.SetRoleProvider(haMgr)
 		platform.HA.Start(context.Background())
 		logger.Info("ha enabled — leader-election started",
 			"lockId", haCfgLockID(cfg),

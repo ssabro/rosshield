@@ -43,6 +43,62 @@ func newTestScheduler(t *testing.T) *cronsched.Scheduler {
 	return s
 }
 
+// E25 Stage 4a — RoleProvider gating. follower는 cron tick silent skip.
+type fakeRole struct{ leader atomic.Bool }
+
+func (f *fakeRole) IsLeader() bool { return f.leader.Load() }
+
+func TestSchedulerFollowerSkipsTicks(t *testing.T) {
+	t.Parallel()
+
+	s := newTestScheduler(t)
+	role := &fakeRole{}
+	role.leader.Store(false)
+	s.SetRoleProvider(role)
+
+	fired := atomic.Int32{}
+	if err := s.Schedule("ha-skip", tickSpec, func(ctx context.Context) error {
+		fired.Add(1)
+		return nil
+	}); err != nil {
+		t.Fatalf("Schedule: %v", err)
+	}
+
+	// 2~3 tick 동안 follower 상태 유지 → 0회 발화 기대.
+	time.Sleep(2500 * time.Millisecond)
+	if got := fired.Load(); got != 0 {
+		t.Errorf("fired = %d while follower, want 0", got)
+	}
+
+	// leader 승격 → 다음 tick부터 발화 시작.
+	role.leader.Store(true)
+	got := waitForFires(t, &fired, 1, 2500*time.Millisecond)
+	if got < 1 {
+		t.Errorf("fired = %d after promotion, want ≥ 1", got)
+	}
+}
+
+// SetRoleProvider(nil)은 unset — 모든 tick 실행 (legacy 동작 복원).
+func TestSchedulerNilRoleProviderRunsAllTicks(t *testing.T) {
+	t.Parallel()
+
+	s := newTestScheduler(t)
+	// 명시적 nil unset — 단일 인스턴스 호환.
+	s.SetRoleProvider(nil)
+
+	fired := atomic.Int32{}
+	if err := s.Schedule("ha-nil", tickSpec, func(ctx context.Context) error {
+		fired.Add(1)
+		return nil
+	}); err != nil {
+		t.Fatalf("Schedule: %v", err)
+	}
+	got := waitForFires(t, &fired, 1, 2500*time.Millisecond)
+	if got < 1 {
+		t.Errorf("fired = %d, want ≥ 1 (nil role provider)", got)
+	}
+}
+
 func TestSchedulerFiresAtSpec(t *testing.T) {
 	t.Parallel()
 
