@@ -16,7 +16,7 @@
 
 | ID | 출처 | 내용 | 추정 | 상태 |
 |---|---|---|---|---|
-| E25 | Phase 4 backlog | HA — PostgreSQL advisory lock + leader/follower (single-writer audit chain) | 4일 | 🟡 Stage 1/4 (2026-05-11 `678367c` — Manager+PGLock+migration+bootstrap+/healthz+sqlite 거부) |
+| E25 | Phase 4 backlog | HA — PostgreSQL advisory lock + leader/follower (single-writer audit chain) | 4일 | ✅ 완료 (2026-05-11 `678367c`+`648ce9e`+`e03cc6c`+`bb6c541`+`a1ae047`+`c76164e` — Stage 1~4 모두 마감) |
 | E22-F | Phase 4 backlog | PG-native repo 분리 — JSONB·TIMESTAMPTZ·BOOLEAN 활용 + driver-aware repo (현재 sqliterepo 단일 경로) | 1주 | ⏭ |
 
 ---
@@ -271,7 +271,7 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [ ] A/B OTA + 자동 롤백 시연 (E35)
 - [ ] 레퍼런스 HW 2 모델 burn-in (E36)
 - [ ] D1 제품명 확정 + public 전환 (E37)
-- [ ] HA design doc + R30-2 권고안 작성 (E25 design, 2026-05-11 `46cf600`) → R30-2 사용자 확정 후 구현
+- [x] HA 2 인스턴스 leader/follower (E25, 2026-05-11) — Stage 1~4 모두 마감 (Manager + audit gate + middleware + scheduler + testcontainers + compose-ha + 운영 docs)
 - [ ] PG-native repo 분리 (E22-F carryover)
 - [ ] 첫 customer 30일 운영 + incident 0 (E38) — onboarding 사전 자료 ✅ 2026-05-11 `58b5e81`
 
