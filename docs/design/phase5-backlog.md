@@ -277,6 +277,8 @@ E38 첫 paying customer onboarding ───────┘ (지속 트랙)
 - [x] B7 후속 Stage 1 — 자동 백업 schedule + GET /api/v1/backups list (2026-05-11 `d1bf511`) — executeBackup 헬퍼 추출 + registerBackupJob cronsched 결선(HA leader-only 자동) + listBackups 디렉터리 스캔 + handler envelope.
 - [x] B7 후속 Stage 2 — download endpoint + web BackupsCard 동적 (2026-05-11 `54f0384`+`aa4cc0a`) — Stage 2-A(download handler + path traversal 방어 + http.ServeContent + 5 단위) + Stage 2-B(useBackups hook + BackupsCard 동적 5개 표시 + Download anchor + 12 i18n 키).
 - [x] B7 후속 Stage 2-C — openapi spec + snap configure + formatBytes 승격 (2026-05-11 `0d065f7`+`2420ec3`) — openapi.yaml +104줄(GET /api/v1/backups + /download endpoint + BackupMeta·BackupListResponse schema) + Go gen + TS types 재생성 + snap/hooks/configure에 backup-schedule/skip-evidence/dir 검증 + web/src/lib/utils.ts에 formatBytes export + 단위 10건. **잔여 후속**: useBackups apiClient 전환(useLicenseInfo와 일괄 별 epic) + RBAC role check.
+- [x] snap-smoke CI 확장 (2026-05-11 `96f58bc`) — configure hook valid/invalid + post-refresh 직접 실행. bash hook 회귀 보호. 실 OTA round-trip은 customer 환경 hands-on.
+- [x] E27 후속 Grafana dashboard JSON template (2026-05-11 `a8ebe6f`, sub-agent) — `deploy/grafana/rosshield-dashboard.json` 1254줄 (5 row + 12 panel, 메트릭 6/6 활용 + HA placeholder 3) + `deploy/grafana/README.md` 211줄 (8 섹션 — 사전 준비·scrape config·datasource·import·dashboard 구조·alerting·트러블슈팅·한계). Grafana 11.x 즉시 import.
 - [ ] 첫 customer 30일 운영 + incident 0 (E38) — onboarding 사전 자료 ✅ 2026-05-11 `58b5e81`
 
 ---
