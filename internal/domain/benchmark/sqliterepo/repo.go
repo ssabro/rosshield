@@ -116,6 +116,28 @@ SELECT id, tenant_id, name, version, vendor, pack_key, manifest_hash, signer_key
 	return pack, nil
 }
 
+// GetPackByID는 packID(pk_<ULID>)로 Pack 메타+체크를 조회합니다.
+//
+// tenant scope 무시 — caller가 권한 검증 책임. scanrun 결선 시 cross-tenant
+// builtin pack도 가져올 수 있어야 함.
+func (r *Repo) GetPackByID(ctx context.Context, tx storage.Tx, packID string) (benchmark.Pack, error) {
+	row := tx.QueryRow(ctx, `
+SELECT id, tenant_id, name, version, vendor, pack_key, manifest_hash, signer_key_id, installed_at
+  FROM packs
+ WHERE id = ?`,
+		packID)
+	pack, err := scanPackRow(row)
+	if err != nil {
+		return benchmark.Pack{}, err
+	}
+	checks, err := r.loadChecks(ctx, tx, pack.ID)
+	if err != nil {
+		return benchmark.Pack{}, err
+	}
+	pack.Checks = checks
+	return pack, nil
+}
+
 // ListPacks는 tenant의 모든 Pack 메타(체크 미포함)를 반환합니다.
 func (r *Repo) ListPacks(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) ([]benchmark.Pack, error) {
 	rows, err := tx.Query(ctx, `

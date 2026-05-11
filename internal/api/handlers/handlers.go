@@ -25,6 +25,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/gen"
+	"github.com/ssabro/rosshield/internal/app/scanrun"
 	"github.com/ssabro/rosshield/internal/app/webhookrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/audit"
@@ -53,7 +54,8 @@ type Deps struct {
 	Tenant            tenant.Service
 	Robot             robot.Service
 	Scan              scan.Service
-	Benchmark         benchmark.Service // E12 Stage 3 — GET /api/v1/packs (built-in + tenant pack 표시)
+	ScanRun           *scanrun.Orchestrator // E12 Stage 8 — production scanrun 결선 (CreateScan async trigger)
+	Benchmark         benchmark.Service     // E12 Stage 3 — GET /api/v1/packs (built-in + tenant pack 표시)
 	Reporting         reporting.Service
 	Insight           insight.Service          // E17 Phase 2
 	Compliance        compliance.Service       // E17 Phase 2

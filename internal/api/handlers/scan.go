@@ -1,11 +1,13 @@
 package handlers
 
-// scan.go — POST /api/v1/scans 핸들러 (E9 Stage B).
+// scan.go — POST /api/v1/scans 핸들러 (E9 Stage B + E12 Stage 8).
 //
 // 요청 본문: {"fleetId": "...", "packId": "...", "trigger": "manual"}
 // 응답 201: {"sessionId": "scan_...", "status": "pending", ...}
 //
-// Phase 1 Stage B는 pending 상태로 INSERT만 — Orchestrator(scanrun) 시작은 후속 Stage에서.
+// E12 Stage 8: pending session INSERT 후 비동기 goroutine으로 Orchestrator.Run 호출 —
+// 호출자에게 즉시 sessionId 반환 + background에서 fleet의 robots × pack의 checks 실 cycle.
+// ScanRun 결선이 nil이면 (Phase 1 호환) async trigger 생략.
 
 import (
 	"context"
@@ -86,13 +88,29 @@ func (h *Handlers) CreateScan(w http.ResponseWriter, r *http.Request, _ gen.Crea
 		trigger = scan.TriggerManual
 	}
 
+	// E12 Stage 8 — ScanRun 결선이 있으면 Total 산출용 robots+checks 사전 fetch.
+	// 결선 없으면(Phase 1 호환) req.Total 그대로 사용.
+	totalForSession := req.Total
+	var (
+		preloadedRobots []scan.RobotTarget
+		preloadedChecks []scan.CheckDef
+	)
+	if h.deps.ScanRun != nil && h.deps.Robot != nil && h.deps.Benchmark != nil {
+		robots, checks, err := h.preloadRobotsAndChecks(r.Context(), req.FleetID, req.PackID)
+		if err == nil {
+			totalForSession = len(robots) * len(checks)
+			preloadedRobots = robots
+			preloadedChecks = checks
+		}
+	}
+
 	var session scan.ScanSession
 	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
 		s, e := h.deps.Scan.StartScan(ctx, tx, scan.StartScanRequest{
 			FleetID: req.FleetID,
 			PackID:  req.PackID,
 			Trigger: trigger,
-			Total:   req.Total,
+			Total:   totalForSession,
 		})
 		if e != nil {
 			return e
@@ -115,6 +133,12 @@ func (h *Handlers) CreateScan(w http.ResponseWriter, r *http.Request, _ gen.Crea
 		return
 	}
 
+	// E12 Stage 8 — ScanRun 결선되어 있으면 비동기 goroutine으로 Orchestrator.Run trigger.
+	// nil 결선(Phase 1 호환)이면 pending 상태만 유지 + 외부 trigger 기다림.
+	if h.deps.ScanRun != nil {
+		go h.triggerScanRun(tenantID, session, preloadedRobots, preloadedChecks)
+	}
+
 	writeJSON(w, http.StatusCreated, scanSessionResponse{
 		SessionID: session.ID,
 		TenantID:  string(session.TenantID),
@@ -126,4 +150,59 @@ func (h *Handlers) CreateScan(w http.ResponseWriter, r *http.Request, _ gen.Crea
 		Completed: session.Progress.Completed,
 		Failed:    session.Progress.Failed,
 	})
+}
+
+// preloadRobotsAndChecks는 fleet의 robots × pack의 checks를 fetch해
+// scan.RobotTarget·CheckDef로 매핑합니다. CreateScan handler가 Total 산출 + 비동기
+// trigger에 전달하기 위해 동기 호출.
+func (h *Handlers) preloadRobotsAndChecks(ctx context.Context, fleetID, packID string) ([]scan.RobotTarget, []scan.CheckDef, error) {
+	var (
+		targets []scan.RobotTarget
+		checks  []scan.CheckDef
+	)
+	err := h.deps.Storage.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		rs, e := h.deps.Robot.ListRobots(ctx, tx, fleetID)
+		if e != nil {
+			return e
+		}
+		for _, r := range rs {
+			targets = append(targets, scan.RobotTarget{
+				RobotID:      r.ID,
+				Host:         r.Host,
+				Port:         r.Port,
+				AuthType:     string(r.AuthType),
+				CredentialID: r.CredentialID,
+			})
+		}
+		p, e := h.deps.Benchmark.GetPackByID(ctx, tx, packID)
+		if e != nil {
+			return e
+		}
+		for _, c := range p.Checks {
+			checks = append(checks, scan.CheckDef{
+				PackCheckID:  c.ID,
+				Code:         c.CheckID,
+				AuditCommand: []string{"bash", "-c", c.AuditCommand},
+				TimeoutSec:   scan.DefaultCheckTimeoutSec,
+				EvalRuleJSON: c.EvaluationRule,
+			})
+		}
+		return nil
+	})
+	return targets, checks, err
+}
+
+// triggerScanRun은 비동기 goroutine으로 Orchestrator.Run을 호출합니다.
+//
+// handler가 미리 fetch한 robots+checks를 받아 추가 DB 호출 없이 진입.
+// 에러는 silent — Run 자체가 audit emit·event publish.
+//
+// ctx는 background — handler request ctx는 응답 후 cancel되므로 사용 X.
+func (h *Handlers) triggerScanRun(tenantID storage.TenantID, session scan.ScanSession,
+	targets []scan.RobotTarget, checks []scan.CheckDef) {
+	if len(targets) == 0 || len(checks) == 0 {
+		return
+	}
+	ctx := storage.WithTenantID(context.Background(), tenantID)
+	_ = h.deps.ScanRun.Run(ctx, tenantID, session.ID, targets, checks)
 }

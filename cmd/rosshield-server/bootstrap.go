@@ -1096,6 +1096,13 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		systemTenant = "system"
 	}
 
+	// E12 Stage 8 — system tenant row 자동 시드 (idempotent).
+	// packs(tenant_id='system') FK가 tenants(id)를 참조하므로, system tenant row가 없으면
+	// seedBuiltinPacks의 InstallPack이 FK 위반으로 silent fail. 본 시드가 선결.
+	if err := seedSystemTenant(ctx, store, cfg.StorageDriver, systemTenant); err != nil {
+		logger.Warn("bootstrap: seed system tenant failed (non-fatal)", "err", err)
+	}
+
 	// E12 — first-boot built-in pack seed loader (idempotent).
 	// internal/builtin/packs._archives 의 dev signer 서명 pack을 systemTenant에 자동 install.
 	// 이미 install된 pack은 ErrPackAlreadyInstalled로 silent skip. 비-fatal — seed 실패해도

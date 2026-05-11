@@ -226,14 +226,16 @@ func preValidateSeedInput(opts seedAdminOptions) int {
 	return 0
 }
 
-// alreadySeeded는 tenants 테이블에 row가 1개 이상 있는지 검사합니다.
+// alreadySeeded는 user-tenant(=비-system tenant)가 1개 이상 있는지 검사합니다.
 //
-// Phase 1 멀티 테넌트 시드는 분리 — 동일 데이터 디렉터리에서 두 번째 호출은 거부.
+// E12 Stage 8 — bootstrap이 cross-tenant 공유 자산용 'system' tenant row를 자동 시드하므로
+// SELECT FROM tenants는 항상 ≥1. user-facing tenant 중복 체크는 id != 'system' 필터.
+//
 // 향후 spec이 멀티 테넌트 시드를 허용하면 (tenant_id, email) 단위 중복 체크로 전환.
 func alreadySeeded(ctx context.Context, p *Platform) (bool, error) {
 	var exists bool
 	err := p.Storage.Bootstrap(ctx, func(ctx context.Context, tx storage.Tx) error {
-		row := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tenants LIMIT 1)`)
+		row := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tenants WHERE id != 'system' LIMIT 1)`)
 		var n int
 		if err := row.Scan(&n); err != nil {
 			return err

@@ -107,6 +107,12 @@ type Service interface {
 	// GetPackByKey는 (tenant_id, pack_key)로 Pack 메타+체크를 조회합니다. 없으면 storage.ErrNotFound.
 	GetPackByKey(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, packKey string) (Pack, error)
 
+	// GetPackByID는 packID(pk_<ULID>)로 Pack 메타+체크를 조회합니다. 없으면 storage.ErrNotFound.
+	//
+	// scanrun 결선에서 CreateScan handler가 packID로 pack의 checks를 fetch하기 위해 사용.
+	// tenant 검증은 caller 책임 (시스템 tenant pack도 caller가 cross-tenant 조회 가능).
+	GetPackByID(ctx context.Context, tx storage.Tx, packID string) (Pack, error)
+
 	// ListPacks는 tenant의 모든 Pack 메타(체크 미포함)를 반환합니다.
 	ListPacks(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) ([]Pack, error)
 
