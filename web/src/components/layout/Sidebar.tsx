@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import {
+  Activity,
   AlertTriangle,
   Award,
   ClipboardCheck,
@@ -43,6 +44,7 @@ const items: ReadonlyArray<{
     | '/sso'
     | '/users'
     | '/license'
+    | '/system'
     | '/settings'
   labelKey: DictKey
   icon: typeof Server
@@ -59,6 +61,7 @@ const items: ReadonlyArray<{
   { to: '/sso', labelKey: 'nav.sso', icon: KeyRound },
   { to: '/users', labelKey: 'nav.users', icon: Users },
   { to: '/license', labelKey: 'nav.license', icon: Award },
+  { to: '/system', labelKey: 'nav.system', icon: Activity },
   { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ]
 

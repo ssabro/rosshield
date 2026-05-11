@@ -25,6 +25,7 @@ export const ko = {
   'nav.sso': 'SSO',
   'nav.users': '사용자',
   'nav.license': '라이선스',
+  'nav.system': '시스템',
   'nav.settings': '설정',
 
   'header.theme.light': '라이트',
@@ -328,6 +329,36 @@ export const ko = {
   'integrations.error.disabled':
     '본 기능은 enterprise 라이선스에서만 활성화됩니다 (Settings > 라이선스).',
 
+  'pages.system.title': '시스템',
+  'pages.system.description':
+    '서버 상태·HA·라이선스 사용량·백업 절차를 한곳에서 확인합니다.',
+  'system.health.section': '서비스 상태',
+  'system.health.status': '전체 상태',
+  'system.health.storage': '스토리지',
+  'system.health.eventbus': '이벤트 버스',
+  'system.health.scheduler': '스케줄러',
+  'system.health.signer': '서명자 키',
+  'system.health.audit': '감사 체인',
+  'system.health.audit.head': '체인 헤드 seq',
+  'system.health.audit.checkpoint': '마지막 checkpoint seq',
+  'system.health.error': '서비스 상태를 가져오지 못했습니다',
+  'system.ha.section': 'HA (E25)',
+  'system.ha.disabled': 'HA가 비활성화된 단일 인스턴스로 실행 중입니다.',
+  'system.ha.role': '역할',
+  'system.ha.role.leader': 'Leader (audit·write 활성)',
+  'system.ha.role.follower': 'Follower (read-only, 503 NOT_LEADER 응답)',
+  'system.ha.epoch': '현재 epoch (fence token)',
+  'system.ha.leaderId': '인스턴스 ID',
+  'system.ha.heartbeat': '마지막 heartbeat',
+  'system.backups.section': '백업 (E28)',
+  'system.backups.intro':
+    '서버 실행 중에도 SQLite VACUUM INTO + tar.gz로 일관 스냅샷을 떠낼 수 있습니다.',
+  'system.backups.cli.label': 'CLI 명령',
+  'system.backups.cli.example':
+    'rosshield-server backup --output /backups/$(date +%Y%m%d).tar.gz',
+  'system.backups.cron': '운영 권장: cron으로 매일 03:15 KST 백업 + S3 업로드. 자세한 설정은 README §"Backup·Restore" 참조.',
+  'system.backups.future': '향후 자동 백업·web에서 다운로드는 별도 epic으로 추가 예정 (B7 후속).',
+
   'pages.settings.title': '설정',
   'pages.settings.description':
     '현재 사용자·테넌트 정보와 클라이언트 설정 위치를 확인합니다.',
@@ -590,6 +621,7 @@ export const en: Record<keyof typeof ko, string> = {
   'nav.sso': 'SSO',
   'nav.users': 'Users',
   'nav.license': 'License',
+  'nav.system': 'System',
   'nav.settings': 'Settings',
 
   'header.theme.light': 'Light',
@@ -895,6 +927,38 @@ export const en: Record<keyof typeof ko, string> = {
   'integrations.error.fallback': 'Failed to load endpoints',
   'integrations.error.disabled':
     'This feature requires an enterprise license (see Settings > License).',
+
+  'pages.system.title': 'System',
+  'pages.system.description':
+    'Server health, HA, license usage, and backup procedures in one place.',
+  'system.health.section': 'Service health',
+  'system.health.status': 'Overall status',
+  'system.health.storage': 'Storage',
+  'system.health.eventbus': 'Event bus',
+  'system.health.scheduler': 'Scheduler',
+  'system.health.signer': 'Signer key',
+  'system.health.audit': 'Audit chain',
+  'system.health.audit.head': 'Chain head seq',
+  'system.health.audit.checkpoint': 'Last checkpoint seq',
+  'system.health.error': 'Failed to load service health',
+  'system.ha.section': 'HA (E25)',
+  'system.ha.disabled': 'Running as a single instance (HA disabled).',
+  'system.ha.role': 'Role',
+  'system.ha.role.leader': 'Leader (audit / writes active)',
+  'system.ha.role.follower': 'Follower (read-only, 503 NOT_LEADER responses)',
+  'system.ha.epoch': 'Current epoch (fence token)',
+  'system.ha.leaderId': 'Instance ID',
+  'system.ha.heartbeat': 'Last heartbeat',
+  'system.backups.section': 'Backups (E28)',
+  'system.backups.intro':
+    'Take consistent snapshots while the server is running using SQLite VACUUM INTO + tar.gz.',
+  'system.backups.cli.label': 'CLI command',
+  'system.backups.cli.example':
+    'rosshield-server backup --output /backups/$(date +%Y%m%d).tar.gz',
+  'system.backups.cron':
+    'Recommended ops: daily 03:15 KST backup + S3 upload via cron. See README §"Backup·Restore".',
+  'system.backups.future':
+    'Automatic backups + web download will be added in a follow-up epic (B7 follow-up).',
 
   'pages.settings.title': 'Settings',
   'pages.settings.description':
