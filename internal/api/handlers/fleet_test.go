@@ -183,6 +183,75 @@ func TestCreateFleetReturns409ForDuplicateName(t *testing.T) {
 	}
 }
 
+func TestCreateFleetReturns400ForInvalidCronSpec(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{
+		"name": "fleet-bad-cron",
+		"policy": map[string]any{
+			"scanSchedule": "every minute please",
+		},
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 400", resp.StatusCode, string(raw))
+	}
+}
+
+func TestCreateFleetAcceptsValidCronSpec(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{
+		"name": "fleet-good-cron",
+		"policy": map[string]any{
+			"scanSchedule":      "@every 6h",
+			"defaultBaselineId": "cis-ubuntu-24.04",
+		},
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 201", resp.StatusCode, string(raw))
+	}
+}
+
+func TestUpdateFleetReturns400ForInvalidCronSpec(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+
+	// 시드.
+	createBody, _ := json.Marshal(map[string]any{"name": "fleet-cron-update"})
+	r1 := f.doRequest(t, "POST", "/api/v1/fleets", token, createBody)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("seed POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(r1.Body).Decode(&created)
+	_ = r1.Body.Close()
+
+	patchBody, _ := json.Marshal(map[string]any{
+		"policy": map[string]any{
+			"scanSchedule": "broken cron",
+		},
+	})
+	r2 := f.doRequest(t, "PATCH", "/api/v1/fleets/"+created.ID, token, patchBody)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusBadRequest {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("status=%d body=%s, want 400", r2.StatusCode, string(raw))
+	}
+}
+
 func TestCreateFleetReturns400ForEmptyName(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()

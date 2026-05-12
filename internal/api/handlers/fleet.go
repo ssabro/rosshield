@@ -13,8 +13,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/robfig/cron/v3"
 
 	"github.com/ssabro/rosshield/internal/domain/robot"
 	"github.com/ssabro/rosshield/internal/platform/storage"
@@ -78,6 +82,28 @@ func toDomainPolicy(p fleetPolicyRequest) robot.FleetPolicy {
 		DefaultCriticality: robot.Criticality(p.DefaultCriticality),
 		ScanSchedule:       p.ScanSchedule,
 	}
+}
+
+// cronParser는 fleet ScanSchedule 사전 검증용 — cronsched.Scheduler.Schedule이 사용하는
+// robfig/cron v3 default parser와 같은 옵션 (5-field standard + descriptors).
+//
+// 본 dry-run으로 invalid spec을 즉시 400으로 거부 — DB 저장 후 cron 등록 실패의 silent
+// degraded 회피.
+var cronParser = cron.NewParser(
+	cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+)
+
+// validateCronSpec은 ScanSchedule 비-empty일 때 robfig/cron parse 가능 여부를 검증합니다.
+// spec이 비면 nil (수동 스캔 정책 — 유효).
+func validateCronSpec(spec string) error {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil
+	}
+	if _, err := cronParser.Parse(spec); err != nil {
+		return fmt.Errorf("invalid scanSchedule cron spec: %w", err)
+	}
+	return nil
 }
 
 func toFleetResponse(f robot.Fleet) fleetResponse {
@@ -159,6 +185,10 @@ func (h *Handlers) CreateFleet(w http.ResponseWriter, r *http.Request) {
 		Description: req.Description,
 	}
 	if req.Policy != nil {
+		if err := validateCronSpec(req.Policy.ScanSchedule); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		createReq.Policy = toDomainPolicy(*req.Policy)
 	}
 	var created robot.Fleet
@@ -218,6 +248,10 @@ func (h *Handlers) UpdateFleet(w http.ResponseWriter, r *http.Request, fleetID s
 		Description: req.Description,
 	}
 	if req.Policy != nil {
+		if err := validateCronSpec(req.Policy.ScanSchedule); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		p := toDomainPolicy(*req.Policy)
 		updateReq.Policy = &p
 	}
