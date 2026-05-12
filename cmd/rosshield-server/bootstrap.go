@@ -1163,6 +1163,12 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register backup job: %w", err)
 	}
 
+	// FleetPolicy.ScanSchedule cron — best-effort 등록.
+	// 등록 실패는 fatal 아님 (단일 fleet 등록 실패가 부트 차단 X).
+	if err := registerFleetScanJobs(ctx, store, robotSvc, benchmarkSvc, scanSvc, scanRun, sch, logger); err != nil {
+		logger.Warn("bootstrap: register fleet scan jobs failed (non-fatal)", "err", err.Error())
+	}
+
 	// E20-D + E20-C + O5 — SSO 도메인 결선 (Provider CRUD + OIDC + SAML + IdentityResolver).
 	// O5(Phase 4): IdentityResolver를 tenant.Service.ProvisionExternalUser로 결선 → SSO 첫 로그인
 	// 시 user 자동 생성 + 기본 role(operator) 할당.
