@@ -424,8 +424,10 @@ function SessionGroup({
 }): React.ReactElement {
   const t = useT()
   const ChevronIcon = collapsed ? ChevronRight : ChevronDown
-  // sessionStartedAt는 같은 그룹 내 모든 result에 동일 — 첫 result에서 추출.
+  // sessionStartedAt/CompletedAt는 같은 그룹 내 모든 result에 동일 — 첫 result에서 추출.
   const startedAt = group.results[0]?.sessionStartedAt
+  const completedAt = group.results[0]?.sessionCompletedAt
+  const totalDuration = formatTotalDuration(startedAt, completedAt)
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -456,6 +458,16 @@ function SessionGroup({
             className="text-muted-foreground"
           >
             · {t('robots.detail.results.startedAt')} {formatRelative(startedAt)}
+          </span>
+        )}
+        {totalDuration && (
+          <span
+            title={
+              completedAt ? new Date(completedAt).toLocaleString() : undefined
+            }
+            className="text-muted-foreground"
+          >
+            · {t('robots.detail.results.totalDuration')} {totalDuration}
           </span>
         )}
         <span className="ml-auto">
@@ -552,6 +564,27 @@ function formatRelative(iso?: string): string {
   if (hr < 24) return `${hr}h`
   const day = Math.round(hr / 24)
   return `${day}d`
+}
+
+// formatTotalDuration는 두 ISO timestamp 사이의 절대 duration을 압축 표기로 반환합니다.
+// 둘 중 하나가 없으면 빈 string. 음수/invalid도 빈 string. 60s 미만 "Ns",
+// 3600s 미만 "Nm Ns" (초 0이면 생략), 그 이상 "Nh Nm".
+function formatTotalDuration(start?: string, end?: string): string {
+  if (!start || !end) return ''
+  const a = Date.parse(start)
+  const b = Date.parse(end)
+  if (Number.isNaN(a) || Number.isNaN(b)) return ''
+  const sec = Math.round((b - a) / 1000)
+  if (sec < 0) return ''
+  if (sec < 60) return `${sec}s`
+  const min = Math.floor(sec / 60)
+  const remSec = sec % 60
+  if (min < 60) {
+    return remSec > 0 ? `${min}m ${remSec}s` : `${min}m`
+  }
+  const hr = Math.floor(min / 60)
+  const remMin = min % 60
+  return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`
 }
 
 // RotateCredentialCard — admin only. 평문 자격증명 입력 → 도메인 KEK 재wrap. 성공 시 성공 메시지 + 폼 초기화.

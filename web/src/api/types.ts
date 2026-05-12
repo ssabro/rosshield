@@ -1172,6 +1172,14 @@ export interface components {
              *     Empty for pending sessions.
              */
             sessionStartedAt?: string;
+            /**
+             * Format: date-time
+             * @description Derived field — scan_sessions.completed_at from JOIN. Set when
+             *     session reached terminal state (completed/failed/cancelled).
+             *     Used with sessionStartedAt for total duration. Empty for
+             *     pending/running sessions.
+             */
+            sessionCompletedAt?: string;
             /** @enum {string} */
             outcome: "pass" | "fail" | "indeterminate" | "error" | "skipped";
             evalReason?: string;

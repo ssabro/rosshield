@@ -338,7 +338,7 @@ SELECT r.id, r.session_id, r.tenant_id, r.robot_id, r.check_id, r.pack_check_id,
        r.outcome, r.eval_reason, r.duration_ms,
        r.executed_at, r.created_at,
        COALESCE(p.pack_key, '') AS pack_key,
-       s.started_at
+       s.started_at, s.completed_at
   FROM scan_results r
   LEFT JOIN scan_sessions s ON s.id = r.session_id AND s.tenant_id = r.tenant_id
   LEFT JOIN packs p ON p.id = s.pack_id
@@ -365,18 +365,18 @@ SELECT r.id, r.session_id, r.tenant_id, r.robot_id, r.check_id, r.pack_check_id,
 	return out, nil
 }
 
-// scanResultRowWithPackKey는 ListResultsByRobot용 — JOIN으로 추가된 pack_key + session.started_at을 함께 scan.
-// session.started_at은 nullable(pending 상태 session) — sql.NullString로 받아 nil 처리.
+// scanResultRowWithPackKey는 ListResultsByRobot용 — JOIN으로 추가된 pack_key + session.started_at + completed_at 함께 scan.
+// session.started_at/completed_at은 nullable(pending/running 상태) — sql.NullString로 받아 nil 처리.
 func scanResultRowWithPackKey(scanFn func(...any) error) (scan.ScanResult, error) {
 	var (
 		id, sessionID, tenantID, robotID, checkID, packCheckID string
 		outcome, evalReason, executedAt, createdAt, packKey    string
 		durationMs                                             int64
-		startedAt                                              sql.NullString
+		startedAt, completedAt                                 sql.NullString
 	)
 	if err := scanFn(&id, &sessionID, &tenantID, &robotID, &checkID, &packCheckID,
 		&outcome, &evalReason, &durationMs,
-		&executedAt, &createdAt, &packKey, &startedAt); err != nil {
+		&executedAt, &createdAt, &packKey, &startedAt, &completedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return scan.ScanResult{}, storage.ErrNotFound
 		}
@@ -390,29 +390,43 @@ func scanResultRowWithPackKey(scanFn func(...any) error) (scan.ScanResult, error
 	if err != nil {
 		return scan.ScanResult{}, fmt.Errorf("scan: parse result created_at: %w", err)
 	}
-	var sessionStartedAt *time.Time
-	if startedAt.Valid && startedAt.String != "" {
-		t, err := time.Parse(rfc3339Nano, startedAt.String)
-		if err != nil {
-			return scan.ScanResult{}, fmt.Errorf("scan: parse session started_at: %w", err)
-		}
-		sessionStartedAt = &t
+	sessionStartedAt, err := parseNullableRFC(startedAt, "session started_at")
+	if err != nil {
+		return scan.ScanResult{}, err
+	}
+	sessionCompletedAt, err := parseNullableRFC(completedAt, "session completed_at")
+	if err != nil {
+		return scan.ScanResult{}, err
 	}
 	return scan.ScanResult{
-		ID:               id,
-		SessionID:        sessionID,
-		TenantID:         storage.TenantID(tenantID),
-		RobotID:          robotID,
-		CheckID:          checkID,
-		PackCheckID:      packCheckID,
-		Outcome:          scan.Outcome(outcome),
-		EvalReason:       evalReason,
-		DurationMs:       durationMs,
-		ExecutedAt:       executed,
-		CreatedAt:        created,
-		PackKey:          packKey,
-		SessionStartedAt: sessionStartedAt,
+		ID:                 id,
+		SessionID:          sessionID,
+		TenantID:           storage.TenantID(tenantID),
+		RobotID:            robotID,
+		CheckID:            checkID,
+		PackCheckID:        packCheckID,
+		Outcome:            scan.Outcome(outcome),
+		EvalReason:         evalReason,
+		DurationMs:         durationMs,
+		ExecutedAt:         executed,
+		CreatedAt:          created,
+		PackKey:            packKey,
+		SessionStartedAt:   sessionStartedAt,
+		SessionCompletedAt: sessionCompletedAt,
 	}, nil
+}
+
+// parseNullableRFC는 sql.NullString을 nil 또는 *time.Time(RFC3339Nano)로 변환합니다.
+// label은 에러 메시지에 컨텍스트로 포함됩니다.
+func parseNullableRFC(s sql.NullString, label string) (*time.Time, error) {
+	if !s.Valid || s.String == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(rfc3339Nano, s.String)
+	if err != nil {
+		return nil, fmt.Errorf("scan: parse %s: %w", label, err)
+	}
+	return &t, nil
 }
 
 // --- helpers ---

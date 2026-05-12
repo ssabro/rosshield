@@ -110,6 +110,10 @@ type ScanResult struct {
 	// SessionStartedAt도 ListResultsByRobot에서만 채워지는 derived 필드 — scan_sessions.started_at JOIN.
 	// pending 상태 session의 결과는 nil(transition pending→running 직후만 set). Web UI SessionGroup 헤더 표시.
 	SessionStartedAt *time.Time
+	// SessionCompletedAt도 ListResultsByRobot에서만 채워지는 derived 필드 — scan_sessions.completed_at JOIN.
+	// terminal 상태(completed/failed/cancelled) 전이 시점에 set. running session 결과는 nil.
+	// Web UI SessionGroup 헤더 total duration(= completed - started) 계산용.
+	SessionCompletedAt *time.Time
 }
 
 // TransitionTo는 FSM 검증 후 새 ScanSession 값을 반환합니다 (P9 불변성).

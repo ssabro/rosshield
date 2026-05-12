@@ -1986,6 +1986,14 @@ components:
             Derived field — scan_sessions.started_at from JOIN. Set when session
             transitioned pending→running. Used by Web UI SessionGroup header.
             Empty for pending sessions.
+        sessionCompletedAt:
+          type: string
+          format: date-time
+          description: |
+            Derived field — scan_sessions.completed_at from JOIN. Set when
+            session reached terminal state (completed/failed/cancelled).
+            Used with sessionStartedAt for total duration. Empty for
+            pending/running sessions.
         outcome:
           type: string
           enum: [pass, fail, indeterminate, error, skipped]

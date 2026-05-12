@@ -407,6 +407,8 @@ export interface RobotResult {
   packKey?: string
   // sessionStartedAt는 derived (서버 JOIN scan_sessions.started_at). 빈 string 가능 (pending 상태).
   sessionStartedAt?: string
+  // sessionCompletedAt는 derived (서버 JOIN scan_sessions.completed_at). 빈 string 가능 (running/pending 상태).
+  sessionCompletedAt?: string
   outcome: 'pass' | 'fail' | 'indeterminate' | 'error' | 'skipped'
   evalReason?: string
   durationMs: number

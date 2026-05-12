@@ -117,17 +117,18 @@ func (h *Handlers) GetRobot(w http.ResponseWriter, r *http.Request, robotID stri
 
 // robotResultResponse는 GET /api/v1/robots/{robotId}/results 항목입니다.
 type robotResultResponse struct {
-	ID               string `json:"id"`
-	SessionID        string `json:"sessionId"`
-	CheckID          string `json:"checkId"`
-	PackCheckID      string `json:"packCheckId"`
-	PackKey          string `json:"packKey,omitempty"`          // derived: session→pack JOIN, check navigation 용
-	SessionStartedAt string `json:"sessionStartedAt,omitempty"` // derived: scan_sessions.started_at JOIN
-	Outcome          string `json:"outcome"`
-	EvalReason       string `json:"evalReason,omitempty"`
-	DurationMs       int64  `json:"durationMs"`
-	ExecutedAt       string `json:"executedAt"`
-	CreatedAt        string `json:"createdAt"`
+	ID                 string `json:"id"`
+	SessionID          string `json:"sessionId"`
+	CheckID            string `json:"checkId"`
+	PackCheckID        string `json:"packCheckId"`
+	PackKey            string `json:"packKey,omitempty"`            // derived: session→pack JOIN, check navigation 용
+	SessionStartedAt   string `json:"sessionStartedAt,omitempty"`   // derived: scan_sessions.started_at JOIN
+	SessionCompletedAt string `json:"sessionCompletedAt,omitempty"` // derived: scan_sessions.completed_at JOIN
+	Outcome            string `json:"outcome"`
+	EvalReason         string `json:"evalReason,omitempty"`
+	DurationMs         int64  `json:"durationMs"`
+	ExecutedAt         string `json:"executedAt"`
+	CreatedAt          string `json:"createdAt"`
 }
 
 // robotResultsListResponse는 GET /api/v1/robots/{robotId}/results 응답 envelope입니다.
@@ -198,6 +199,9 @@ func (h *Handlers) ListRobotResults(w http.ResponseWriter, r *http.Request, robo
 		}
 		if res.SessionStartedAt != nil && !res.SessionStartedAt.IsZero() {
 			item.SessionStartedAt = res.SessionStartedAt.UTC().Format(time.RFC3339Nano)
+		}
+		if res.SessionCompletedAt != nil && !res.SessionCompletedAt.IsZero() {
+			item.SessionCompletedAt = res.SessionCompletedAt.UTC().Format(time.RFC3339Nano)
 		}
 		out.Results = append(out.Results, item)
 	}

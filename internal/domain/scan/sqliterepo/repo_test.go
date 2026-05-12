@@ -640,6 +640,67 @@ func TestListResultsByRobotPopulatesPackKey(t *testing.T) {
 	} else if got[0].SessionStartedAt.IsZero() {
 		t.Errorf("SessionStartedAt = zero, want non-zero")
 	}
+	// SessionCompletedAt은 session이 아직 running이라 nil이어야 함.
+	if got[0].SessionCompletedAt != nil {
+		t.Errorf("SessionCompletedAt = %v, want nil (session still running)", got[0].SessionCompletedAt)
+	}
+}
+
+// TestListResultsByRobotPopulatesSessionCompletedAt은 terminal state(completed) 전이 후
+// SessionCompletedAt이 채워지는지 검증합니다. (Total duration UI 계산의 입력.)
+func TestListResultsByRobotPopulatesSessionCompletedAt(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+	const tenantID, fleetID, packID = "tn_RPC", "fl_RPC", "pk_RPC"
+	const robotID, packCheckID = "ro_RPC", "ck_RPC"
+	seedTenantFleetPack(t, store, tenantID, fleetID, packID)
+	seedRobotAndCheck(t, store, tenantID, fleetID, packID, robotID, packCheckID)
+
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		if err != nil {
+			return err
+		}
+		if _, err := repo.TransitionSession(ctx, tx, s.ID, scan.StatusRunning, ""); err != nil {
+			return err
+		}
+		_, err = repo.RecordResult(ctx, tx, scan.RecordResultRequest{
+			SessionID: s.ID, RobotID: robotID, CheckID: "CIS-1.1.1.1",
+			PackCheckID: packCheckID, Outcome: scan.OutcomePass,
+			ExecutedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return err
+		}
+		// 모든 result 기록 후 completed로 전이 — completed_at 자동 set.
+		_, err = repo.TransitionSession(ctx, tx, s.ID, scan.StatusCompleted, "")
+		return err
+	}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	var got []scan.ScanResult
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		rs, err := repo.ListResultsByRobot(ctx, tx, robotID, 10)
+		got = rs
+		return err
+	}); err != nil {
+		t.Fatalf("ListResultsByRobot: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].SessionCompletedAt == nil {
+		t.Fatalf("SessionCompletedAt = nil, want non-nil after completed transition")
+	}
+	if got[0].SessionStartedAt == nil {
+		t.Fatalf("SessionStartedAt = nil, want non-nil")
+	}
+	// completedAt >= startedAt 일관성.
+	if got[0].SessionCompletedAt.Before(*got[0].SessionStartedAt) {
+		t.Errorf("CompletedAt %v before StartedAt %v",
+			got[0].SessionCompletedAt, got[0].SessionStartedAt)
+	}
 }
 
 func TestRecordResultDuplicate(t *testing.T) {
