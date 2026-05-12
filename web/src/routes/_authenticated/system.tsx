@@ -127,8 +127,8 @@ function PacksCard(): React.ReactElement {
                     >
                       {p.name}
                     </Link>
-                    <Badge variant="secondary">{p.version}</Badge>
-                    <Badge variant="outline">
+                    <Badge variant="outline">{p.version}</Badge>
+                    <Badge variant={p.isBuiltin ? 'secondary' : 'outline'}>
                       {p.isBuiltin ? t('packs.scope.builtin') : t('packs.scope.tenant')}
                     </Badge>
                   </div>

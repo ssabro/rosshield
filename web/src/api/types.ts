@@ -1180,6 +1180,17 @@ export interface components {
              *     pending/running sessions.
              */
             sessionCompletedAt?: string;
+            /**
+             * @description Derived field — scan_sessions.failure_reason from JOIN. Recorded
+             *     when session transitioned to failed. Empty for non-failed states.
+             */
+            sessionFailureReason?: string;
+            /**
+             * @description Derived field — scan_sessions.status from JOIN. Used by Web UI
+             *     for SessionGroup header status Badge color matrix.
+             * @enum {string}
+             */
+            sessionStatus?: "pending" | "running" | "completed" | "failed" | "cancelled";
             /** @enum {string} */
             outcome: "pass" | "fail" | "indeterminate" | "error" | "skipped";
             evalReason?: string;

@@ -114,6 +114,12 @@ type ScanResult struct {
 	// terminal 상태(completed/failed/cancelled) 전이 시점에 set. running session 결과는 nil.
 	// Web UI SessionGroup 헤더 total duration(= completed - started) 계산용.
 	SessionCompletedAt *time.Time
+	// SessionFailureReason도 ListResultsByRobot에서만 채워지는 derived 필드 — scan_sessions.failure_reason JOIN.
+	// failed 상태 전이 시 사유 기록. 그 외 status는 빈 string. Web UI SessionGroup 헤더 표시.
+	SessionFailureReason string
+	// SessionStatusEnriched도 ListResultsByRobot에서만 채워지는 derived 필드 — scan_sessions.status JOIN.
+	// pending/running/completed/failed/cancelled 중 하나. Web UI SessionGroup 헤더 Badge 색상 분기 입력.
+	SessionStatusEnriched SessionStatus
 }
 
 // TransitionTo는 FSM 검증 후 새 ScanSession 값을 반환합니다 (P9 불변성).

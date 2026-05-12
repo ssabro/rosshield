@@ -424,9 +424,12 @@ function SessionGroup({
 }): React.ReactElement {
   const t = useT()
   const ChevronIcon = collapsed ? ChevronRight : ChevronDown
-  // sessionStartedAt/CompletedAt는 같은 그룹 내 모든 result에 동일 — 첫 result에서 추출.
-  const startedAt = group.results[0]?.sessionStartedAt
-  const completedAt = group.results[0]?.sessionCompletedAt
+  // sessionStartedAt/CompletedAt/FailureReason/Status는 같은 그룹 내 모든 result에 동일 — 첫 result에서 추출.
+  const first = group.results[0]
+  const startedAt = first?.sessionStartedAt
+  const completedAt = first?.sessionCompletedAt
+  const failureReason = first?.sessionFailureReason
+  const status = first?.sessionStatus
   const totalDuration = formatTotalDuration(startedAt, completedAt)
   return (
     <div className="space-y-1">
@@ -452,6 +455,11 @@ function SessionGroup({
         >
           {group.sessionId}
         </Link>
+        {status && (
+          <Badge variant={sessionStatusVariant(status)} className="text-[10px]">
+            {status}
+          </Badge>
+        )}
         {startedAt && (
           <span
             title={new Date(startedAt).toLocaleString()}
@@ -474,6 +482,17 @@ function SessionGroup({
           {t('robots.detail.results.count', { count: group.results.length })}
         </span>
       </div>
+      {failureReason && status === 'failed' && (
+        <div
+          className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs text-destructive"
+          title={failureReason}
+        >
+          <span className="font-medium">
+            {t('robots.detail.results.failureReason')}:
+          </span>{' '}
+          <span className="break-words">{failureReason}</span>
+        </div>
+      )}
       {!collapsed && (
         <div className="space-y-1">
           {group.results.map((r) => (
@@ -517,7 +536,10 @@ function ResultRow({
             <span className="font-mono text-xs">{result.checkId}</span>
           )}
           {isBuiltin !== undefined && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge
+              variant={isBuiltin ? 'secondary' : 'outline'}
+              className="text-[10px]"
+            >
               {isBuiltin ? t('packs.scope.builtin') : t('packs.scope.tenant')}
             </Badge>
           )}
@@ -547,6 +569,25 @@ function outcomeVariant(
       return 'destructive'
     case 'indeterminate':
       return 'secondary'
+    default:
+      return 'outline'
+  }
+}
+
+// sessionStatusVariant — pending/running/completed/failed/cancelled를 Badge variant로 매핑.
+// completed=default(녹색 강조)·failed=destructive·running=secondary·나머지=outline.
+function sessionStatusVariant(
+  status: string,
+): 'default' | 'destructive' | 'secondary' | 'outline' {
+  switch (status) {
+    case 'completed':
+      return 'default'
+    case 'failed':
+      return 'destructive'
+    case 'running':
+      return 'secondary'
+    case 'cancelled':
+    case 'pending':
     default:
       return 'outline'
   }

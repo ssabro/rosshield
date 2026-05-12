@@ -338,7 +338,9 @@ SELECT r.id, r.session_id, r.tenant_id, r.robot_id, r.check_id, r.pack_check_id,
        r.outcome, r.eval_reason, r.duration_ms,
        r.executed_at, r.created_at,
        COALESCE(p.pack_key, '') AS pack_key,
-       s.started_at, s.completed_at
+       s.started_at, s.completed_at,
+       COALESCE(s.failure_reason, '') AS failure_reason,
+       COALESCE(s.status, '') AS status
   FROM scan_results r
   LEFT JOIN scan_sessions s ON s.id = r.session_id AND s.tenant_id = r.tenant_id
   LEFT JOIN packs p ON p.id = s.pack_id
@@ -365,18 +367,20 @@ SELECT r.id, r.session_id, r.tenant_id, r.robot_id, r.check_id, r.pack_check_id,
 	return out, nil
 }
 
-// scanResultRowWithPackKey는 ListResultsByRobot용 — JOIN으로 추가된 pack_key + session.started_at + completed_at 함께 scan.
+// scanResultRowWithPackKey는 ListResultsByRobot용 — JOIN으로 추가된 pack_key + session.started_at + completed_at + failure_reason 함께 scan.
 // session.started_at/completed_at은 nullable(pending/running 상태) — sql.NullString로 받아 nil 처리.
+// failure_reason은 빈 string default(failed가 아닌 상태).
 func scanResultRowWithPackKey(scanFn func(...any) error) (scan.ScanResult, error) {
 	var (
 		id, sessionID, tenantID, robotID, checkID, packCheckID string
 		outcome, evalReason, executedAt, createdAt, packKey    string
 		durationMs                                             int64
 		startedAt, completedAt                                 sql.NullString
+		failureReason, sessionStatus                           string
 	)
 	if err := scanFn(&id, &sessionID, &tenantID, &robotID, &checkID, &packCheckID,
 		&outcome, &evalReason, &durationMs,
-		&executedAt, &createdAt, &packKey, &startedAt, &completedAt); err != nil {
+		&executedAt, &createdAt, &packKey, &startedAt, &completedAt, &failureReason, &sessionStatus); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return scan.ScanResult{}, storage.ErrNotFound
 		}
@@ -399,20 +403,22 @@ func scanResultRowWithPackKey(scanFn func(...any) error) (scan.ScanResult, error
 		return scan.ScanResult{}, err
 	}
 	return scan.ScanResult{
-		ID:                 id,
-		SessionID:          sessionID,
-		TenantID:           storage.TenantID(tenantID),
-		RobotID:            robotID,
-		CheckID:            checkID,
-		PackCheckID:        packCheckID,
-		Outcome:            scan.Outcome(outcome),
-		EvalReason:         evalReason,
-		DurationMs:         durationMs,
-		ExecutedAt:         executed,
-		CreatedAt:          created,
-		PackKey:            packKey,
-		SessionStartedAt:   sessionStartedAt,
-		SessionCompletedAt: sessionCompletedAt,
+		ID:                    id,
+		SessionID:             sessionID,
+		TenantID:              storage.TenantID(tenantID),
+		RobotID:               robotID,
+		CheckID:               checkID,
+		PackCheckID:           packCheckID,
+		Outcome:               scan.Outcome(outcome),
+		EvalReason:            evalReason,
+		DurationMs:            durationMs,
+		ExecutedAt:            executed,
+		CreatedAt:             created,
+		PackKey:               packKey,
+		SessionStartedAt:      sessionStartedAt,
+		SessionCompletedAt:    sessionCompletedAt,
+		SessionFailureReason:  failureReason,
+		SessionStatusEnriched: scan.SessionStatus(sessionStatus),
 	}, nil
 }
 

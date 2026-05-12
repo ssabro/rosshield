@@ -409,6 +409,10 @@ export interface RobotResult {
   sessionStartedAt?: string
   // sessionCompletedAt는 derived (서버 JOIN scan_sessions.completed_at). 빈 string 가능 (running/pending 상태).
   sessionCompletedAt?: string
+  // sessionFailureReason는 derived (서버 JOIN scan_sessions.failure_reason). failed 상태에만 의미 있음.
+  sessionFailureReason?: string
+  // sessionStatus는 derived (서버 JOIN scan_sessions.status). Badge 색상 분기 입력.
+  sessionStatus?: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   outcome: 'pass' | 'fail' | 'indeterminate' | 'error' | 'skipped'
   evalReason?: string
   durationMs: number

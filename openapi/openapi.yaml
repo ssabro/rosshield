@@ -1994,6 +1994,17 @@ components:
             session reached terminal state (completed/failed/cancelled).
             Used with sessionStartedAt for total duration. Empty for
             pending/running sessions.
+        sessionFailureReason:
+          type: string
+          description: |
+            Derived field — scan_sessions.failure_reason from JOIN. Recorded
+            when session transitioned to failed. Empty for non-failed states.
+        sessionStatus:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+          description: |
+            Derived field — scan_sessions.status from JOIN. Used by Web UI
+            for SessionGroup header status Badge color matrix.
         outcome:
           type: string
           enum: [pass, fail, indeterminate, error, skipped]
