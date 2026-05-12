@@ -11,10 +11,17 @@ metadata:
         • Uses iptables for configuration
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active ufw.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Running iptables.persistent with ufw enabled may lead to conflict and unexpected
         results.

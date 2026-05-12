@@ -4,6 +4,6 @@ metadata:
     name: cis-ubuntu-2404
     version: 1.0.0
     vendor: rosshield
-    description: CIS Ubuntu 24.04 LTS Benchmark v1.0.0
+    description: CIS Ubuntu Linux 24.04 LTS Benchmark
 spec:
     schemaVersion: 1

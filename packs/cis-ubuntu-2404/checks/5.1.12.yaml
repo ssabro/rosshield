@@ -23,10 +23,17 @@ metadata:
         o diffie-hellman-group14-sha256
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | grep -Pi -- '\''kexalgorithms\h+([^#\n\r]+,)?(diffie-hellman-group1- 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Key exchange methods that are considered weak should be removed. A key exchange
         method may be weak because too few bits are used, or the hashing algorithm is

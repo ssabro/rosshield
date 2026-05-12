@@ -9,10 +9,17 @@ metadata:
         Note: bind9 is the package and bind.service is the alias for named.service.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active named.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Unless a system is specifically designated to act as a DNS server, it is recommended
         that the package be deleted to reduce the potential attack surface.

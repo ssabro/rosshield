@@ -8,10 +8,17 @@ metadata:
         binaries.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /tmp | grep -v noexec 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Since the /tmp filesystem is only intended for temporary file storage, set this option to
         ensure that users cannot run executable binaries from /tmp.

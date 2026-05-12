@@ -10,10 +10,17 @@ metadata:
         configuration files.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -s nis &>/dev/null && echo "nis is installed" 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The NIS service is inherently an insecure system that has been vulnerable to DOS
         attacks, buffer overflows and has poor authentication for querying NIS maps. NIS

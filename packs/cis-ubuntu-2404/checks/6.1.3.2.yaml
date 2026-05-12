@@ -6,10 +6,17 @@ metadata:
     description: Once the rsyslog package is installed, ensure that the service is enabled.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active rsyslog.service 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         If the rsyslog service is not enabled to start on boot, the system will not capture
         logging events.

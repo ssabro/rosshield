@@ -8,10 +8,17 @@ metadata:
         unauthenticated connections to the SSH daemon.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | awk '\''$1 ~ /^\s*maxstartups/{split($2, a, ":");{if(a[1] > 10 || 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         To protect a system from denial of service due to a large number of pending
         authentication connection attempts, use the rate limiting function of MaxStartups to

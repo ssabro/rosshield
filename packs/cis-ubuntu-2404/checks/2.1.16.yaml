@@ -9,10 +9,17 @@ metadata:
         and receiving files.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active tftpd-hpa.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Unless there is a need to run the system as a TFTP server, it is recommended that the
         package be removed to reduce the potential attack surface.

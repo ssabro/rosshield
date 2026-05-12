@@ -16,10 +16,17 @@ metadata:
         modules to be installed as the new authentication token.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -P -- '\''\bpam_pwquality\.so\b'\'' /etc/pam.d/common-password 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Use of a unique, complex passwords helps to increase the time and resources required
         to compromise the password.

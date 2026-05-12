@@ -11,10 +11,17 @@ metadata:
         the tally directory.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -P -- '\''\bpam_faillock\.so\b'\'' /etc/pam.d/common-{auth,account} 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Locking out user IDs after n unsuccessful consecutive login attempts mitigates brute
         force password attacks against your systems.

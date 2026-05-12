@@ -10,10 +10,17 @@ metadata:
         administration capability.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active cups.socket cups.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         If the system does not need to print jobs or accept print jobs from other systems, it is
         recommended that CUPS be removed to reduce the potential attack surface.

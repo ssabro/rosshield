@@ -11,10 +11,17 @@ metadata:
         no warning is given. If not specified, no warning will be provided.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($6 < 7)print "User: " $1 " PASS_WARN_AGE: " 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Providing an advance warning that a password will be expiring gives users time to think
         of a secure password. Users caught unaware may choose a simple password or write it

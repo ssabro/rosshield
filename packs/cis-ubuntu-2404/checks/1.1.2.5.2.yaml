@@ -6,10 +6,17 @@ metadata:
     description: The nodev mount option specifies that the filesystem cannot contain special devices.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /var/tmp | grep -v nodev 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Since the /var/tmp filesystem is not intended to support devices, set this option to
         ensure that users cannot create a block or character special devices in /var/tmp.

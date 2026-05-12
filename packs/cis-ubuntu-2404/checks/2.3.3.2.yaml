@@ -8,10 +8,17 @@ metadata:
         is granted the access required by the chronyd service
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(ps -ef | awk '\''(/[c]hronyd/ && $1!="_chrony") { print $1 }'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: The chronyd service should run with only the required privlidges
     fixGuidance: |-
         Add or edit the user line to /etc/chrony/chrony.conf or a file ending in .conf in

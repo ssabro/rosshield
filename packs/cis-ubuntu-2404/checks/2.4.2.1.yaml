@@ -24,10 +24,17 @@ metadata:
         exists, only the superuser is allowed to use at.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(stat -Lc '\''Access: (%a/%A) Owner: (%U) Group: (%G)'\'' /etc/at.allow 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         On many systems, only the system administrator is authorized to schedule at jobs.
         Using the at.allow file to control who can run at jobs enforces this policy. It is easier

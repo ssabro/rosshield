@@ -11,10 +11,17 @@ metadata:
         at and people to talk to, as well as network services running on the machine.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active avahi-daemon.socket avahi-daemon.service 2>/dev/null | 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Automatic discovery of network services is not normally required for system
         functionality. It is recommended to remove this package to reduce the potential attack

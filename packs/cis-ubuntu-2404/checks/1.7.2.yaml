@@ -8,10 +8,17 @@ metadata:
         systems.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(gsettings get org.gnome.login-screen banner-message-text 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Warning messages inform users who are attempting to login to the system of their legal
         status regarding the system and must include the name of the organization that owns

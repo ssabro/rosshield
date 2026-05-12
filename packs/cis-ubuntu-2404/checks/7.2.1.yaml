@@ -10,10 +10,17 @@ metadata:
         /etc/passwd.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(awk -F: '\''($2 != "x" ) { print "User: \"" $1 "\" is not set to shadowed 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The /etc/passwd file also contains information like user ID's and group ID's that are
         used by many system programs. Therefore, the /etc/passwd file must remain world

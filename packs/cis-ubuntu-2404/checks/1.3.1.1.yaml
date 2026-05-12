@@ -6,10 +6,17 @@ metadata:
     description: AppArmor provides Mandatory Access Controls.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -s apparmor-utils &>/dev/null && echo "apparmor-utils is 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Without a Mandatory Access Control system installed only the default Discretionary
         Access Control system will be available.

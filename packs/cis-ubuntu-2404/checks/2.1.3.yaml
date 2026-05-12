@@ -10,10 +10,17 @@ metadata:
         or -6 arguments.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active isc-dhcp-server.service isc-dhcp-server6.service 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Unless a system is specifically set up to act as a DHCP server, it is recommended that
         this package be removed to reduce the potential attack surface.

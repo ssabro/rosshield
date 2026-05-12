@@ -11,10 +11,17 @@ metadata:
         assumed (which disables the restriction).
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($5 > 365 || $5 < 1)print "User: " $1 " 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The window of opportunity for an attacker to leverage compromised credentials or
         successfully compromise credentials via an online brute force attack is limited by the

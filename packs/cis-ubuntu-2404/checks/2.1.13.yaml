@@ -8,10 +8,17 @@ metadata:
         links.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active rsync.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         rsync.service presents a security risk as the rsync protocol is unencrypted.
         The rsync package should be removed to reduce the attack area of the system.

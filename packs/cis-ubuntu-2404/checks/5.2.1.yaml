@@ -9,10 +9,17 @@ metadata:
         used to determine the user name with which to query the security policy.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -s sudo-ldap &>/dev/null && echo "sudo-ldap is installed" 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         sudo supports a plug-in architecture for security policies and input/output logging. Third
         parties can develop and distribute their own policy and I/O logging plug-ins to work

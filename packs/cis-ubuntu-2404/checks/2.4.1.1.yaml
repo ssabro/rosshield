@@ -6,10 +6,17 @@ metadata:
     description: The cron daemon is used to execute batch jobs on the system.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl list-units | awk '\''$1~/^crond?\.service/{print $3}'\'' 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         While there may not be user jobs that need to be run on the system, the system does
         have maintenance jobs that may include security monitoring that have to run, and cron

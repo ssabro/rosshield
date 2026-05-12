@@ -6,10 +6,17 @@ metadata:
     description: The nosuid mount option specifies that the filesystem cannot contain setuid files.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /var/log/audit | grep -v nosuid 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Since the /var/log/audit filesystem is only intended for variable files such as logs,
         set this option to ensure that users cannot create setuid files in /var/log/audit.

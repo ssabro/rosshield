@@ -8,10 +8,17 @@ metadata:
         permitted from a given connection.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T -C user=sshuser | grep maxsessions 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         To protect a system from denial of service due to a large number of concurrent
         sessions, use the rate limiting function of MaxSessions to protect availability of sshd

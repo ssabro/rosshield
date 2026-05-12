@@ -8,10 +8,17 @@ metadata:
         connections to other systems via the telnet protocol.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -l | grep -E '\''telnet|inetutils-telnet'\'' &>/dev/null && echo 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The telnet protocol is insecure and unencrypted. The use of an unencrypted
         transmission medium could allow an unauthorized user to steal credentials. The ssh

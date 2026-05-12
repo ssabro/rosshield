@@ -15,10 +15,17 @@ metadata:
         iptables documentation and set any restrictions in compliance with site policy
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(ip6tables -L INPUT -v -n 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Without a firewall rule configured for open ports default firewall policy will drop all
         packets to these ports.

@@ -6,10 +6,17 @@ metadata:
     description: Audit configuration files control auditd and what events are audited.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(find /etc/audit/ -type f \( -name '\''*.conf'\'' -o -name '\''*.rules'\'' \) ! -group 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Access to the audit configuration files could allow unauthorized personnel to prevent the
         auditing of critical events.

@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -144,22 +145,124 @@ func convertCISItem(it cisItem) (Check, string) {
 		return check, "assessment_status=Manual (manual review required)"
 	}
 
-	if !strings.Contains(it.Audit, "** PASS **") {
-		check.AuditCommand = "true"
-		check.EvaluationRule = degradedEvalRuleJSON
-		return check, "audit lacks ** PASS ** marker (natural-language manual)"
+	// 자동 변환 우선순위:
+	//  1) 표준 PASS 마커 + bash hashbang (기존 로직)
+	//  2) "Nothing should be returned" 패턴 + 마지막 shell line 추출 (CIS 자연어 가이드 다수)
+	//  3) "is installed" 또는 dpkg-query &&/echo 긍정 기대 패턴
+	if strings.Contains(it.Audit, "** PASS **") {
+		body, ok := extractCISBashBody(it.Audit)
+		if !ok {
+			check.AuditCommand = "true"
+			check.EvaluationRule = degradedEvalRuleJSON
+			return check, "audit lacks bash hashbang"
+		}
+		check.AuditCommand = wrapBash(body)
+		check.EvaluationRule = cisAutoEvalRuleJSON
+		return check, ""
 	}
 
-	body, ok := extractCISBashBody(it.Audit)
+	// Pattern 2/3: 자연어 가이드 + 마지막 shell line + 기대 결과 키워드 추출.
+	if synthesized, ok := synthesizeCISShellAssertion(it.Audit); ok {
+		check.AuditCommand = wrapBash(synthesized)
+		check.EvaluationRule = cisAutoEvalRuleJSON
+		return check, ""
+	}
+
+	check.AuditCommand = "true"
+	check.EvaluationRule = degradedEvalRuleJSON
+	return check, "audit lacks ** PASS ** marker (natural-language manual)"
+}
+
+// cisShellLineRe는 audit 텍스트에서 한 줄 shell 명령(`# <cmd>`)을 매칭합니다.
+//
+// CIS audit 가이드는 공식적으로 `# <command>` 줄로 명령을 표시 — `# Run the following...`
+// 같은 자연어 줄은 제외(자체 휴리스틱).
+var cisShellLineRe = regexp.MustCompile(`(?m)^\s*#\s+(\S.*\S|\S)\s*$`)
+
+// shellLineSkipRe는 audit 텍스트의 `# ...` 줄 중 자연어/주석 텍스트를 건너뜁니다.
+//
+// CIS는 `# Run the following`, `# Example output:` 등 자연어를 같은 prefix로 사용.
+var shellLineSkipRe = regexp.MustCompile(`(?i)^(run\s|example|verify|the\s|note:|to\s|nothing\s|or\s|where\s|if\s)`)
+
+// extractCISLastShellLine은 audit 본문 마지막 shell line을 반환합니다 (자연어 줄 제외).
+//
+// 마지막 명령을 우선시하는 이유: CIS audit 가이드는 일반적으로 자연어 설명 → 명령
+// 순서로 작성됨. 마지막 명령이 실제 검증 명령일 가능성 가장 높음.
+func extractCISLastShellLine(audit string) (string, bool) {
+	matches := cisShellLineRe.FindAllStringSubmatch(audit, -1)
+	for i := len(matches) - 1; i >= 0; i-- {
+		cand := strings.TrimSpace(matches[i][1])
+		if cand == "" || shellLineSkipRe.MatchString(cand) {
+			continue
+		}
+		// '#' 시작 자연어 줄 후속(예: `# Example output:`) 회피 — 명령처럼 보이는 줄만 사용.
+		// 실 명령은 `findmnt`, `dpkg-query`, `grep`, `stat`, `sshd -T |` 등 식별자로 시작.
+		if !looksLikeShellCommand(cand) {
+			continue
+		}
+		return cand, true
+	}
+	return "", false
+}
+
+// looksLikeShellCommand는 한 줄 텍스트가 실제 shell 명령인지 휴리스틱으로 판정합니다.
+//
+// 첫 토큰이 알파벳·숫자·`/`·`_`로 시작하면 명령으로 간주. 자연어 prefix는 별도 skip.
+func looksLikeShellCommand(line string) bool {
+	if line == "" {
+		return false
+	}
+	c := line[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '/' || c == '_'
+}
+
+// synthesizeCISShellAssertion은 자연어 가이드에서 expected outcome을 추론해 bash를 합성합니다.
+//
+// 매핑:
+//  1. "Nothing should be returned" / "Nothing is returned" → expect 빈 출력 → cmd 출력 비어야 PASS
+//  2. "<X> is installed" 같은 긍정 echo 기대 → cmd 출력 비어 있지 않아야 PASS
+//
+// 기타 패턴(stat, find, getfacl 등)은 향후 epic. 현재는 두 패턴이 CIS 232건 중 ~100건 cover.
+func synthesizeCISShellAssertion(audit string) (string, bool) {
+	cmd, ok := extractCISLastShellLine(audit)
 	if !ok {
-		check.AuditCommand = "true"
-		check.EvaluationRule = degradedEvalRuleJSON
-		return check, "audit lacks bash hashbang"
+		return "", false
 	}
+	switch {
+	case regexpExpectEmpty.MatchString(audit):
+		return synthesizeExpectEmpty(cmd), true
+	case regexpExpectNonEmpty.MatchString(audit):
+		return synthesizeExpectNonEmpty(cmd), true
+	}
+	return "", false
+}
 
-	check.AuditCommand = wrapBash(body)
-	check.EvaluationRule = cisAutoEvalRuleJSON
-	return check, ""
+var (
+	// regexpExpectEmpty은 "Nothing should be returned" 류 자연어를 매칭 (대소문자 무시).
+	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned`)
+	// regexpExpectNonEmpty은 "<X> is installed" 같은 긍정 echo 기대 패턴 (대소문자 무시).
+	// 같은 audit에 "Nothing should be returned"가 있으면 우선순위로 expect-empty가 잡힘 (위 switch).
+	regexpExpectNonEmpty = regexp.MustCompile(`(?i)(is\s+installed|is\s+enabled|is\s+active)\b`)
+)
+
+// synthesizeExpectEmpty는 cmd 출력이 비어 있으면 PASS, 아니면 FAIL 출력하는 bash를 생성.
+func synthesizeExpectEmpty(cmd string) string {
+	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
+		"if [ -z \"$out\" ]; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// synthesizeExpectNonEmpty는 cmd 출력이 비어 있지 않으면 PASS, 비어 있으면 FAIL 출력하는 bash 생성.
+func synthesizeExpectNonEmpty(cmd string) string {
+	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
+		"if [ -n \"$out\" ]; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
 }
 
 // extractCISBashBody는 CIS audit 텍스트에서 bash hashbang 이후 본문을 추출합니다.

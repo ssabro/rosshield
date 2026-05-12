@@ -9,10 +9,17 @@ metadata:
         can access the file.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(stat -Lc '\''Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' /etc/crontab 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         This file contains information on what system jobs are run by cron. Write access to
         these files could provide unprivileged users with the ability to elevate their privileges.

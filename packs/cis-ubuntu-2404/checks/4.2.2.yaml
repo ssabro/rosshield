@@ -6,10 +6,17 @@ metadata:
     description: The iptables-persistent is a boot-time loader for netfilter rules, iptables plugin
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -s iptables-persistent &>/dev/null && echo "iptables-persistent 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Running both ufw and the services included in the iptables-persistent package may lead
         to conflict

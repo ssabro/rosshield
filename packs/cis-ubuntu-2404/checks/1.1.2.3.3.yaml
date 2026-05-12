@@ -6,10 +6,17 @@ metadata:
     description: The nosuid mount option specifies that the filesystem cannot contain setuid files.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /home | grep -v nosuid 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Since the /home filesystem is only intended for user file storage, set this option to
         ensure that users cannot create setuid files in /home.

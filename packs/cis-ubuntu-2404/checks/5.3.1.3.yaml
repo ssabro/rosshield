@@ -12,10 +12,17 @@ metadata:
         pam_cracklib module and the module is backwards compatible with its options.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -s libpam-pwquality | grep -P -- '\''^(Status|Version)\b'\'' 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Strong passwords reduce the risk of systems being hacked through brute force
         methods.

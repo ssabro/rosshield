@@ -33,10 +33,17 @@ metadata:
         3. The system default umask
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -Psi -- '\''^\h*umask\h+(([0-7][0-7][01][0-7]\b|[0-7][0-7][0-7][0- 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Setting a secure value for umask ensures that users make a conscious choice about
         their file permissions. A permissive umask value could result in directories or files with

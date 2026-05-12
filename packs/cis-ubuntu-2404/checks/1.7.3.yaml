@@ -10,10 +10,17 @@ metadata:
         screen
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(gsettings get org.gnome.login-screen disable-user-list 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Displaying the user list eliminates half of the Userid/Password equation that an
         unauthorized person would need to log on.

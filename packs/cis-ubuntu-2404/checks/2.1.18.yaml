@@ -6,10 +6,17 @@ metadata:
     description: Web servers provide the ability to host web site content.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active apache2.socket apache2.service nginx.service 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Unless there is a local site approved requirement to run a web server service on the
         system, web server packages should be removed to reduce the potential attack surface.

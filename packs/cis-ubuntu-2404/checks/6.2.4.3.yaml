@@ -6,10 +6,17 @@ metadata:
     description: Audit log files contain information about the system and system activity.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -Piws -- '\''^\h*log_group\h*=\h*\H+\b'\'' /etc/audit/auditd.conf | grep - 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Access to audit records can reveal system and configuration data to attackers,
         potentially compromising its confidentiality.

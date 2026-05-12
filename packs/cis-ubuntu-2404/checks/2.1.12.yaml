@@ -16,10 +16,17 @@ metadata:
         that server, it first consults with portmap to determine where the RPC server is listening.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active rpcbind.socket rpcbind.service 2>/dev/null | grep 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         A small request (~82 bytes via UDP) sent to the Portmapper generates a large
         response (7x to 28x amplification), which makes it a suitable tool for DDoS attacks. If

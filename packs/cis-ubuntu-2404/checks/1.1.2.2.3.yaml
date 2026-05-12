@@ -6,10 +6,17 @@ metadata:
     description: The nosuid mount option specifies that the filesystem cannot contain setuid files.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /dev/shm | grep -v '\''nosuid'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Setting this option on a file system prevents users from introducing privileged programs
         onto the system and allowing non-root users to execute them.

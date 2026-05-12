@@ -45,6 +45,34 @@ const cisManualFixture = `{
   ]
 }`
 
+// === Pattern 2: "Nothing should be returned" 자연어 + 마지막 shell line ===
+const cisExpectEmptyFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "1.1.2.1.2",
+      "title": "Ensure nodev option set on /tmp partition",
+      "assessment_status": "Automated",
+      "audit": "- IF - a separate partition exists for /tmp, verify that the nodev option is set.\nRun the following command to verify that the nodev mount option is set.\nExample:\n# findmnt -kn /tmp | grep -v nodev\nNothing should be returned"
+    }
+  ]
+}`
+
+// === Pattern 3: "is installed" 긍정 기대 + dpkg-query ===
+const cisExpectInstalledFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "1.3.1.1",
+      "title": "Ensure AppArmor is installed",
+      "assessment_status": "Automated",
+      "audit": "Run the following command to verify that apparmor is installed:\n# dpkg-query -s apparmor &>/dev/null && echo apparmor is installed\napparmor is installed"
+    }
+  ]
+}`
+
 // === audit가 자연어만 (no marker) ===
 const cisNoMarkerFixture = `{
   "benchmark": "CIS",
@@ -118,6 +146,56 @@ func TestConvertCISAutomated(t *testing.T) {
 	}
 	if string(c.EvaluationRule) != `{"op":"contains","value":"** PASS **"}` {
 		t.Errorf("EvaluationRule = %s", c.EvaluationRule)
+	}
+}
+
+// TestConvertCISExpectEmptyPatternAutoConverts는 "Nothing should be returned" 자연어 +
+// 마지막 # <cmd> 라인 추출이 PASS/FAIL 마커 없이 자동 변환되는지 검증합니다.
+func TestConvertCISExpectEmptyPatternAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectEmptyFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 || report.DegradedManual != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.HasPrefix(c.AuditCommand, "bash -c '") {
+		t.Errorf("AuditCommand should be bash-wrapped: %q", c.AuditCommand[:min(50, len(c.AuditCommand))])
+	}
+	// 합성된 bash는 cmd 출력이 비어 있을 때 PASS, 비어 있지 않으면 FAIL.
+	if !strings.Contains(c.AuditCommand, "findmnt -kn /tmp | grep -v nodev") {
+		t.Errorf("AuditCommand missing extracted shell line: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "** PASS **") || !strings.Contains(c.AuditCommand, "** FAIL **") {
+		t.Errorf("AuditCommand should emit both PASS and FAIL branches")
+	}
+	if !strings.Contains(c.AuditCommand, "[ -z") {
+		t.Errorf("AuditCommand should test for empty output")
+	}
+	if string(c.EvaluationRule) != `{"op":"contains","value":"** PASS **"}` {
+		t.Errorf("EvaluationRule = %s", c.EvaluationRule)
+	}
+}
+
+// TestConvertCISExpectInstalledPatternAutoConverts는 "is installed" 긍정 기대 패턴이
+// `[ -n ]` 분기로 자동 변환되는지 검증합니다.
+func TestConvertCISExpectInstalledPatternAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectInstalledFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "dpkg-query -s apparmor") {
+		t.Errorf("AuditCommand missing dpkg-query line: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "[ -n") {
+		t.Errorf("AuditCommand should test for non-empty output")
 	}
 }
 

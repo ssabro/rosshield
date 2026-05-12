@@ -8,10 +8,17 @@ metadata:
         (Dynamic Host Configuration Protocol) services.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active dnsmasq.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Unless a system is specifically designated to act as a DNS caching, DNS forwarding
         and/or DHCP server, it is recommended that the package be removed to reduce the

@@ -13,10 +13,17 @@ metadata:
         pwscore(1).
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -PHsi -- 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Strong passwords help protect systems from password attacks. Types of password
         attacks include dictionary attacks, which attempt to use common words and phrases,

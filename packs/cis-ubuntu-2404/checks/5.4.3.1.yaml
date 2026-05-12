@@ -11,10 +11,17 @@ metadata:
         included in this file.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -Ps '\''^\h*([^#\n\r]+)?\/nologin\b'\'' /etc/shells 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         A user can use chsh to change their configured shell.
         If a user has a shell configured that isn't in in /etc/shells, then the system assumes

@@ -16,10 +16,17 @@ metadata:
         o HMAC-SHA2-512
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | grep -Pi -- '\''macs\h+([^#\n\r]+,)?(hmac-md5|hmac-md5-96|hmac- 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         MD5 and 96-bit MAC algorithms are considered weak and have been shown to increase
         exploitability in SSH downgrade attacks. Weak algorithms continue to have a great deal

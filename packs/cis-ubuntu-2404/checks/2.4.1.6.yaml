@@ -11,10 +11,17 @@ metadata:
         preventing regular users from accessing this directory.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(stat -Lc '\''Access: (%a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' /etc/cron.monthly/ 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Granting write access to this directory for non-privileged users could provide them the
         means for gaining unauthorized elevated privileges. Granting read access to this

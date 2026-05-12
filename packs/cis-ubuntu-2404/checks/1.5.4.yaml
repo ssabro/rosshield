@@ -9,10 +9,17 @@ metadata:
         at startup significantly decreases.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -s prelink &>/dev/null && echo "prelink is installed" 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The prelinking feature can interfere with the operation of AIDE, because it changes
         binaries. Prelinking can also increase the vulnerability of the system if a malicious user

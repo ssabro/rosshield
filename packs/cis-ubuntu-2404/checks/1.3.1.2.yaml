@@ -10,10 +10,17 @@ metadata:
         bootloader is in use in your environment enact equivalent settings.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep "^\s*linux" /boot/grub/grub.cfg | grep -v "security=apparmor" 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         AppArmor must be enabled at boot time in your bootloader configuration to ensure that
         the controls it provides are not overridden.

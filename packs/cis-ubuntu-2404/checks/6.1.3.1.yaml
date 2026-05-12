@@ -8,10 +8,17 @@ metadata:
         meet operation requirements.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(dpkg-query -s rsyslog &>/dev/null && echo "rsyslog is installed" 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The security enhancements of rsyslog such as connection-oriented (i.e. TCP)
         transmission of logs, the option to log to database formats, and the encryption of log

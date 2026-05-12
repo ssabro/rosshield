@@ -8,10 +8,17 @@ metadata:
         without providing a password.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(awk -F: '\''($2 == "" ) { print $1 " does not have a password "}'\'' /etc/shadow 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         All accounts must have passwords or be locked to prevent the account from being used
         by an unauthorized user.

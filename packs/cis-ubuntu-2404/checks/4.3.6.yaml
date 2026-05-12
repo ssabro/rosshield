@@ -8,10 +8,17 @@ metadata:
         traffic to the loopback network
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(nft list ruleset | awk '\''/hook input/,/}/'\'' | grep '\''ip6 saddr'\'' 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Loopback traffic is generated between processes on machine and is typically critical to
         the operation of the system. The loopback interface is the only place that loopback

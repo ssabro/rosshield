@@ -8,10 +8,17 @@ metadata:
         transfer files. vsftpd is the Very Secure File Transfer Protocol Daemon.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-active vsftpd.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         FTP does not protect the confidentiality of data or authentication credentials. It is
         recommended SFTP be used if file transfer is required. Unless there is a need to run
