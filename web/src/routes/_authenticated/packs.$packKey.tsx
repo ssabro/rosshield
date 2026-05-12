@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { ApiError } from '@/api/errors'
 import { usePack } from '@/api/hooks'
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -63,6 +64,12 @@ function PackDetailPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
+      <Breadcrumbs
+        items={[
+          { label: t('nav.system'), to: '/system' },
+          { label: pack.name },
+        ]}
+      />
       <PageHeader title={pack.name} description={pack.description ?? pack.packKey} />
 
       <Card>

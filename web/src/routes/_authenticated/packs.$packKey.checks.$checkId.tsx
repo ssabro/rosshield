@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { ApiError } from '@/api/errors'
-import { useCheck, useCheckSelftest } from '@/api/hooks'
+import { useCheck, useCheckSelftest, usePack } from '@/api/hooks'
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -18,6 +19,7 @@ function CheckDetailPage(): React.ReactElement {
   const { packKey, checkId } = Route.useParams()
   const t = useT()
   const detailQuery = useCheck(packKey, checkId)
+  const packQuery = usePack(packKey)
 
   if (detailQuery.isPending) {
     return (
@@ -59,6 +61,17 @@ function CheckDetailPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
+      <Breadcrumbs
+        items={[
+          { label: t('nav.system'), to: '/system' },
+          {
+            label: packQuery.data?.name ?? c.packKey,
+            to: '/packs/$packKey',
+            params: { packKey: c.packKey },
+          },
+          { label: c.checkId },
+        ]}
+      />
       <PageHeader title={c.title} description={c.checkId} />
 
       <Card>
