@@ -123,7 +123,13 @@ function RobotRow({ robot }: { robot: Robot }): React.ReactElement {
     <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{robot.name}</span>
+          <Link
+            to="/robots/$robotId"
+            params={{ robotId: robot.id }}
+            className="font-medium hover:underline"
+          >
+            {robot.name}
+          </Link>
           <span className="font-mono text-xs text-muted-foreground">{robot.id}</span>
           <Badge variant="outline" className="text-xs">
             {robot.criticality}

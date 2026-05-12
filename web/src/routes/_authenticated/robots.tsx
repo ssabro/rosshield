@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { Server } from 'lucide-react'
@@ -131,7 +131,15 @@ function RobotRow({ robot }: { robot: Robot }): React.ReactElement {
   const tags = Array.isArray(robot.tags) ? (robot.tags as unknown[]) : []
   return (
     <TableRow>
-      <TableCell className="font-medium">{robot.name}</TableCell>
+      <TableCell className="font-medium">
+        <Link
+          to="/robots/$robotId"
+          params={{ robotId: robot.id }}
+          className="hover:underline"
+        >
+          {robot.name}
+        </Link>
+      </TableCell>
       <TableCell className="font-mono text-xs">
         {robot.host}:{robot.port}
       </TableCell>
