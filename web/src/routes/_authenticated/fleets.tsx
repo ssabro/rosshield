@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
@@ -165,7 +165,13 @@ function FleetRow({
     <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{fleet.name}</span>
+          <Link
+            to="/fleets/$fleetId"
+            params={{ fleetId: fleet.id }}
+            className="font-medium hover:underline"
+          >
+            {fleet.name}
+          </Link>
           <Badge variant="secondary" className="text-xs">
             {t('fleets.row.robotCount', { count: fleet.robotCount })}
           </Badge>
