@@ -492,6 +492,38 @@ export interface ScanSession {
   completedAt?: string | null
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// 5-pre/5) Fleets (read-only)
+// ────────────────────────────────────────────────────────────────────────
+
+export interface Fleet {
+  id: string
+  tenantId: string
+  name: string
+  description?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+// useFleets는 GET /api/v1/fleets 목록 조회 hook입니다.
+// tenant scope 활성 fleets를 name ASC로 반환.
+export function useFleets() {
+  return useQuery({
+    queryKey: ['fleets'],
+    queryFn: async (): Promise<Fleet[]> => {
+      const { data, error, response } = await apiClient.GET('/api/v1/fleets')
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as { fleets?: Fleet[] } | undefined
+      return body?.fleets ?? []
+    },
+  })
+}
+
 // useScansFilter는 useScans hook의 옵션입니다.
 export interface UseScansFilter {
   fleetId?: string

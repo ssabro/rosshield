@@ -312,6 +312,27 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/fleets:
+    get:
+      tags: [fleet]
+      operationId: listFleets
+      summary: List fleets in caller tenant
+      description: |
+        Returns active fleets (deleted_at IS NULL) for the caller tenant, sorted
+        by name ASC. Read-only — fleet mutation is a separate epic.
+
+        Used by the Web UI to populate fleet dropdowns (scans page filter,
+        new scan form) and by other pages that need fleet metadata.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FleetListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/scans:
     get:
       tags: [scan]
@@ -1821,6 +1842,25 @@ components:
         packId:  { type: string }
         trigger: { type: string, description: "Empty → manual" }
         total:   { type: integer, description: "Optional — orchestrator will compute" }
+
+    Fleet:
+      type: object
+      required: [id, tenantId, name]
+      properties:
+        id:          { type: string }
+        tenantId:    { type: string }
+        name:        { type: string }
+        description: { type: string }
+        createdAt:   { type: string, format: date-time }
+        updatedAt:   { type: string, format: date-time }
+
+    FleetListResponse:
+      type: object
+      required: [fleets]
+      properties:
+        fleets:
+          type: array
+          items: { $ref: "#/components/schemas/Fleet" }
 
     ScanListResponse:
       type: object

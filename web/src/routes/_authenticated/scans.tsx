@@ -5,6 +5,7 @@ import { ApiError } from '@/api/errors'
 import {
   isTerminalScanStatus,
   useCancelScan,
+  useFleets,
   useIsAdmin,
   usePacks,
   useScan,
@@ -56,6 +57,7 @@ function ScansPage(): React.ReactElement {
   }
   const activeSessionId = search.session
 
+  const fleetsForForm = useFleets()
   const startScan = useStartScan()
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
@@ -102,13 +104,35 @@ function ScansPage(): React.ReactElement {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="fleetId">{t('scans.form.fleet')}</Label>
-              <Input
-                id="fleetId"
-                required
-                value={fleetId}
-                onChange={(e) => setFleetId(e.target.value)}
-                placeholder={t('scans.form.fleet.placeholder')}
-              />
+              {fleetsForForm.isPending ? (
+                <Input
+                  id="fleetId"
+                  disabled
+                  placeholder={t('scans.form.fleet.loading')}
+                />
+              ) : fleetsForForm.isError ||
+                (fleetsForForm.data?.length ?? 0) === 0 ? (
+                <Input
+                  id="fleetId"
+                  required
+                  value={fleetId}
+                  onChange={(e) => setFleetId(e.target.value)}
+                  placeholder={t('scans.form.fleet.placeholder')}
+                />
+              ) : (
+                <Select value={fleetId} onValueChange={setFleetId}>
+                  <SelectTrigger id="fleetId">
+                    <SelectValue placeholder={t('scans.form.fleet.placeholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {fleetsForForm.data?.map((fl) => (
+                      <SelectItem key={fl.id} value={fl.id}>
+                        {fl.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="packId">{t('scans.form.pack')}</Label>
@@ -213,6 +237,7 @@ function RecentSessionsCard({
   const t = useT()
   const navigate = useNavigate()
   const scansQuery = useScans({ limit: 10, pollMs: 5000 })
+  const fleetsQuery = useFleets()
   const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all')
   const [fleetFilter, setFleetFilter] = useState<string>(FLEET_ALL_VALUE)
 
@@ -244,7 +269,14 @@ function RecentSessionsCard({
   }
 
   const list = scansQuery.data ?? []
-  const fleetOptions = Array.from(new Set(list.map((s) => s.fleetId))).sort()
+  // useFleets로 전체 활성 fleets를 직접 조회 — 세션 distinct 추출보다 정확.
+  // fetch 실패 시 fallback: 세션 distinct (orphan fleet 노출은 X — 본 카드 fleet만 보여줌).
+  const fleetOptions =
+    fleetsQuery.data && fleetsQuery.data.length > 0
+      ? fleetsQuery.data.map((f) => ({ id: f.id, name: f.name }))
+      : Array.from(new Set(list.map((s) => s.fleetId)))
+          .sort()
+          .map((id) => ({ id, name: id }))
   const filtered = list.filter((s) => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false
     if (fleetFilter !== FLEET_ALL_VALUE && s.fleetId !== fleetFilter) return false
@@ -291,9 +323,9 @@ function RecentSessionsCard({
                   <SelectItem value={FLEET_ALL_VALUE}>
                     {t('scans.list.filter.all')}
                   </SelectItem>
-                  {fleetOptions.map((fid) => (
-                    <SelectItem key={fid} value={fid}>
-                      {fid}
+                  {fleetOptions.map((opt) => (
+                    <SelectItem key={opt.id} value={opt.id}>
+                      {opt.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

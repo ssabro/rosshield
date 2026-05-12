@@ -28,6 +28,8 @@ import (
 	compliancerepo "github.com/ssabro/rosshield/internal/domain/compliance/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/evidence"
 	evidencerepo "github.com/ssabro/rosshield/internal/domain/evidence/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/fleet"
+	fleetrepo "github.com/ssabro/rosshield/internal/domain/fleet/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	insightrepo "github.com/ssabro/rosshield/internal/domain/insight/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
@@ -204,6 +206,7 @@ type Platform struct {
 	Tenant            tenant.Service
 	Benchmark         benchmark.Service
 	Robot             robot.Service
+	Fleet             fleet.Service
 	Scan              scan.Service
 	ScanRun           *scanrun.Orchestrator
 	Evidence          evidence.Service
@@ -964,6 +967,9 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		SSHTester: nil,
 	})
 
+	// Fleet 도메인 read-only 서비스 (mutation은 후속 epic, 현재는 시드/마이그레이션만).
+	fleetSvc := fleetrepo.New()
+
 	scanSvc := scanrepo.New(scanrepo.Deps{
 		Clock: clk,
 		IDGen: ids,
@@ -1215,6 +1221,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Tenant:            tenantSvc,
 		Benchmark:         benchmarkSvc,
 		Robot:             robotSvc,
+		Fleet:             fleetSvc,
 		Scan:              scanSvc,
 		ScanRun:           scanRun,
 		Evidence:          evidenceSvc,

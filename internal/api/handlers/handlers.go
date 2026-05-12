@@ -31,6 +31,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
+	"github.com/ssabro/rosshield/internal/domain/fleet"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
@@ -53,6 +54,7 @@ type Deps struct {
 	Clock             clock.Clock
 	Tenant            tenant.Service
 	Robot             robot.Service
+	Fleet             fleet.Service // GET /api/v1/fleets — read-only tenant scope
 	Scan              scan.Service
 	ScanRun           *scanrun.Orchestrator // E12 Stage 8 — production scanrun 결선 (CreateScan async trigger)
 	Benchmark         benchmark.Service     // E12 Stage 3 — GET /api/v1/packs (built-in + tenant pack 표시)
@@ -165,6 +167,10 @@ func (h *Handlers) Mount(r chi.Router) {
 
 		// E24 — License info (B5 Web Console 지원).
 		r.Get("/api/v1/license", h.GetLicenseInfo)
+
+		// Fleet list (tenant scope, name ASC). 모든 인증 사용자 read.
+		// scans 페이지 fleet dropdown + 다른 페이지 fleet 조회 활용.
+		r.Get("/api/v1/fleets", h.ListFleets)
 
 		// E12 Stage 3 — Pack list (built-in + tenant pack). 모든 인증 사용자 read.
 		// systemTenant pack(cross-tenant 공유, §4.2)과 호출자 tenant pack 합쳐 반환.

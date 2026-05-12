@@ -185,6 +185,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fleets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List fleets in caller tenant
+         * @description Returns active fleets (deleted_at IS NULL) for the caller tenant, sorted
+         *     by name ASC. Read-only — fleet mutation is a separate epic.
+         *
+         *     Used by the Web UI to populate fleet dropdowns (scans page filter,
+         *     new scan form) and by other pages that need fleet metadata.
+         */
+        get: operations["listFleets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scans": {
         parameters: {
             query?: never;
@@ -1084,6 +1108,19 @@ export interface components {
             /** @description Optional — orchestrator will compute */
             total?: number;
         };
+        Fleet: {
+            id: string;
+            tenantId: string;
+            name: string;
+            description?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        FleetListResponse: {
+            fleets: components["schemas"]["Fleet"][];
+        };
         ScanListResponse: {
             sessions: components["schemas"]["ScanSession"][];
         };
@@ -1916,6 +1953,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listFleets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FleetListResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
