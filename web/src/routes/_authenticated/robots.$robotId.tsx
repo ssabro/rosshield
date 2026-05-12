@@ -238,7 +238,7 @@ function MetaRow({
   )
 }
 
-// RobotResultsCard — useRobotResults hook으로 최근 진단 결과 20개 표시.
+// RobotResultsCard — useRobotResults hook으로 최근 진단 결과 20개를 session 단위 그룹으로 표시.
 function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement {
   const t = useT()
   const q = useRobotResults(robotId, 20)
@@ -263,12 +263,61 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
             {t('robots.detail.results.empty')}
           </p>
         ) : (
-          <div className="space-y-1">
-            {q.data?.map((r) => <ResultRow key={r.id} result={r} />)}
+          <div className="space-y-3">
+            {groupBySession(q.data ?? []).map((group) => (
+              <SessionGroup key={group.sessionId} group={group} />
+            ))}
           </div>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+interface SessionResultGroup {
+  sessionId: string
+  results: RobotResult[]
+}
+
+// groupBySession는 결과 배열을 session 단위로 그룹 (서버 정렬 executed_at DESC 보존).
+//
+// 같은 session 내 결과들은 도메인 정렬을 그대로 따른다 — sort 안 함(서버가 결정 의도).
+function groupBySession(results: RobotResult[]): SessionResultGroup[] {
+  const groups: SessionResultGroup[] = []
+  const idx = new Map<string, number>()
+  for (const r of results) {
+    const i = idx.get(r.sessionId)
+    if (i === undefined) {
+      idx.set(r.sessionId, groups.length)
+      groups.push({ sessionId: r.sessionId, results: [r] })
+    } else {
+      groups[i].results.push(r)
+    }
+  }
+  return groups
+}
+
+function SessionGroup({ group }: { group: SessionResultGroup }): React.ReactElement {
+  const t = useT()
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+        <span>{t('robots.detail.results.session')}:</span>
+        <Link
+          to="/scans"
+          search={{ session: group.sessionId }}
+          className="font-mono hover:text-foreground hover:underline"
+        >
+          {group.sessionId}
+        </Link>
+        <span className="ml-auto">
+          {t('robots.detail.results.count', { count: group.results.length })}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {group.results.map((r) => <ResultRow key={r.id} result={r} />)}
+      </div>
+    </div>
   )
 }
 
