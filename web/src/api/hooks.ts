@@ -403,6 +403,8 @@ export interface RobotResult {
   sessionId: string
   checkId: string
   packCheckId: string
+  // packKey는 derived (서버 JOIN session→pack). 빈 string 가능 (pack 미발견).
+  packKey?: string
   outcome: 'pass' | 'fail' | 'indeterminate' | 'error' | 'skipped'
   evalReason?: string
   durationMs: number

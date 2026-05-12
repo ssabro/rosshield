@@ -1973,6 +1973,12 @@ components:
         sessionId:    { type: string }
         checkId:      { type: string }
         packCheckId:  { type: string }
+        packKey:
+          type: string
+          description: |
+            Derived field — pack key from JOIN session→pack. Used by Web UI to
+            navigate to /packs/{packKey}/checks/{checkId}. Empty when pack was
+            cross-tenant or migrated.
         outcome:
           type: string
           enum: [pass, fail, indeterminate, error, skipped]

@@ -1,14 +1,10 @@
-import { useQueries } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
-import { apiClient } from '@/api/client'
-import { ApiError, extractErrorMessage } from '@/api/errors'
 import {
   useDeleteRobot,
   useFleet,
   useIsAdmin,
-  usePacks,
   useRobot,
   useRobotResults,
   useRotateCredential,
@@ -36,7 +32,7 @@ import {
 
 import type { FormEvent } from 'react'
 
-import type { Robot, RobotResult, ScanSession } from '@/api/hooks'
+import type { Robot, RobotResult } from '@/api/hooks'
 
 // `/robots/$robotId` — 단일 robot 상세 (모든 인증 사용자).
 function RobotDetailPage(): React.ReactElement {
@@ -258,14 +254,11 @@ function MetaRow({
 
 // RobotResultsCard — useRobotResults hook으로 최근 진단 결과 20개를 session 단위 그룹으로 표시.
 //
-// check 클릭 navigation을 위해 packKey 해석 필요: 각 unique sessionId의 session.packId →
-// usePacks 결과에서 packKey 매핑. useQueries로 일괄 fetch (cache key는 useScan과 공유).
+// packKey는 서버 응답에서 직접 옴 (RobotResult.packKey, scan_sessions→packs JOIN 결과).
 function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement {
   const t = useT()
   const q = useRobotResults(robotId, 20)
   const results = q.data ?? []
-  const sessionIds = uniqueSessionIds(results)
-  const packKeyBySession = usePackKeyBySession(sessionIds)
 
   return (
     <Card>
@@ -290,69 +283,13 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
         ) : (
           <div className="space-y-3">
             {groupBySession(results).map((group) => (
-              <SessionGroup
-                key={group.sessionId}
-                group={group}
-                packKey={packKeyBySession.get(group.sessionId)}
-              />
+              <SessionGroup key={group.sessionId} group={group} />
             ))}
           </div>
         )}
       </CardContent>
     </Card>
   )
-}
-
-function uniqueSessionIds(results: RobotResult[]): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const r of results) {
-    if (!seen.has(r.sessionId)) {
-      seen.add(r.sessionId)
-      out.push(r.sessionId)
-    }
-  }
-  return out
-}
-
-// usePackKeyBySession — sessionId 배열을 받아 sessionId→packKey Map 반환.
-//
-// useQueries로 각 sessionId의 ScanSession fetch (cache key는 useScan과 공유 — 중복 X) +
-// usePacks로 packId → packKey 매핑.
-function usePackKeyBySession(sessionIds: string[]): Map<string, string> {
-  const sessionQueries = useQueries({
-    queries: sessionIds.map((sid) => ({
-      queryKey: ['scans', sid],
-      enabled: !!sid,
-      queryFn: async (): Promise<ScanSession> => {
-        const { data, error, response } = await apiClient.GET(
-          '/api/v1/scans/{sessionId}',
-          { params: { path: { sessionId: sid } } },
-        )
-        if (error) {
-          throw new ApiError(
-            response.status,
-            extractErrorMessage(error, response.statusText),
-          )
-        }
-        return data as ScanSession
-      },
-    })),
-  })
-  const packsQuery = usePacks()
-  const result = new Map<string, string>()
-  if (!packsQuery.data) return result
-  const packKeyById = new Map<string, string>()
-  for (const p of packsQuery.data) {
-    packKeyById.set(p.id, p.packKey)
-  }
-  sessionIds.forEach((sid, i) => {
-    const sess = sessionQueries[i]?.data
-    if (!sess) return
-    const key = packKeyById.get(sess.packId)
-    if (key) result.set(sid, key)
-  })
-  return result
 }
 
 interface SessionResultGroup {
@@ -380,10 +317,8 @@ function groupBySession(results: RobotResult[]): SessionResultGroup[] {
 
 function SessionGroup({
   group,
-  packKey,
 }: {
   group: SessionResultGroup
-  packKey?: string
 }): React.ReactElement {
   const t = useT()
   return (
@@ -403,7 +338,7 @@ function SessionGroup({
       </div>
       <div className="space-y-1">
         {group.results.map((r) => (
-          <ResultRow key={r.id} result={r} packKey={packKey} />
+          <ResultRow key={r.id} result={r} />
         ))}
       </div>
     </div>
@@ -412,11 +347,10 @@ function SessionGroup({
 
 function ResultRow({
   result,
-  packKey,
 }: {
   result: RobotResult
-  packKey?: string
 }): React.ReactElement {
+  const packKey = result.packKey
   return (
     <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">

@@ -323,6 +323,8 @@ func (r *Repo) ListResults(ctx context.Context, tx storage.Tx, sessionID string)
 // ListResultsByRobot은 robot의 최근 scan results를 executed_at DESC로 반환합니다.
 //
 // limit <= 0이면 default 50. tenant scope. robot 상세 페이지에서 진단 이력 표시용.
+// LEFT JOIN scan_sessions + packs로 PackKey derived 필드 채움 (Web UI check navigation).
+// pack 미발견 시 PackKey 빈 string (NULL → empty 변환).
 func (r *Repo) ListResultsByRobot(ctx context.Context, tx storage.Tx, robotID string, limit int) ([]scan.ScanResult, error) {
 	tenantID := tx.TenantID()
 	if tenantID == "" {
@@ -331,10 +333,16 @@ func (r *Repo) ListResultsByRobot(ctx context.Context, tx storage.Tx, robotID st
 	if limit <= 0 {
 		limit = defaultListLimit
 	}
-	rows, err := tx.Query(ctx, resultSelectColumns+`
-  FROM scan_results
- WHERE robot_id = ? AND tenant_id = ?
- ORDER BY executed_at DESC
+	rows, err := tx.Query(ctx, `
+SELECT r.id, r.session_id, r.tenant_id, r.robot_id, r.check_id, r.pack_check_id,
+       r.outcome, r.eval_reason, r.duration_ms,
+       r.executed_at, r.created_at,
+       COALESCE(p.pack_key, '') AS pack_key
+  FROM scan_results r
+  LEFT JOIN scan_sessions s ON s.id = r.session_id AND s.tenant_id = r.tenant_id
+  LEFT JOIN packs p ON p.id = s.pack_id
+ WHERE r.robot_id = ? AND r.tenant_id = ?
+ ORDER BY r.executed_at DESC
  LIMIT ?`,
 		robotID, string(tenantID), limit)
 	if err != nil {
@@ -344,7 +352,7 @@ func (r *Repo) ListResultsByRobot(ctx context.Context, tx storage.Tx, robotID st
 
 	var out []scan.ScanResult
 	for rows.Next() {
-		res, err := scanResultRow(rows.Scan)
+		res, err := scanResultRowWithPackKey(rows.Scan)
 		if err != nil {
 			return nil, err
 		}
@@ -354,6 +362,45 @@ func (r *Repo) ListResultsByRobot(ctx context.Context, tx storage.Tx, robotID st
 		return nil, fmt.Errorf("scan: list results by robot iterate: %w", err)
 	}
 	return out, nil
+}
+
+// scanResultRowWithPackKey는 ListResultsByRobot용 — JOIN으로 추가된 pack_key 컬럼을 함께 scan.
+func scanResultRowWithPackKey(scanFn func(...any) error) (scan.ScanResult, error) {
+	var (
+		id, sessionID, tenantID, robotID, checkID, packCheckID string
+		outcome, evalReason, executedAt, createdAt, packKey    string
+		durationMs                                             int64
+	)
+	if err := scanFn(&id, &sessionID, &tenantID, &robotID, &checkID, &packCheckID,
+		&outcome, &evalReason, &durationMs,
+		&executedAt, &createdAt, &packKey); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return scan.ScanResult{}, storage.ErrNotFound
+		}
+		return scan.ScanResult{}, fmt.Errorf("scan: scan result row with pack key: %w", err)
+	}
+	executed, err := time.Parse(rfc3339Nano, executedAt)
+	if err != nil {
+		return scan.ScanResult{}, fmt.Errorf("scan: parse executed_at: %w", err)
+	}
+	created, err := time.Parse(rfc3339Nano, createdAt)
+	if err != nil {
+		return scan.ScanResult{}, fmt.Errorf("scan: parse result created_at: %w", err)
+	}
+	return scan.ScanResult{
+		ID:          id,
+		SessionID:   sessionID,
+		TenantID:    storage.TenantID(tenantID),
+		RobotID:     robotID,
+		CheckID:     checkID,
+		PackCheckID: packCheckID,
+		Outcome:     scan.Outcome(outcome),
+		EvalReason:  evalReason,
+		DurationMs:  durationMs,
+		ExecutedAt:  executed,
+		CreatedAt:   created,
+		PackKey:     packKey,
+	}, nil
 }
 
 // --- helpers ---

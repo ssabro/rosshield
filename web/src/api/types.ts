@@ -1159,6 +1159,12 @@ export interface components {
             sessionId: string;
             checkId: string;
             packCheckId: string;
+            /**
+             * @description Derived field — pack key from JOIN session→pack. Used by Web UI to
+             *     navigate to /packs/{packKey}/checks/{checkId}. Empty when pack was
+             *     cross-tenant or migrated.
+             */
+            packKey?: string;
             /** @enum {string} */
             outcome: "pass" | "fail" | "indeterminate" | "error" | "skipped";
             evalReason?: string;

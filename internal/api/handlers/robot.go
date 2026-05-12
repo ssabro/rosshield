@@ -121,6 +121,7 @@ type robotResultResponse struct {
 	SessionID   string `json:"sessionId"`
 	CheckID     string `json:"checkId"`
 	PackCheckID string `json:"packCheckId"`
+	PackKey     string `json:"packKey,omitempty"` // derived: session→pack JOIN, check navigation 용
 	Outcome     string `json:"outcome"`
 	EvalReason  string `json:"evalReason,omitempty"`
 	DurationMs  int64  `json:"durationMs"`
@@ -183,6 +184,7 @@ func (h *Handlers) ListRobotResults(w http.ResponseWriter, r *http.Request, robo
 			SessionID:   res.SessionID,
 			CheckID:     res.CheckID,
 			PackCheckID: res.PackCheckID,
+			PackKey:     res.PackKey,
 			Outcome:     string(res.Outcome),
 			EvalReason:  res.EvalReason,
 			DurationMs:  res.DurationMs,

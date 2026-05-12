@@ -102,6 +102,11 @@ type ScanResult struct {
 	DurationMs  int64
 	ExecutedAt  time.Time
 	CreatedAt   time.Time
+
+	// PackKey는 ListResultsByRobot에서만 채워지는 derived 필드 — session→pack JOIN 결과.
+	// 다른 ListResults·RecordResult 등에서는 빈 string. /packs/{packKey}/checks/{checkId}
+	// navigation 용도 (Web UI ResultRow → check 상세 진입).
+	PackKey string
 }
 
 // TransitionTo는 FSM 검증 후 새 ScanSession 값을 반환합니다 (P9 불변성).

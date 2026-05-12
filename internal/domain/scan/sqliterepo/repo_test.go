@@ -589,6 +589,53 @@ func TestRecordResultUpdatesProgress(t *testing.T) {
 	}
 }
 
+// TestListResultsByRobotPopulatesPackKey는 ListResultsByRobot의 LEFT JOIN
+// scan_sessions→packs 결선이 PackKey derived 필드를 채우는지 검증합니다.
+// (E12 robot detail UI의 check link navigation이 의존하는 enrichment.)
+func TestListResultsByRobotPopulatesPackKey(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+	const tenantID, fleetID, packID = "tn_RPK", "fl_RPK", "pk_RPK"
+	const robotID, packCheckID = "ro_RPK", "ck_RPK"
+	const expectedPackKey = "cis-cis-ubuntu-2404-v1.0.0" // seedTenantFleetPack 고정값.
+
+	seedTenantFleetPack(t, store, tenantID, fleetID, packID)
+	seedRobotAndCheck(t, store, tenantID, fleetID, packID, robotID, packCheckID)
+
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		if err != nil {
+			return err
+		}
+		if _, err := repo.TransitionSession(ctx, tx, s.ID, scan.StatusRunning, ""); err != nil {
+			return err
+		}
+		_, err = repo.RecordResult(ctx, tx, scan.RecordResultRequest{
+			SessionID: s.ID, RobotID: robotID, CheckID: "CIS-1.1.1.1",
+			PackCheckID: packCheckID, Outcome: scan.OutcomePass,
+			ExecutedAt: time.Now().UTC(),
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	var got []scan.ScanResult
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		rs, err := repo.ListResultsByRobot(ctx, tx, robotID, 10)
+		got = rs
+		return err
+	}); err != nil {
+		t.Fatalf("ListResultsByRobot: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if got[0].PackKey != expectedPackKey {
+		t.Errorf("PackKey = %q, want %q", got[0].PackKey, expectedPackKey)
+	}
+}
+
 func TestRecordResultDuplicate(t *testing.T) {
 	t.Parallel()
 	repo, _, store := newTestRepo(t)
