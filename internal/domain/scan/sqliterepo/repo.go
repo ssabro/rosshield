@@ -97,6 +97,13 @@ INSERT INTO scan_sessions (
 		string(session.Trigger), session.Progress.Total,
 		session.CreatedAt.Format(rfc3339Nano), session.UpdatedAt.Format(rfc3339Nano),
 	); err != nil {
+		// 마이그레이션 0025 partial unique index `uq_scan_sessions_active_fleet`가
+		// (tenant_id, fleet_id) where status IN ('pending','running')에 걸려 있어,
+		// 도메인 SELECT-then-INSERT race가 통과해도 DB에서 두 번째 INSERT 거부.
+		// PostgreSQL 동시성 시나리오 보호.
+		if isUniqueViolation(err) {
+			return scan.ScanSession{}, scan.ErrFleetActiveScanExists
+		}
 		return scan.ScanSession{}, fmt.Errorf("scan: insert session: %w", err)
 	}
 	return session, nil

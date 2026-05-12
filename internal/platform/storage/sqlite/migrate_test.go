@@ -64,7 +64,7 @@ func TestStorageMigrateIdempotent(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		const wantVersion = 24 // 0001~0023 + 0024 pg_native_hotpath (NO-OP for sqlite, E22-F)
+		const wantVersion = 25 // 0001~0024 + 0025 scan_active_fleet_unique (partial unique index)
 		if maxVersion != wantVersion {
 			t.Errorf("max version_id = %d, want %d", maxVersion, wantVersion)
 		}

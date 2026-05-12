@@ -178,15 +178,17 @@ VALUES (?, ?, 'cis', '1.0', 'CIS', ?, x'00', 'key_test', ?)`,
 // scan.Service.StartScan은 Clock.Now를 박아 created_at을 결정 — 어제 시점 시드는 직접 SQL.
 func (f *licUsageFixture) seedScanSession(t *testing.T, tenantID storage.TenantID, fleetID, packID, sessionID string, createdAt time.Time) {
 	t.Helper()
+	// status='completed' — terminal로 시드해 partial unique index `uq_scan_sessions_active_fleet`
+	// (마이그레이션 0025) 충돌 회피. license counting 테스트는 status 무관 (createdAt만 사용).
 	if err := f.platform.Storage.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
 		ts := createdAt.UTC().Format(time.RFC3339Nano)
 		_, e := tx.Exec(ctx,
 			`INSERT INTO scan_sessions (
 				id, tenant_id, fleet_id, pack_id, trigger, status,
 				progress_total, progress_completed, progress_failed,
-				failure_reason, created_at, updated_at
-			) VALUES (?, ?, ?, ?, 'manual', 'pending', 0, 0, 0, '', ?, ?)`,
-			sessionID, string(tenantID), fleetID, packID, ts, ts)
+				failure_reason, created_at, updated_at, completed_at
+			) VALUES (?, ?, ?, ?, 'manual', 'completed', 0, 0, 0, '', ?, ?, ?)`,
+			sessionID, string(tenantID), fleetID, packID, ts, ts, ts)
 		return e
 	}); err != nil {
 		t.Fatalf("seed scan session: %v", err)
