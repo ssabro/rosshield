@@ -196,6 +196,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/robots/{robotId}/results": {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                robotId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List recent scan results for a robot
+         * @description Returns this robot's most recent scan results (executed_at DESC). Default
+         *     limit 20, max 200. Tenant scope. Used by the robot detail page to show
+         *     diagnostic history.
+         */
+        get: operations["listRobotResults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fleets": {
         parameters: {
             query?: never;
@@ -1102,6 +1128,24 @@ export interface components {
             ok: false;
             error: components["schemas"]["Error"];
             meta?: components["schemas"]["Meta"];
+        };
+        RobotResult: {
+            id: string;
+            sessionId: string;
+            checkId: string;
+            packCheckId: string;
+            /** @enum {string} */
+            outcome: "pass" | "fail" | "indeterminate" | "error" | "skipped";
+            evalReason?: string;
+            /** Format: int64 */
+            durationMs: number;
+            /** Format: date-time */
+            executedAt: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        RobotResultsListResponse: {
+            results: components["schemas"]["RobotResult"][];
         };
         Robot: {
             id: string;
@@ -2057,6 +2101,31 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listRobotResults: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                robotId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RobotResultsListResponse"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };

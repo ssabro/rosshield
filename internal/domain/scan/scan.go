@@ -341,6 +341,10 @@ type Service interface {
 
 	// ListResults는 세션의 모든 결과를 created_at ASC로 반환합니다.
 	ListResults(ctx context.Context, tx storage.Tx, sessionID string) ([]ScanResult, error)
+
+	// ListResultsByRobot은 robot의 최근 scan results를 executed_at DESC로 반환합니다.
+	// limit <= 0이면 default 50. tenant scope.
+	ListResultsByRobot(ctx context.Context, tx storage.Tx, robotID string, limit int) ([]ScanResult, error)
 }
 
 // 공통 에러.

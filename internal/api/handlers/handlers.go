@@ -137,6 +137,9 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
 			h.GetRobot(w, req, chi.URLParam(req, "robotId"))
 		})
+		r.Get("/api/v1/robots/{robotId}/results", func(w http.ResponseWriter, req *http.Request) {
+			h.ListRobotResults(w, req, chi.URLParam(req, "robotId"))
+		})
 		r.Get("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
 			h.ListScans(w, req, gen.ListScansParams{})
 		})

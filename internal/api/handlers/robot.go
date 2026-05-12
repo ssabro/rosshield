@@ -11,9 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/ssabro/rosshield/internal/api/gen"
 	"github.com/ssabro/rosshield/internal/domain/robot"
+	"github.com/ssabro/rosshield/internal/domain/scan"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -110,6 +113,89 @@ func (h *Handlers) GetRobot(w http.ResponseWriter, r *http.Request, robotID stri
 		return
 	}
 	writeJSON(w, http.StatusOK, toRobotResponse(rb))
+}
+
+// robotResultResponse는 GET /api/v1/robots/{robotId}/results 항목입니다.
+type robotResultResponse struct {
+	ID          string `json:"id"`
+	SessionID   string `json:"sessionId"`
+	CheckID     string `json:"checkId"`
+	PackCheckID string `json:"packCheckId"`
+	Outcome     string `json:"outcome"`
+	EvalReason  string `json:"evalReason,omitempty"`
+	DurationMs  int64  `json:"durationMs"`
+	ExecutedAt  string `json:"executedAt"`
+	CreatedAt   string `json:"createdAt"`
+}
+
+// robotResultsListResponse는 GET /api/v1/robots/{robotId}/results 응답 envelope입니다.
+type robotResultsListResponse struct {
+	Results []robotResultResponse `json:"results"`
+}
+
+// ListRobotResults는 GET /api/v1/robots/{robotId}/results 핸들러입니다.
+//
+// robot scope 최근 scan results를 executed_at DESC로 반환. limit query 옵션(default 20, 200 cap).
+// 모든 인증 사용자 read.
+func (h *Handlers) ListRobotResults(w http.ResponseWriter, r *http.Request, robotID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if robotID == "" {
+		writeError(w, http.StatusBadRequest, "missing robotId")
+		return
+	}
+	if h.deps.Scan == nil {
+		writeError(w, http.StatusServiceUnavailable, "scan service not configured")
+		return
+	}
+
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 200 {
+				n = 200
+			}
+			limit = n
+		}
+	}
+
+	var results []scan.ScanResult
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		rs, e := h.deps.Scan.ListResultsByRobot(ctx, tx, robotID, limit)
+		if e != nil {
+			return e
+		}
+		results = rs
+		return nil
+	})
+	if err != nil {
+		writeError(w, errorStatusFor(err), "list robot results failed")
+		return
+	}
+
+	out := robotResultsListResponse{Results: make([]robotResultResponse, 0, len(results))}
+	for _, res := range results {
+		item := robotResultResponse{
+			ID:          res.ID,
+			SessionID:   res.SessionID,
+			CheckID:     res.CheckID,
+			PackCheckID: res.PackCheckID,
+			Outcome:     string(res.Outcome),
+			EvalReason:  res.EvalReason,
+			DurationMs:  res.DurationMs,
+		}
+		if !res.ExecutedAt.IsZero() {
+			item.ExecutedAt = res.ExecutedAt.UTC().Format(time.RFC3339Nano)
+		}
+		if !res.CreatedAt.IsZero() {
+			item.CreatedAt = res.CreatedAt.UTC().Format(time.RFC3339Nano)
+		}
+		out.Results = append(out.Results, item)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // DeleteRobot은 DELETE /api/v1/robots/{robotId} 핸들러입니다 (admin only — chi mount).

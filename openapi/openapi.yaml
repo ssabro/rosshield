@@ -332,6 +332,28 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/robots/{robotId}/results:
+    parameters:
+      - { in: path, name: robotId, required: true, schema: { type: string, pattern: "^ro_[A-Z0-9]+$" } }
+      - $ref: "#/components/parameters/Limit"
+    get:
+      tags: [robot]
+      operationId: listRobotResults
+      summary: List recent scan results for a robot
+      description: |
+        Returns this robot's most recent scan results (executed_at DESC). Default
+        limit 20, max 200. Tenant scope. Used by the robot detail page to show
+        diagnostic history.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RobotResultsListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/fleets:
     get:
       tags: [fleet]
@@ -1900,6 +1922,30 @@ components:
         meta:  { $ref: "#/components/schemas/Meta" }
 
     # ─── Robot ────────────────────────────────────────────────────────────
+    RobotResult:
+      type: object
+      required: [id, sessionId, checkId, packCheckId, outcome, durationMs, executedAt, createdAt]
+      properties:
+        id:           { type: string }
+        sessionId:    { type: string }
+        checkId:      { type: string }
+        packCheckId:  { type: string }
+        outcome:
+          type: string
+          enum: [pass, fail, indeterminate, error, skipped]
+        evalReason:   { type: string }
+        durationMs:   { type: integer, format: int64 }
+        executedAt:   { type: string, format: date-time }
+        createdAt:    { type: string, format: date-time }
+
+    RobotResultsListResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/RobotResult" }
+
     Robot:
       type: object
       required: [id, tenantId, fleetId, name, host, port, authType, criticality]

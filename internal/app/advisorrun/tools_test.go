@@ -40,6 +40,9 @@ func (f *fakeScan) ListResults(_ context.Context, _ storage.Tx, _ string) ([]sca
 	}
 	return f.results, nil
 }
+func (f *fakeScan) ListResultsByRobot(_ context.Context, _ storage.Tx, _ string, _ int) ([]scan.ScanResult, error) {
+	return f.results, nil
+}
 
 // 미사용 메서드 (interface 만족용 panic).
 func (f *fakeScan) StartScan(_ context.Context, _ storage.Tx, _ scan.StartScanRequest) (scan.ScanSession, error) {

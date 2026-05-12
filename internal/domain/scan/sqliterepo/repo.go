@@ -320,6 +320,42 @@ func (r *Repo) ListResults(ctx context.Context, tx storage.Tx, sessionID string)
 	return out, nil
 }
 
+// ListResultsByRobot은 robot의 최근 scan results를 executed_at DESC로 반환합니다.
+//
+// limit <= 0이면 default 50. tenant scope. robot 상세 페이지에서 진단 이력 표시용.
+func (r *Repo) ListResultsByRobot(ctx context.Context, tx storage.Tx, robotID string, limit int) ([]scan.ScanResult, error) {
+	tenantID := tx.TenantID()
+	if tenantID == "" {
+		return nil, storage.ErrTenantMissing
+	}
+	if limit <= 0 {
+		limit = defaultListLimit
+	}
+	rows, err := tx.Query(ctx, resultSelectColumns+`
+  FROM scan_results
+ WHERE robot_id = ? AND tenant_id = ?
+ ORDER BY executed_at DESC
+ LIMIT ?`,
+		robotID, string(tenantID), limit)
+	if err != nil {
+		return nil, fmt.Errorf("scan: list results by robot: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []scan.ScanResult
+	for rows.Next() {
+		res, err := scanResultRow(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan: list results by robot iterate: %w", err)
+	}
+	return out, nil
+}
+
 // --- helpers ---
 
 const sessionSelectColumns = `

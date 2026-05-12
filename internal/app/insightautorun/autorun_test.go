@@ -104,6 +104,9 @@ func (f *fakeScan) RecordResult(_ context.Context, _ storage.Tx, _ scan.RecordRe
 func (f *fakeScan) ListResults(_ context.Context, _ storage.Tx, _ string) ([]scan.ScanResult, error) {
 	panic("not used")
 }
+func (f *fakeScan) ListResultsByRobot(_ context.Context, _ storage.Tx, _ string, _ int) ([]scan.ScanResult, error) {
+	panic("not used")
+}
 
 // fakeInsight는 RunForFleet 호출을 카운트하고 미리 설정된 결과를 반환합니다.
 type fakeInsight struct {

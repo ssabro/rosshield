@@ -349,6 +349,47 @@ export const useDeleteRobot = () => {
   })
 }
 
+// RobotResult는 robot 단위 scan result 한 항목입니다.
+export interface RobotResult {
+  id: string
+  sessionId: string
+  checkId: string
+  packCheckId: string
+  outcome: 'pass' | 'fail' | 'indeterminate' | 'error' | 'skipped'
+  evalReason?: string
+  durationMs: number
+  executedAt: string
+  createdAt: string
+}
+
+// useRobotResults는 GET /api/v1/robots/{robotId}/results hook입니다.
+// limit 옵션 (default 20, max 200).
+export function useRobotResults(robotId?: string, limit?: number) {
+  return useQuery({
+    queryKey: ['robot-results', robotId, limit ?? null],
+    enabled: !!robotId,
+    queryFn: async (): Promise<RobotResult[]> => {
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/robots/{robotId}/results',
+        {
+          params: {
+            path: { robotId: robotId! },
+            query: limit ? { limit } : {},
+          },
+        },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as { results?: RobotResult[] } | undefined
+      return body?.results ?? []
+    },
+  })
+}
+
 // useRobot은 GET /api/v1/robots/{robotId} 단일 조회 hook입니다.
 // 향후 robot 상세 페이지(예: /robots/$robotId) 진입 시 활용.
 export function useRobot(robotId?: string) {

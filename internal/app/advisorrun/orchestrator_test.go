@@ -87,6 +87,9 @@ func (s *orchScan) GetSession(_ context.Context, _ storage.Tx, _ string) (scan.S
 func (s *orchScan) ListResults(_ context.Context, _ storage.Tx, _ string) ([]scan.ScanResult, error) {
 	return s.results, nil
 }
+func (s *orchScan) ListResultsByRobot(_ context.Context, _ storage.Tx, _ string, _ int) ([]scan.ScanResult, error) {
+	return s.results, nil
+}
 func (s *orchScan) StartScan(_ context.Context, _ storage.Tx, _ scan.StartScanRequest) (scan.ScanSession, error) {
 	panic("unused")
 }

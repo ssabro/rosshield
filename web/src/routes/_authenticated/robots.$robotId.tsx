@@ -1,7 +1,13 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { useDeleteRobot, useFleet, useIsAdmin, useRobot } from '@/api/hooks'
+import {
+  useDeleteRobot,
+  useFleet,
+  useIsAdmin,
+  useRobot,
+  useRobotResults,
+} from '@/api/hooks'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -14,7 +20,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 
-import type { Robot } from '@/api/hooks'
+import type { Robot, RobotResult } from '@/api/hooks'
 
 // `/robots/$robotId` — 단일 robot 상세 (모든 인증 사용자).
 function RobotDetailPage(): React.ReactElement {
@@ -133,6 +139,8 @@ function RobotDetailPage(): React.ReactElement {
         </CardContent>
       </Card>
 
+      <RobotResultsCard robotId={robot.id} />
+
       <DeleteRobotCard robot={robot} />
 
       <p className="text-xs text-muted-foreground">
@@ -228,6 +236,92 @@ function MetaRow({
       <span className="min-w-0 flex-1">{value}</span>
     </div>
   )
+}
+
+// RobotResultsCard — useRobotResults hook으로 최근 진단 결과 20개 표시.
+function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement {
+  const t = useT()
+  const q = useRobotResults(robotId, 20)
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('robots.detail.results.title')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {q.isPending ? (
+          <p className="text-sm text-muted-foreground">
+            {t('robots.detail.results.loading')}
+          </p>
+        ) : q.isError ? (
+          <p className="text-sm text-destructive">
+            {q.error instanceof Error
+              ? q.error.message
+              : t('robots.detail.results.error')}
+          </p>
+        ) : (q.data?.length ?? 0) === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t('robots.detail.results.empty')}
+          </p>
+        ) : (
+          <div className="space-y-1">
+            {q.data?.map((r) => <ResultRow key={r.id} result={r} />)}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ResultRow({ result }: { result: RobotResult }): React.ReactElement {
+  return (
+    <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Badge variant={outcomeVariant(result.outcome)}>{result.outcome}</Badge>
+          <span className="font-mono text-xs">{result.checkId}</span>
+        </div>
+        {result.evalReason && (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {result.evalReason}
+          </p>
+        )}
+      </div>
+      <div className="ml-4 shrink-0 text-xs text-muted-foreground">
+        <div className="text-right">{formatRelative(result.executedAt)}</div>
+        <div className="text-right">{result.durationMs}ms</div>
+      </div>
+    </div>
+  )
+}
+
+function outcomeVariant(
+  outcome: string,
+): 'default' | 'destructive' | 'secondary' | 'outline' {
+  switch (outcome) {
+    case 'pass':
+      return 'default'
+    case 'fail':
+    case 'error':
+      return 'destructive'
+    case 'indeterminate':
+      return 'secondary'
+    default:
+      return 'outline'
+  }
+}
+
+function formatRelative(iso?: string): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return ''
+  const sec = Math.round((Date.now() - t) / 1000)
+  if (sec < 60) return `${sec}s`
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min}m`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr}h`
+  const day = Math.round(hr / 24)
+  return `${day}d`
 }
 
 // silence unused import (Robot type — referenced via useRobot return).

@@ -164,6 +164,51 @@ func TestDeleteRobotReturns404ForUnknownID(t *testing.T) {
 	}
 }
 
+func TestListRobotResultsReturnsEmptyForFreshRobot(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	seedFleetAndRobot(t, f, "fleet-results-empty", "rb-empty", "10.0.8.1")
+	token := f.loginAndGetToken(t)
+
+	// robot ID 추출.
+	listResp := f.doRequest(t, "GET", "/api/v1/robots", token, nil)
+	var list struct {
+		Robots []struct {
+			ID string `json:"id"`
+		} `json:"robots"`
+	}
+	_ = json.NewDecoder(listResp.Body).Decode(&list)
+	_ = listResp.Body.Close()
+	if len(list.Robots) != 1 {
+		t.Fatalf("expected 1 robot, got %d", len(list.Robots))
+	}
+	rid := list.Robots[0].ID
+
+	resp := f.doRequest(t, "GET", "/api/v1/robots/"+rid+"/results", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 200", resp.StatusCode, string(raw))
+	}
+	var out struct {
+		Results []map[string]any `json:"results"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if len(out.Results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(out.Results))
+	}
+}
+
+func TestListRobotResultsReturns401WithoutAuth(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	resp := f.doRequest(t, "GET", "/api/v1/robots/ro_X/results", "", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want 401", resp.StatusCode)
+	}
+}
+
 func TestDeleteRobotReturns401WithoutAuth(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()
