@@ -70,6 +70,9 @@ func (r *Repo) StartScan(ctx context.Context, tx storage.Tx, req scan.StartScanR
 	if err := assertPackAccessible(ctx, tx, tenantID, req.PackID); err != nil {
 		return scan.ScanSession{}, err
 	}
+	if err := assertNoActiveFleetSession(ctx, tx, tenantID, req.FleetID); err != nil {
+		return scan.ScanSession{}, err
+	}
 
 	now := r.deps.Clock.Now().UTC()
 	session := scan.ScanSession{
@@ -502,6 +505,25 @@ SELECT 1 FROM fleets
 		return fmt.Errorf("scan: lookup fleet: %w", err)
 	}
 	return nil
+}
+
+// assertNoActiveFleetSession은 같은 tenant·fleet에 pending/running 세션이 이미 있으면
+// scan.ErrFleetActiveScanExists를 반환합니다 (동시 스캔 limit). 같은 Tx 안에서 실행되어
+// SQLite는 직렬 보장. PostgreSQL는 race 가능성 — 별 epic에서 partial unique index 추가.
+func assertNoActiveFleetSession(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fleetID string) error {
+	row := tx.QueryRow(ctx, `
+SELECT 1 FROM scan_sessions
+ WHERE tenant_id = ? AND fleet_id = ? AND status IN ('pending', 'running')
+ LIMIT 1`,
+		string(tenantID), fleetID)
+	var dummy int
+	if err := row.Scan(&dummy); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("scan: check active session: %w", err)
+	}
+	return scan.ErrFleetActiveScanExists
 }
 
 // assertPackAccessible은 호출 tenant 또는 'system' 소유 팩을 허용합니다 (§4.2 system pack).

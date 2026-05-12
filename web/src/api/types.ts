@@ -202,9 +202,13 @@ export interface paths {
         put?: never;
         /**
          * Start a new scan session
-         * @description Phase 1 Stage B: inserts session in `pending` state — Orchestrator(scanrun)
-         *     start is deferred to a later Stage. `total` is optional (orchestrator computes
-         *     it; current Stage accepts external value).
+         * @description Inserts session in `pending` state and triggers async scanrun.Orchestrator
+         *     (when wired). `total` is optional (orchestrator computes it).
+         *
+         *     Returns 409 Conflict if the target fleet already has a `pending` or
+         *     `running` session — operator must cancel/wait for the existing session
+         *     before starting a new one. This prevents resource contention and
+         *     scheduler-induced duplicate runs.
          */
         post: operations["createScan"];
         delete?: never;
@@ -1967,6 +1971,7 @@ export interface operations {
                     "application/json": components["schemas"]["ScanSession"];
                 };
             };
+            409: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];
         };
     };

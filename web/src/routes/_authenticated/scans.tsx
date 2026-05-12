@@ -73,7 +73,12 @@ function ScansPage(): React.ReactElement {
         },
         onError: (err) => {
           if (err instanceof ApiError) {
-            setError(err.message)
+            // 같은 fleet에 이미 active 세션이 있는 경우 — 친화 메시지로 안내.
+            if (err.status === 409) {
+              setError(t('scans.form.error.fleetActive'))
+            } else {
+              setError(err.message)
+            }
           } else {
             setError(err instanceof Error ? err.message : t('scans.form.error.fallback'))
           }

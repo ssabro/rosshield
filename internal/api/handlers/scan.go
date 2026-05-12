@@ -165,6 +165,8 @@ func (h *Handlers) CreateScan(w http.ResponseWriter, r *http.Request, _ gen.Crea
 			errors.Is(err, scan.ErrFleetNotFound),
 			errors.Is(err, scan.ErrPackNotFound):
 			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, scan.ErrFleetActiveScanExists):
+			writeError(w, http.StatusConflict, err.Error())
 		default:
 			writeError(w, errorStatusFor(err), "start scan failed")
 		}

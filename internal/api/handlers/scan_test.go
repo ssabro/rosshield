@@ -9,6 +9,7 @@ package handlers_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -172,14 +173,17 @@ func TestListScansReturnsRecentSessions(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()
 
-	fleetID := seedFleetAndRobot(t, f, "fleet-list", "rb-list", "10.0.0.40")
 	packID := seedPack(t, f, "pk_LIST")
 	token := f.loginAndGetToken(t)
 
-	// 3 세션 시드.
+	// 3 fleet × 1 세션 시드 — fleet 동시 limit 때문에 fleet 별로 1개만.
+	fleetIDs := make([]string, 0, 3)
 	for i := 0; i < 3; i++ {
+		fid := seedFleetAndRobot(t, f, fmt.Sprintf("fleet-list-%d", i),
+			fmt.Sprintf("rb-list-%d", i), fmt.Sprintf("10.0.0.4%d", i))
+		fleetIDs = append(fleetIDs, fid)
 		body, _ := json.Marshal(map[string]any{
-			"fleetId": fleetID,
+			"fleetId": fid,
 			"packId":  packID,
 			"trigger": "manual",
 		})
@@ -212,12 +216,16 @@ func TestListScansReturnsRecentSessions(t *testing.T) {
 	if len(out.Sessions) != 3 {
 		t.Fatalf("expected 3 sessions, got %d", len(out.Sessions))
 	}
+	wantFleets := map[string]bool{}
+	for _, fid := range fleetIDs {
+		wantFleets[fid] = true
+	}
 	for i, s := range out.Sessions {
 		if s.SessionID == "" {
 			t.Errorf("session[%d] empty sessionId", i)
 		}
-		if s.FleetID != fleetID {
-			t.Errorf("session[%d] fleetId=%q, want %q", i, s.FleetID, fleetID)
+		if !wantFleets[s.FleetID] {
+			t.Errorf("session[%d] unexpected fleetId=%q, want one of %v", i, s.FleetID, fleetIDs)
 		}
 		if s.CreatedAt == "" {
 			t.Errorf("session[%d] empty createdAt", i)
@@ -229,13 +237,15 @@ func TestListScansHonorsLimit(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()
 
-	fleetID := seedFleetAndRobot(t, f, "fleet-limit", "rb-limit", "10.0.0.41")
 	packID := seedPack(t, f, "pk_LIMIT")
 	token := f.loginAndGetToken(t)
 
+	// 5 fleet × 1 세션 — fleet 동시 limit 회피.
 	for i := 0; i < 5; i++ {
+		fid := seedFleetAndRobot(t, f, fmt.Sprintf("fleet-limit-%d", i),
+			fmt.Sprintf("rb-limit-%d", i), fmt.Sprintf("10.0.1.%d", i))
 		body, _ := json.Marshal(map[string]any{
-			"fleetId": fleetID,
+			"fleetId": fid,
 			"packId":  packID,
 			"trigger": "manual",
 		})
@@ -265,6 +275,82 @@ func TestListScansReturns401WithoutAuth(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status=%d, want 401", resp.StatusCode)
+	}
+}
+
+func TestStartScanReturns409WhenFleetHasActiveSession(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	fleetID := seedFleetAndRobot(t, f, "fleet-409", "rb-409", "10.0.2.1")
+	packID := seedPack(t, f, "pk_409")
+	token := f.loginAndGetToken(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"fleetId": fleetID,
+		"packId":  packID,
+		"trigger": "manual",
+	})
+
+	// 첫 POST 통과.
+	r1 := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("first POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	_ = r1.Body.Close()
+
+	// 둘째 POST → 409 Conflict.
+	r2 := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusConflict {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("second POST status=%d body=%s, want 409", r2.StatusCode, string(raw))
+	}
+}
+
+func TestStartScanReturns201AfterCancellingActiveSession(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	fleetID := seedFleetAndRobot(t, f, "fleet-after", "rb-after", "10.0.2.2")
+	packID := seedPack(t, f, "pk_AFTER")
+	token := f.loginAndGetToken(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"fleetId": fleetID,
+		"packId":  packID,
+		"trigger": "manual",
+	})
+
+	r1 := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("first POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	var first struct {
+		SessionID string `json:"sessionId"`
+	}
+	_ = json.NewDecoder(r1.Body).Decode(&first)
+	_ = r1.Body.Close()
+
+	// Cancel.
+	rc := f.doRequest(t, "POST", "/api/v1/scans/"+first.SessionID+":cancel", token, nil)
+	if rc.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(rc.Body)
+		_ = rc.Body.Close()
+		t.Fatalf("cancel status=%d body=%s", rc.StatusCode, string(raw))
+	}
+	_ = rc.Body.Close()
+
+	// 두 번째 POST 다시 통과.
+	r2 := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("second POST after cancel status=%d body=%s, want 201", r2.StatusCode, string(raw))
 	}
 }
 

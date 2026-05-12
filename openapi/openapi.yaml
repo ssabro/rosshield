@@ -339,10 +339,13 @@ paths:
       operationId: createScan
       summary: Start a new scan session
       description: |
-        Phase 1 Stage B: inserts session in `pending` state — Orchestrator(scanrun)
-        start is deferred to a later Stage. `total` is optional (orchestrator computes
-        it; current Stage accepts external value).
-      x-status: todo
+        Inserts session in `pending` state and triggers async scanrun.Orchestrator
+        (when wired). `total` is optional (orchestrator computes it).
+
+        Returns 409 Conflict if the target fleet already has a `pending` or
+        `running` session — operator must cancel/wait for the existing session
+        before starting a new one. This prevents resource contention and
+        scheduler-induced duplicate runs.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -358,6 +361,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ScanSession"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 

@@ -721,14 +721,20 @@ func TestListSessionsFilter(t *testing.T) {
 		t.Fatalf("seed fleet2: %v", err)
 	}
 
-	// fleet1 × 2 세션, fleet2 × 1 세션.
+	// fleet1 × 2 세션 (둘째는 첫째를 cancelled로 보낸 뒤 시작 — fleet 동시 limit 회피),
+	// fleet2 × 1 세션.
 	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
-		for i := 0; i < 2; i++ {
-			if _, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID)); err != nil {
-				return err
-			}
+		s1, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		if err != nil {
+			return err
 		}
-		_, err := repo.StartScan(ctx, tx, sampleStartReq(fleet2, packID))
+		if _, err := repo.CancelSession(ctx, tx, s1.ID, "test rotation"); err != nil {
+			return err
+		}
+		if _, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID)); err != nil {
+			return err
+		}
+		_, err = repo.StartScan(ctx, tx, sampleStartReq(fleet2, packID))
 		return err
 	}); err != nil {
 		t.Fatalf("StartScan loop: %v", err)
@@ -773,12 +779,22 @@ func TestListSessionsByStatus(t *testing.T) {
 	const tenantID, fleetID, packID = "tn_L2", "fl_L2", "pk_L2"
 	seedTenantFleetPack(t, store, tenantID, fleetID, packID)
 
-	// 1 pending + 1 running.
+	// 추가 fleet 하나 — fleet 동시 limit 때문에 fleet 별로 active 1건만 가능.
+	const fleet2 = "fl_L2B"
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO fleets (id, tenant_id, name, description, policy, created_at, updated_at) VALUES (?, ?, 'fleet-B', '', '{}', ?, ?)`,
+			fleet2, tenantID, time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano))
+		return err
+	}); err != nil {
+		t.Fatalf("seed fleet2: %v", err)
+	}
+
+	// fleet1: pending, fleet2: running (둘 다 동시에 활성 가능 — 다른 fleet).
 	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
 		if _, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID)); err != nil {
 			return err
 		}
-		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleet2, packID))
 		if err != nil {
 			return err
 		}
@@ -807,6 +823,52 @@ func TestListSessionsByStatus(t *testing.T) {
 	}
 	if len(running) != 1 {
 		t.Errorf("running = %d, want 1", len(running))
+	}
+}
+
+func TestStartScanRejectsDuplicateActiveSessionOnSameFleet(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+	const tenantID, fleetID, packID = "tn_FA", "fl_FA", "pk_FA"
+	seedTenantFleetPack(t, store, tenantID, fleetID, packID)
+
+	// 첫 StartScan은 통과.
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		_, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		return err
+	}); err != nil {
+		t.Fatalf("first StartScan: %v", err)
+	}
+
+	// 두 번째 — 같은 fleet, pending 살아있음 → ErrFleetActiveScanExists.
+	err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		_, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		return err
+	})
+	if !errors.Is(err, scan.ErrFleetActiveScanExists) {
+		t.Errorf("err = %v, want ErrFleetActiveScanExists", err)
+	}
+}
+
+func TestStartScanAllowsAfterCancellingActiveSession(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+	const tenantID, fleetID, packID = "tn_FB", "fl_FB", "pk_FB"
+	seedTenantFleetPack(t, store, tenantID, fleetID, packID)
+
+	// 첫 → cancel → 두 번째 OK.
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		if err != nil {
+			return err
+		}
+		if _, err := repo.CancelSession(ctx, tx, s.ID, "freeing slot"); err != nil {
+			return err
+		}
+		_, err = repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		return err
+	}); err != nil {
+		t.Fatalf("expected success after cancel: %v", err)
 	}
 }
 

@@ -366,6 +366,11 @@ var (
 	ErrFleetNotFound = errors.New("scan: Fleet not found or deleted")
 	ErrPackNotFound  = errors.New("scan: Pack not found")
 	ErrRobotNotFound = errors.New("scan: Robot not found or deleted")
+
+	// 동시성 제약.
+	// 같은 fleet에 이미 pending/running 세션이 있으면 새 StartScan 거부 — 자원 충돌·랜덤
+	// scheduler 중복 실행 방지. 기존 세션을 cancel/완료해야 새로 시작 가능.
+	ErrFleetActiveScanExists = errors.New("scan: an active scan session already exists for this fleet")
 )
 
 // ValidateOutcome는 Outcome 값이 5-값 enum 중 하나인지 검증합니다.
