@@ -87,10 +87,11 @@ type CreateFleetRequest struct {
 // UpdateFleetRequest는 Service.UpdateFleet 입력입니다.
 //
 // 필드는 옵션 — nil이면 미변경. 빈 string은 description 명시적 clear.
-// Policy는 후속 epic — 본 Stage는 name·description만.
+// Policy nil이면 미변경, non-nil이면 통째로 교체 (4 필드 전체 set).
 type UpdateFleetRequest struct {
 	Name        *string
 	Description *string
+	Policy      *FleetPolicy
 }
 
 // SSHTester는 SSH 연결 테스트 표면입니다 (Stage E mock interface).

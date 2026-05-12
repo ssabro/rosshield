@@ -156,7 +156,9 @@ SELECT f.id, f.tenant_id, f.name, f.description, f.policy, f.created_at, f.updat
 	return out, nil
 }
 
-// UpdateFleet은 fleet name·description을 수정합니다 (옵션 필드만).
+// UpdateFleet은 fleet name·description·policy를 수정합니다 (옵션 필드만).
+//
+// req.Policy nil이면 미변경, non-nil이면 통째 교체. validatePolicy로 enum 검증.
 func (r *Repo) UpdateFleet(ctx context.Context, tx storage.Tx, id string, req robot.UpdateFleetRequest) (robot.Fleet, error) {
 	tenantID := tx.TenantID()
 	if tenantID == "" {
@@ -178,15 +180,28 @@ func (r *Repo) UpdateFleet(ctx context.Context, tx storage.Tx, id string, req ro
 	if req.Description != nil {
 		updated.Description = strings.TrimSpace(*req.Description)
 	}
-	if updated.Name == current.Name && updated.Description == current.Description {
+	if req.Policy != nil {
+		if err := validatePolicy(*req.Policy); err != nil {
+			return robot.Fleet{}, err
+		}
+		updated.Policy = *req.Policy
+	}
+
+	policyEqual := updated.Policy == current.Policy
+	if updated.Name == current.Name && updated.Description == current.Description && policyEqual {
 		return current, nil // no-op
 	}
 	updated.UpdatedAt = r.deps.Clock.Now().UTC()
 
+	policyJSON, err := robot.MarshalPolicy(updated.Policy)
+	if err != nil {
+		return robot.Fleet{}, fmt.Errorf("robot: marshal policy: %w", err)
+	}
+
 	if _, err := tx.Exec(ctx, `
-UPDATE fleets SET name = ?, description = ?, updated_at = ?
+UPDATE fleets SET name = ?, description = ?, policy = ?, updated_at = ?
  WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
-		updated.Name, updated.Description, updated.UpdatedAt.Format(rfc3339Nano),
+		updated.Name, updated.Description, string(policyJSON), updated.UpdatedAt.Format(rfc3339Nano),
 		id, string(tenantID),
 	); err != nil {
 		if isUniqueViolation(err) {

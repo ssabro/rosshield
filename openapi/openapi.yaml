@@ -337,6 +337,7 @@ paths:
       description: |
         Creates a new fleet for the caller tenant. Name must be unique within
         the tenant for active fleets — duplicate name returns 409 Conflict.
+        Policy is optional — empty fields use defaults.
       requestBody:
         required: true
         content:
@@ -347,6 +348,8 @@ paths:
               properties:
                 name:        { type: string }
                 description: { type: string }
+                policy:
+                  $ref: "#/components/schemas/FleetPolicy"
       responses:
         "201":
           description: Created
@@ -369,9 +372,9 @@ paths:
       operationId: updateFleet
       summary: Update a fleet (admin)
       description: |
-        Updates fleet name or description. Both fields optional — if both are
-        omitted the call is a no-op (returns current state). Name conflict
-        within active fleets returns 409.
+        Updates fleet name, description, or policy. All fields optional — if all
+        are omitted the call is a no-op (returns current state). Name conflict
+        within active fleets returns 409. Policy non-null replaces all 4 fields.
       requestBody:
         required: true
         content:
@@ -381,6 +384,8 @@ paths:
               properties:
                 name:        { type: string }
                 description: { type: string }
+                policy:
+                  $ref: "#/components/schemas/FleetPolicy"
       responses:
         "200":
           description: Updated
@@ -1921,9 +1926,31 @@ components:
         trigger: { type: string, description: "Empty → manual" }
         total:   { type: integer, description: "Optional — orchestrator will compute" }
 
+    FleetPolicy:
+      type: object
+      properties:
+        defaultBaselineId:
+          type: string
+          description: |
+            Pack key (e.g. "cis-ubuntu-24.04") applied to scans from this fleet.
+            Empty = no auto-scan default.
+        defaultLevel:
+          type: string
+          enum: ['', L1, L2]
+          description: Hardening level applied by default (empty = unset).
+        defaultCriticality:
+          type: string
+          enum: ['', low, medium, high, critical]
+          description: Default robot criticality when robot has no explicit override.
+        scanSchedule:
+          type: string
+          description: |
+            Cron spec (5-field standard or @every/@daily descriptors). Empty = manual only.
+            Server registers fleet-scan cron job on save (dynamic re-registration).
+
     Fleet:
       type: object
-      required: [id, tenantId, name, robotCount]
+      required: [id, tenantId, name, robotCount, policy]
       properties:
         id:          { type: string }
         tenantId:    { type: string }
@@ -1935,6 +1962,8 @@ components:
             Number of active robots (deleted_at IS NULL) belonging to this fleet.
             Derived field — populated by ListFleets/GetFleet only; create/update responses
             return 0 since the mutation flow doesn't re-query.
+        policy:
+          $ref: "#/components/schemas/FleetPolicy"
         createdAt:   { type: string, format: date-time }
         updatedAt:   { type: string, format: date-time }
 

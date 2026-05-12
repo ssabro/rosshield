@@ -31,13 +31,14 @@ type FleetScanScheduler interface {
 
 // fleetResponse는 fleet 응답 항목입니다.
 type fleetResponse struct {
-	ID          string `json:"id"`
-	TenantID    string `json:"tenantId"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	RobotCount  int    `json:"robotCount"`
-	CreatedAt   string `json:"createdAt,omitempty"`
-	UpdatedAt   string `json:"updatedAt,omitempty"`
+	ID          string             `json:"id"`
+	TenantID    string             `json:"tenantId"`
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	RobotCount  int                `json:"robotCount"`
+	Policy      fleetPolicyRequest `json:"policy"`
+	CreatedAt   string             `json:"createdAt,omitempty"`
+	UpdatedAt   string             `json:"updatedAt,omitempty"`
 }
 
 // fleetListResponse는 GET /api/v1/fleets 응답 envelope입니다.
@@ -45,18 +46,38 @@ type fleetListResponse struct {
 	Fleets []fleetResponse `json:"fleets"`
 }
 
+// fleetPolicyRequest는 fleet 정책 4 필드 입력입니다.
+type fleetPolicyRequest struct {
+	DefaultBaselineID  string `json:"defaultBaselineId,omitempty"`
+	DefaultLevel       string `json:"defaultLevel,omitempty"`
+	DefaultCriticality string `json:"defaultCriticality,omitempty"`
+	ScanSchedule       string `json:"scanSchedule,omitempty"`
+}
+
 // createFleetRequest는 POST /api/v1/fleets 요청 본문입니다.
 type createFleetRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
+	Policy      *fleetPolicyRequest `json:"policy,omitempty"`
 }
 
 // updateFleetRequest는 PATCH /api/v1/fleets/{fleetId} 요청 본문입니다.
 //
-// 두 필드 모두 옵션. 둘 다 nil이면 no-op (200, current 반환).
+// 모든 필드 옵션. 모두 nil이면 no-op (200, current 반환). policy non-nil이면 통째 교체.
 type updateFleetRequest struct {
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
+	Name        *string             `json:"name,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	Policy      *fleetPolicyRequest `json:"policy,omitempty"`
+}
+
+// toDomainPolicy는 wire format을 도메인 FleetPolicy로 변환합니다.
+func toDomainPolicy(p fleetPolicyRequest) robot.FleetPolicy {
+	return robot.FleetPolicy{
+		DefaultBaselineID:  p.DefaultBaselineID,
+		DefaultLevel:       robot.Level(p.DefaultLevel),
+		DefaultCriticality: robot.Criticality(p.DefaultCriticality),
+		ScanSchedule:       p.ScanSchedule,
+	}
 }
 
 func toFleetResponse(f robot.Fleet) fleetResponse {
@@ -66,6 +87,12 @@ func toFleetResponse(f robot.Fleet) fleetResponse {
 		Name:        f.Name,
 		Description: f.Description,
 		RobotCount:  f.RobotCount,
+		Policy: fleetPolicyRequest{
+			DefaultBaselineID:  f.Policy.DefaultBaselineID,
+			DefaultLevel:       string(f.Policy.DefaultLevel),
+			DefaultCriticality: string(f.Policy.DefaultCriticality),
+			ScanSchedule:       f.Policy.ScanSchedule,
+		},
 	}
 	if !f.CreatedAt.IsZero() {
 		out.CreatedAt = f.CreatedAt.UTC().Format(time.RFC3339Nano)
@@ -127,12 +154,16 @@ func (h *Handlers) CreateFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	createReq := robot.CreateFleetRequest{
+		Name:        req.Name,
+		Description: req.Description,
+	}
+	if req.Policy != nil {
+		createReq.Policy = toDomainPolicy(*req.Policy)
+	}
 	var created robot.Fleet
 	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
-		f, e := h.deps.Robot.CreateFleet(ctx, tx, robot.CreateFleetRequest{
-			Name:        req.Name,
-			Description: req.Description,
-		})
+		f, e := h.deps.Robot.CreateFleet(ctx, tx, createReq)
 		if e != nil {
 			return e
 		}
@@ -182,12 +213,17 @@ func (h *Handlers) UpdateFleet(w http.ResponseWriter, r *http.Request, fleetID s
 		return
 	}
 
+	updateReq := robot.UpdateFleetRequest{
+		Name:        req.Name,
+		Description: req.Description,
+	}
+	if req.Policy != nil {
+		p := toDomainPolicy(*req.Policy)
+		updateReq.Policy = &p
+	}
 	var updated robot.Fleet
 	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
-		f, e := h.deps.Robot.UpdateFleet(ctx, tx, fleetID, robot.UpdateFleetRequest{
-			Name:        req.Name,
-			Description: req.Description,
-		})
+		f, e := h.deps.Robot.UpdateFleet(ctx, tx, fleetID, updateReq)
 		if e != nil {
 			return e
 		}
@@ -201,7 +237,9 @@ func (h *Handlers) UpdateFleet(w http.ResponseWriter, r *http.Request, fleetID s
 		case errors.Is(err, robot.ErrFleetNameDuplicate):
 			writeError(w, http.StatusConflict, err.Error())
 		case errors.Is(err, robot.ErrFleetEmptyName),
-			errors.Is(err, robot.ErrFleetNameTooLong):
+			errors.Is(err, robot.ErrFleetNameTooLong),
+			errors.Is(err, robot.ErrFleetInvalidLevel),
+			errors.Is(err, robot.ErrFleetInvalidCritical):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
 			writeError(w, errorStatusFor(err), "update fleet failed")

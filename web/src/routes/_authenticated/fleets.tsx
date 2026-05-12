@@ -7,6 +7,7 @@ import {
   useDeleteFleet,
   useFleets,
   useIsAdmin,
+  usePacks,
   useUpdateFleet,
 } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -22,9 +23,19 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
-import type { Fleet } from '@/api/hooks'
+import type { Fleet, FleetPolicy } from '@/api/hooks'
 import type { FormEvent } from 'react'
+
+const LEVEL_VALUES = ['', 'L1', 'L2'] as const
+const CRITICALITY_VALUES = ['', 'low', 'medium', 'high', 'critical'] as const
 
 // `/fleets` — fleet 등록·이름 변경·삭제 페이지 (admin).
 function FleetsPage(): React.ReactElement {
@@ -77,6 +88,7 @@ function CreateFleetCard(): React.ReactElement {
   const t = useT()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [policy, setPolicy] = useState<FleetPolicy>({})
   const [error, setError] = useState('')
   const create = useCreateFleet()
 
@@ -84,11 +96,12 @@ function CreateFleetCard(): React.ReactElement {
     e.preventDefault()
     setError('')
     create.mutate(
-      { name, description },
+      { name, description, policy: hasPolicyContent(policy) ? policy : undefined },
       {
         onSuccess: () => {
           setName('')
           setDescription('')
+          setPolicy({})
         },
         onError: (err) => {
           if (err instanceof ApiError && err.status === 409) {
@@ -129,6 +142,7 @@ function CreateFleetCard(): React.ReactElement {
               maxLength={500}
             />
           </div>
+          <PolicyFormFields policy={policy} onChange={setPolicy} idPrefix="create" />
           {error && (
             <p className="text-sm text-destructive" role="alert">
               {error}
@@ -140,6 +154,130 @@ function CreateFleetCard(): React.ReactElement {
         </form>
       </CardContent>
     </Card>
+  )
+}
+
+// hasPolicyContent — 모든 필드 빈 정책이면 false (서버에 nil 전달, default 적용).
+function hasPolicyContent(p: FleetPolicy): boolean {
+  return !!(p.defaultBaselineId || p.defaultLevel || p.defaultCriticality || p.scanSchedule)
+}
+
+// PolicyFormFields는 Create/Edit form 양쪽에서 공유하는 4 필드 정책 입력입니다.
+function PolicyFormFields({
+  policy,
+  onChange,
+  idPrefix,
+}: {
+  policy: FleetPolicy
+  onChange: (p: FleetPolicy) => void
+  idPrefix: string
+}): React.ReactElement {
+  const t = useT()
+  const packsQuery = usePacks()
+  const baselineId = `${idPrefix}-policy-baseline`
+  const levelId = `${idPrefix}-policy-level`
+  const criticalityId = `${idPrefix}-policy-criticality`
+  const scheduleId = `${idPrefix}-policy-schedule`
+
+  return (
+    <div className="space-y-3 rounded border border-border p-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        {t('fleets.form.policy.title')}
+      </p>
+      <div className="space-y-2">
+        <Label htmlFor={baselineId}>{t('fleets.form.policy.baseline')}</Label>
+        {packsQuery.isPending || packsQuery.isError ? (
+          <Input
+            id={baselineId}
+            value={policy.defaultBaselineId ?? ''}
+            onChange={(e) =>
+              onChange({ ...policy, defaultBaselineId: e.target.value })
+            }
+            placeholder={t('fleets.form.policy.baseline.placeholder')}
+          />
+        ) : (
+          <Select
+            value={policy.defaultBaselineId ?? '__none__'}
+            onValueChange={(v) =>
+              onChange({ ...policy, defaultBaselineId: v === '__none__' ? '' : v })
+            }
+          >
+            <SelectTrigger id={baselineId}>
+              <SelectValue placeholder={t('fleets.form.policy.baseline.placeholder')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">{t('fleets.form.policy.none')}</SelectItem>
+              {packsQuery.data?.map((p) => (
+                <SelectItem key={p.id} value={p.packKey ?? p.id}>
+                  {p.name} ({p.version})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
+          <Label htmlFor={levelId}>{t('fleets.form.policy.level')}</Label>
+          <Select
+            value={policy.defaultLevel || '__none__'}
+            onValueChange={(v) =>
+              onChange({
+                ...policy,
+                defaultLevel: (v === '__none__' ? '' : v) as FleetPolicy['defaultLevel'],
+              })
+            }
+          >
+            <SelectTrigger id={levelId}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">{t('fleets.form.policy.none')}</SelectItem>
+              {LEVEL_VALUES.filter((v) => v !== '').map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={criticalityId}>{t('fleets.form.policy.criticality')}</Label>
+          <Select
+            value={policy.defaultCriticality || '__none__'}
+            onValueChange={(v) =>
+              onChange({
+                ...policy,
+                defaultCriticality: (v === '__none__'
+                  ? ''
+                  : v) as FleetPolicy['defaultCriticality'],
+              })
+            }
+          >
+            <SelectTrigger id={criticalityId}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">{t('fleets.form.policy.none')}</SelectItem>
+              {CRITICALITY_VALUES.filter((v) => v !== '').map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={scheduleId}>{t('fleets.form.policy.schedule')}</Label>
+        <Input
+          id={scheduleId}
+          value={policy.scanSchedule ?? ''}
+          onChange={(e) => onChange({ ...policy, scanSchedule: e.target.value })}
+          placeholder={t('fleets.form.policy.schedule.placeholder')}
+        />
+      </div>
+    </div>
   )
 }
 
@@ -205,6 +343,7 @@ function EditFleetForm({
   const t = useT()
   const [name, setName] = useState(fleet.name)
   const [description, setDescription] = useState(fleet.description ?? '')
+  const [policy, setPolicy] = useState<FleetPolicy>({ ...fleet.policy })
   const [error, setError] = useState('')
   const update = useUpdateFleet()
 
@@ -212,7 +351,7 @@ function EditFleetForm({
     e.preventDefault()
     setError('')
     update.mutate(
-      { fleetId: fleet.id, name, description },
+      { fleetId: fleet.id, name, description, policy },
       {
         onSuccess: () => onDone(),
         onError: (err) => {
@@ -229,7 +368,7 @@ function EditFleetForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-2 rounded border border-primary px-3 py-2 text-sm"
+      className="space-y-3 rounded border border-primary px-3 py-2 text-sm"
     >
       <Input
         required
@@ -244,6 +383,7 @@ function EditFleetForm({
         maxLength={500}
         placeholder={t('fleets.form.description.placeholder')}
       />
+      <PolicyFormFields policy={policy} onChange={setPolicy} idPrefix={`edit-${fleet.id}`} />
       {error && (
         <p className="text-xs text-destructive" role="alert">
           {error}

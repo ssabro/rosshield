@@ -496,12 +496,20 @@ export interface ScanSession {
 // 5-pre/5) Fleets (read-only)
 // ────────────────────────────────────────────────────────────────────────
 
+export interface FleetPolicy {
+  defaultBaselineId?: string
+  defaultLevel?: '' | 'L1' | 'L2'
+  defaultCriticality?: '' | 'low' | 'medium' | 'high' | 'critical'
+  scanSchedule?: string
+}
+
 export interface Fleet {
   id: string
   tenantId: string
   name: string
   description?: string
   robotCount: number
+  policy: FleetPolicy
   createdAt?: string
   updatedAt?: string
 }
@@ -530,6 +538,7 @@ export function useFleets() {
 export interface CreateFleetVars {
   name: string
   description?: string
+  policy?: FleetPolicy
 }
 
 export const useCreateFleet = () => {
@@ -537,7 +546,11 @@ export const useCreateFleet = () => {
   return useMutation({
     mutationFn: async (vars: CreateFleetVars): Promise<Fleet> => {
       const { data, error, response } = await apiClient.POST('/api/v1/fleets', {
-        body: { name: vars.name, description: vars.description ?? '' },
+        body: {
+          name: vars.name,
+          description: vars.description ?? '',
+          policy: vars.policy,
+        },
       })
       if (error) {
         throw new ApiError(
@@ -557,6 +570,7 @@ export interface UpdateFleetVars {
   fleetId: string
   name?: string
   description?: string
+  policy?: FleetPolicy
 }
 
 export const useUpdateFleet = () => {
@@ -567,7 +581,11 @@ export const useUpdateFleet = () => {
         '/api/v1/fleets/{fleetId}',
         {
           params: { path: { fleetId: vars.fleetId } },
-          body: { name: vars.name, description: vars.description },
+          body: {
+            name: vars.name,
+            description: vars.description,
+            policy: vars.policy,
+          },
         },
       )
       if (error) {

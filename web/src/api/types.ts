@@ -204,6 +204,7 @@ export interface paths {
          * Create a new fleet (admin)
          * @description Creates a new fleet for the caller tenant. Name must be unique within
          *     the tenant for active fleets — duplicate name returns 409 Conflict.
+         *     Policy is optional — empty fields use defaults.
          */
         post: operations["createFleet"];
         delete?: never;
@@ -234,9 +235,9 @@ export interface paths {
         head?: never;
         /**
          * Update a fleet (admin)
-         * @description Updates fleet name or description. Both fields optional — if both are
-         *     omitted the call is a no-op (returns current state). Name conflict
-         *     within active fleets returns 409.
+         * @description Updates fleet name, description, or policy. All fields optional — if all
+         *     are omitted the call is a no-op (returns current state). Name conflict
+         *     within active fleets returns 409. Policy non-null replaces all 4 fields.
          */
         patch: operations["updateFleet"];
         trace?: never;
@@ -1140,6 +1141,28 @@ export interface components {
             /** @description Optional — orchestrator will compute */
             total?: number;
         };
+        FleetPolicy: {
+            /**
+             * @description Pack key (e.g. "cis-ubuntu-24.04") applied to scans from this fleet.
+             *     Empty = no auto-scan default.
+             */
+            defaultBaselineId?: string;
+            /**
+             * @description Hardening level applied by default (empty = unset).
+             * @enum {string}
+             */
+            defaultLevel?: "" | "L1" | "L2";
+            /**
+             * @description Default robot criticality when robot has no explicit override.
+             * @enum {string}
+             */
+            defaultCriticality?: "" | "low" | "medium" | "high" | "critical";
+            /**
+             * @description Cron spec (5-field standard or @every/@daily descriptors). Empty = manual only.
+             *     Server registers fleet-scan cron job on save (dynamic re-registration).
+             */
+            scanSchedule?: string;
+        };
         Fleet: {
             id: string;
             tenantId: string;
@@ -1151,6 +1174,7 @@ export interface components {
              *     return 0 since the mutation flow doesn't re-query.
              */
             robotCount: number;
+            policy: components["schemas"]["FleetPolicy"];
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -2029,6 +2053,7 @@ export interface operations {
                 "application/json": {
                     name: string;
                     description?: string;
+                    policy?: components["schemas"]["FleetPolicy"];
                 };
             };
         };
@@ -2083,6 +2108,7 @@ export interface operations {
                 "application/json": {
                     name?: string;
                     description?: string;
+                    policy?: components["schemas"]["FleetPolicy"];
                 };
             };
         };
