@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   useDeleteRobot,
@@ -257,6 +258,7 @@ function MetaRow({
 //
 // packKey는 서버 응답에서 직접 옴 (RobotResult.packKey, scan_sessions→packs JOIN 결과).
 // packIsBuiltin은 usePacks(이미 cache 공유)로 client-side 매핑.
+// collapsed 상태는 localStorage에 sessionId Set으로 보존 — 새로고침 후 같은 그룹은 접힌 채.
 function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement {
   const t = useT()
   const q = useRobotResults(robotId, 20)
@@ -266,6 +268,7 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
   for (const p of packsQuery.data ?? []) {
     builtinByPackKey.set(p.packKey, p.isBuiltin)
   }
+  const { isCollapsed, toggle } = useCollapsedSessions()
 
   return (
     <Card>
@@ -294,6 +297,8 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
                 key={group.sessionId}
                 group={group}
                 builtinByPackKey={builtinByPackKey}
+                collapsed={isCollapsed(group.sessionId)}
+                onToggle={() => toggle(group.sessionId)}
               />
             ))}
           </div>
@@ -301,6 +306,51 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
       </CardContent>
     </Card>
   )
+}
+
+// useCollapsedSessions — RobotResultsCard SessionGroup 접힘 상태 localStorage 보존.
+//
+// 키: rosshield.ui.robotResults.collapsedSessions — JSON Array<sessionId>.
+// 기본 펼침(Set 비-멤버), toggle은 즉시 localStorage 동기화.
+const collapsedStorageKey = 'rosshield.ui.robotResults.collapsedSessions'
+
+function useCollapsedSessions(): {
+  isCollapsed: (id: string) => boolean
+  toggle: (id: string) => void
+} {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const raw = window.localStorage.getItem(collapsedStorageKey)
+      if (!raw) return new Set()
+      const arr = JSON.parse(raw) as unknown
+      if (!Array.isArray(arr)) return new Set()
+      return new Set(arr.filter((v): v is string => typeof v === 'string'))
+    } catch {
+      return new Set()
+    }
+  })
+  const isCollapsed = useCallback((id: string) => collapsed.has(id), [collapsed])
+  const toggle = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      try {
+        window.localStorage.setItem(
+          collapsedStorageKey,
+          JSON.stringify(Array.from(next)),
+        )
+      } catch {
+        // localStorage quota 초과 또는 비활성 — silent.
+      }
+      return next
+    })
+  }, [])
+  return { isCollapsed, toggle }
 }
 
 interface SessionResultGroup {
@@ -329,15 +379,33 @@ function groupBySession(results: RobotResult[]): SessionResultGroup[] {
 function SessionGroup({
   group,
   builtinByPackKey,
+  collapsed,
+  onToggle,
 }: {
   group: SessionResultGroup
   builtinByPackKey: Map<string, boolean>
+  collapsed: boolean
+  onToggle: () => void
 }): React.ReactElement {
   const t = useT()
+  const ChevronIcon = collapsed ? ChevronRight : ChevronDown
   return (
     <div className="space-y-1">
-      <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
-        <span>{t('robots.detail.results.session')}:</span>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={
+            collapsed
+              ? t('robots.detail.results.expand')
+              : t('robots.detail.results.collapse')
+          }
+          className="flex items-center gap-1 rounded p-0.5 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <ChevronIcon className="h-3 w-3" />
+          <span>{t('robots.detail.results.session')}:</span>
+        </button>
         <Link
           to="/scans"
           search={{ session: group.sessionId }}
@@ -349,15 +417,17 @@ function SessionGroup({
           {t('robots.detail.results.count', { count: group.results.length })}
         </span>
       </div>
-      <div className="space-y-1">
-        {group.results.map((r) => (
-          <ResultRow
-            key={r.id}
-            result={r}
-            builtinByPackKey={builtinByPackKey}
-          />
-        ))}
-      </div>
+      {!collapsed && (
+        <div className="space-y-1">
+          {group.results.map((r) => (
+            <ResultRow
+              key={r.id}
+              result={r}
+              builtinByPackKey={builtinByPackKey}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
