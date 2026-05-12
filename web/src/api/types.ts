@@ -1145,6 +1145,12 @@ export interface components {
             tenantId: string;
             name: string;
             description?: string;
+            /**
+             * @description Number of active robots (deleted_at IS NULL) belonging to this fleet.
+             *     Derived field — populated by ListFleets/GetFleet only; create/update responses
+             *     return 0 since the mutation flow doesn't re-query.
+             */
+            robotCount: number;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */

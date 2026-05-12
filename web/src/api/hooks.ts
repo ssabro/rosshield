@@ -501,6 +501,7 @@ export interface Fleet {
   tenantId: string
   name: string
   description?: string
+  robotCount: number
   createdAt?: string
   updatedAt?: string
 }

@@ -1923,12 +1923,18 @@ components:
 
     Fleet:
       type: object
-      required: [id, tenantId, name]
+      required: [id, tenantId, name, robotCount]
       properties:
         id:          { type: string }
         tenantId:    { type: string }
         name:        { type: string }
         description: { type: string }
+        robotCount:
+          type: integer
+          description: |
+            Number of active robots (deleted_at IS NULL) belonging to this fleet.
+            Derived field — populated by ListFleets/GetFleet only; create/update responses
+            return 0 since the mutation flow doesn't re-query.
         createdAt:   { type: string, format: date-time }
         updatedAt:   { type: string, format: date-time }
 

@@ -103,15 +103,19 @@ func (r *Repo) CreateFleet(ctx context.Context, tx storage.Tx, req robot.CreateF
 }
 
 // GetFleet는 robot.Service.GetFleet 구현입니다 (활성만, deleted_at IS NULL).
+//
+// RobotCount derived field — 활성 로봇 수를 sub-query로 함께 SELECT (단일 trip).
 func (r *Repo) GetFleet(ctx context.Context, tx storage.Tx, id string) (robot.Fleet, error) {
 	tenantID := tx.TenantID()
 	if tenantID == "" {
 		return robot.Fleet{}, storage.ErrTenantMissing
 	}
 	row := tx.QueryRow(ctx, `
-SELECT id, tenant_id, name, description, policy, created_at, updated_at, deleted_at
-  FROM fleets
- WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+SELECT f.id, f.tenant_id, f.name, f.description, f.policy, f.created_at, f.updated_at, f.deleted_at,
+       (SELECT COUNT(*) FROM robots r
+          WHERE r.fleet_id = f.id AND r.tenant_id = f.tenant_id AND r.deleted_at IS NULL) AS robot_count
+  FROM fleets f
+ WHERE f.id = ? AND f.tenant_id = ? AND f.deleted_at IS NULL`,
 		id, string(tenantID))
 	return scanFleetRow(row)
 }
@@ -119,17 +123,19 @@ SELECT id, tenant_id, name, description, policy, created_at, updated_at, deleted
 // ListFleets는 robot.Service.ListFleets 구현입니다 (활성만, name ASC).
 //
 // name ASC: 운영자가 dropdown에서 알파벳순 탐색하기 쉬움. created_at 순서가 필요한 호출자는
-// 본 결과를 직접 정렬.
+// 본 결과를 직접 정렬. RobotCount는 활성 로봇 수 sub-query (단일 trip).
 func (r *Repo) ListFleets(ctx context.Context, tx storage.Tx) ([]robot.Fleet, error) {
 	tenantID := tx.TenantID()
 	if tenantID == "" {
 		return nil, storage.ErrTenantMissing
 	}
 	rows, err := tx.Query(ctx, `
-SELECT id, tenant_id, name, description, policy, created_at, updated_at, deleted_at
-  FROM fleets
- WHERE tenant_id = ? AND deleted_at IS NULL
- ORDER BY name ASC`,
+SELECT f.id, f.tenant_id, f.name, f.description, f.policy, f.created_at, f.updated_at, f.deleted_at,
+       (SELECT COUNT(*) FROM robots r
+          WHERE r.fleet_id = f.id AND r.tenant_id = f.tenant_id AND r.deleted_at IS NULL) AS robot_count
+  FROM fleets f
+ WHERE f.tenant_id = ? AND f.deleted_at IS NULL
+ ORDER BY f.name ASC`,
 		string(tenantID))
 	if err != nil {
 		return nil, fmt.Errorf("robot: list fleets: %w", err)
@@ -239,34 +245,36 @@ VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
 	return err
 }
 
-// scanFleetRow는 *sql.Row를 Fleet으로 디코드합니다.
+// scanFleetRow는 *sql.Row를 Fleet으로 디코드합니다 (마지막 컬럼은 robot_count).
 func scanFleetRow(row *sql.Row) (robot.Fleet, error) {
 	var (
 		id, tenantID, name, description, policy, createdAt, updatedAt string
 		deletedAt                                                     sql.NullString
+		robotCount                                                    int
 	)
-	if err := row.Scan(&id, &tenantID, &name, &description, &policy, &createdAt, &updatedAt, &deletedAt); err != nil {
+	if err := row.Scan(&id, &tenantID, &name, &description, &policy, &createdAt, &updatedAt, &deletedAt, &robotCount); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return robot.Fleet{}, storage.ErrNotFound
 		}
 		return robot.Fleet{}, fmt.Errorf("robot: scan fleet: %w", err)
 	}
-	return assembleFleet(id, tenantID, name, description, policy, createdAt, updatedAt, deletedAt)
+	return assembleFleet(id, tenantID, name, description, policy, createdAt, updatedAt, deletedAt, robotCount)
 }
 
-// scanFleetRowGeneric은 *sql.Rows를 Fleet으로 디코드합니다 (List에서 사용).
+// scanFleetRowGeneric은 *sql.Rows를 Fleet으로 디코드합니다 (List에서 사용, 마지막 컬럼은 robot_count).
 func scanFleetRowGeneric(rows *sql.Rows) (robot.Fleet, error) {
 	var (
 		id, tenantID, name, description, policy, createdAt, updatedAt string
 		deletedAt                                                     sql.NullString
+		robotCount                                                    int
 	)
-	if err := rows.Scan(&id, &tenantID, &name, &description, &policy, &createdAt, &updatedAt, &deletedAt); err != nil {
+	if err := rows.Scan(&id, &tenantID, &name, &description, &policy, &createdAt, &updatedAt, &deletedAt, &robotCount); err != nil {
 		return robot.Fleet{}, fmt.Errorf("robot: scan fleet: %w", err)
 	}
-	return assembleFleet(id, tenantID, name, description, policy, createdAt, updatedAt, deletedAt)
+	return assembleFleet(id, tenantID, name, description, policy, createdAt, updatedAt, deletedAt, robotCount)
 }
 
-func assembleFleet(id, tenantID, name, description, policy, createdAt, updatedAt string, deletedAt sql.NullString) (robot.Fleet, error) {
+func assembleFleet(id, tenantID, name, description, policy, createdAt, updatedAt string, deletedAt sql.NullString, robotCount int) (robot.Fleet, error) {
 	created, err := time.Parse(rfc3339Nano, createdAt)
 	if err != nil {
 		return robot.Fleet{}, fmt.Errorf("robot: parse created_at %q: %w", createdAt, err)
@@ -287,6 +295,7 @@ func assembleFleet(id, tenantID, name, description, policy, createdAt, updatedAt
 		Policy:      pol,
 		CreatedAt:   created,
 		UpdatedAt:   updated,
+		RobotCount:  robotCount,
 	}
 	if deletedAt.Valid {
 		t, err := time.Parse(rfc3339Nano, deletedAt.String)

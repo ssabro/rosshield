@@ -51,9 +51,10 @@ func TestListFleetsReturnsTenantScopedFleetsSorted(t *testing.T) {
 	}
 	var out struct {
 		Fleets []struct {
-			ID       string `json:"id"`
-			TenantID string `json:"tenantId"`
-			Name     string `json:"name"`
+			ID         string `json:"id"`
+			TenantID   string `json:"tenantId"`
+			Name       string `json:"name"`
+			RobotCount int    `json:"robotCount"`
 		} `json:"fleets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -62,7 +63,7 @@ func TestListFleetsReturnsTenantScopedFleetsSorted(t *testing.T) {
 	if len(out.Fleets) != 3 {
 		t.Fatalf("expected 3 fleets, got %d", len(out.Fleets))
 	}
-	// name ASC 검증.
+	// name ASC 검증 + 각 fleet에 robot 1대씩 시드됐으므로 robotCount 1.
 	wantOrder := []string{"alpha-fleet", "mu-fleet", "zeta-fleet"}
 	for i, fl := range out.Fleets {
 		if fl.Name != wantOrder[i] {
@@ -74,6 +75,42 @@ func TestListFleetsReturnsTenantScopedFleetsSorted(t *testing.T) {
 		if fl.ID == "" {
 			t.Errorf("fleet[%d] empty id", i)
 		}
+		if fl.RobotCount != 1 {
+			t.Errorf("fleet[%d] robotCount=%d, want 1", i, fl.RobotCount)
+		}
+	}
+}
+
+// TestListFleetsReturnsZeroRobotCountForEmptyFleet — robot 미시드 fleet은 RobotCount 0.
+func TestListFleetsReturnsZeroRobotCountForEmptyFleet(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	// CreateFleet만 호출 (robot 시드 X).
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{"name": "empty-fleet"})
+	r1 := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("seed POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	_ = r1.Body.Close()
+
+	resp := f.doRequest(t, "GET", "/api/v1/fleets", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		Fleets []struct {
+			Name       string `json:"name"`
+			RobotCount int    `json:"robotCount"`
+		} `json:"fleets"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if len(out.Fleets) != 1 || out.Fleets[0].Name != "empty-fleet" {
+		t.Fatalf("got fleets=%+v, want 1 empty-fleet", out.Fleets)
+	}
+	if out.Fleets[0].RobotCount != 0 {
+		t.Errorf("RobotCount=%d, want 0 (no robots seeded)", out.Fleets[0].RobotCount)
 	}
 }
 

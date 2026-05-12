@@ -12,6 +12,7 @@ import {
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -165,6 +166,9 @@ function FleetRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium">{fleet.name}</span>
+          <Badge variant="secondary" className="text-xs">
+            {t('fleets.row.robotCount', { count: fleet.robotCount })}
+          </Badge>
           <span className="font-mono text-xs text-muted-foreground">{fleet.id}</span>
         </div>
         {fleet.description && (

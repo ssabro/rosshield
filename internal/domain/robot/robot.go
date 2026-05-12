@@ -59,6 +59,9 @@ type FleetPolicy struct {
 }
 
 // Fleet은 정책 그룹으로 묶인 로봇 집합입니다 (§04.2).
+//
+// RobotCount는 ListFleets·GetFleet에서만 채워지는 derived 필드 — 활성(deleted_at IS NULL)
+// 로봇 수. CreateFleet/UpdateFleet 결과에서는 0 (mutation 직후 별 SELECT 회피).
 type Fleet struct {
 	ID          string // "fl_<ULID>"
 	TenantID    storage.TenantID
@@ -68,6 +71,7 @@ type Fleet struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time // soft delete (R3-5), nil = 활성
+	RobotCount  int        // derived (활성 로봇 수). ListFleets·GetFleet만 set.
 }
 
 // CreateFleetRequest는 Service.CreateFleet 입력입니다.

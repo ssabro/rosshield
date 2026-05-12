@@ -26,6 +26,7 @@ type fleetResponse struct {
 	TenantID    string `json:"tenantId"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	RobotCount  int    `json:"robotCount"`
 	CreatedAt   string `json:"createdAt,omitempty"`
 	UpdatedAt   string `json:"updatedAt,omitempty"`
 }
@@ -55,6 +56,7 @@ func toFleetResponse(f robot.Fleet) fleetResponse {
 		TenantID:    string(f.TenantID),
 		Name:        f.Name,
 		Description: f.Description,
+		RobotCount:  f.RobotCount,
 	}
 	if !f.CreatedAt.IsZero() {
 		out.CreatedAt = f.CreatedAt.UTC().Format(time.RFC3339Nano)
