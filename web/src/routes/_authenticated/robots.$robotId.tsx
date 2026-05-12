@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { useDeleteRobot, useFleet, useIsAdmin, useRobot } from '@/api/hooks'
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
@@ -56,6 +57,18 @@ function RobotDetailPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: t('nav.fleets'), to: '/fleets' },
+          {
+            label: fleetQuery.data?.name ?? robot.fleetId,
+            to: '/fleets/$fleetId',
+            params: { fleetId: robot.fleetId },
+          },
+          { label: t('nav.robots'), to: '/robots' },
+          { label: robot.name },
+        ]}
+      />
       <PageHeader title={robot.name} description={role} />
 
       <Card className="max-w-xl">

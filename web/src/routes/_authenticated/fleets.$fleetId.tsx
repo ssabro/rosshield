@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { useFleet, useRobots } from '@/api/hooks'
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
@@ -49,6 +50,12 @@ function FleetDetailPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: t('nav.fleets'), to: '/fleets' },
+          { label: fleet.name },
+        ]}
+      />
       <PageHeader
         title={fleet.name}
         description={fleet.description || t('fleets.detail.noDescription')}
