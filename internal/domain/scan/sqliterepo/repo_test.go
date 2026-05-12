@@ -634,6 +634,12 @@ func TestListResultsByRobotPopulatesPackKey(t *testing.T) {
 	if got[0].PackKey != expectedPackKey {
 		t.Errorf("PackKey = %q, want %q", got[0].PackKey, expectedPackKey)
 	}
+	// SessionStartedAt도 같은 JOIN으로 채워져야 함 (TransitionSession running으로 set됨).
+	if got[0].SessionStartedAt == nil {
+		t.Errorf("SessionStartedAt = nil, want non-nil (session transitioned to running)")
+	} else if got[0].SessionStartedAt.IsZero() {
+		t.Errorf("SessionStartedAt = zero, want non-zero")
+	}
 }
 
 func TestRecordResultDuplicate(t *testing.T) {

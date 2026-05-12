@@ -1165,6 +1165,13 @@ export interface components {
              *     cross-tenant or migrated.
              */
             packKey?: string;
+            /**
+             * Format: date-time
+             * @description Derived field — scan_sessions.started_at from JOIN. Set when session
+             *     transitioned pending→running. Used by Web UI SessionGroup header.
+             *     Empty for pending sessions.
+             */
+            sessionStartedAt?: string;
             /** @enum {string} */
             outcome: "pass" | "fail" | "indeterminate" | "error" | "skipped";
             evalReason?: string;

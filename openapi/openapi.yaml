@@ -1979,6 +1979,13 @@ components:
             Derived field — pack key from JOIN session→pack. Used by Web UI to
             navigate to /packs/{packKey}/checks/{checkId}. Empty when pack was
             cross-tenant or migrated.
+        sessionStartedAt:
+          type: string
+          format: date-time
+          description: |
+            Derived field — scan_sessions.started_at from JOIN. Set when session
+            transitioned pending→running. Used by Web UI SessionGroup header.
+            Empty for pending sessions.
         outcome:
           type: string
           enum: [pass, fail, indeterminate, error, skipped]

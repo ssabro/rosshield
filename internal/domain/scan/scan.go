@@ -107,6 +107,9 @@ type ScanResult struct {
 	// 다른 ListResults·RecordResult 등에서는 빈 string. /packs/{packKey}/checks/{checkId}
 	// navigation 용도 (Web UI ResultRow → check 상세 진입).
 	PackKey string
+	// SessionStartedAt도 ListResultsByRobot에서만 채워지는 derived 필드 — scan_sessions.started_at JOIN.
+	// pending 상태 session의 결과는 nil(transition pending→running 직후만 set). Web UI SessionGroup 헤더 표시.
+	SessionStartedAt *time.Time
 }
 
 // TransitionTo는 FSM 검증 후 새 ScanSession 값을 반환합니다 (P9 불변성).

@@ -389,6 +389,8 @@ function SessionGroup({
 }): React.ReactElement {
   const t = useT()
   const ChevronIcon = collapsed ? ChevronRight : ChevronDown
+  // sessionStartedAt는 같은 그룹 내 모든 result에 동일 — 첫 result에서 추출.
+  const startedAt = group.results[0]?.sessionStartedAt
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -413,6 +415,14 @@ function SessionGroup({
         >
           {group.sessionId}
         </Link>
+        {startedAt && (
+          <span
+            title={new Date(startedAt).toLocaleString()}
+            className="text-muted-foreground"
+          >
+            · {t('robots.detail.results.startedAt')} {formatRelative(startedAt)}
+          </span>
+        )}
         <span className="ml-auto">
           {t('robots.detail.results.count', { count: group.results.length })}
         </span>
