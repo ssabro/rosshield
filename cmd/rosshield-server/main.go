@@ -158,7 +158,6 @@ func newMux(p *Platform) http.Handler {
 		Clock:             p.Clock,
 		Tenant:            p.Tenant,
 		Robot:             p.Robot,
-		Fleet:             p.Fleet,
 		Scan:              p.Scan,
 		ScanRun:           p.ScanRun,
 		Benchmark:         p.Benchmark,

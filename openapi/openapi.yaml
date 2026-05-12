@@ -318,11 +318,9 @@ paths:
       operationId: listFleets
       summary: List fleets in caller tenant
       description: |
-        Returns active fleets (deleted_at IS NULL) for the caller tenant, sorted
-        by name ASC. Read-only — fleet mutation is a separate epic.
-
-        Used by the Web UI to populate fleet dropdowns (scans page filter,
-        new scan form) and by other pages that need fleet metadata.
+        Returns active fleets (deleted_at IS NULL) for the caller tenant,
+        sorted by name ASC. Used by Web UI fleet dropdowns and other pages
+        that need fleet metadata.
       responses:
         "200":
           description: OK
@@ -330,6 +328,86 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FleetListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [fleet]
+      operationId: createFleet
+      summary: Create a new fleet (admin)
+      description: |
+        Creates a new fleet for the caller tenant. Name must be unique within
+        the tenant for active fleets — duplicate name returns 409 Conflict.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:        { type: string }
+                description: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fleet"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/fleets/{fleetId}:
+    parameters:
+      - { in: path, name: fleetId, required: true, schema: { type: string } }
+    patch:
+      tags: [fleet]
+      operationId: updateFleet
+      summary: Update a fleet (admin)
+      description: |
+        Updates fleet name or description. Both fields optional — if both are
+        omitted the call is a no-op (returns current state). Name conflict
+        within active fleets returns 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:        { type: string }
+                description: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fleet"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    delete:
+      tags: [fleet]
+      operationId: deleteFleet
+      summary: Soft-delete a fleet (admin)
+      description: |
+        Marks the fleet as deleted (deleted_at = now). Idempotent — second
+        delete on the same fleet returns 404.
+      responses:
+        "204":
+          description: Deleted (no content)
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 

@@ -86,3 +86,164 @@ func TestListFleetsReturns401WithoutAuth(t *testing.T) {
 		t.Fatalf("status=%d, want 401", resp.StatusCode)
 	}
 }
+
+func TestCreateFleetReturns201(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{
+		"name":        "production-east",
+		"description": "main production fleet (east)",
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var got struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		TenantID    string `json:"tenantId"`
+		CreatedAt   string `json:"createdAt"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.ID == "" {
+		t.Errorf("empty id")
+	}
+	if got.Name != "production-east" {
+		t.Errorf("name=%q, want production-east", got.Name)
+	}
+	if got.CreatedAt == "" {
+		t.Errorf("empty createdAt")
+	}
+}
+
+func TestCreateFleetReturns409ForDuplicateName(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{"name": "fleet-dup"})
+
+	r1 := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("first POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	_ = r1.Body.Close()
+
+	r2 := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusConflict {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("second POST status=%d body=%s, want 409", r2.StatusCode, string(raw))
+	}
+}
+
+func TestCreateFleetReturns400ForEmptyName(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{"name": "  "})
+	resp := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 400", resp.StatusCode, string(raw))
+	}
+}
+
+func TestUpdateFleetReturns200(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{"name": "fleet-orig"})
+	r1 := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("seed POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(r1.Body).Decode(&created)
+	_ = r1.Body.Close()
+
+	patchBody, _ := json.Marshal(map[string]any{
+		"name":        "fleet-renamed",
+		"description": "new description",
+	})
+	r2 := f.doRequest(t, "PATCH", "/api/v1/fleets/"+created.ID, token, patchBody)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("PATCH status=%d body=%s", r2.StatusCode, string(raw))
+	}
+	var got struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	_ = json.NewDecoder(r2.Body).Decode(&got)
+	if got.Name != "fleet-renamed" {
+		t.Errorf("name=%q, want fleet-renamed", got.Name)
+	}
+	if got.Description != "new description" {
+		t.Errorf("description=%q, want %q", got.Description, "new description")
+	}
+}
+
+func TestUpdateFleetReturns404ForUnknownID(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{"name": "anything"})
+	resp := f.doRequest(t, "PATCH", "/api/v1/fleets/fl_NOT_EXIST", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status=%d, want 404", resp.StatusCode)
+	}
+}
+
+func TestDeleteFleetReturns204(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{"name": "fleet-del"})
+	r1 := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("seed POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(r1.Body).Decode(&created)
+	_ = r1.Body.Close()
+
+	r2 := f.doRequest(t, "DELETE", "/api/v1/fleets/"+created.ID, token, nil)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusNoContent {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("DELETE status=%d body=%s, want 204", r2.StatusCode, string(raw))
+	}
+
+	// 두 번째 DELETE → 404 (이미 deleted).
+	r3 := f.doRequest(t, "DELETE", "/api/v1/fleets/"+created.ID, token, nil)
+	defer func() { _ = r3.Body.Close() }()
+	if r3.StatusCode != http.StatusNotFound {
+		raw, _ := io.ReadAll(r3.Body)
+		t.Fatalf("second DELETE status=%d body=%s, want 404", r3.StatusCode, string(raw))
+	}
+}

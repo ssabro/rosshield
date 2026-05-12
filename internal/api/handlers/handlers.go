@@ -31,7 +31,6 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
-	"github.com/ssabro/rosshield/internal/domain/fleet"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
@@ -54,7 +53,6 @@ type Deps struct {
 	Clock             clock.Clock
 	Tenant            tenant.Service
 	Robot             robot.Service
-	Fleet             fleet.Service // GET /api/v1/fleets — read-only tenant scope
 	Scan              scan.Service
 	ScanRun           *scanrun.Orchestrator // E12 Stage 8 — production scanrun 결선 (CreateScan async trigger)
 	Benchmark         benchmark.Service     // E12 Stage 3 — GET /api/v1/packs (built-in + tenant pack 표시)
@@ -273,6 +271,15 @@ func (h *Handlers) Mount(r chi.Router) {
 			})
 			r.Post("/api/v1/fleets/{fleetId}/insights:run", func(w http.ResponseWriter, req *http.Request) {
 				h.RunFleetInsights(w, req, chi.URLParam(req, "fleetId"))
+			})
+
+			// Fleet mutation
+			r.Post("/api/v1/fleets", h.CreateFleet)
+			r.Patch("/api/v1/fleets/{fleetId}", func(w http.ResponseWriter, req *http.Request) {
+				h.UpdateFleet(w, req, chi.URLParam(req, "fleetId"))
+			})
+			r.Delete("/api/v1/fleets/{fleetId}", func(w http.ResponseWriter, req *http.Request) {
+				h.DeleteFleet(w, req, chi.URLParam(req, "fleetId"))
 			})
 
 			// Compliance mutation

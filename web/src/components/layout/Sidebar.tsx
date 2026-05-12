@@ -41,6 +41,7 @@ type RoleRequirement = 'admin' | 'admin/auditor'
 const items: ReadonlyArray<{
   to:
     | '/overview'
+    | '/fleets'
     | '/robots'
     | '/scans'
     | '/findings'
@@ -59,6 +60,7 @@ const items: ReadonlyArray<{
   requires?: RoleRequirement
 }> = [
   { to: '/overview', labelKey: 'nav.overview', icon: LayoutDashboard },
+  { to: '/fleets', labelKey: 'nav.fleets', icon: ShieldCheck, requires: 'admin/auditor' },
   { to: '/robots', labelKey: 'nav.robots', icon: Server },
   { to: '/scans', labelKey: 'nav.scans', icon: PlayCircle },
   { to: '/findings', labelKey: 'nav.findings', icon: AlertTriangle },

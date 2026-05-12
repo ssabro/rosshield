@@ -35,7 +35,6 @@ import (
 	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	compliancerepo "github.com/ssabro/rosshield/internal/domain/compliance/sqliterepo"
-	fleetrepo "github.com/ssabro/rosshield/internal/domain/fleet/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	insightrepo "github.com/ssabro/rosshield/internal/domain/insight/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
@@ -134,8 +133,6 @@ func newFixture(t *testing.T) *testFixture {
 		KEK:   robotKEK,
 	})
 
-	fleetSvc := fleetrepo.New()
-
 	scanSvc := scanrepo.New(scanrepo.Deps{
 		Clock: clk,
 		IDGen: ids,
@@ -227,7 +224,6 @@ func newFixture(t *testing.T) *testFixture {
 		Clock:      clk,
 		Tenant:     tenantSvc,
 		Robot:      robotSvc,
-		Fleet:      fleetSvc,
 		Scan:       scanSvc,
 		Benchmark:  benchSvc,
 		Reporting:  reportingSvc,
@@ -752,6 +748,14 @@ func (n *nullAuditEmitter) EmitTenantCreated(_ context.Context, _ storage.Tx, _ 
 }
 
 func (n *nullAuditEmitter) EmitFleetCreated(_ context.Context, _ storage.Tx, _ robot.Fleet) error {
+	return nil
+}
+
+func (n *nullAuditEmitter) EmitFleetUpdated(_ context.Context, _ storage.Tx, _ robot.Fleet) error {
+	return nil
+}
+
+func (n *nullAuditEmitter) EmitFleetDeleted(_ context.Context, _ storage.Tx, _ robot.Fleet) error {
 	return nil
 }
 

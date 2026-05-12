@@ -36,6 +36,30 @@ func (a *auditAdapter) EmitFleetCreated(ctx context.Context, tx storage.Tx, f ro
 	return err
 }
 
+func (a *auditAdapter) EmitFleetUpdated(ctx context.Context, tx storage.Tx, f robot.Fleet) error {
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: f.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "fleet.updated",
+		Target:   audit.Target{Type: "fleet", ID: f.ID},
+		Payload:  []byte(`{"name":"` + f.Name + `"}`),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+func (a *auditAdapter) EmitFleetDeleted(ctx context.Context, tx storage.Tx, f robot.Fleet) error {
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: f.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "fleet.deleted",
+		Target:   audit.Target{Type: "fleet", ID: f.ID},
+		Payload:  []byte(`{"name":"` + f.Name + `"}`),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
 func (a *auditAdapter) EmitRobotCreated(ctx context.Context, tx storage.Tx, r robot.Robot, credentialID string) error {
 	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
 		TenantID: r.TenantID,

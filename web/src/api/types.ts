@@ -194,19 +194,51 @@ export interface paths {
         };
         /**
          * List fleets in caller tenant
-         * @description Returns active fleets (deleted_at IS NULL) for the caller tenant, sorted
-         *     by name ASC. Read-only — fleet mutation is a separate epic.
-         *
-         *     Used by the Web UI to populate fleet dropdowns (scans page filter,
-         *     new scan form) and by other pages that need fleet metadata.
+         * @description Returns active fleets (deleted_at IS NULL) for the caller tenant,
+         *     sorted by name ASC. Used by Web UI fleet dropdowns and other pages
+         *     that need fleet metadata.
          */
         get: operations["listFleets"];
         put?: never;
-        post?: never;
+        /**
+         * Create a new fleet (admin)
+         * @description Creates a new fleet for the caller tenant. Name must be unique within
+         *     the tenant for active fleets — duplicate name returns 409 Conflict.
+         */
+        post: operations["createFleet"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleets/{fleetId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fleetId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Soft-delete a fleet (admin)
+         * @description Marks the fleet as deleted (deleted_at = now). Idempotent — second
+         *     delete on the same fleet returns 404.
+         */
+        delete: operations["deleteFleet"];
+        options?: never;
+        head?: never;
+        /**
+         * Update a fleet (admin)
+         * @description Updates fleet name or description. Both fields optional — if both are
+         *     omitted the call is a no-op (returns current state). Name conflict
+         *     within active fleets returns 409.
+         */
+        patch: operations["updateFleet"];
         trace?: never;
     };
     "/api/v1/scans": {
@@ -1976,6 +2008,91 @@ export interface operations {
                     "application/json": components["schemas"]["FleetListResponse"];
                 };
             };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createFleet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    description?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fleet"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteFleet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fleetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted (no content) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateFleet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fleetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    description?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fleet"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];
         };
     };

@@ -28,8 +28,6 @@ import (
 	compliancerepo "github.com/ssabro/rosshield/internal/domain/compliance/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/evidence"
 	evidencerepo "github.com/ssabro/rosshield/internal/domain/evidence/sqliterepo"
-	"github.com/ssabro/rosshield/internal/domain/fleet"
-	fleetrepo "github.com/ssabro/rosshield/internal/domain/fleet/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	insightrepo "github.com/ssabro/rosshield/internal/domain/insight/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
@@ -206,7 +204,6 @@ type Platform struct {
 	Tenant            tenant.Service
 	Benchmark         benchmark.Service
 	Robot             robot.Service
-	Fleet             fleet.Service
 	Scan              scan.Service
 	ScanRun           *scanrun.Orchestrator
 	Evidence          evidence.Service
@@ -297,6 +294,34 @@ func (a *auditEmitterAdapter) EmitFleetCreated(ctx context.Context, tx storage.T
 		TenantID: f.TenantID,
 		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
 		Action:   "fleet.created",
+		Target:   audit.Target{Type: "fleet", ID: f.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitFleetUpdated는 fleet.updated 엔트리를 audit에 emit합니다.
+func (a *auditEmitterAdapter) EmitFleetUpdated(ctx context.Context, tx storage.Tx, f robot.Fleet) error {
+	payload := fmt.Sprintf(`{"fleetId":%q,"name":%q,"description":%q}`, f.ID, f.Name, f.Description)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: f.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "fleet.updated",
+		Target:   audit.Target{Type: "fleet", ID: f.ID},
+		Payload:  []byte(payload),
+		Outcome:  audit.OutcomeSuccess,
+	})
+	return err
+}
+
+// EmitFleetDeleted는 fleet.deleted 엔트리를 audit에 emit합니다 (soft delete).
+func (a *auditEmitterAdapter) EmitFleetDeleted(ctx context.Context, tx storage.Tx, f robot.Fleet) error {
+	payload := fmt.Sprintf(`{"fleetId":%q,"name":%q}`, f.ID, f.Name)
+	_, err := a.svc.Append(ctx, tx, audit.AppendRequest{
+		TenantID: f.TenantID,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+		Action:   "fleet.deleted",
 		Target:   audit.Target{Type: "fleet", ID: f.ID},
 		Payload:  []byte(payload),
 		Outcome:  audit.OutcomeSuccess,
@@ -967,9 +992,6 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		SSHTester: nil,
 	})
 
-	// Fleet 도메인 read-only 서비스 (mutation은 후속 epic, 현재는 시드/마이그레이션만).
-	fleetSvc := fleetrepo.New()
-
 	scanSvc := scanrepo.New(scanrepo.Deps{
 		Clock: clk,
 		IDGen: ids,
@@ -1221,7 +1243,6 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Tenant:            tenantSvc,
 		Benchmark:         benchmarkSvc,
 		Robot:             robotSvc,
-		Fleet:             fleetSvc,
 		Scan:              scanSvc,
 		ScanRun:           scanRun,
 		Evidence:          evidenceSvc,

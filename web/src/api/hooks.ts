@@ -524,6 +524,86 @@ export function useFleets() {
   })
 }
 
+// === Fleet mutations (admin) ===
+
+export interface CreateFleetVars {
+  name: string
+  description?: string
+}
+
+export const useCreateFleet = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: CreateFleetVars): Promise<Fleet> => {
+      const { data, error, response } = await apiClient.POST('/api/v1/fleets', {
+        body: { name: vars.name, description: vars.description ?? '' },
+      })
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as Fleet
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fleets'] })
+    },
+  })
+}
+
+export interface UpdateFleetVars {
+  fleetId: string
+  name?: string
+  description?: string
+}
+
+export const useUpdateFleet = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: UpdateFleetVars): Promise<Fleet> => {
+      const { data, error, response } = await apiClient.PATCH(
+        '/api/v1/fleets/{fleetId}',
+        {
+          params: { path: { fleetId: vars.fleetId } },
+          body: { name: vars.name, description: vars.description },
+        },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as Fleet
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fleets'] })
+    },
+  })
+}
+
+export const useDeleteFleet = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (fleetId: string): Promise<void> => {
+      const { error, response } = await apiClient.DELETE(
+        '/api/v1/fleets/{fleetId}',
+        { params: { path: { fleetId } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fleets'] })
+    },
+  })
+}
+
 // useScansFilter는 useScans hook의 옵션입니다.
 export interface UseScansFilter {
   fleetId?: string

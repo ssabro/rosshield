@@ -116,7 +116,10 @@ SELECT id, tenant_id, name, description, policy, created_at, updated_at, deleted
 	return scanFleetRow(row)
 }
 
-// ListFleets는 robot.Service.ListFleets 구현입니다 (활성만, 생성순).
+// ListFleets는 robot.Service.ListFleets 구현입니다 (활성만, name ASC).
+//
+// name ASC: 운영자가 dropdown에서 알파벳순 탐색하기 쉬움. created_at 순서가 필요한 호출자는
+// 본 결과를 직접 정렬.
 func (r *Repo) ListFleets(ctx context.Context, tx storage.Tx) ([]robot.Fleet, error) {
 	tenantID := tx.TenantID()
 	if tenantID == "" {
@@ -126,7 +129,7 @@ func (r *Repo) ListFleets(ctx context.Context, tx storage.Tx) ([]robot.Fleet, er
 SELECT id, tenant_id, name, description, policy, created_at, updated_at, deleted_at
   FROM fleets
  WHERE tenant_id = ? AND deleted_at IS NULL
- ORDER BY created_at ASC`,
+ ORDER BY name ASC`,
 		string(tenantID))
 	if err != nil {
 		return nil, fmt.Errorf("robot: list fleets: %w", err)
@@ -145,6 +148,85 @@ SELECT id, tenant_id, name, description, policy, created_at, updated_at, deleted
 		return nil, fmt.Errorf("robot: list fleets iterate: %w", err)
 	}
 	return out, nil
+}
+
+// UpdateFleet은 fleet name·description을 수정합니다 (옵션 필드만).
+func (r *Repo) UpdateFleet(ctx context.Context, tx storage.Tx, id string, req robot.UpdateFleetRequest) (robot.Fleet, error) {
+	tenantID := tx.TenantID()
+	if tenantID == "" {
+		return robot.Fleet{}, storage.ErrTenantMissing
+	}
+	current, err := r.GetFleet(ctx, tx, id)
+	if err != nil {
+		return robot.Fleet{}, err
+	}
+
+	updated := current
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if err := validateFleetName(name); err != nil {
+			return robot.Fleet{}, err
+		}
+		updated.Name = name
+	}
+	if req.Description != nil {
+		updated.Description = strings.TrimSpace(*req.Description)
+	}
+	if updated.Name == current.Name && updated.Description == current.Description {
+		return current, nil // no-op
+	}
+	updated.UpdatedAt = r.deps.Clock.Now().UTC()
+
+	if _, err := tx.Exec(ctx, `
+UPDATE fleets SET name = ?, description = ?, updated_at = ?
+ WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		updated.Name, updated.Description, updated.UpdatedAt.Format(rfc3339Nano),
+		id, string(tenantID),
+	); err != nil {
+		if isUniqueViolation(err) {
+			return robot.Fleet{}, robot.ErrFleetNameDuplicate
+		}
+		return robot.Fleet{}, fmt.Errorf("robot: update fleet: %w", err)
+	}
+
+	if r.deps.Audit != nil {
+		if err := r.deps.Audit.EmitFleetUpdated(ctx, tx, updated); err != nil {
+			return robot.Fleet{}, fmt.Errorf("robot: emit fleet updated: %w", err)
+		}
+	}
+	return updated, nil
+}
+
+// DeleteFleet은 fleet을 soft delete합니다 (deleted_at = now).
+func (r *Repo) DeleteFleet(ctx context.Context, tx storage.Tx, id string) error {
+	tenantID := tx.TenantID()
+	if tenantID == "" {
+		return storage.ErrTenantMissing
+	}
+	current, err := r.GetFleet(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+
+	now := r.deps.Clock.Now().UTC().Format(rfc3339Nano)
+	res, err := tx.Exec(ctx, `
+UPDATE fleets SET deleted_at = ?, updated_at = ?
+ WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL`,
+		now, now, id, string(tenantID))
+	if err != nil {
+		return fmt.Errorf("robot: delete fleet: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return storage.ErrNotFound
+	}
+
+	if r.deps.Audit != nil {
+		if err := r.deps.Audit.EmitFleetDeleted(ctx, tx, current); err != nil {
+			return fmt.Errorf("robot: emit fleet deleted: %w", err)
+		}
+	}
+	return nil
 }
 
 // insertFleet은 INSERT 쿼리를 실행합니다.

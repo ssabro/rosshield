@@ -80,6 +80,15 @@ type CreateFleetRequest struct {
 	Policy      FleetPolicy
 }
 
+// UpdateFleetRequest는 Service.UpdateFleet 입력입니다.
+//
+// 필드는 옵션 — nil이면 미변경. 빈 string은 description 명시적 clear.
+// Policy는 후속 epic — 본 Stage는 name·description만.
+type UpdateFleetRequest struct {
+	Name        *string
+	Description *string
+}
+
 // SSHTester는 SSH 연결 테스트 표면입니다 (Stage E mock interface).
 //
 // 실제 구현은 E6(`internal/platform/sshpool` + `internal/domain/scan`)에서.
@@ -91,12 +100,16 @@ type SSHTester interface {
 }
 
 // AuditEmitter는 도메인 변경을 감사 로그에 기록하는 콜백입니다 (P5 — audit 도메인 직접 import 회피).
-//
-// Stage A: EmitFleetCreated. Stage C: EmitRobotCreated/EmitRobotDeleted/EmitCredentialRotated.
 type AuditEmitter interface {
 	// EmitFleetCreated는 fleet.created 엔트리를 audit에 append합니다.
 	// tx는 fleet 생성과 같은 Tx — 같은 commit·rollback에 묶임.
 	EmitFleetCreated(ctx context.Context, tx storage.Tx, f Fleet) error
+
+	// EmitFleetUpdated는 fleet.updated 엔트리를 audit에 append합니다.
+	EmitFleetUpdated(ctx context.Context, tx storage.Tx, f Fleet) error
+
+	// EmitFleetDeleted는 fleet.deleted 엔트리를 audit에 append합니다 (soft delete).
+	EmitFleetDeleted(ctx context.Context, tx storage.Tx, f Fleet) error
 
 	// EmitRobotCreated는 robot.created 엔트리를 audit에 append합니다.
 	// Robot+Credential은 같은 Tx에 생성되므로 단일 audit 엔트리로 묶음.
@@ -122,6 +135,14 @@ type Service interface {
 
 	// ListFleets는 tenant의 활성 fleet을 모두 반환합니다 (deleted_at IS NULL).
 	ListFleets(ctx context.Context, tx storage.Tx) ([]Fleet, error)
+
+	// UpdateFleet은 fleet의 name·description을 수정합니다.
+	// 미존재(또는 이미 deleted) → storage.ErrNotFound. name 충돌 → ErrFleetNameDuplicate.
+	UpdateFleet(ctx context.Context, tx storage.Tx, id string, req UpdateFleetRequest) (Fleet, error)
+
+	// DeleteFleet은 fleet을 soft delete합니다 (deleted_at = now).
+	// 미존재(또는 이미 deleted) → storage.ErrNotFound.
+	DeleteFleet(ctx context.Context, tx storage.Tx, id string) error
 
 	// CreateRobot는 새 Robot + Credential을 한 Tx에 생성하고 audit를 emit합니다.
 	// req.Material은 KEK로 wrap된 후 폐기됩니다.
