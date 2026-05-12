@@ -119,19 +119,42 @@ func TestRegisterFleetScanJobsRegistersOnlyScheduled(t *testing.T) {
 		_ = sch.Close(ctx)
 	}()
 
-	// scanRun nil이면 registerFleetScanJobs는 일찌감치 return — 본 테스트는 등록 자체 검증
-	// 위해 fakeOrchestrator(non-nil pointer)를 주입할 수 있지만, no-op stub 만들면 의존
-	// 경계가 커진다. 별 시나리오로 분리: 본 테스트는 scanRun nil → "skipping" 로그 분기 검증.
+	// scanRun nil이면 RegisterAll은 일찌감치 return — 본 테스트는 scanRun nil 분기 검증.
 	noopLogger := discardLogger()
-	if err := registerFleetScanJobs(
-		context.Background(), store, robotSvc, nil, nil, nil, sch, noopLogger,
-	); err != nil {
-		t.Fatalf("registerFleetScanJobs (scanRun=nil): %v", err)
+	fss := NewFleetScanScheduler(store, robotSvc, nil, nil, nil, sch, noopLogger)
+	if err := fss.RegisterAll(context.Background()); err != nil {
+		t.Fatalf("RegisterAll (scanRun=nil): %v", err)
 	}
 	// scanRun nil 분기에서는 등록 0건 — Schedule 호출 안 됨. 검증: cron entries 0.
-	// (cronsched 내부 entries 노출 안 되므로 Cancel + ErrJobExists로 간접 검증)
+	// (cronsched 내부 entries 노출 안 되므로 ErrJobExists로 간접 검증)
 	if err := sch.Schedule(fleetScanJobIDPrefix+"fl_S1", "@every 1h", func(context.Context) error { return nil }); err != nil {
 		t.Errorf("after scanRun=nil registration, expected no entry for fl_S1, but Schedule returned: %v", err)
+	}
+}
+
+// TestFleetScanSchedulerCancelRemovesEntry — Cancel 후 같은 ID 재등록 가능.
+func TestFleetScanSchedulerCancelRemovesEntry(t *testing.T) {
+	t.Parallel()
+	sch := cronsched.New(cronsched.Deps{Logger: discardLogger()})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = sch.Close(ctx)
+	}()
+
+	const fleetID = "fl_TARGET"
+	jobID := fleetScanJobIDPrefix + fleetID
+
+	if err := sch.Schedule(jobID, "@every 1h", func(context.Context) error { return nil }); err != nil {
+		t.Fatalf("seed Schedule: %v", err)
+	}
+
+	fss := &FleetScanScheduler{sch: sch, logger: discardLogger()}
+	fss.Cancel(fleetID)
+
+	// 같은 jobID 다시 등록되어야 함 — Cancel이 entries에서 제거 확인.
+	if err := sch.Schedule(jobID, "@every 1h", func(context.Context) error { return nil }); err != nil {
+		t.Errorf("re-Schedule after Cancel failed: %v", err)
 	}
 }
 

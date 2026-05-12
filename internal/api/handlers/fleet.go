@@ -20,6 +20,15 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
+// FleetScanScheduler는 admin이 fleet을 mutation한 직후 cron job을 재등록하는 hook입니다.
+//
+// bootstrap이 *FleetScanScheduler 구현체를 주입 — handlers.Deps.FleetScanSched.
+// nil 가능 (Phase 1 호환·tests).
+type FleetScanScheduler interface {
+	Reconcile(ctx context.Context, tenantID storage.TenantID, fleetID string)
+	Cancel(fleetID string)
+}
+
 // fleetResponse는 fleet 응답 항목입니다.
 type fleetResponse struct {
 	ID          string `json:"id"`
@@ -145,6 +154,9 @@ func (h *Handlers) CreateFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.deps.FleetScanSched != nil {
+		h.deps.FleetScanSched.Reconcile(r.Context(), tenantID, created.ID)
+	}
 	writeJSON(w, http.StatusCreated, toFleetResponse(created))
 }
 
@@ -197,6 +209,9 @@ func (h *Handlers) UpdateFleet(w http.ResponseWriter, r *http.Request, fleetID s
 		return
 	}
 
+	if h.deps.FleetScanSched != nil {
+		h.deps.FleetScanSched.Reconcile(r.Context(), tenantID, updated.ID)
+	}
 	writeJSON(w, http.StatusOK, toFleetResponse(updated))
 }
 
@@ -228,5 +243,8 @@ func (h *Handlers) DeleteFleet(w http.ResponseWriter, r *http.Request, fleetID s
 		return
 	}
 
+	if h.deps.FleetScanSched != nil {
+		h.deps.FleetScanSched.Cancel(fleetID)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

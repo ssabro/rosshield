@@ -53,6 +53,7 @@ type Deps struct {
 	Clock             clock.Clock
 	Tenant            tenant.Service
 	Robot             robot.Service
+	FleetScanSched    FleetScanScheduler // dynamic cron re-registration on fleet mutation
 	Scan              scan.Service
 	ScanRun           *scanrun.Orchestrator // E12 Stage 8 — production scanrun 결선 (CreateScan async trigger)
 	Benchmark         benchmark.Service     // E12 Stage 3 — GET /api/v1/packs (built-in + tenant pack 표시)

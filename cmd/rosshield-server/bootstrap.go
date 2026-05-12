@@ -225,6 +225,7 @@ type Platform struct {
 	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
 	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
 	BackupDir         string                   // B7 후속 — 자동 백업 디렉터리 (handlers/backup이 list 시 사용)
+	FleetScanSched    *FleetScanScheduler      // dynamic cron re-registration on fleet mutation
 
 	systemTenant storage.TenantID
 
@@ -1165,7 +1166,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	// FleetPolicy.ScanSchedule cron — best-effort 등록.
 	// 등록 실패는 fatal 아님 (단일 fleet 등록 실패가 부트 차단 X).
-	if err := registerFleetScanJobs(ctx, store, robotSvc, benchmarkSvc, scanSvc, scanRun, sch, logger); err != nil {
+	fleetScanSch := NewFleetScanScheduler(store, robotSvc, benchmarkSvc, scanSvc, scanRun, sch, logger)
+	if err := fleetScanSch.RegisterAll(ctx); err != nil {
 		logger.Warn("bootstrap: register fleet scan jobs failed (non-fatal)", "err", err.Error())
 	}
 
@@ -1269,6 +1271,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		MetricsBridge:     metricsBridge,
 		Keystore:          ks,
 		BackupDir:         resolvedBackupDir,
+		FleetScanSched:    fleetScanSch,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}

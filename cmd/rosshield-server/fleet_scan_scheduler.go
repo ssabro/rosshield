@@ -3,18 +3,13 @@ package main
 // fleet_scan_scheduler.go — FleetPolicy.ScanSchedule cron 결선 (scheduler-driven scan).
 //
 // 책임:
-//   - 부팅 시 모든 tenant의 모든 활성 fleet을 walk
-//   - ScanSchedule(cron spec)이 비지 않고 DefaultBaselineID(pack key)가 비지 않으면
-//     scheduler에 "fleet-scan-<fleetId>" 등록
+//   - 부팅 시 모든 tenant의 모든 활성 fleet을 walk (RegisterAll)
+//   - admin이 fleet을 등록·이름 변경·삭제하면 dynamic 재등록 (Reconcile / Cancel)
 //   - cron tick 시: pre-check active session(있으면 silent skip) → robots × pack checks 사전 fetch →
 //     scan.Service.StartScan → scanrun.Orchestrator.Run
 //
 // HA 결합: cronsched RoleProvider gate가 follower tick을 silent skip — leader 단일 인스턴스만 자동 scan.
 // 동시성 가드: scan.ErrFleetActiveScanExists 받으면 silent skip (manual scan과 race 안전).
-//
-// 한계 (별 epic):
-//   - dynamic re-registration: fleet 등록·이름 변경·삭제 후에는 server restart 필요. 본 stage는 부팅 시점 1회 등록만.
-//   - tenant 단위 분리 cron 도구는 없음 — 모든 tenant가 같은 cronsched 인스턴스 공유 (HA leader 1개).
 
 import (
 	"context"
@@ -33,26 +28,23 @@ import (
 // fleetScanJobIDPrefix는 cron job ID prefix입니다 — `fleet-scan-<fleetId>` 형식.
 const fleetScanJobIDPrefix = "fleet-scan-"
 
-// fleetScanDeps는 fleet scan job의 의존성입니다.
-type fleetScanDeps struct {
+// FleetScanScheduler는 fleet-policy ScanSchedule cron job 등록/해제를 관리합니다.
+//
+// bootstrap에서 1회 생성 + handlers.Deps로 주입. handler가 fleet mutation 후 Reconcile/Cancel 호출.
+type FleetScanScheduler struct {
 	storage   storage.Storage
 	scan      scan.Service
 	robot     robot.Service
 	benchmark benchmark.Service
 	scanRun   *scanrun.Orchestrator
+	sch       scheduler.Scheduler
 	logger    *slog.Logger
 }
 
-// registerFleetScanJobs는 모든 tenant의 활성 fleet을 walk해 ScanSchedule cron job을 등록합니다.
+// NewFleetScanScheduler는 새 FleetScanScheduler를 생성합니다.
 //
-// 절차:
-//  1. 모든 tenant ID 조회 (raw SELECT — bootstrap mode, cross-tenant 격리 우회)
-//  2. 각 tenant scope로 ListFleets → 정책에서 ScanSchedule + DefaultBaselineID 추출
-//  3. 둘 다 비지 않으면 cron 등록 (id = "fleet-scan-<fleetId>")
-//
-// 등록 실패는 logger.Warn으로 기록하고 다른 fleet 진행 계속 (best-effort).
-func registerFleetScanJobs(
-	ctx context.Context,
+// scanRun nil이면 모든 메서드가 no-op (cron tick이 trigger해도 실 work 없음 — 부팅 단순화).
+func NewFleetScanScheduler(
 	store storage.Storage,
 	robotSvc robot.Service,
 	benchmarkSvc benchmark.Service,
@@ -60,66 +52,117 @@ func registerFleetScanJobs(
 	scanRun *scanrun.Orchestrator,
 	sch scheduler.Scheduler,
 	logger *slog.Logger,
-) error {
-	if scanRun == nil {
-		// scanRun 결선이 없으면 cron이 trigger해도 실 work 진행 X. 등록 의미 없음.
-		logger.Info("fleet-scan-scheduler: scanRun not wired, skipping registration")
-		return nil
-	}
-
-	tenantIDs, err := listAllTenantIDs(ctx, store)
-	if err != nil {
-		return fmt.Errorf("fleet-scan-scheduler: list tenants: %w", err)
-	}
-
-	deps := &fleetScanDeps{
+) *FleetScanScheduler {
+	return &FleetScanScheduler{
 		storage:   store,
 		scan:      scanSvc,
 		robot:     robotSvc,
 		benchmark: benchmarkSvc,
 		scanRun:   scanRun,
+		sch:       sch,
 		logger:    logger,
+	}
+}
+
+// RegisterAll은 모든 tenant의 활성 fleet을 walk해 ScanSchedule cron job을 등록합니다.
+//
+// 부팅 시점 1회 호출. 등록 실패는 logger.Warn으로 기록하고 다른 fleet 진행 계속 (best-effort).
+func (s *FleetScanScheduler) RegisterAll(ctx context.Context) error {
+	if s == nil || s.scanRun == nil {
+		if s != nil && s.logger != nil {
+			s.logger.Info("fleet-scan-scheduler: scanRun not wired, skipping registration")
+		}
+		return nil
+	}
+
+	tenantIDs, err := listAllTenantIDs(ctx, s.storage)
+	if err != nil {
+		return fmt.Errorf("fleet-scan-scheduler: list tenants: %w", err)
 	}
 
 	registered := 0
 	for _, tid := range tenantIDs {
-		fleets, err := listFleetsForTenant(ctx, store, robotSvc, tid)
+		fleets, err := listFleetsForTenant(ctx, s.storage, s.robot, tid)
 		if err != nil {
-			logger.Warn("fleet-scan-scheduler: list fleets failed",
+			s.logger.Warn("fleet-scan-scheduler: list fleets failed",
 				"tenantId", string(tid), "err", err.Error())
 			continue
 		}
 		for _, f := range fleets {
-			spec := f.Policy.ScanSchedule
-			packKey := f.Policy.DefaultBaselineID
-			if spec == "" || packKey == "" {
-				continue
+			if s.registerFromFleet(tid, f) {
+				registered++
 			}
-			jobID := fleetScanJobIDPrefix + f.ID
-			fleetID := f.ID
-			tenantID := tid
-			if err := sch.Schedule(jobID, spec, makeFleetScanJob(deps, tenantID, fleetID, packKey)); err != nil {
-				logger.Warn("fleet-scan-scheduler: register failed",
-					"jobId", jobID, "fleetId", fleetID, "spec", spec, "err", err.Error())
-				continue
-			}
-			logger.Info("fleet-scan-scheduler: registered",
-				"jobId", jobID, "fleetId", fleetID, "spec", spec, "packKey", packKey)
-			registered++
 		}
 	}
-	logger.Info("fleet-scan-scheduler: registration done", "count", registered)
+	s.logger.Info("fleet-scan-scheduler: registration done", "count", registered)
 	return nil
 }
 
-// makeFleetScanJob은 cron tick 시 실행될 클로저를 생성합니다.
+// Reconcile은 단일 fleet의 cron job을 최신 정책 기준으로 재등록합니다.
+//
+// admin이 fleet을 Create/Update한 직후 호출 — 기존 등록 cancel 후 현재 정책 기준 재등록.
+// fleet이 미존재(이미 deleted)면 cancel만. ScanSchedule/DefaultBaselineID 비어있으면 cancel만.
+func (s *FleetScanScheduler) Reconcile(ctx context.Context, tenantID storage.TenantID, fleetID string) {
+	if s == nil || s.scanRun == nil || s.sch == nil {
+		return
+	}
+	// 기존 등록 cancel (없으면 no-op).
+	s.sch.Cancel(fleetScanJobIDPrefix + fleetID)
+
+	// 현재 fleet 정책 조회.
+	var f robot.Fleet
+	err := s.storage.Tx(storage.WithTenantID(ctx, tenantID), func(c context.Context, tx storage.Tx) error {
+		got, e := s.robot.GetFleet(c, tx, fleetID)
+		f = got
+		return e
+	})
+	if err != nil {
+		// 미존재 등 — cancel만 적용된 상태. 정상 동작.
+		s.logger.Info("fleet-scan-scheduler: reconcile skipped (fleet not found or deleted)",
+			"fleetId", fleetID, "tenantId", string(tenantID))
+		return
+	}
+	s.registerFromFleet(tenantID, f)
+}
+
+// Cancel은 fleet의 cron job을 해제합니다.
+//
+// admin이 fleet을 Delete한 직후 호출. 미등록이면 no-op.
+func (s *FleetScanScheduler) Cancel(fleetID string) {
+	if s == nil || s.sch == nil {
+		return
+	}
+	s.sch.Cancel(fleetScanJobIDPrefix + fleetID)
+}
+
+// registerFromFleet은 fleet 정책에서 cron 등록을 시도합니다 (정책 비면 skip).
+//
+// 반환값: 실제 등록되면 true (count 집계용).
+func (s *FleetScanScheduler) registerFromFleet(tenantID storage.TenantID, f robot.Fleet) bool {
+	spec := f.Policy.ScanSchedule
+	packKey := f.Policy.DefaultBaselineID
+	if spec == "" || packKey == "" {
+		return false
+	}
+	jobID := fleetScanJobIDPrefix + f.ID
+	if err := s.sch.Schedule(jobID, spec, s.makeJob(tenantID, f.ID, packKey)); err != nil {
+		s.logger.Warn("fleet-scan-scheduler: register failed",
+			"jobId", jobID, "fleetId", f.ID, "spec", spec, "err", err.Error())
+		return false
+	}
+	s.logger.Info("fleet-scan-scheduler: registered",
+		"jobId", jobID, "fleetId", f.ID, "spec", spec, "packKey", packKey)
+	return true
+}
+
+// makeJob은 cron tick 시 실행될 클로저를 생성합니다.
 //
 // 동작:
 //  1. tenant scope ctx 구성
 //  2. robots × pack checks 사전 fetch (handler/scan.go preloadRobotsAndChecks와 같은 패턴)
 //  3. scan.Service.StartScan 시도 → ErrFleetActiveScanExists면 silent skip (manual scan과 race 안전)
-//  4. scanrun.Orchestrator.Run 비동기 X — cron 자체가 background goroutine. 동기 실행 OK.
-func makeFleetScanJob(deps *fleetScanDeps, tenantID storage.TenantID, fleetID, packKey string) func(context.Context) error {
+//  4. scanrun.Orchestrator.Run 동기 실행 — cron 자체가 background goroutine.
+func (s *FleetScanScheduler) makeJob(tenantID storage.TenantID, fleetID, packKey string) func(context.Context) error {
 	return func(ctx context.Context) error {
 		txCtx := storage.WithTenantID(ctx, tenantID)
 
@@ -128,22 +171,17 @@ func makeFleetScanJob(deps *fleetScanDeps, tenantID storage.TenantID, fleetID, p
 			preloadedRobots []scan.RobotTarget
 			preloadedChecks []scan.CheckDef
 		)
-		err := deps.storage.Tx(txCtx, func(c context.Context, tx storage.Tx) error {
-			// 1. pack 조회 (key → ID + checks).
-			pk, e := deps.benchmark.GetPackByKey(c, tx, tenantID, packKey)
+		err := s.storage.Tx(txCtx, func(c context.Context, tx storage.Tx) error {
+			pk, e := s.benchmark.GetPackByKey(c, tx, tenantID, packKey)
 			if e != nil {
 				return fmt.Errorf("pack lookup: %w", e)
 			}
-			// systemTenant 폴백: tenant scope에서 못 찾으면 system pack 검색.
-			// (현재는 tenant scope만 — system pack 활용 시 별 시도 필요. Phase 1 단순화.)
 
-			// 2. robots 조회.
-			rs, e := deps.robot.ListRobots(c, tx, fleetID)
+			rs, e := s.robot.ListRobots(c, tx, fleetID)
 			if e != nil {
 				return fmt.Errorf("robot list: %w", e)
 			}
 			if len(rs) == 0 {
-				// robot 0 fleet은 silent skip (의미 있는 scan 0).
 				return errFleetEmpty
 			}
 			for _, r := range rs {
@@ -165,8 +203,7 @@ func makeFleetScanJob(deps *fleetScanDeps, tenantID storage.TenantID, fleetID, p
 				})
 			}
 
-			// 3. StartScan 시도 — active session 있으면 ErrFleetActiveScanExists 받음 (silent skip).
-			s, e := deps.scan.StartScan(c, tx, scan.StartScanRequest{
+			ses, e := s.scan.StartScan(c, tx, scan.StartScanRequest{
 				FleetID: fleetID,
 				PackID:  pk.ID,
 				Trigger: scan.TriggerSchedule,
@@ -175,27 +212,25 @@ func makeFleetScanJob(deps *fleetScanDeps, tenantID storage.TenantID, fleetID, p
 			if e != nil {
 				return e
 			}
-			session = s
+			session = ses
 			return nil
 		})
 		if err != nil {
 			if errors.Is(err, scan.ErrFleetActiveScanExists) {
-				deps.logger.Info("fleet-scan-scheduler: active session exists, skipping",
+				s.logger.Info("fleet-scan-scheduler: active session exists, skipping",
 					"fleetId", fleetID, "tenantId", string(tenantID))
 				return nil
 			}
 			if errors.Is(err, errFleetEmpty) {
-				deps.logger.Debug("fleet-scan-scheduler: fleet has no robots, skipping",
+				s.logger.Debug("fleet-scan-scheduler: fleet has no robots, skipping",
 					"fleetId", fleetID, "tenantId", string(tenantID))
 				return nil
 			}
 			return err
 		}
 
-		// 4. orchestrator 호출 (별 goroutine 안 만듦 — cron tick이 이미 background goroutine).
-		// session.ID 안전 (정상 INSERT 후 반환). Run은 자체적으로 audit/event 처리.
-		_ = deps.scanRun.Run(txCtx, tenantID, session.ID, preloadedRobots, preloadedChecks)
-		deps.logger.Info("fleet-scan-scheduler: triggered",
+		_ = s.scanRun.Run(txCtx, tenantID, session.ID, preloadedRobots, preloadedChecks)
+		s.logger.Info("fleet-scan-scheduler: triggered",
 			"fleetId", fleetID, "sessionId", session.ID, "tenantId", string(tenantID))
 		return nil
 	}
