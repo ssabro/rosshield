@@ -263,6 +263,8 @@ func (h *Handlers) Mount(r chi.Router) {
 			r.Post("/api/v1/robots/{robotId}/credential:rotate", func(w http.ResponseWriter, req *http.Request) {
 				h.RotateCredential(w, req, chi.URLParam(req, "robotId"))
 			})
+			// SSH fingerprint 미리보기 (admin, ephemeral 계산만 — 영속 X).
+			r.Post("/api/v1/utils/ssh-fingerprint", h.SSHFingerprint)
 
 			// Scan 실행 (시스템 자원 소비)
 			r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {

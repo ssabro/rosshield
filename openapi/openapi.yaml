@@ -375,6 +375,43 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/utils/ssh-fingerprint:
+    post:
+      tags: [util]
+      operationId: sshFingerprint
+      summary: Compute the SHA256 OpenSSH fingerprint of a private key (admin)
+      description: |
+        Accepts a PEM-encoded SSH private key (and optional passphrase) and
+        returns its standard OpenSSH SHA256 fingerprint plus the key type.
+        The PEM is processed in memory only and never persisted; the response
+        contains no secret material. Used by the credential rotate UI to
+        confirm the key being submitted before rotation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [privateKeyPem]
+              properties:
+                privateKeyPem: { type: string }
+                passphrase:    { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fingerprint, keyType]
+                properties:
+                  fingerprint: { type: string, description: "SHA256:<base64-no-pad>" }
+                  keyType:     { type: string, description: "ssh-rsa | ssh-ed25519 | ecdsa-sha2-nistp256 | ..." }
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/robots/{robotId}/results:
     parameters:
       - { in: path, name: robotId, required: true, schema: { type: string, pattern: "^ro_[A-Z0-9]+$" } }

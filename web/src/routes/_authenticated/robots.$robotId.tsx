@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
+import { apiClient } from '@/api/client'
+import { extractErrorMessage } from '@/api/errors'
 import {
   useDeleteRobot,
   useFleet,
@@ -759,7 +761,6 @@ function RotateCredentialCard({
                   placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
                   autoComplete="off"
                 />
-                <PemFingerprintPreview pem={privateKeyPem} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="rot-pass">
@@ -774,6 +775,10 @@ function RotateCredentialCard({
                   placeholder={t('robots.detail.rotate.optional')}
                 />
               </div>
+              <PemFingerprintPreview
+                pem={privateKeyPem}
+                passphrase={privateKeyPassphrase}
+              />
             </>
           )}
           {error && (
@@ -805,45 +810,80 @@ function RotateCredentialCard({
   )
 }
 
-// PemFingerprintPreview — pem 입력 시 SHA256 hash를 비동기 계산해 첫 16 hex + 마지막 4로 표시.
+// PemFingerprintPreview — POST /api/v1/utils/ssh-fingerprint 결과로 표준 OpenSSH SHA256
+// fingerprint와 keyType 표시 (공개키 기반, ssh.FingerprintSHA256). 빈 PEM이면 hidden.
 //
-// 주의: SSH 표준 fingerprint는 공개키 SHA256 (private→public 추출 필요). 본 컴포넌트는
-// **input bytes SHA256**으로 visual confirmation 용도 — pasted PEM이 의도한 것인지 확인하는
-// 데 충분. 실 SSH fingerprint(공개키 기반)는 별 epic.
-function PemFingerprintPreview({ pem }: { pem: string }): React.ReactElement | null {
+// debounce 400ms로 한 글자마다 호출 회피. 암호화된 키 + passphrase 누락은 backend가
+// 명확한 메시지로 400 → "passphrase required" 표시 (사용자 입력 유도).
+function PemFingerprintPreview({
+  pem,
+  passphrase,
+}: {
+  pem: string
+  passphrase: string
+}): React.ReactElement | null {
   const t = useT()
-  const [fingerprint, setFingerprint] = useState('')
+  const [result, setResult] = useState<{
+    fingerprint: string
+    keyType: string
+  } | null>(null)
+  const [error, setError] = useState('')
+
   useEffect(() => {
     const trimmed = pem.trim()
     if (!trimmed) {
-      setFingerprint('')
+      setResult(null)
+      setError('')
       return
     }
     let cancelled = false
-    const compute = async () => {
-      try {
-        const enc = new TextEncoder().encode(trimmed)
-        const buf = await crypto.subtle.digest('SHA-256', enc)
-        const hex = Array.from(new Uint8Array(buf))
-          .map((b) => b.toString(16).padStart(2, '0'))
-          .join('')
-        if (!cancelled) setFingerprint(hex)
-      } catch {
-        if (!cancelled) setFingerprint('')
-      }
-    }
-    void compute()
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const { data, error: apiError, response } = await apiClient.POST(
+            '/api/v1/utils/ssh-fingerprint',
+            { body: { privateKeyPem: trimmed, passphrase: passphrase || undefined } },
+          )
+          if (cancelled) return
+          if (apiError) {
+            setResult(null)
+            setError(extractErrorMessage(apiError, response.statusText))
+            return
+          }
+          setResult({
+            fingerprint: data.fingerprint,
+            keyType: data.keyType,
+          })
+          setError('')
+        } catch (e) {
+          if (cancelled) return
+          setResult(null)
+          setError(e instanceof Error ? e.message : String(e))
+        }
+      })()
+    }, 400)
     return () => {
       cancelled = true
+      window.clearTimeout(handle)
     }
-  }, [pem])
+  }, [pem, passphrase])
 
-  if (!fingerprint) return null
-  // 첫 16 hex + ... + 마지막 4 (SHA256 fingerprint truncated 표기 관행).
-  const short = `${fingerprint.slice(0, 16)}…${fingerprint.slice(-4)}`
+  if (error) {
+    return (
+      <p
+        className="font-mono text-xs text-destructive"
+        role="status"
+        aria-live="polite"
+      >
+        {t('robots.detail.rotate.fingerprintError')}: {error}
+      </p>
+    )
+  }
+  if (!result) return null
   return (
-    <p className="font-mono text-xs text-muted-foreground">
-      {t('robots.detail.rotate.fingerprint')}: SHA256:{short}
+    <p className="font-mono text-xs text-muted-foreground" aria-live="polite">
+      {t('robots.detail.rotate.fingerprint')}: {result.fingerprint}{' '}
+      <span className="text-[10px]">({result.keyType})</span>
     </p>
   )
 }

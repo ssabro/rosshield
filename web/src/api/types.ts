@@ -221,6 +221,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/utils/ssh-fingerprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compute the SHA256 OpenSSH fingerprint of a private key (admin)
+         * @description Accepts a PEM-encoded SSH private key (and optional passphrase) and
+         *     returns its standard OpenSSH SHA256 fingerprint plus the key type.
+         *     The PEM is processed in memory only and never persisted; the response
+         *     contains no secret material. Used by the credential rotate UI to
+         *     confirm the key being submitted before rotation.
+         */
+        post: operations["sshFingerprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/robots/{robotId}/results": {
         parameters: {
             query?: {
@@ -2197,6 +2221,40 @@ export interface operations {
             };
             400: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    sshFingerprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    privateKeyPem: string;
+                    passphrase?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description SHA256:<base64-no-pad> */
+                        fingerprint: string;
+                        /** @description ssh-rsa | ssh-ed25519 | ecdsa-sha2-nistp256 | ... */
+                        keyType: string;
+                    };
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];
         };
     };
