@@ -115,6 +115,14 @@ export const ko = {
   'scans.session.id': 'Session ID',
   'scans.session.status': '상태',
   'scans.session.failed': '실패 {count}',
+  'scans.session.loading': '세션 정보 로드 중…',
+  'scans.session.notFound': '세션을 찾을 수 없습니다.',
+  'scans.session.source.live': 'Live',
+  'scans.session.source.polling': 'Polling',
+  'scans.session.source.connecting': '연결 중',
+  'scans.session.source.error': '오프라인',
+  'scans.session.source.final': '완료',
+  'scans.session.source.idle': '대기',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':
@@ -777,6 +785,14 @@ export const en: Record<keyof typeof ko, string> = {
   'scans.session.id': 'Session ID',
   'scans.session.status': 'Status',
   'scans.session.failed': 'failed {count}',
+  'scans.session.loading': 'Loading session…',
+  'scans.session.notFound': 'Session not found.',
+  'scans.session.source.live': 'Live',
+  'scans.session.source.polling': 'Polling',
+  'scans.session.source.connecting': 'Connecting',
+  'scans.session.source.error': 'Offline',
+  'scans.session.source.final': 'Final',
+  'scans.session.source.idle': 'Idle',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':

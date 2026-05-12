@@ -485,6 +485,51 @@ export interface ScanSession {
   total: number
   completed: number
   failed: number
+  failureReason?: string
+  createdAt?: string
+  updatedAt?: string
+  startedAt?: string | null
+  completedAt?: string | null
+}
+
+// useScan은 단일 scan session 조회 hook입니다.
+//
+// 용도:
+//  - 페이지 reload 후 URL ?session=<id>로 진입 시 세션 복원
+//  - WS 인증/네트워크 실패 시 polling fallback
+// 옵션 pollMs를 지정하면 지정 간격으로 자동 재조회 (terminal 상태 도달 시 자동 정지).
+export function useScan(sessionId?: string, opts?: { pollMs?: number }) {
+  const pollMs = opts?.pollMs
+  return useQuery({
+    queryKey: ['scans', sessionId],
+    enabled: !!sessionId,
+    queryFn: async (): Promise<ScanSession> => {
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/scans/{sessionId}',
+        { params: { path: { sessionId: sessionId! } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as ScanSession
+    },
+    refetchInterval: pollMs
+      ? (query) => {
+          const s = query.state.data as ScanSession | undefined
+          if (!s) return pollMs
+          if (isTerminalScanStatus(s.status)) return false
+          return pollMs
+        }
+      : false,
+  })
+}
+
+// isTerminalScanStatus는 polling 정지 판단용입니다.
+export function isTerminalScanStatus(status: string): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled'
 }
 
 export const useStartScan = () => {
@@ -757,6 +802,7 @@ export type ScanProgressStatus =
   | 'idle'
   | 'connecting'
   | 'streaming'
+  | 'polling'
   | 'completed'
   | 'error'
 
@@ -766,42 +812,108 @@ export interface UseScanProgressResult {
   error: string | null
 }
 
-// useScanProgress는 /api/v1/scans/{sessionId}/progress WebSocket을 구독합니다.
+// useScanProgress는 /api/v1/scans/{sessionId}/progress WebSocket 구독 + polling fallback.
 //
 // 디자인:
-//  - 첫 마운트 + sessionId 변경 시 새 connection.
-//  - access token은 Authorization 헤더로 보내야 하나 브라우저 WebSocket API는 헤더
-//    custom 미지원 — 일단 동일 origin + 쿠키/세션 가정. 별 인증 경로(query token)는 P2.
-//  - 메시지 도착 시 latest를 갱신, kind='completed'면 status='completed'로 전이 후 close.
-//  - sessionId가 빈 값이면 connection 안 함.
+//  - WS URL에 access_token query param 부착 (브라우저 WebSocket API는 헤더 미지원).
+//  - 첫 메시지 수신 전 WS error/close 발생 시 GET /api/v1/scans/{sessionId} polling으로 전환
+//    (status='polling'). polling은 2s 간격, terminal 상태 도달 시 자동 정지.
+//  - kind='completed' 메시지 수신 시 status='completed'로 전이 + WS close.
+//  - sessionId가 빈 값이면 connection·polling 모두 안 함.
 export function useScanProgress(sessionId?: string): UseScanProgressResult {
+  const accessToken = useAuthStore((s) => s.accessToken)
   const [status, setStatus] = useState<ScanProgressStatus>('idle')
   const [latest, setLatest] = useState<ScanProgressMessage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!sessionId) {
       setStatus('idle')
       return
     }
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = `${proto}://${window.location.host}${API_BASE_PATH}/scans/${encodeURIComponent(sessionId)}/progress`
 
-    setStatus('connecting')
     setLatest(null)
     setError(null)
 
-    let closed = false
+    let cancelled = false
+    let pollingActive = false
+
+    const stopPolling = () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
+    }
+
+    const sessionToMessage = (s: ScanSession): ScanProgressMessage => ({
+      kind: isTerminalScanStatus(s.status) ? 'completed' : 'progress',
+      type: 'http.poll',
+      sessionId: s.sessionId,
+      total: s.total,
+      completed: s.completed,
+      failed: s.failed,
+      status: s.status,
+      occurredAt: s.updatedAt ?? new Date().toISOString(),
+    })
+
+    const pollOnce = async (): Promise<void> => {
+      try {
+        const { data, error: fetchErr, response } = await apiClient.GET(
+          '/api/v1/scans/{sessionId}',
+          { params: { path: { sessionId } } },
+        )
+        if (cancelled) return
+        if (fetchErr) {
+          setError(extractErrorMessage(fetchErr, response.statusText))
+          setStatus('error')
+          stopPolling()
+          return
+        }
+        const s = data as ScanSession
+        const msg = sessionToMessage(s)
+        setLatest(msg)
+        if (isTerminalScanStatus(s.status)) {
+          setStatus('completed')
+          stopPolling()
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'polling failed')
+          setStatus('error')
+          stopPolling()
+        }
+      }
+    }
+
+    const startPolling = () => {
+      if (pollingActive) return
+      pollingActive = true
+      setStatus('polling')
+      void pollOnce()
+      pollTimerRef.current = setInterval(() => {
+        void pollOnce()
+      }, 2000)
+    }
+
+    setStatus('connecting')
+
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const tokenQS = accessToken ? `?access_token=${encodeURIComponent(accessToken)}` : ''
+    const url = `${proto}://${window.location.host}${API_BASE_PATH}/scans/${encodeURIComponent(sessionId)}/progress${tokenQS}`
+
+    let receivedAny = false
     const ws = new WebSocket(url)
     wsRef.current = ws
 
     ws.addEventListener('open', () => {
-      if (!closed) setStatus('streaming')
+      if (!cancelled) setStatus('streaming')
     })
     ws.addEventListener('message', (ev) => {
       try {
         const msg = JSON.parse(String(ev.data)) as ScanProgressMessage
+        receivedAny = true
         setLatest(msg)
         if (msg.kind === 'completed') {
           setStatus('completed')
@@ -811,20 +923,31 @@ export function useScanProgress(sessionId?: string): UseScanProgressResult {
       }
     })
     ws.addEventListener('error', () => {
-      if (!closed) {
-        setError('WebSocket 연결 실패 (인증/네트워크 확인)')
-        setStatus('error')
+      if (cancelled) return
+      // 첫 메시지 전 에러면 polling fallback. 메시지 받은 적 있으면 단순 에러 표시.
+      if (!receivedAny) {
+        startPolling()
+      } else {
+        setError('WebSocket 연결 끊김 (polling으로 전환)')
+        startPolling()
       }
     })
     ws.addEventListener('close', () => {
-      if (!closed) {
-        // completed로 인한 정상 close가 아니면 에러로 분류 안 함 (이미 completed면 status 보존).
-        setStatus((prev) => (prev === 'completed' ? prev : 'idle'))
-      }
+      if (cancelled) return
+      // completed → status 보존. 비-completed close + 첫 메시지도 못 받음 → polling fallback.
+      setStatus((prev) => {
+        if (prev === 'completed') return prev
+        if (!receivedAny) {
+          startPolling()
+          return 'polling'
+        }
+        return prev
+      })
     })
 
     return () => {
-      closed = true
+      cancelled = true
+      stopPolling()
       try {
         ws.close()
       } catch {
@@ -832,7 +955,7 @@ export function useScanProgress(sessionId?: string): UseScanProgressResult {
       }
       wsRef.current = null
     }
-  }, [sessionId])
+  }, [sessionId, accessToken])
 
   return { status, latest, error }
 }

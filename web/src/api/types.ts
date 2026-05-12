@@ -208,6 +208,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scans/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a single scan session
+         * @description Returns the current state of a single scan session in the caller tenant
+         *     scope. Used by the Web UI for page reload-safe progress display and by
+         *     the WS polling fallback when the WebSocket connection is unavailable.
+         *
+         *     Cross-tenant lookups return 404.
+         */
+        get: operations["getScan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scans/{sessionId}/progress": {
         parameters: {
             query?: never;
@@ -229,9 +255,10 @@ export interface paths {
          *     sessionId within the caller tenant scope. Emits one `completed` frame
          *     (status=completed/failed/cancelled) and closes.
          *
-         *     Auth: Authorization Bearer is required; browser WebSocket API cannot set
-         *     custom headers — Phase 1 assumes same-origin. Phase 2 will explore
-         *     `?access_token=` query token or session cookie.
+         *     Auth: Authorization Bearer header preferred; browser WebSocket API cannot
+         *     set custom headers, so `?access_token=<jwt>` query param is also accepted
+         *     (access tokens have short TTL — refresh tokens MUST NOT be passed via
+         *     query param).
          */
         get: operations["streamScanProgress"];
         put?: never;
@@ -1032,6 +1059,15 @@ export interface components {
             total: number;
             completed: number;
             failed: number;
+            failureReason?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
         };
         /**
          * @description Single frame pushed via WebSocket on `/api/v1/scans/{sessionId}/progress`.
@@ -1901,9 +1937,40 @@ export interface operations {
             default: components["responses"]["ErrorResponse"];
         };
     };
-    streamScanProgress: {
+    getScan: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanSession"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    streamScanProgress: {
+        parameters: {
+            query?: {
+                /**
+                 * @description JWT access token fallback for browser clients that cannot set the
+                 *     Authorization header. Header is preferred when both are present.
+                 */
+                access_token?: string;
+            };
             header?: never;
             path: {
                 sessionId: string;

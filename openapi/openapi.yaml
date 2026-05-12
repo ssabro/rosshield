@@ -359,6 +359,33 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/scans/{sessionId}:
+    parameters:
+      - { in: path, name: sessionId, required: true, schema: { type: string } }
+    get:
+      tags: [scan]
+      operationId: getScan
+      summary: Get a single scan session
+      description: |
+        Returns the current state of a single scan session in the caller tenant
+        scope. Used by the Web UI for page reload-safe progress display and by
+        the WS polling fallback when the WebSocket connection is unavailable.
+
+        Cross-tenant lookups return 404.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanSession"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/scans/{sessionId}/progress:
     parameters:
       - { in: path, name: sessionId, required: true, schema: { type: string } }
@@ -377,11 +404,20 @@ paths:
         sessionId within the caller tenant scope. Emits one `completed` frame
         (status=completed/failed/cancelled) and closes.
 
-        Auth: Authorization Bearer is required; browser WebSocket API cannot set
-        custom headers — Phase 1 assumes same-origin. Phase 2 will explore
-        `?access_token=` query token or session cookie.
+        Auth: Authorization Bearer header preferred; browser WebSocket API cannot
+        set custom headers, so `?access_token=<jwt>` query param is also accepted
+        (access tokens have short TTL — refresh tokens MUST NOT be passed via
+        query param).
       x-status: phase1
       x-protocol: websocket
+      parameters:
+        - in: query
+          name: access_token
+          required: false
+          schema: { type: string }
+          description: |
+            JWT access token fallback for browser clients that cannot set the
+            Authorization header. Header is preferred when both are present.
       responses:
         "101":
           description: Switching Protocols (WebSocket upgrade)
@@ -1744,15 +1780,20 @@ components:
       type: object
       required: [sessionId, tenantId, fleetId, packId, trigger, status, total, completed, failed]
       properties:
-        sessionId: { type: string }
-        tenantId:  { type: string }
-        fleetId:   { type: string }
-        packId:    { type: string }
-        trigger:   { type: string }
-        status:    { type: string }
-        total:     { type: integer }
-        completed: { type: integer }
-        failed:    { type: integer }
+        sessionId:     { type: string }
+        tenantId:      { type: string }
+        fleetId:       { type: string }
+        packId:        { type: string }
+        trigger:       { type: string }
+        status:        { type: string }
+        total:         { type: integer }
+        completed:     { type: integer }
+        failed:        { type: integer }
+        failureReason: { type: string }
+        createdAt:     { type: string, format: date-time }
+        updatedAt:     { type: string, format: date-time }
+        startedAt:     { type: string, format: date-time, nullable: true }
+        completedAt:   { type: string, format: date-time, nullable: true }
 
     # ─── Scan progress (WebSocket frame) ─────────────────────────────────
     ScanProgressMessage:

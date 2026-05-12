@@ -1,8 +1,15 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
-import { useIsAdmin, usePacks, useScanProgress, useStartScan } from '@/api/hooks'
+import {
+  isTerminalScanStatus,
+  useIsAdmin,
+  usePacks,
+  useScan,
+  useScanProgress,
+  useStartScan,
+} from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
@@ -36,22 +43,32 @@ function ScansPage(): React.ReactElement {
   const [fleetId, setFleetId] = useState('')
   const [packId, setPackId] = useState('')
   const [trigger, setTrigger] = useState<'manual' | 'schedule' | 'event'>('manual')
-  const [lastSession, setLastSession] = useState<ScanSession | null>(null)
   const [error, setError] = useState('')
   const t = useT()
   const isAdmin = useIsAdmin()
   const packsQuery = usePacks()
+  const navigate = useNavigate()
+  // URL ?session=<id>로 마지막 세션 보존 (페이지 reload 후에도 진행 카드 복원).
+  const search = useSearch({ from: '/_authenticated/scans' }) as {
+    session?: string
+  }
+  const activeSessionId = search.session
 
   const startScan = useStartScan()
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault()
     setError('')
-    setLastSession(null)
     startScan.mutate(
       { fleetId, packId, trigger },
       {
-        onSuccess: (session) => setLastSession(session),
+        onSuccess: (session) => {
+          void navigate({
+            to: '/scans',
+            search: { session: session.sessionId },
+            replace: true,
+          })
+        },
         onError: (err) => {
           if (err instanceof ApiError) {
             setError(err.message)
@@ -153,9 +170,40 @@ function ScansPage(): React.ReactElement {
         </CardContent>
       </Card>
 
-      {lastSession && <SessionProgressCard session={lastSession} />}
+      {activeSessionId && <SessionProgressCardById sessionId={activeSessionId} />}
     </div>
   )
+}
+
+// SessionProgressCardById는 URL의 sessionId로 세션을 fetch한 뒤 진행 카드를 보여줍니다.
+// terminal 도달까지 polling은 useScanProgress가 담당 — 본 fetch는 초기 메타(fleetId 등)
+// 복원과 WS 미접속 윈도 동안의 첫 표시값 제공이 목적.
+function SessionProgressCardById({
+  sessionId,
+}: {
+  sessionId: string
+}): React.ReactElement {
+  const t = useT()
+  const scanQuery = useScan(sessionId)
+  if (scanQuery.isPending) {
+    return (
+      <Card className="max-w-xl">
+        <CardContent className="py-6 text-sm text-muted-foreground">
+          {t('scans.session.loading')}
+        </CardContent>
+      </Card>
+    )
+  }
+  if (scanQuery.isError || !scanQuery.data) {
+    return (
+      <Card className="max-w-xl">
+        <CardContent className="py-6 text-sm text-destructive">
+          {t('scans.session.notFound')}
+        </CardContent>
+      </Card>
+    )
+  }
+  return <SessionProgressCard session={scanQuery.data} />
 }
 
 function SessionProgressCard({
@@ -163,15 +211,19 @@ function SessionProgressCard({
 }: {
   session: ScanSession
 }): React.ReactElement {
-  // C1 — WebSocket으로 실시간 진행률 구독. 첫 수신값을 latest, 미수신은 session 초기값 사용.
+  // 진행 추적: WebSocket → 실패 시 자동 polling fallback (useScanProgress 내부에서 처리).
+  // 초기 세션 값을 backstop으로 두고 latest 메시지가 도착하면 갱신.
   const ws = useScanProgress(session.sessionId)
   const t = useT()
+  // terminal 도달 후 progress 카드 자체가 fresh fetch가 필요할 수 있으므로
+  // 백스톱 polling 별도(useScan)는 안 둔다 — useScanProgress의 polling fallback이 처리.
 
   const total = ws.latest?.total ?? session.total
   const completed = ws.latest?.completed ?? session.completed
   const failed = ws.latest?.failed ?? session.failed
   const status = ws.latest?.status ?? session.status
   const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
+  const isTerminal = isTerminalScanStatus(status)
 
   return (
     <Card className="max-w-xl">
@@ -187,7 +239,7 @@ function SessionProgressCard({
           <span className="text-muted-foreground">{t('scans.session.status')}:</span>
           <Badge variant={statusVariant(status)}>{status}</Badge>
           <Badge variant="outline" className="ml-auto text-xs">
-            WS {ws.status}
+            {sourceLabel(ws.status, isTerminal, t)}
           </Badge>
         </div>
         <div>
@@ -203,6 +255,28 @@ function SessionProgressCard({
       </CardContent>
     </Card>
   )
+}
+
+function sourceLabel(
+  wsStatus: ReturnType<typeof useScanProgress>['status'],
+  isTerminal: boolean,
+  t: ReturnType<typeof useT>,
+): string {
+  if (isTerminal) return t('scans.session.source.final')
+  switch (wsStatus) {
+    case 'streaming':
+      return t('scans.session.source.live')
+    case 'polling':
+      return t('scans.session.source.polling')
+    case 'connecting':
+      return t('scans.session.source.connecting')
+    case 'error':
+      return t('scans.session.source.error')
+    case 'completed':
+      return t('scans.session.source.final')
+    default:
+      return t('scans.session.source.idle')
+  }
 }
 
 function statusVariant(
@@ -224,4 +298,8 @@ function statusVariant(
 
 export const Route = createFileRoute('/_authenticated/scans')({
   component: ScansPage,
+  validateSearch: (search: Record<string, unknown>): { session?: string } => {
+    const s = typeof search.session === 'string' ? search.session : undefined
+    return s ? { session: s } : {}
+  },
 })

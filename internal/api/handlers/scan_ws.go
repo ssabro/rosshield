@@ -15,15 +15,19 @@ package handlers
 //  5. "scan.completed" 메시지 1건 송신 후 close (Status는 completed/failed/cancelled 어느 것이든).
 //  6. 클라이언트 disconnect 또는 ctx cancel 시 즉시 종료.
 //
-// Phase 1 단순화:
-//   - 인증: 일반 Authorization: Bearer만 — 브라우저 WebSocket API에서는 헤더 못 붙이지만
-//     서버측 일관성·CLI 호환을 우선. Phase 2에서 ?access_token= query param 또는 cookie 도입 검토.
-//   - heartbeat ping: coder/websocket이 자동 ping 송신 (CloseRead 옵션). 본 핸들러는 명시 ping 안 보냄.
+// 인증:
+//   - Authorization: Bearer <jwt> 헤더 우선 (CLI 표준).
+//   - 브라우저 WebSocket API는 헤더 부착 불가 → ?access_token=<jwt> query param fallback.
+//     URL은 access log에 남으므로 access token(짧은 TTL)에 한해 허용 — refresh token은 절대 query에 X.
+//   - 본 핸들러는 protected 그룹 밖 mount되어 자체 검증 후 ctx 주입(AuthMiddleware 우회).
+//
+// heartbeat ping: coder/websocket이 자동 ping 송신 (CloseRead 옵션). 본 핸들러는 명시 ping 안 보냄.
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/coder/websocket"
@@ -51,11 +55,12 @@ type wsProgressMessage struct {
 
 // ScanProgress는 GET /api/v1/scans/{sessionId}/progress (WebSocket) 핸들러입니다.
 //
+// 본 핸들러는 protected group 밖에 mount되며, 헤더 또는 query param으로 자체 인증.
 // EventBus 의존이 있으므로 Deps.EventBus가 nil이면 503 반환.
 func (h *Handlers) ScanProgress(w http.ResponseWriter, r *http.Request, sessionID string) {
-	tenantID := storage.TenantIDFromContext(r.Context())
-	if tenantID == "" {
-		writeError(w, http.StatusUnauthorized, "no tenant in context")
+	tenantID, ok := h.authenticateWS(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid token")
 		return
 	}
 	if h.deps.EventBus == nil {
@@ -170,4 +175,27 @@ func wsjsonWrite(ctx context.Context, conn *websocket.Conn, v any) error {
 		return err
 	}
 	return conn.Write(ctx, websocket.MessageText, data)
+}
+
+// authenticateWS는 WebSocket 요청에서 토큰을 추출·검증해 tenantID를 반환합니다.
+//
+// 우선순위: Authorization: Bearer <jwt> 헤더 → ?access_token=<jwt> query param.
+// 토큰 부재·검증 실패 시 ok=false. 성공 시 storage.TenantID 반환.
+func (h *Handlers) authenticateWS(r *http.Request) (storage.TenantID, bool) {
+	const bearerPrefix = "Bearer "
+	tokenStr := ""
+	if v := r.Header.Get("Authorization"); strings.HasPrefix(v, bearerPrefix) {
+		tokenStr = strings.TrimPrefix(v, bearerPrefix)
+	}
+	if tokenStr == "" {
+		tokenStr = r.URL.Query().Get("access_token")
+	}
+	if tokenStr == "" {
+		return "", false
+	}
+	claims, err := h.deps.Tenant.VerifyAccessToken(r.Context(), tokenStr)
+	if err != nil {
+		return "", false
+	}
+	return claims.TenantID, true
 }

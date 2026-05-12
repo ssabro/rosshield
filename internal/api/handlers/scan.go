@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/ssabro/rosshield/internal/api/gen"
 	"github.com/ssabro/rosshield/internal/domain/scan"
@@ -30,15 +31,51 @@ type startScanRequest struct {
 
 // scanSessionResponse는 응답에 포함되는 ScanSession 메타입니다.
 type scanSessionResponse struct {
-	SessionID string `json:"sessionId"`
-	TenantID  string `json:"tenantId"`
-	FleetID   string `json:"fleetId"`
-	PackID    string `json:"packId"`
-	Trigger   string `json:"trigger"`
-	Status    string `json:"status"`
-	Total     int    `json:"total"`
-	Completed int    `json:"completed"`
-	Failed    int    `json:"failed"`
+	SessionID     string  `json:"sessionId"`
+	TenantID      string  `json:"tenantId"`
+	FleetID       string  `json:"fleetId"`
+	PackID        string  `json:"packId"`
+	Trigger       string  `json:"trigger"`
+	Status        string  `json:"status"`
+	Total         int     `json:"total"`
+	Completed     int     `json:"completed"`
+	Failed        int     `json:"failed"`
+	FailureReason string  `json:"failureReason,omitempty"`
+	CreatedAt     string  `json:"createdAt,omitempty"`
+	UpdatedAt     string  `json:"updatedAt,omitempty"`
+	StartedAt     *string `json:"startedAt,omitempty"`
+	CompletedAt   *string `json:"completedAt,omitempty"`
+}
+
+// toScanSessionResponse는 도메인 ScanSession을 응답 DTO로 변환합니다.
+func toScanSessionResponse(s scan.ScanSession) scanSessionResponse {
+	resp := scanSessionResponse{
+		SessionID:     s.ID,
+		TenantID:      string(s.TenantID),
+		FleetID:       s.FleetID,
+		PackID:        s.PackID,
+		Trigger:       string(s.Trigger),
+		Status:        string(s.Status),
+		Total:         s.Progress.Total,
+		Completed:     s.Progress.Completed,
+		Failed:        s.Progress.Failed,
+		FailureReason: s.FailureReason,
+	}
+	if !s.CreatedAt.IsZero() {
+		resp.CreatedAt = s.CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !s.UpdatedAt.IsZero() {
+		resp.UpdatedAt = s.UpdatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if s.StartedAt != nil && !s.StartedAt.IsZero() {
+		t := s.StartedAt.UTC().Format(time.RFC3339Nano)
+		resp.StartedAt = &t
+	}
+	if s.CompletedAt != nil && !s.CompletedAt.IsZero() {
+		t := s.CompletedAt.UTC().Format(time.RFC3339Nano)
+		resp.CompletedAt = &t
+	}
+	return resp
 }
 
 // CreateScan은 POST /api/v1/scans 핸들러입니다.
@@ -139,17 +176,43 @@ func (h *Handlers) CreateScan(w http.ResponseWriter, r *http.Request, _ gen.Crea
 		go h.triggerScanRun(tenantID, session, preloadedRobots, preloadedChecks)
 	}
 
-	writeJSON(w, http.StatusCreated, scanSessionResponse{
-		SessionID: session.ID,
-		TenantID:  string(session.TenantID),
-		FleetID:   session.FleetID,
-		PackID:    session.PackID,
-		Trigger:   string(session.Trigger),
-		Status:    string(session.Status),
-		Total:     session.Progress.Total,
-		Completed: session.Progress.Completed,
-		Failed:    session.Progress.Failed,
+	writeJSON(w, http.StatusCreated, toScanSessionResponse(session))
+}
+
+// GetScan은 GET /api/v1/scans/{sessionId} 핸들러입니다.
+//
+// tenant scope에서 단일 세션 조회 — Web UI 페이지 reload·polling fallback 용도.
+// 미존재(또는 cross-tenant)는 404, auth 없으면 401, ctx 누락 401.
+func (h *Handlers) GetScan(w http.ResponseWriter, r *http.Request, sessionID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "missing sessionId")
+		return
+	}
+
+	var session scan.ScanSession
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		s, e := h.deps.Scan.GetSession(ctx, tx, sessionID)
+		if e != nil {
+			return e
+		}
+		session = s
+		return nil
 	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "scan session not found")
+			return
+		}
+		writeError(w, errorStatusFor(err), "get scan failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toScanSessionResponse(session))
 }
 
 // preloadRobotsAndChecks는 fleet의 robots × pack의 checks를 fetch해

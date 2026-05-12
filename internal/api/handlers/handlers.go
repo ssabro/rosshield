@@ -110,6 +110,13 @@ func (h *Handlers) Mount(r chi.Router) {
 		h.AcceptInvitation(w, req, chi.URLParam(req, "token"))
 	})
 
+	// C1 — WebSocket scan progress (자체 인증, 헤더 또는 ?access_token= query).
+	// 브라우저 WebSocket API는 Authorization 헤더 부착 불가 → query token 우회 fallback 필요.
+	// AuthMiddleware 우회 + 핸들러 내부 검증.
+	r.Get("/api/v1/scans/{sessionId}/progress", func(w http.ResponseWriter, req *http.Request) {
+		h.ScanProgress(w, req, chi.URLParam(req, "sessionId"))
+	})
+
 	// 2. Protected endpoints — AuthMiddleware 통과 후 진입
 	r.Group(func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
@@ -132,6 +139,10 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
 			h.ListScans(w, req, gen.ListScansParams{})
 		})
+		// E12 — 단일 scan session 조회 (Web UI 페이지 reload·polling fallback).
+		r.Get("/api/v1/scans/{sessionId}", func(w http.ResponseWriter, req *http.Request) {
+			h.GetScan(w, req, chi.URLParam(req, "sessionId"))
+		})
 
 		// E17 Phase 2 — Insight read.
 		r.Get("/api/v1/insights", func(w http.ResponseWriter, req *http.Request) {
@@ -150,11 +161,6 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/advisor/conversations", h.ListAdvisorConversations)
 		r.Get("/api/v1/advisor/conversations/{conversationId}", func(w http.ResponseWriter, req *http.Request) {
 			h.GetAdvisorConversation(w, req, chi.URLParam(req, "conversationId"))
-		})
-
-		// C1 carryover — WebSocket scan progress (Phase 1 deferred 회수).
-		r.Get("/api/v1/scans/{sessionId}/progress", func(w http.ResponseWriter, req *http.Request) {
-			h.ScanProgress(w, req, chi.URLParam(req, "sessionId"))
 		})
 
 		// E24 — License info (B5 Web Console 지원).
