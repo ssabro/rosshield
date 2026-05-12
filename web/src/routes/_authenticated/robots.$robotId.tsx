@@ -5,6 +5,7 @@ import {
   useDeleteRobot,
   useFleet,
   useIsAdmin,
+  usePacks,
   useRobot,
   useRobotResults,
   useRotateCredential,
@@ -255,10 +256,16 @@ function MetaRow({
 // RobotResultsCard — useRobotResults hook으로 최근 진단 결과 20개를 session 단위 그룹으로 표시.
 //
 // packKey는 서버 응답에서 직접 옴 (RobotResult.packKey, scan_sessions→packs JOIN 결과).
+// packIsBuiltin은 usePacks(이미 cache 공유)로 client-side 매핑.
 function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement {
   const t = useT()
   const q = useRobotResults(robotId, 20)
+  const packsQuery = usePacks()
   const results = q.data ?? []
+  const builtinByPackKey = new Map<string, boolean>()
+  for (const p of packsQuery.data ?? []) {
+    builtinByPackKey.set(p.packKey, p.isBuiltin)
+  }
 
   return (
     <Card>
@@ -283,7 +290,11 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
         ) : (
           <div className="space-y-3">
             {groupBySession(results).map((group) => (
-              <SessionGroup key={group.sessionId} group={group} />
+              <SessionGroup
+                key={group.sessionId}
+                group={group}
+                builtinByPackKey={builtinByPackKey}
+              />
             ))}
           </div>
         )}
@@ -317,8 +328,10 @@ function groupBySession(results: RobotResult[]): SessionResultGroup[] {
 
 function SessionGroup({
   group,
+  builtinByPackKey,
 }: {
   group: SessionResultGroup
+  builtinByPackKey: Map<string, boolean>
 }): React.ReactElement {
   const t = useT()
   return (
@@ -338,7 +351,11 @@ function SessionGroup({
       </div>
       <div className="space-y-1">
         {group.results.map((r) => (
-          <ResultRow key={r.id} result={r} />
+          <ResultRow
+            key={r.id}
+            result={r}
+            builtinByPackKey={builtinByPackKey}
+          />
         ))}
       </div>
     </div>
@@ -347,10 +364,15 @@ function SessionGroup({
 
 function ResultRow({
   result,
+  builtinByPackKey,
 }: {
   result: RobotResult
+  builtinByPackKey: Map<string, boolean>
 }): React.ReactElement {
+  const t = useT()
   const packKey = result.packKey
+  // isBuiltin은 packKey가 있고 packs cache에 있을 때만 결정. 미해결이면 Badge 숨김.
+  const isBuiltin = packKey ? builtinByPackKey.get(packKey) : undefined
   return (
     <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">
@@ -366,6 +388,11 @@ function ResultRow({
             </Link>
           ) : (
             <span className="font-mono text-xs">{result.checkId}</span>
+          )}
+          {isBuiltin !== undefined && (
+            <Badge variant="outline" className="text-[10px]">
+              {isBuiltin ? t('packs.scope.builtin') : t('packs.scope.tenant')}
+            </Badge>
           )}
         </div>
         {result.evalReason && (

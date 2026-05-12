@@ -128,7 +128,9 @@ function PacksCard(): React.ReactElement {
                       {p.name}
                     </Link>
                     <Badge variant="secondary">{p.version}</Badge>
-                    {p.isBuiltin && <Badge variant="outline">built-in</Badge>}
+                    <Badge variant="outline">
+                      {p.isBuiltin ? t('packs.scope.builtin') : t('packs.scope.tenant')}
+                    </Badge>
                   </div>
                   <span className="text-xs text-muted-foreground">
                     {t('system.packs.vendor')}: {p.vendor} · {t('system.packs.installedAt')}:{' '}
