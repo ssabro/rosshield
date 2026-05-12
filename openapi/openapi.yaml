@@ -301,14 +301,19 @@ paths:
       tags: [robot]
       operationId: getRobot
       summary: Get a robot
-      x-status: todo
+      description: |
+        Returns a single robot for the caller tenant. Cross-tenant or soft-deleted
+        robots return 404. Plain credential material is never included in the
+        response (encrypted material stays in DB, only credentialId reference).
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/Robot"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
 

@@ -175,7 +175,12 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get a robot */
+        /**
+         * Get a robot
+         * @description Returns a single robot for the caller tenant. Cross-tenant or soft-deleted
+         *     robots return 404. Plain credential material is never included in the
+         *     response (encrypted material stays in DB, only credentialId reference).
+         */
         get: operations["getRobot"];
         put?: never;
         post?: never;
@@ -2020,9 +2025,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["Robot"];
                 };
             };
+            404: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];
         };
     };

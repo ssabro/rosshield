@@ -323,6 +323,28 @@ export const useRobots = (fleetId?: string) => {
   })
 }
 
+// useRobot은 GET /api/v1/robots/{robotId} 단일 조회 hook입니다.
+// 향후 robot 상세 페이지(예: /robots/$robotId) 진입 시 활용.
+export function useRobot(robotId?: string) {
+  return useQuery({
+    queryKey: ['robot', robotId],
+    enabled: !!robotId,
+    queryFn: async (): Promise<Robot> => {
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/robots/{robotId}',
+        { params: { path: { robotId: robotId! } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as Robot
+    },
+  })
+}
+
 // CreateRobotVars — 평문 자격증명을 본문으로 보냄. 메모리 전용 처리 후 백엔드가 KEK→DEK로 wrap.
 //   응답에는 평문 자격증명 미포함 (Robot 메타 + credentialId).
 export interface CreateRobotVars {

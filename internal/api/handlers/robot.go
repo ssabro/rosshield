@@ -73,6 +73,45 @@ func (h *Handlers) ListRobots(w http.ResponseWriter, r *http.Request, params gen
 	writeJSON(w, http.StatusOK, out)
 }
 
+// GetRobot는 GET /api/v1/robots/{robotId} 핸들러입니다.
+//
+// tenant scope 단일 robot 조회 — 모든 인증 사용자 read.
+// 미존재(또는 cross-tenant, soft-deleted) → 404. 응답에 평문 자격증명은 포함 X (보안).
+func (h *Handlers) GetRobot(w http.ResponseWriter, r *http.Request, robotID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if robotID == "" {
+		writeError(w, http.StatusBadRequest, "missing robotId")
+		return
+	}
+	if h.deps.Robot == nil {
+		writeError(w, http.StatusServiceUnavailable, "robot service not configured")
+		return
+	}
+
+	var rb robot.Robot
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		got, e := h.deps.Robot.GetRobot(ctx, tx, robotID)
+		if e != nil {
+			return e
+		}
+		rb = got
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "robot not found")
+			return
+		}
+		writeError(w, errorStatusFor(err), "get robot failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, toRobotResponse(rb))
+}
+
 // createRobotRequest는 POST /api/v1/robots 요청 본문입니다.
 //
 // 평문 자격증명을 받음 — 메모리 전용 처리 후 도메인 layer가 KEK→DEK로 wrap.
