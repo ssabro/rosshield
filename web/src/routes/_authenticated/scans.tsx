@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ApiError } from '@/api/errors'
 import {
   isTerminalScanStatus,
+  useCancelScan,
   useIsAdmin,
   usePacks,
   useScan,
@@ -215,6 +216,8 @@ function SessionProgressCard({
   // 초기 세션 값을 backstop으로 두고 latest 메시지가 도착하면 갱신.
   const ws = useScanProgress(session.sessionId)
   const t = useT()
+  const isAdmin = useIsAdmin()
+  const cancelScan = useCancelScan()
   // terminal 도달 후 progress 카드 자체가 fresh fetch가 필요할 수 있으므로
   // 백스톱 polling 별도(useScan)는 안 둔다 — useScanProgress의 polling fallback이 처리.
 
@@ -224,6 +227,12 @@ function SessionProgressCard({
   const status = ws.latest?.status ?? session.status
   const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
   const isTerminal = isTerminalScanStatus(status)
+  const canCancel = !isTerminal && isAdmin
+
+  const handleCancel = (): void => {
+    if (!canCancel) return
+    cancelScan.mutate({ sessionId: session.sessionId })
+  }
 
   return (
     <Card className="max-w-xl">
@@ -252,6 +261,34 @@ function SessionProgressCard({
           </div>
         </div>
         {ws.error && <p className="text-xs text-destructive">{ws.error}</p>}
+        {!isTerminal && (
+          <div className="flex items-center justify-between pt-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCancel}
+              disabled={!canCancel || cancelScan.isPending}
+              title={
+                !isAdmin
+                  ? t('common.role.required.admin')
+                  : cancelScan.isPending
+                    ? t('scans.session.cancel.pending')
+                    : undefined
+              }
+            >
+              {cancelScan.isPending
+                ? t('scans.session.cancel.pending')
+                : t('scans.session.cancel')}
+            </Button>
+            {cancelScan.isError && (
+              <span className="text-xs text-destructive">
+                {cancelScan.error instanceof Error
+                  ? cancelScan.error.message
+                  : t('scans.session.cancel.error')}
+              </span>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

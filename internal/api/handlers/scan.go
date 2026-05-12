@@ -179,6 +179,75 @@ func (h *Handlers) CreateScan(w http.ResponseWriter, r *http.Request, _ gen.Crea
 	writeJSON(w, http.StatusCreated, toScanSessionResponse(session))
 }
 
+// cancelScanRequest는 POST /api/v1/scans/{sessionId}:cancel 요청 본문입니다.
+//
+// reason은 옵션 — 빈 값이면 "user requested" default. audit·event payload에 기록.
+type cancelScanRequest struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+// CancelScan은 POST /api/v1/scans/{sessionId}:cancel 핸들러입니다.
+//
+// pending·running 둘 다 cancel 가능 → cancelled 전이.
+// 이미 terminal(completed/failed/cancelled) 세션이면 409 Conflict.
+// 미존재(또는 cross-tenant)는 404, auth 없으면 401.
+func (h *Handlers) CancelScan(w http.ResponseWriter, r *http.Request, sessionID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "missing sessionId")
+		return
+	}
+
+	var req cancelScanRequest
+	// 본문은 옵션 — 빈 본문 허용. JSON parse 실패 시 무시(reason 빈 값으로 진행).
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+	}
+	reason := req.Reason
+	if reason == "" {
+		reason = "user requested"
+	}
+
+	var (
+		session scan.ScanSession
+		err     error
+	)
+	// ScanRun 결선이 있으면 in-flight ctx 취소 + DB 전이 한 번에 위임 (cooperative shutdown).
+	// 결선 없으면 (Phase 1 호환) DB-only cancel.
+	if h.deps.ScanRun != nil {
+		session, err = h.deps.ScanRun.Cancel(r.Context(), tenantID, sessionID, reason)
+	} else {
+		err = h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+			s, e := h.deps.Scan.CancelSession(ctx, tx, sessionID, reason)
+			if e != nil {
+				return e
+			}
+			session = s
+			return nil
+		})
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			writeError(w, http.StatusNotFound, "scan session not found")
+		case errors.Is(err, scan.ErrInvalidTransition):
+			writeError(w, http.StatusConflict, "scan session already in terminal state")
+		default:
+			writeError(w, errorStatusFor(err), "cancel scan failed")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toScanSessionResponse(session))
+}
+
 // GetScan은 GET /api/v1/scans/{sessionId} 핸들러입니다.
 //
 // tenant scope에서 단일 세션 조회 — Web UI 페이지 reload·polling fallback 용도.

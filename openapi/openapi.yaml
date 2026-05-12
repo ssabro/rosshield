@@ -386,6 +386,45 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/scans/{sessionId}:cancel:
+    parameters:
+      - { in: path, name: sessionId, required: true, schema: { type: string } }
+    post:
+      tags: [scan]
+      operationId: cancelScan
+      summary: Cancel a running or pending scan session
+      description: |
+        Transitions the session to `cancelled`. Both `pending` and `running`
+        sessions are valid sources. Already-terminal sessions return 409.
+
+        Server transitions the DB row immediately; running orchestrator workers
+        complete in flight (cooperative shutdown is a follow-up epic).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Cancellation reason for audit log (default "user requested").
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanSession"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/scans/{sessionId}/progress:
     parameters:
       - { in: path, name: sessionId, required: true, schema: { type: string } }

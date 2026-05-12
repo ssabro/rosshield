@@ -146,6 +146,120 @@ func TestScanProgressWSRejectsInvalidQueryToken(t *testing.T) {
 	}
 }
 
+func TestCancelScanReturns200ForPendingSession(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	fleetID := seedFleetAndRobot(t, f, "fleet-cancel", "rb-cancel", "10.0.0.30")
+	packID := seedPack(t, f, "pk_CANCEL")
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{
+		"fleetId": fleetID,
+		"packId":  packID,
+		"trigger": "manual",
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+	if resp.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		t.Fatalf("POST status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var created struct {
+		SessionID string `json:"sessionId"`
+		Status    string `json:"status"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&created)
+	_ = resp.Body.Close()
+
+	cancelBody, _ := json.Marshal(map[string]string{"reason": "test cancel"})
+	cancelResp := f.doRequest(t, "POST", "/api/v1/scans/"+created.SessionID+":cancel", token, cancelBody)
+	defer func() { _ = cancelResp.Body.Close() }()
+	if cancelResp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(cancelResp.Body)
+		t.Fatalf("cancel status=%d body=%s", cancelResp.StatusCode, string(raw))
+	}
+	var got struct {
+		SessionID     string `json:"sessionId"`
+		Status        string `json:"status"`
+		FailureReason string `json:"failureReason"`
+	}
+	if err := json.NewDecoder(cancelResp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode cancel: %v", err)
+	}
+	if got.SessionID != created.SessionID {
+		t.Errorf("sessionId=%q, want %q", got.SessionID, created.SessionID)
+	}
+	if got.Status != "cancelled" {
+		t.Errorf("status=%q, want cancelled", got.Status)
+	}
+	if got.FailureReason != "test cancel" {
+		t.Errorf("failureReason=%q, want %q", got.FailureReason, "test cancel")
+	}
+}
+
+func TestCancelScanReturns404ForUnknownID(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+	resp := f.doRequest(t, "POST", "/api/v1/scans/scan_NOPE:cancel", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status=%d, want 404", resp.StatusCode)
+	}
+}
+
+func TestCancelScanReturns401WithoutAuth(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	resp := f.doRequest(t, "POST", "/api/v1/scans/scan_X:cancel", "", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want 401", resp.StatusCode)
+	}
+}
+
+func TestCancelScanReturns409ForAlreadyTerminal(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	fleetID := seedFleetAndRobot(t, f, "fleet-c2", "rb-c2", "10.0.0.31")
+	packID := seedPack(t, f, "pk_C2")
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{
+		"fleetId": fleetID,
+		"packId":  packID,
+		"trigger": "manual",
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+	if resp.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		t.Fatalf("POST status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var created struct {
+		SessionID string `json:"sessionId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&created)
+	_ = resp.Body.Close()
+
+	// 첫 cancel — pending → cancelled.
+	r1 := f.doRequest(t, "POST", "/api/v1/scans/"+created.SessionID+":cancel", token, nil)
+	if r1.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("first cancel status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	_ = r1.Body.Close()
+
+	// 두 번째 cancel — terminal → 409.
+	r2 := f.doRequest(t, "POST", "/api/v1/scans/"+created.SessionID+":cancel", token, nil)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusConflict {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("second cancel status=%d body=%s, want 409", r2.StatusCode, string(raw))
+	}
+}
+
 func TestGetScanCrossTenantReturns404(t *testing.T) {
 	// Tenant A 세션은 Tenant B에서 보면 404 (tenant 격리).
 	f := newFixture(t)

@@ -559,6 +559,40 @@ export const useStartScan = () => {
   })
 }
 
+// useCancelScan은 POST /api/v1/scans/{sessionId}:cancel mutation hook입니다.
+//
+// 성공 시 ['scans', sessionId] cache invalidate — useScan polling이 즉시 새 status fetch.
+// 409 (terminal already) → ApiError(409) — UI는 disable 처리 권장.
+export interface CancelScanVars {
+  sessionId: string
+  reason?: string
+}
+export const useCancelScan = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: CancelScanVars): Promise<ScanSession> => {
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/scans/{sessionId}:cancel',
+        {
+          params: { path: { sessionId: vars.sessionId } },
+          body: { reason: vars.reason ?? 'user requested' },
+        },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as ScanSession
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['scans', data.sessionId] })
+      qc.invalidateQueries({ queryKey: ['scans'] })
+    },
+  })
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // 5-pre) Insights (E19-1)
 // ────────────────────────────────────────────────────────────────────────

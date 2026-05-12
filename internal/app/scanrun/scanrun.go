@@ -145,18 +145,25 @@ outer:
 // Cancel은 in-flight session의 ctx를 취소하고 DB를 cancelled로 전이합니다.
 //
 // in-flight가 아니더라도 (이미 종료됐거나 시작 전) DB 전이는 시도. terminal이면 ErrInvalidTransition.
-func (o *Orchestrator) Cancel(ctx context.Context, tenantID storage.TenantID, sessionID, reason string) error {
+// 갱신된 ScanSession + 에러 반환 — 호출자가 응답 직렬화에 사용.
+func (o *Orchestrator) Cancel(ctx context.Context, tenantID storage.TenantID, sessionID, reason string) (scan.ScanSession, error) {
 	o.mu.Lock()
 	cancel, inFlight := o.cancels[sessionID]
 	o.mu.Unlock()
 	if inFlight {
 		cancel()
 	}
+	var session scan.ScanSession
 	txCtx := storage.WithTenantID(ctx, tenantID)
-	return o.deps.Storage.Tx(txCtx, func(ctx context.Context, tx storage.Tx) error {
-		_, err := o.deps.Scan.CancelSession(ctx, tx, sessionID, reason)
-		return err
+	err := o.deps.Storage.Tx(txCtx, func(ctx context.Context, tx storage.Tx) error {
+		s, e := o.deps.Scan.CancelSession(ctx, tx, sessionID, reason)
+		if e != nil {
+			return e
+		}
+		session = s
+		return nil
 	})
+	return session, err
 }
 
 // --- internals ---

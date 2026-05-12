@@ -123,6 +123,9 @@ export const ko = {
   'scans.session.source.error': '오프라인',
   'scans.session.source.final': '완료',
   'scans.session.source.idle': '대기',
+  'scans.session.cancel': '스캔 취소',
+  'scans.session.cancel.pending': '취소 중…',
+  'scans.session.cancel.error': '취소 실패',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':
@@ -793,6 +796,9 @@ export const en: Record<keyof typeof ko, string> = {
   'scans.session.source.error': 'Offline',
   'scans.session.source.final': 'Final',
   'scans.session.source.idle': 'Idle',
+  'scans.session.cancel': 'Cancel scan',
+  'scans.session.cancel.pending': 'Cancelling…',
+  'scans.session.cancel.error': 'Cancel failed',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':

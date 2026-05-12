@@ -248,6 +248,10 @@ func (h *Handlers) Mount(r chi.Router) {
 			r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
 				h.CreateScan(w, req, gen.CreateScanParams{})
 			})
+			// Scan cancel (running/pending 세션 강제 종료)
+			r.Post("/api/v1/scans/{sessionId}:cancel", func(w http.ResponseWriter, req *http.Request) {
+				h.CancelScan(w, req, chi.URLParam(req, "sessionId"))
+			})
 
 			// Audit verify (감사 작업)
 			r.Post("/api/v1/audit/verify", h.VerifyAuditChain)

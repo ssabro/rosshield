@@ -234,6 +234,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scans/{sessionId}:cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a running or pending scan session
+         * @description Transitions the session to `cancelled`. Both `pending` and `running`
+         *     sessions are valid sources. Already-terminal sessions return 409.
+         *
+         *     Server transitions the DB row immediately; running orchestrator workers
+         *     complete in flight (cooperative shutdown is a follow-up epic).
+         */
+        post: operations["cancelScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scans/{sessionId}/progress": {
         parameters: {
             query?: never;
@@ -1959,6 +1985,39 @@ export interface operations {
             };
             401: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    cancelScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Cancellation reason for audit log (default "user requested"). */
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanSession"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+            409: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];
         };
     };

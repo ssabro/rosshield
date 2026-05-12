@@ -408,7 +408,7 @@ func TestRunCancelSkipsRemainingButWaitsInFlight(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	if err := h.orch.Cancel(context.Background(), h.tenantID, sessionID, "test cancel"); err != nil {
+	if _, err := h.orch.Cancel(context.Background(), h.tenantID, sessionID, "test cancel"); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 
