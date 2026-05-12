@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { apiClient } from '@/api/client'
 import { ApiError, extractErrorMessage } from '@/api/errors'
@@ -609,6 +609,7 @@ function RotateCredentialCard({
                   placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
                   autoComplete="off"
                 />
+                <PemFingerprintPreview pem={privateKeyPem} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="rot-pass">
@@ -651,6 +652,49 @@ function RotateCredentialCard({
         </form>
       </CardContent>
     </Card>
+  )
+}
+
+// PemFingerprintPreview — pem 입력 시 SHA256 hash를 비동기 계산해 첫 16 hex + 마지막 4로 표시.
+//
+// 주의: SSH 표준 fingerprint는 공개키 SHA256 (private→public 추출 필요). 본 컴포넌트는
+// **input bytes SHA256**으로 visual confirmation 용도 — pasted PEM이 의도한 것인지 확인하는
+// 데 충분. 실 SSH fingerprint(공개키 기반)는 별 epic.
+function PemFingerprintPreview({ pem }: { pem: string }): React.ReactElement | null {
+  const t = useT()
+  const [fingerprint, setFingerprint] = useState('')
+  useEffect(() => {
+    const trimmed = pem.trim()
+    if (!trimmed) {
+      setFingerprint('')
+      return
+    }
+    let cancelled = false
+    const compute = async () => {
+      try {
+        const enc = new TextEncoder().encode(trimmed)
+        const buf = await crypto.subtle.digest('SHA-256', enc)
+        const hex = Array.from(new Uint8Array(buf))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('')
+        if (!cancelled) setFingerprint(hex)
+      } catch {
+        if (!cancelled) setFingerprint('')
+      }
+    }
+    void compute()
+    return () => {
+      cancelled = true
+    }
+  }, [pem])
+
+  if (!fingerprint) return null
+  // 첫 16 hex + ... + 마지막 4 (SHA256 fingerprint truncated 표기 관행).
+  const short = `${fingerprint.slice(0, 16)}…${fingerprint.slice(-4)}`
+  return (
+    <p className="font-mono text-xs text-muted-foreground">
+      {t('robots.detail.rotate.fingerprint')}: SHA256:{short}
+    </p>
   )
 }
 
