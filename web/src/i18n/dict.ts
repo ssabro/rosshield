@@ -131,6 +131,11 @@ export const ko = {
   'scans.list.loading': '세션 목록 로드 중…',
   'scans.list.empty': '아직 시작된 스캔이 없습니다.',
   'scans.list.error': '목록 로드 실패',
+  'scans.list.filter.status': '상태',
+  'scans.list.filter.fleet': 'Fleet',
+  'scans.list.filter.all': '전체',
+  'scans.list.count': '{shown}/{total}',
+  'scans.list.noMatches': '필터 조건에 맞는 세션이 없습니다.',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':
@@ -809,6 +814,11 @@ export const en: Record<keyof typeof ko, string> = {
   'scans.list.loading': 'Loading sessions…',
   'scans.list.empty': 'No scans started yet.',
   'scans.list.error': 'Failed to load sessions',
+  'scans.list.filter.status': 'Status',
+  'scans.list.filter.fleet': 'Fleet',
+  'scans.list.filter.all': 'All',
+  'scans.list.count': '{shown}/{total}',
+  'scans.list.noMatches': 'No sessions match the current filters.',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':

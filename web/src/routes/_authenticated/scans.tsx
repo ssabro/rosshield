@@ -184,9 +184,27 @@ function ScansPage(): React.ReactElement {
   )
 }
 
+// STATUS_FILTER_VALUES는 Status dropdown의 표시 항목입니다.
+// 'all' sentinel은 client-side에서 필터 미적용을 의미.
+const STATUS_FILTER_VALUES = [
+  'all',
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+] as const
+type StatusFilterValue = (typeof STATUS_FILTER_VALUES)[number]
+
+// FLEET_ALL_VALUE는 fleet dropdown의 'all' sentinel입니다.
+const FLEET_ALL_VALUE = '__all__'
+
 // RecentSessionsCard는 최근 세션 10개를 표 형태로 표시합니다.
 // active 세션(pending/running) 1건 이상이면 5s polling — terminal 도달 시 정지.
 // 행 클릭 시 ?session=<id>로 navigate해 위 진행 카드에 즉시 표시.
+//
+// 필터: status + fleet dropdown (client-side, 10개 max라 부담 X).
+// fleet 옵션은 현재 세션 목록에서 distinct fleetId 추출 — 별 endpoint 없이 즉시.
 function RecentSessionsCard({
   activeSessionId,
 }: {
@@ -195,6 +213,8 @@ function RecentSessionsCard({
   const t = useT()
   const navigate = useNavigate()
   const scansQuery = useScans({ limit: 10, pollMs: 5000 })
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all')
+  const [fleetFilter, setFleetFilter] = useState<string>(FLEET_ALL_VALUE)
 
   if (scansQuery.isPending) {
     return (
@@ -222,18 +242,80 @@ function RecentSessionsCard({
       </Card>
     )
   }
+
   const list = scansQuery.data ?? []
+  const fleetOptions = Array.from(new Set(list.map((s) => s.fleetId))).sort()
+  const filtered = list.filter((s) => {
+    if (statusFilter !== 'all' && s.status !== statusFilter) return false
+    if (fleetFilter !== FLEET_ALL_VALUE && s.fleetId !== fleetFilter) return false
+    return true
+  })
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>{t('scans.list.title')}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {list.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="filter-status" className="text-xs text-muted-foreground">
+                {t('scans.list.filter.status')}
+              </Label>
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as StatusFilterValue)}
+              >
+                <SelectTrigger id="filter-status" className="h-8 w-[140px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_FILTER_VALUES.map((v) => (
+                    <SelectItem key={v} value={v}>
+                      {v === 'all' ? t('scans.list.filter.all') : v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="filter-fleet" className="text-xs text-muted-foreground">
+                {t('scans.list.filter.fleet')}
+              </Label>
+              <Select value={fleetFilter} onValueChange={setFleetFilter}>
+                <SelectTrigger id="filter-fleet" className="h-8 w-[180px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={FLEET_ALL_VALUE}>
+                    {t('scans.list.filter.all')}
+                  </SelectItem>
+                  {fleetOptions.map((fid) => (
+                    <SelectItem key={fid} value={fid}>
+                      {fid}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {t('scans.list.count', {
+                shown: filtered.length,
+                total: list.length,
+              })}
+            </span>
+          </div>
+        )}
         {list.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('scans.list.empty')}</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t('scans.list.noMatches')}
+          </p>
         ) : (
           <div className="space-y-1">
-            {list.map((s) => (
+            {filtered.map((s) => (
               <SessionRow
                 key={s.sessionId}
                 session={s}
