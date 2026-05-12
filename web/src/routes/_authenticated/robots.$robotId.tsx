@@ -268,12 +268,28 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
   for (const p of packsQuery.data ?? []) {
     builtinByPackKey.set(p.packKey, p.isBuiltin)
   }
-  const { isCollapsed, toggle } = useCollapsedSessions()
+  const { isCollapsed, toggle, setMany } = useCollapsedSessions()
+  const groups = groupBySession(results)
+  const groupIds = groups.map((g) => g.sessionId)
+  const allCollapsed = groupIds.length > 0 && groupIds.every((id) => isCollapsed(id))
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle>{t('robots.detail.results.title')}</CardTitle>
+        {groups.length > 1 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setMany(groupIds, !allCollapsed)}
+            className="h-7 text-xs"
+          >
+            {allCollapsed
+              ? t('robots.detail.results.expandAll')
+              : t('robots.detail.results.collapseAll')}
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {q.isPending ? (
@@ -292,7 +308,7 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
           </p>
         ) : (
           <div className="space-y-3">
-            {groupBySession(results).map((group) => (
+            {groups.map((group) => (
               <SessionGroup
                 key={group.sessionId}
                 group={group}
@@ -311,12 +327,24 @@ function RobotResultsCard({ robotId }: { robotId: string }): React.ReactElement 
 // useCollapsedSessions — RobotResultsCard SessionGroup 접힘 상태 localStorage 보존.
 //
 // 키: rosshield.ui.robotResults.collapsedSessions — JSON Array<sessionId>.
-// 기본 펼침(Set 비-멤버), toggle은 즉시 localStorage 동기화.
+// 기본 펼침(Set 비-멤버), toggle/setMany는 즉시 localStorage 동기화.
 const collapsedStorageKey = 'rosshield.ui.robotResults.collapsedSessions'
+
+function persistCollapsed(set: Set<string>): void {
+  try {
+    window.localStorage.setItem(
+      collapsedStorageKey,
+      JSON.stringify(Array.from(set)),
+    )
+  } catch {
+    // localStorage quota 초과 또는 비활성 — silent.
+  }
+}
 
 function useCollapsedSessions(): {
   isCollapsed: (id: string) => boolean
   toggle: (id: string) => void
+  setMany: (ids: string[], collapsed: boolean) => void
 } {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set()
@@ -339,18 +367,25 @@ function useCollapsedSessions(): {
       } else {
         next.add(id)
       }
-      try {
-        window.localStorage.setItem(
-          collapsedStorageKey,
-          JSON.stringify(Array.from(next)),
-        )
-      } catch {
-        // localStorage quota 초과 또는 비활성 — silent.
-      }
+      persistCollapsed(next)
       return next
     })
   }, [])
-  return { isCollapsed, toggle }
+  const setMany = useCallback((ids: string[], shouldCollapse: boolean) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (shouldCollapse) {
+          next.add(id)
+        } else {
+          next.delete(id)
+        }
+      }
+      persistCollapsed(next)
+      return next
+    })
+  }, [])
+  return { isCollapsed, toggle, setMany }
 }
 
 interface SessionResultGroup {
