@@ -162,6 +162,45 @@ func (h *Handlers) ListFleets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// GetFleet는 GET /api/v1/fleets/{fleetId} 핸들러입니다.
+//
+// tenant scope 단일 fleet 조회 — 모든 인증 사용자 read. 미존재(또는 cross-tenant) → 404.
+// 응답에 RobotCount + Policy 4 필드 포함 (ListFleets와 동일 schema).
+func (h *Handlers) GetFleet(w http.ResponseWriter, r *http.Request, fleetID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if fleetID == "" {
+		writeError(w, http.StatusBadRequest, "missing fleetId")
+		return
+	}
+	if h.deps.Robot == nil {
+		writeError(w, http.StatusServiceUnavailable, "robot service not configured")
+		return
+	}
+
+	var f robot.Fleet
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		got, e := h.deps.Robot.GetFleet(ctx, tx, fleetID)
+		if e != nil {
+			return e
+		}
+		f = got
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "fleet not found")
+			return
+		}
+		writeError(w, errorStatusFor(err), "get fleet failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, toFleetResponse(f))
+}
+
 // CreateFleet은 POST /api/v1/fleets 핸들러입니다.
 func (h *Handlers) CreateFleet(w http.ResponseWriter, r *http.Request) {
 	tenantID := storage.TenantIDFromContext(r.Context())

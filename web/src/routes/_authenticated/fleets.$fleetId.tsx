@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 
-import { useFleets, useRobots } from '@/api/hooks'
+import { useFleet, useRobots } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
@@ -18,12 +18,12 @@ import type { Robot } from '@/api/hooks'
 function FleetDetailPage(): React.ReactElement {
   const t = useT()
   const { fleetId } = Route.useParams()
-  const fleetsQuery = useFleets()
+  const fleetQuery = useFleet(fleetId)
   const robotsQuery = useRobots(fleetId)
 
-  const fleet = fleetsQuery.data?.find((f) => f.id === fleetId)
+  const fleet = fleetQuery.data
 
-  if (fleetsQuery.isPending) {
+  if (fleetQuery.isPending) {
     return (
       <div className="space-y-6">
         <PageHeader title={t('pages.fleets.title')} />
@@ -31,7 +31,7 @@ function FleetDetailPage(): React.ReactElement {
       </div>
     )
   }
-  if (!fleet) {
+  if (!fleet || fleetQuery.isError) {
     return (
       <div className="space-y-6">
         <PageHeader title={t('pages.fleets.title')} />

@@ -170,6 +170,10 @@ func (h *Handlers) Mount(r chi.Router) {
 		// Fleet list (tenant scope, name ASC). 모든 인증 사용자 read.
 		// scans 페이지 fleet dropdown + 다른 페이지 fleet 조회 활용.
 		r.Get("/api/v1/fleets", h.ListFleets)
+		// 단일 fleet 조회 (deep-link /fleets/$id 진입 응답 대기 회피).
+		r.Get("/api/v1/fleets/{fleetId}", func(w http.ResponseWriter, req *http.Request) {
+			h.GetFleet(w, req, chi.URLParam(req, "fleetId"))
+		})
 
 		// E12 Stage 3 — Pack list (built-in + tenant pack). 모든 인증 사용자 read.
 		// systemTenant pack(cross-tenant 공유, §4.2)과 호출자 tenant pack 합쳐 반환.

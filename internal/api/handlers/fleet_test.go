@@ -124,6 +124,94 @@ func TestListFleetsReturns401WithoutAuth(t *testing.T) {
 	}
 }
 
+func TestGetFleetReturnsSingleFleetWithPolicy(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+
+	// 시드: policy 4 필드 모두 set으로 등록.
+	body, _ := json.Marshal(map[string]any{
+		"name":        "fleet-getone",
+		"description": "for GetFleet test",
+		"policy": map[string]any{
+			"defaultBaselineId":  "cis-ubuntu-24.04",
+			"defaultLevel":       "L1",
+			"defaultCriticality": "high",
+			"scanSchedule":       "@every 12h",
+		},
+	})
+	r1 := f.doRequest(t, "POST", "/api/v1/fleets", token, body)
+	if r1.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(r1.Body)
+		_ = r1.Body.Close()
+		t.Fatalf("seed POST status=%d body=%s", r1.StatusCode, string(raw))
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.NewDecoder(r1.Body).Decode(&created)
+	_ = r1.Body.Close()
+
+	r2 := f.doRequest(t, "GET", "/api/v1/fleets/"+created.ID, token, nil)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("GET status=%d body=%s", r2.StatusCode, string(raw))
+	}
+	var got struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Policy      struct {
+			DefaultBaselineId  string `json:"defaultBaselineId"`
+			DefaultLevel       string `json:"defaultLevel"`
+			DefaultCriticality string `json:"defaultCriticality"`
+			ScanSchedule       string `json:"scanSchedule"`
+		} `json:"policy"`
+		RobotCount int `json:"robotCount"`
+	}
+	if err := json.NewDecoder(r2.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.ID != created.ID {
+		t.Errorf("id=%q, want %q", got.ID, created.ID)
+	}
+	if got.Name != "fleet-getone" {
+		t.Errorf("name=%q, want fleet-getone", got.Name)
+	}
+	if got.Policy.ScanSchedule != "@every 12h" {
+		t.Errorf("scanSchedule=%q, want @every 12h", got.Policy.ScanSchedule)
+	}
+	if got.Policy.DefaultLevel != "L1" {
+		t.Errorf("defaultLevel=%q, want L1", got.Policy.DefaultLevel)
+	}
+	if got.RobotCount != 0 {
+		t.Errorf("robotCount=%d, want 0 (no robots seeded)", got.RobotCount)
+	}
+}
+
+func TestGetFleetReturns404ForUnknownID(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+	resp := f.doRequest(t, "GET", "/api/v1/fleets/fl_NOPE", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 404", resp.StatusCode, string(raw))
+	}
+}
+
+func TestGetFleetReturns401WithoutAuth(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	resp := f.doRequest(t, "GET", "/api/v1/fleets/fl_X", "", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want 401", resp.StatusCode)
+	}
+}
+
 func TestCreateFleetReturns201(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()

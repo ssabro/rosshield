@@ -222,7 +222,13 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get a single fleet
+         * @description Returns a single fleet (with policy + robotCount) for the caller tenant.
+         *     Used by Web UI deep-link to /fleets/{id} so the page can render without
+         *     waiting for the full list. Cross-tenant or deleted fleets return 404.
+         */
+        get: operations["getFleet"];
         put?: never;
         post?: never;
         /**
@@ -2069,6 +2075,30 @@ export interface operations {
             };
             400: components["responses"]["ErrorResponse"];
             409: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getFleet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fleetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Fleet"];
+                };
+            };
+            404: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];
         };
     };

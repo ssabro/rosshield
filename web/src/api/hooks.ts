@@ -533,6 +533,28 @@ export function useFleets() {
   })
 }
 
+// useFleet는 GET /api/v1/fleets/{fleetId} 단일 조회 hook입니다.
+// /fleets/$fleetId deep-link 진입 시 useFleets 응답 대기 회피용.
+export function useFleet(fleetId?: string) {
+  return useQuery({
+    queryKey: ['fleet', fleetId],
+    enabled: !!fleetId,
+    queryFn: async (): Promise<Fleet> => {
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/fleets/{fleetId}',
+        { params: { path: { fleetId: fleetId! } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as Fleet
+    },
+  })
+}
+
 // === Fleet mutations (admin) ===
 
 export interface CreateFleetVars {

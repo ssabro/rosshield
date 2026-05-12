@@ -367,6 +367,25 @@ paths:
   /api/v1/fleets/{fleetId}:
     parameters:
       - { in: path, name: fleetId, required: true, schema: { type: string } }
+    get:
+      tags: [fleet]
+      operationId: getFleet
+      summary: Get a single fleet
+      description: |
+        Returns a single fleet (with policy + robotCount) for the caller tenant.
+        Used by Web UI deep-link to /fleets/{id} so the page can render without
+        waiting for the full list. Cross-tenant or deleted fleets return 404.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Fleet"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
     patch:
       tags: [fleet]
       operationId: updateFleet
