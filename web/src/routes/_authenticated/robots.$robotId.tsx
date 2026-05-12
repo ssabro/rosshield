@@ -1,9 +1,11 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 
-import { useFleet, useRobot } from '@/api/hooks'
+import { useDeleteRobot, useFleet, useIsAdmin, useRobot } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -118,12 +120,85 @@ function RobotDetailPage(): React.ReactElement {
         </CardContent>
       </Card>
 
+      <DeleteRobotCard robot={robot} />
+
       <p className="text-xs text-muted-foreground">
         <Link to="/robots" className="underline">
           {t('robots.detail.back')}
         </Link>
       </p>
     </div>
+  )
+}
+
+// DeleteRobotCard — admin only, 2-step confirm. 성공 시 /robots로 navigate.
+function DeleteRobotCard({ robot }: { robot: Robot }): React.ReactElement | null {
+  const t = useT()
+  const isAdmin = useIsAdmin()
+  const navigate = useNavigate()
+  const del = useDeleteRobot()
+  const [confirming, setConfirming] = useState(false)
+  const [error, setError] = useState('')
+
+  if (!isAdmin) return null
+
+  if (confirming) {
+    return (
+      <Card className="max-w-xl border-destructive">
+        <CardHeader>
+          <CardTitle className="text-sm text-destructive">
+            {t('robots.detail.delete.confirmTitle')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p>{t('robots.detail.delete.confirmBody')}</p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={del.isPending}
+              onClick={() =>
+                del.mutate(robot.id, {
+                  onSuccess: () => {
+                    void navigate({ to: '/robots', replace: true })
+                  },
+                  onError: (e) =>
+                    setError(e instanceof Error ? e.message : t('robots.detail.delete.error')),
+                })
+              }
+            >
+              {del.isPending
+                ? t('robots.detail.delete.pending')
+                : t('robots.detail.delete.yes')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setConfirming(false)
+                setError('')
+              }}
+            >
+              {t('robots.detail.delete.cancel')}
+            </Button>
+            {error && <span className="text-xs text-destructive">{error}</span>}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle className="text-sm">{t('robots.detail.delete.title')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Button variant="destructive" size="sm" onClick={() => setConfirming(true)}>
+          {t('robots.detail.delete.button')}
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 

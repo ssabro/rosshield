@@ -252,6 +252,10 @@ func (h *Handlers) Mount(r chi.Router) {
 			r.Post("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
 				h.CreateRobot(w, req, gen.CreateRobotParams{})
 			})
+			// Robot 삭제 (soft delete, R3-5).
+			r.Delete("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
+				h.DeleteRobot(w, req, chi.URLParam(req, "robotId"))
+			})
 
 			// Scan 실행 (시스템 자원 소비)
 			r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {

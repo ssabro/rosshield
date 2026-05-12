@@ -184,7 +184,13 @@ export interface paths {
         get: operations["getRobot"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Soft-delete a robot (admin)
+         * @description Marks the robot as deleted (deleted_at = now). Linked credential is also
+         *     revoked in the same Tx (R3-3·R3-5). Idempotent NOT — second delete on the
+         *     same robot returns 404.
+         */
+        delete: operations["deleteRobot"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2027,6 +2033,28 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Robot"];
                 };
+            };
+            404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteRobot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                robotId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted (no content) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];

@@ -95,3 +95,81 @@ func TestGetRobotReturns401WithoutAuth(t *testing.T) {
 		t.Fatalf("status=%d, want 401", resp.StatusCode)
 	}
 }
+
+func TestDeleteRobotReturns204AndIsNotIdempotent(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	seedFleetAndRobot(t, f, "fleet-del-rb", "rb-del", "10.0.7.1")
+	token := f.loginAndGetToken(t)
+
+	// list로 robot ID 추출.
+	listResp := f.doRequest(t, "GET", "/api/v1/robots", token, nil)
+	if listResp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(listResp.Body)
+		_ = listResp.Body.Close()
+		t.Fatalf("list status=%d body=%s", listResp.StatusCode, string(raw))
+	}
+	var list struct {
+		Robots []struct {
+			ID string `json:"id"`
+		} `json:"robots"`
+	}
+	_ = json.NewDecoder(listResp.Body).Decode(&list)
+	_ = listResp.Body.Close()
+	if len(list.Robots) != 1 {
+		t.Fatalf("expected 1 robot from list, got %d", len(list.Robots))
+	}
+	rid := list.Robots[0].ID
+
+	// 첫 DELETE → 204.
+	r1 := f.doRequest(t, "DELETE", "/api/v1/robots/"+rid, token, nil)
+	defer func() { _ = r1.Body.Close() }()
+	if r1.StatusCode != http.StatusNoContent {
+		raw, _ := io.ReadAll(r1.Body)
+		t.Fatalf("first DELETE status=%d body=%s, want 204", r1.StatusCode, string(raw))
+	}
+
+	// 두 번째 DELETE → 404 (R3-5 명시적 한 번만, 멱등 X).
+	r2 := f.doRequest(t, "DELETE", "/api/v1/robots/"+rid, token, nil)
+	defer func() { _ = r2.Body.Close() }()
+	if r2.StatusCode != http.StatusNotFound {
+		raw, _ := io.ReadAll(r2.Body)
+		t.Fatalf("second DELETE status=%d body=%s, want 404", r2.StatusCode, string(raw))
+	}
+
+	// 삭제된 robot은 list에서 사라짐.
+	listResp2 := f.doRequest(t, "GET", "/api/v1/robots", token, nil)
+	defer func() { _ = listResp2.Body.Close() }()
+	var list2 struct {
+		Robots []struct {
+			ID string `json:"id"`
+		} `json:"robots"`
+	}
+	_ = json.NewDecoder(listResp2.Body).Decode(&list2)
+	if len(list2.Robots) != 0 {
+		t.Errorf("after delete, list count=%d, want 0", len(list2.Robots))
+	}
+}
+
+func TestDeleteRobotReturns404ForUnknownID(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+	resp := f.doRequest(t, "DELETE", "/api/v1/robots/ro_NOT_EXIST", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 404", resp.StatusCode, string(raw))
+	}
+}
+
+func TestDeleteRobotReturns401WithoutAuth(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	resp := f.doRequest(t, "DELETE", "/api/v1/robots/ro_X", "", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want 401", resp.StatusCode)
+	}
+}

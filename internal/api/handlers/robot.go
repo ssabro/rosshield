@@ -112,6 +112,39 @@ func (h *Handlers) GetRobot(w http.ResponseWriter, r *http.Request, robotID stri
 	writeJSON(w, http.StatusOK, toRobotResponse(rb))
 }
 
+// DeleteRobot은 DELETE /api/v1/robots/{robotId} 핸들러입니다 (admin only — chi mount).
+//
+// soft delete (deleted_at = now). 미존재(이미 deleted, cross-tenant) → 404.
+// 응답 204 No Content. 두 번째 호출도 404 (멱등 아님 — 명시적 한 번만, R3-5).
+func (h *Handlers) DeleteRobot(w http.ResponseWriter, r *http.Request, robotID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if robotID == "" {
+		writeError(w, http.StatusBadRequest, "missing robotId")
+		return
+	}
+	if h.deps.Robot == nil {
+		writeError(w, http.StatusServiceUnavailable, "robot service not configured")
+		return
+	}
+
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		return h.deps.Robot.DeleteRobot(ctx, tx, robotID)
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "robot not found")
+			return
+		}
+		writeError(w, errorStatusFor(err), "delete robot failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // createRobotRequest는 POST /api/v1/robots 요청 본문입니다.
 //
 // 평문 자격증명을 받음 — 메모리 전용 처리 후 도메인 layer가 KEK→DEK로 wrap.

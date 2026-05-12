@@ -323,6 +323,32 @@ export const useRobots = (fleetId?: string) => {
   })
 }
 
+// useDeleteRobot — DELETE /api/v1/robots/{robotId} mutation hook (admin).
+//
+// 성공 시 ['robots'] cache invalidate. R3-5: 두 번째 호출 404(멱등 X) — UI는
+// 성공 시 redirect, 404 받으면 이미 사라진 상태.
+export const useDeleteRobot = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (robotId: string): Promise<void> => {
+      const { error, response } = await apiClient.DELETE(
+        '/api/v1/robots/{robotId}',
+        { params: { path: { robotId } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['robots'] })
+      qc.invalidateQueries({ queryKey: ['fleets'] }) // robotCount 갱신
+    },
+  })
+}
+
 // useRobot은 GET /api/v1/robots/{robotId} 단일 조회 hook입니다.
 // 향후 robot 상세 페이지(예: /robots/$robotId) 진입 시 활용.
 export function useRobot(robotId?: string) {

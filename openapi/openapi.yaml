@@ -316,6 +316,21 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
+    delete:
+      tags: [robot]
+      operationId: deleteRobot
+      summary: Soft-delete a robot (admin)
+      description: |
+        Marks the robot as deleted (deleted_at = now). Linked credential is also
+        revoked in the same Tx (R3-3·R3-5). Idempotent NOT — second delete on the
+        same robot returns 404.
+      responses:
+        "204":
+          description: Deleted (no content)
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
 
   /api/v1/fleets:
     get:
