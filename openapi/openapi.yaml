@@ -332,6 +332,49 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/robots/{robotId}/credential:rotate:
+    parameters:
+      - { in: path, name: robotId, required: true, schema: { type: string, pattern: "^ro_[A-Z0-9]+$" } }
+    post:
+      tags: [robot]
+      operationId: rotateCredential
+      summary: Rotate a robot's SSH credential (admin)
+      description: |
+        Generates a new credential and updates the robot's credential_id reference;
+        the previous credential is soft-deleted (revoked_at) for audit trail (R3-3).
+        Plain credential material is sent in the request body and is NEVER stored
+        outside the wrapped DEK form. Audit emits credential.rotated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [authType, username]
+              properties:
+                authType:             { type: string, enum: [password, privateKey] }
+                username:             { type: string }
+                password:             { type: string }
+                privateKeyPem:        { type: string }
+                privateKeyPassphrase: { type: string }
+      responses:
+        "200":
+          description: Rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [newCredentialId, oldCredentialId]
+                properties:
+                  newCredentialId: { type: string }
+                  oldCredentialId: { type: string }
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/robots/{robotId}/results:
     parameters:
       - { in: path, name: robotId, required: true, schema: { type: string, pattern: "^ro_[A-Z0-9]+$" } }

@@ -198,6 +198,87 @@ func (h *Handlers) ListRobotResults(w http.ResponseWriter, r *http.Request, robo
 	writeJSON(w, http.StatusOK, out)
 }
 
+// rotateCredentialRequest는 POST /api/v1/robots/{robotId}/credential:rotate 본문입니다.
+//
+// 평문 자격증명 — 메모리에서만 처리, 도메인 layer가 KEK→DEK로 wrap.
+type rotateCredentialRequest struct {
+	AuthType             string `json:"authType"` // "password" | "privateKey"
+	Username             string `json:"username"`
+	Password             string `json:"password,omitempty"`
+	PrivateKeyPEM        string `json:"privateKeyPem,omitempty"`
+	PrivateKeyPassphrase string `json:"privateKeyPassphrase,omitempty"`
+}
+
+// rotateCredentialResponse는 응답 — 평문 미포함, 새/이전 credentialID만.
+type rotateCredentialResponse struct {
+	NewCredentialID string `json:"newCredentialId"`
+	OldCredentialID string `json:"oldCredentialId"`
+}
+
+// RotateCredential은 POST /api/v1/robots/{robotId}/credential:rotate 핸들러입니다 (admin only).
+//
+// 새 credential 생성 + robot.credential_id 갱신 + 이전 credential을 revoked_at으로 soft delete.
+// audit emit (credential.rotated, R3-3).
+func (h *Handlers) RotateCredential(w http.ResponseWriter, r *http.Request, robotID string) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if robotID == "" {
+		writeError(w, http.StatusBadRequest, "missing robotId")
+		return
+	}
+	if h.deps.Robot == nil {
+		writeError(w, http.StatusServiceUnavailable, "robot service not configured")
+		return
+	}
+
+	var req rotateCredentialRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	domainReq := robot.RotateCredentialRequest{
+		RobotID: robotID,
+		Material: robot.CredentialMaterial{
+			Type:                 robot.CredentialType(req.AuthType),
+			Username:             req.Username,
+			Password:             req.Password,
+			PrivateKeyPEM:        req.PrivateKeyPEM,
+			PrivateKeyPassphrase: req.PrivateKeyPassphrase,
+		},
+	}
+
+	var result robot.RotateCredentialResult
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		res, e := h.deps.Robot.RotateCredential(ctx, tx, domainReq)
+		if e != nil {
+			return e
+		}
+		result = res
+		return nil
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			writeError(w, http.StatusNotFound, "robot not found")
+		case errors.Is(err, robot.ErrCredentialUnknownType),
+			errors.Is(err, robot.ErrCredentialEmptyUser):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, errorStatusFor(err), "rotate credential failed")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, rotateCredentialResponse{
+		NewCredentialID: result.NewCredentialID,
+		OldCredentialID: result.OldCredentialID,
+	})
+}
+
 // DeleteRobot은 DELETE /api/v1/robots/{robotId} 핸들러입니다 (admin only — chi mount).
 //
 // soft delete (deleted_at = now). 미존재(이미 deleted, cross-tenant) → 404.

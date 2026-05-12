@@ -209,6 +209,108 @@ func TestListRobotResultsReturns401WithoutAuth(t *testing.T) {
 	}
 }
 
+func TestRotateCredentialReturns200WithNewID(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	seedFleetAndRobot(t, f, "fleet-rot", "rb-rot", "10.0.9.1")
+	token := f.loginAndGetToken(t)
+
+	listResp := f.doRequest(t, "GET", "/api/v1/robots", token, nil)
+	var list struct {
+		Robots []struct {
+			ID string `json:"id"`
+		} `json:"robots"`
+	}
+	_ = json.NewDecoder(listResp.Body).Decode(&list)
+	_ = listResp.Body.Close()
+	if len(list.Robots) != 1 {
+		t.Fatalf("expected 1 robot, got %d", len(list.Robots))
+	}
+	rid := list.Robots[0].ID
+
+	body, _ := json.Marshal(map[string]any{
+		"authType": "password",
+		"username": "rotated-user",
+		"password": "rotated-pw-very-long-12345",
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/robots/"+rid+"/credential:rotate", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var got struct {
+		NewCredentialID string `json:"newCredentialId"`
+		OldCredentialID string `json:"oldCredentialId"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&got)
+	if got.NewCredentialID == "" {
+		t.Errorf("newCredentialId empty")
+	}
+	if got.OldCredentialID == "" {
+		t.Errorf("oldCredentialId empty")
+	}
+	if got.NewCredentialID == got.OldCredentialID {
+		t.Errorf("new and old credential ID same: %q", got.NewCredentialID)
+	}
+}
+
+func TestRotateCredentialReturns404ForUnknownRobot(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	token := f.loginAndGetToken(t)
+	body, _ := json.Marshal(map[string]any{
+		"authType": "password",
+		"username": "u",
+		"password": "p",
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/robots/ro_NOPE/credential:rotate", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 404", resp.StatusCode, string(raw))
+	}
+}
+
+func TestRotateCredentialReturns400ForInvalidAuthType(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	seedFleetAndRobot(t, f, "fleet-rot-bad", "rb-rot-bad", "10.0.9.2")
+	token := f.loginAndGetToken(t)
+
+	listResp := f.doRequest(t, "GET", "/api/v1/robots", token, nil)
+	var list struct {
+		Robots []struct {
+			ID string `json:"id"`
+		} `json:"robots"`
+	}
+	_ = json.NewDecoder(listResp.Body).Decode(&list)
+	_ = listResp.Body.Close()
+	rid := list.Robots[0].ID
+
+	body, _ := json.Marshal(map[string]any{
+		"authType": "biometric",
+		"username": "u",
+	})
+	resp := f.doRequest(t, "POST", "/api/v1/robots/"+rid+"/credential:rotate", token, body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s, want 400", resp.StatusCode, string(raw))
+	}
+}
+
+func TestRotateCredentialReturns401WithoutAuth(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	body, _ := json.Marshal(map[string]any{"authType": "password", "username": "u"})
+	resp := f.doRequest(t, "POST", "/api/v1/robots/ro_X/credential:rotate", "", body)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want 401", resp.StatusCode)
+	}
+}
+
 func TestDeleteRobotReturns401WithoutAuth(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()

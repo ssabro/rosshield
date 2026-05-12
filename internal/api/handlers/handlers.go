@@ -259,6 +259,10 @@ func (h *Handlers) Mount(r chi.Router) {
 			r.Delete("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
 				h.DeleteRobot(w, req, chi.URLParam(req, "robotId"))
 			})
+			// Robot credential 회전 (R3-3, audit emit).
+			r.Post("/api/v1/robots/{robotId}/credential:rotate", func(w http.ResponseWriter, req *http.Request) {
+				h.RotateCredential(w, req, chi.URLParam(req, "robotId"))
+			})
 
 			// Scan 실행 (시스템 자원 소비)
 			r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {

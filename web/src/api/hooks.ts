@@ -323,6 +323,54 @@ export const useRobots = (fleetId?: string) => {
   })
 }
 
+// useRotateCredential — POST /api/v1/robots/{robotId}/credential:rotate mutation (admin).
+//
+// 평문 자격증명을 받음 — 메모리에서만 처리, 도메인 layer가 KEK→DEK로 wrap.
+export interface RotateCredentialVars {
+  robotId: string
+  authType: 'password' | 'privateKey'
+  username: string
+  password?: string
+  privateKeyPem?: string
+  privateKeyPassphrase?: string
+}
+
+export interface RotateCredentialResult {
+  newCredentialId: string
+  oldCredentialId: string
+}
+
+export const useRotateCredential = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: RotateCredentialVars): Promise<RotateCredentialResult> => {
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/robots/{robotId}/credential:rotate',
+        {
+          params: { path: { robotId: vars.robotId } },
+          body: {
+            authType: vars.authType,
+            username: vars.username,
+            password: vars.password,
+            privateKeyPem: vars.privateKeyPem,
+            privateKeyPassphrase: vars.privateKeyPassphrase,
+          },
+        },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as RotateCredentialResult
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['robots'] })
+    },
+  })
+}
+
 // useDeleteRobot — DELETE /api/v1/robots/{robotId} mutation hook (admin).
 //
 // 성공 시 ['robots'] cache invalidate. R3-5: 두 번째 호출 404(멱등 X) — UI는

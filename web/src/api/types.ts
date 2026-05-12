@@ -196,6 +196,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/robots/{robotId}/credential:rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                robotId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a robot's SSH credential (admin)
+         * @description Generates a new credential and updates the robot's credential_id reference;
+         *     the previous credential is soft-deleted (revoked_at) for audit trail (R3-3).
+         *     Plain credential material is sent in the request body and is NEVER stored
+         *     outside the wrapped DEK form. Audit emits credential.rotated.
+         */
+        post: operations["rotateCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/robots/{robotId}/results": {
         parameters: {
             query?: {
@@ -2100,6 +2125,45 @@ export interface operations {
                 };
                 content?: never;
             };
+            404: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    rotateCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                robotId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    authType: "password" | "privateKey";
+                    username: string;
+                    password?: string;
+                    privateKeyPem?: string;
+                    privateKeyPassphrase?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Rotated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        newCredentialId: string;
+                        oldCredentialId: string;
+                    };
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
             default: components["responses"]["ErrorResponse"];
         };

@@ -7,6 +7,7 @@ import {
   useIsAdmin,
   useRobot,
   useRobotResults,
+  useRotateCredential,
 } from '@/api/hooks'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -19,6 +20,17 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+import type { FormEvent } from 'react'
 
 import type { Robot, RobotResult } from '@/api/hooks'
 
@@ -140,6 +152,8 @@ function RobotDetailPage(): React.ReactElement {
       </Card>
 
       <RobotResultsCard robotId={robot.id} />
+
+      <RotateCredentialCard robotId={robot.id} />
 
       <DeleteRobotCard robot={robot} />
 
@@ -371,6 +385,182 @@ function formatRelative(iso?: string): string {
   if (hr < 24) return `${hr}h`
   const day = Math.round(hr / 24)
   return `${day}d`
+}
+
+// RotateCredentialCard — admin only. 평문 자격증명 입력 → 도메인 KEK 재wrap. 성공 시 성공 메시지 + 폼 초기화.
+function RotateCredentialCard({
+  robotId,
+}: {
+  robotId: string
+}): React.ReactElement | null {
+  const t = useT()
+  const isAdmin = useIsAdmin()
+  const rotate = useRotateCredential()
+  const [open, setOpen] = useState(false)
+  const [authType, setAuthType] = useState<'password' | 'privateKey'>('password')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [privateKeyPem, setPrivateKeyPem] = useState('')
+  const [privateKeyPassphrase, setPrivateKeyPassphrase] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  if (!isAdmin) return null
+
+  const reset = () => {
+    setAuthType('password')
+    setUsername('')
+    setPassword('')
+    setPrivateKeyPem('')
+    setPrivateKeyPassphrase('')
+    setError('')
+  }
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+    rotate.mutate(
+      {
+        robotId,
+        authType,
+        username,
+        password: authType === 'password' ? password : undefined,
+        privateKeyPem: authType === 'privateKey' ? privateKeyPem : undefined,
+        privateKeyPassphrase:
+          authType === 'privateKey' && privateKeyPassphrase
+            ? privateKeyPassphrase
+            : undefined,
+      },
+      {
+        onSuccess: (data) => {
+          setSuccess(
+            t('robots.detail.rotate.success', { id: data.newCredentialId }),
+          )
+          reset()
+          setOpen(false)
+        },
+        onError: (e) => setError(e instanceof Error ? e.message : t('robots.detail.rotate.error')),
+      },
+    )
+  }
+
+  if (!open) {
+    return (
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle className="text-sm">{t('robots.detail.rotate.title')}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+            {t('robots.detail.rotate.button')}
+          </Button>
+          {success && <p className="text-xs text-foreground">{success}</p>}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle className="text-sm">{t('robots.detail.rotate.formTitle')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-3 text-sm">
+          <div className="space-y-2">
+            <Label htmlFor="rot-authtype">{t('robots.detail.rotate.authType')}</Label>
+            <Select
+              value={authType}
+              onValueChange={(v) => setAuthType(v as 'password' | 'privateKey')}
+            >
+              <SelectTrigger id="rot-authtype">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="password">password</SelectItem>
+                <SelectItem value="privateKey">privateKey</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="rot-user">{t('robots.detail.rotate.username')}</Label>
+            <Input
+              id="rot-user"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          {authType === 'password' ? (
+            <div className="space-y-2">
+              <Label htmlFor="rot-pw">{t('robots.detail.rotate.password')}</Label>
+              <Input
+                id="rot-pw"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="rot-pem">{t('robots.detail.rotate.privateKey')}</Label>
+                <textarea
+                  id="rot-pem"
+                  required
+                  value={privateKeyPem}
+                  onChange={(e) => setPrivateKeyPem(e.target.value)}
+                  className="min-h-[120px] w-full rounded border border-input bg-background px-3 py-2 font-mono text-xs"
+                  placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..."
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rot-pass">
+                  {t('robots.detail.rotate.privateKeyPassphrase')}
+                </Label>
+                <Input
+                  id="rot-pass"
+                  type="password"
+                  value={privateKeyPassphrase}
+                  onChange={(e) => setPrivateKeyPassphrase(e.target.value)}
+                  autoComplete="off"
+                  placeholder={t('robots.detail.rotate.optional')}
+                />
+              </div>
+            </>
+          )}
+          {error && (
+            <p className="text-xs text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <Button type="submit" size="sm" disabled={rotate.isPending}>
+              {rotate.isPending
+                ? t('robots.detail.rotate.pending')
+                : t('robots.detail.rotate.submit')}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setOpen(false)
+                reset()
+              }}
+            >
+              {t('robots.detail.rotate.cancel')}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  )
 }
 
 // silence unused import (Robot type — referenced via useRobot return).
