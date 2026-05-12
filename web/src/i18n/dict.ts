@@ -126,6 +126,10 @@ export const ko = {
   'scans.session.cancel': '스캔 취소',
   'scans.session.cancel.pending': '취소 중…',
   'scans.session.cancel.error': '취소 실패',
+  'scans.list.title': '최근 세션',
+  'scans.list.loading': '세션 목록 로드 중…',
+  'scans.list.empty': '아직 시작된 스캔이 없습니다.',
+  'scans.list.error': '목록 로드 실패',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':
@@ -799,6 +803,10 @@ export const en: Record<keyof typeof ko, string> = {
   'scans.session.cancel': 'Cancel scan',
   'scans.session.cancel.pending': 'Cancelling…',
   'scans.session.cancel.error': 'Cancel failed',
+  'scans.list.title': 'Recent sessions',
+  'scans.list.loading': 'Loading sessions…',
+  'scans.list.empty': 'No scans started yet.',
+  'scans.list.error': 'Failed to load sessions',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':

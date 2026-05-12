@@ -146,6 +146,128 @@ func TestScanProgressWSRejectsInvalidQueryToken(t *testing.T) {
 	}
 }
 
+func TestListScansReturnsEmptyForFreshTenant(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	token := f.loginAndGetToken(t)
+	resp := f.doRequest(t, "GET", "/api/v1/scans", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var out struct {
+		Sessions []map[string]any `json:"sessions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(out.Sessions))
+	}
+}
+
+func TestListScansReturnsRecentSessions(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	fleetID := seedFleetAndRobot(t, f, "fleet-list", "rb-list", "10.0.0.40")
+	packID := seedPack(t, f, "pk_LIST")
+	token := f.loginAndGetToken(t)
+
+	// 3 세션 시드.
+	for i := 0; i < 3; i++ {
+		body, _ := json.Marshal(map[string]any{
+			"fleetId": fleetID,
+			"packId":  packID,
+			"trigger": "manual",
+		})
+		r := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+		if r.StatusCode != http.StatusCreated {
+			raw, _ := io.ReadAll(r.Body)
+			_ = r.Body.Close()
+			t.Fatalf("seed POST [%d] status=%d body=%s", i, r.StatusCode, string(raw))
+		}
+		_ = r.Body.Close()
+	}
+
+	resp := f.doRequest(t, "GET", "/api/v1/scans", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var out struct {
+		Sessions []struct {
+			SessionID string `json:"sessionId"`
+			FleetID   string `json:"fleetId"`
+			Status    string `json:"status"`
+			CreatedAt string `json:"createdAt"`
+		} `json:"sessions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Sessions) != 3 {
+		t.Fatalf("expected 3 sessions, got %d", len(out.Sessions))
+	}
+	for i, s := range out.Sessions {
+		if s.SessionID == "" {
+			t.Errorf("session[%d] empty sessionId", i)
+		}
+		if s.FleetID != fleetID {
+			t.Errorf("session[%d] fleetId=%q, want %q", i, s.FleetID, fleetID)
+		}
+		if s.CreatedAt == "" {
+			t.Errorf("session[%d] empty createdAt", i)
+		}
+	}
+}
+
+func TestListScansHonorsLimit(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+
+	fleetID := seedFleetAndRobot(t, f, "fleet-limit", "rb-limit", "10.0.0.41")
+	packID := seedPack(t, f, "pk_LIMIT")
+	token := f.loginAndGetToken(t)
+
+	for i := 0; i < 5; i++ {
+		body, _ := json.Marshal(map[string]any{
+			"fleetId": fleetID,
+			"packId":  packID,
+			"trigger": "manual",
+		})
+		r := f.doRequest(t, "POST", "/api/v1/scans", token, body)
+		_ = r.Body.Close()
+	}
+
+	resp := f.doRequest(t, "GET", "/api/v1/scans?limit=2", token, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, string(raw))
+	}
+	var out struct {
+		Sessions []map[string]any `json:"sessions"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if len(out.Sessions) != 2 {
+		t.Errorf("expected 2 sessions (limit=2), got %d", len(out.Sessions))
+	}
+}
+
+func TestListScansReturns401WithoutAuth(t *testing.T) {
+	f := newFixture(t)
+	defer f.closeFn()
+	resp := f.doRequest(t, "GET", "/api/v1/scans", "", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want 401", resp.StatusCode)
+	}
+}
+
 func TestCancelScanReturns200ForPendingSession(t *testing.T) {
 	f := newFixture(t)
 	defer f.closeFn()

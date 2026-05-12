@@ -317,10 +317,12 @@ paths:
       tags: [scan]
       operationId: listScans
       summary: List scan sessions
-      x-status: todo
+      description: |
+        Returns recent sessions for the caller tenant, sorted by createdAt DESC.
+        Optional query filters: `status` (pending/running/completed/failed/cancelled),
+        `fleetId`, `limit` (default 50).
       parameters:
         - $ref: "#/components/parameters/Limit"
-        - $ref: "#/components/parameters/Cursor"
         - { in: query, name: status,  schema: { type: string } }
         - { in: query, name: fleetId, schema: { type: string } }
       responses:
@@ -329,7 +331,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Envelope"
+                $ref: "#/components/schemas/ScanListResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
     post:
@@ -1814,6 +1816,14 @@ components:
         packId:  { type: string }
         trigger: { type: string, description: "Empty → manual" }
         total:   { type: integer, description: "Optional — orchestrator will compute" }
+
+    ScanListResponse:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/ScanSession" }
 
     ScanSession:
       type: object

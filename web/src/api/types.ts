@@ -192,7 +192,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List scan sessions */
+        /**
+         * List scan sessions
+         * @description Returns recent sessions for the caller tenant, sorted by createdAt DESC.
+         *     Optional query filters: `status` (pending/running/completed/failed/cancelled),
+         *     `fleetId`, `limit` (default 50).
+         */
         get: operations["listScans"];
         put?: never;
         /**
@@ -1075,6 +1080,9 @@ export interface components {
             /** @description Optional — orchestrator will compute */
             total?: number;
         };
+        ScanListResponse: {
+            sessions: components["schemas"]["ScanSession"][];
+        };
         ScanSession: {
             sessionId: string;
             tenantId: string;
@@ -1913,7 +1921,6 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: components["parameters"]["Limit"];
-                cursor?: components["parameters"]["Cursor"];
                 status?: string;
                 fleetId?: string;
             };
@@ -1929,7 +1936,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Envelope"];
+                    "application/json": components["schemas"]["ScanListResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

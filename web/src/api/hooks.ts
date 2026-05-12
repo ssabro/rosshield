@@ -492,6 +492,54 @@ export interface ScanSession {
   completedAt?: string | null
 }
 
+// useScansFilter는 useScans hook의 옵션입니다.
+export interface UseScansFilter {
+  fleetId?: string
+  status?: string
+  limit?: number
+  // pollMs > 0이면 active 세션(pending/running) 1건 이상 있는 동안 자동 재조회.
+  // all-terminal 도달 시 자동 정지 (UX 단순화).
+  pollMs?: number
+}
+
+// useScans는 GET /api/v1/scans 목록 조회 hook입니다.
+export function useScans(opts?: UseScansFilter) {
+  const fleetId = opts?.fleetId
+  const status = opts?.status
+  const limit = opts?.limit
+  const pollMs = opts?.pollMs
+  return useQuery({
+    queryKey: ['scans', { fleetId, status, limit }],
+    queryFn: async (): Promise<ScanSession[]> => {
+      const { data, error, response } = await apiClient.GET('/api/v1/scans', {
+        params: {
+          query: {
+            fleetId,
+            status,
+            limit,
+          },
+        },
+      })
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as { sessions?: ScanSession[] } | undefined
+      return body?.sessions ?? []
+    },
+    refetchInterval: pollMs
+      ? (query) => {
+          const list = query.state.data as ScanSession[] | undefined
+          if (!list || list.length === 0) return pollMs
+          const hasActive = list.some((s) => !isTerminalScanStatus(s.status))
+          return hasActive ? pollMs : false
+        }
+      : false,
+  })
+}
+
 // useScan은 단일 scan session 조회 hook입니다.
 //
 // 용도:

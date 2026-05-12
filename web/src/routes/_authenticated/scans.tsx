@@ -9,6 +9,7 @@ import {
   usePacks,
   useScan,
   useScanProgress,
+  useScans,
   useStartScan,
 } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -172,8 +173,137 @@ function ScansPage(): React.ReactElement {
       </Card>
 
       {activeSessionId && <SessionProgressCardById sessionId={activeSessionId} />}
+
+      <RecentSessionsCard activeSessionId={activeSessionId} />
     </div>
   )
+}
+
+// RecentSessionsCard는 최근 세션 10개를 표 형태로 표시합니다.
+// active 세션(pending/running) 1건 이상이면 5s polling — terminal 도달 시 정지.
+// 행 클릭 시 ?session=<id>로 navigate해 위 진행 카드에 즉시 표시.
+function RecentSessionsCard({
+  activeSessionId,
+}: {
+  activeSessionId?: string
+}): React.ReactElement {
+  const t = useT()
+  const navigate = useNavigate()
+  const scansQuery = useScans({ limit: 10, pollMs: 5000 })
+
+  if (scansQuery.isPending) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('scans.list.title')}</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          {t('scans.list.loading')}
+        </CardContent>
+      </Card>
+    )
+  }
+  if (scansQuery.isError) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('scans.list.title')}</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-destructive">
+          {scansQuery.error instanceof Error
+            ? scansQuery.error.message
+            : t('scans.list.error')}
+        </CardContent>
+      </Card>
+    )
+  }
+  const list = scansQuery.data ?? []
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('scans.list.title')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {list.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('scans.list.empty')}</p>
+        ) : (
+          <div className="space-y-1">
+            {list.map((s) => (
+              <SessionRow
+                key={s.sessionId}
+                session={s}
+                isActive={s.sessionId === activeSessionId}
+                onSelect={() =>
+                  void navigate({
+                    to: '/scans',
+                    search: { session: s.sessionId },
+                    replace: true,
+                  })
+                }
+              />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function SessionRow({
+  session,
+  isActive,
+  onSelect,
+}: {
+  session: ScanSession
+  isActive: boolean
+  onSelect: () => void
+}): React.ReactElement {
+  const t = useT()
+  const total = session.total
+  const completed = session.completed
+  const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full rounded border px-3 py-2 text-left text-sm transition hover:bg-accent ${
+        isActive ? 'border-primary bg-accent/50' : 'border-border'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="truncate font-mono text-xs">{session.sessionId}</span>
+        <Badge variant={statusVariant(session.status)}>{session.status}</Badge>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {formatRelativeTime(session.createdAt)}
+        </span>
+      </div>
+      <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          fleet=<span className="font-mono">{session.fleetId}</span> ·{' '}
+          {completed}/{total}
+          {session.failed > 0
+            ? ` (${t('scans.session.failed', { count: session.failed })})`
+            : ''}
+        </span>
+        <span>{percent}%</span>
+      </div>
+    </button>
+  )
+}
+
+function formatRelativeTime(iso?: string): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return ''
+  const diffMs = Date.now() - t
+  const sec = Math.round(diffMs / 1000)
+  if (sec < 60) return `${sec}s`
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min}m`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr}h`
+  const day = Math.round(hr / 24)
+  return `${day}d`
 }
 
 // SessionProgressCardById는 URL의 sessionId로 세션을 fetch한 뒤 진행 카드를 보여줍니다.

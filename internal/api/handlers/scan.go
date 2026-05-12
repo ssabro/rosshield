@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/ssabro/rosshield/internal/api/gen"
@@ -246,6 +247,77 @@ func (h *Handlers) CancelScan(w http.ResponseWriter, r *http.Request, sessionID 
 	}
 
 	writeJSON(w, http.StatusOK, toScanSessionResponse(session))
+}
+
+// scanListResponse는 GET /api/v1/scans 응답 envelope입니다.
+type scanListResponse struct {
+	Sessions []scanSessionResponse `json:"sessions"`
+}
+
+// listScansFilter는 query string에서 추출한 필터입니다.
+type listScansFilter struct {
+	FleetID string
+	Status  string
+	Limit   int
+}
+
+// ListScans는 GET /api/v1/scans 핸들러입니다.
+//
+// tenant scope 세션을 created_at DESC로 반환. 옵션 query: status·fleetId·limit.
+// limit 미지정 시 도메인 default(50). 최대 limit 200으로 cap.
+func (h *Handlers) ListScans(w http.ResponseWriter, r *http.Request, _ gen.ListScansParams) {
+	tenantID := storage.TenantIDFromContext(r.Context())
+	if tenantID == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+
+	f := parseListScansFilter(r)
+	domainFilter := scan.ListSessionsFilter{
+		FleetID: f.FleetID,
+		Status:  scan.SessionStatus(f.Status),
+		Limit:   f.Limit,
+	}
+
+	var sessions []scan.ScanSession
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		ss, e := h.deps.Scan.ListSessions(ctx, tx, domainFilter)
+		if e != nil {
+			return e
+		}
+		sessions = ss
+		return nil
+	})
+	if err != nil {
+		writeError(w, errorStatusFor(err), "list scans failed")
+		return
+	}
+
+	out := scanListResponse{Sessions: make([]scanSessionResponse, 0, len(sessions))}
+	for _, s := range sessions {
+		out.Sessions = append(out.Sessions, toScanSessionResponse(s))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// parseListScansFilter는 query string에서 listScansFilter를 추출합니다.
+//
+// limit 200 cap (DoS 방어). 잘못된 limit 값은 무시(default 위임).
+func parseListScansFilter(r *http.Request) listScansFilter {
+	q := r.URL.Query()
+	f := listScansFilter{
+		FleetID: q.Get("fleetId"),
+		Status:  q.Get("status"),
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 200 {
+				n = 200
+			}
+			f.Limit = n
+		}
+	}
+	return f
 }
 
 // GetScan은 GET /api/v1/scans/{sessionId} 핸들러입니다.
