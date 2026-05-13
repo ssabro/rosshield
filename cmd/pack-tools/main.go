@@ -5,6 +5,7 @@
 //	convert   외부 baseline JSON을 rosshield pack 디렉터리로 변환 (Stage B·C)
 //	archive   pack 디렉터리를 MANIFEST + SIGNATURE + tar.gz로 묶음 (Stage D)
 //	keygen    Ed25519 keypair 생성 — pack 서명용 (raw 64-byte private + hex public)
+//	docs      degraded(자동 변환 안 된) 항목들 markdown 가이드 생성 — 운영자 수동 변환 도움
 //
 // Phase 1 Exit는 "CIS Ubuntu 팩으로 감사"가 필수 — 본 도구가 nrobotcheck baseline을
 // rosshield pack format으로 변환하는 entry point (`docs/design/12-*` §12.4).
@@ -17,6 +18,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/ssabro/rosshield/cmd/pack-tools/converter"
 )
@@ -37,6 +40,8 @@ func run(args []string) int {
 		return runArchive(args[1:])
 	case "keygen":
 		return runKeygen(args[1:])
+	case "docs":
+		return runDocs(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return 0
@@ -54,12 +59,14 @@ func usage() {
   convert   외부 baseline JSON을 rosshield pack 디렉터리로 변환 (Stage B·C)
   archive   pack 디렉터리를 MANIFEST + SIGNATURE + tar.gz로 묶음 (Stage D)
   keygen    Ed25519 keypair 생성 — pack 서명용 (raw 64-byte private + hex public)
+  docs      degraded(자동 변환 안 된) 항목들 markdown 가이드 생성
 
 사용법:
   pack-tools convert -input <baseline.json> -format <ros2-framework-v1|cis-ubuntu-json-v1> -output <dir>
                      [-vendor <s>] [-pack-name <s>] [-pack-version <s>] [-description <s>]
   pack-tools archive -input <dir> -signer-key <ed25519.key> -output <pack>.tar.gz
   pack-tools keygen  -out <signer.key> [-pub-out <signer.pub.hex>] [-force]
+  pack-tools docs    -input <baseline.json> -format <cis-ubuntu-json-v1> -output <docs.md>
 
 archive 옵션:
   -signer-key  raw 64-byte Ed25519 private key 파일 (pack-tools keygen 또는
@@ -260,6 +267,129 @@ func runKeygen(args []string) int {
 		fmt.Printf("  public file: %s\n", *pubOut)
 	}
 	return 0
+}
+
+// runDocs는 baseline JSON에서 자동 변환 안 된 항목들의 markdown 가이드 파일을 생성합니다.
+//
+// 운영자 수동 변환 작업용 — 각 degraded 항목별로 audit·remediation·rationale 정리.
+// Manual 항목과 NoMarker 항목을 섹션 분리하고 ID로 정렬.
+func runDocs(args []string) int {
+	fs := flag.NewFlagSet("docs", flag.ContinueOnError)
+	var (
+		input  = fs.String("input", "", "baseline JSON 입력 경로 (필수)")
+		format = fs.String("format", "cis-ubuntu-json-v1", "변환 포맷 (현재 cis-ubuntu-json-v1만 지원)")
+		output = fs.String("output", "", "출력 markdown 경로 (필수)")
+	)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *input == "" || *output == "" {
+		fmt.Fprintln(os.Stderr, "docs: -input·-output 필수")
+		fs.Usage()
+		return 2
+	}
+	if *format != "cis-ubuntu-json-v1" {
+		fmt.Fprintf(os.Stderr, "docs: format %q 미지원 (현재 cis-ubuntu-json-v1만)\n", *format)
+		return 2
+	}
+
+	data, err := os.ReadFile(*input)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docs: read input: %v\n", err)
+		return 1
+	}
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		data = data[3:] // utf-8 BOM
+	}
+
+	degraded, err := converter.ListCISDegraded(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "docs: %v\n", err)
+		return 1
+	}
+
+	md := renderCISDegradedMarkdown(degraded)
+	if err := os.WriteFile(*output, []byte(md), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "docs: write output: %v\n", err)
+		return 1
+	}
+
+	manualCount := 0
+	for _, d := range degraded {
+		if strings.Contains(d.Reason, "Manual") {
+			manualCount++
+		}
+	}
+	fmt.Printf("docs 생성 완료: %s\n", *output)
+	fmt.Printf("  degraded total: %d (Manual: %d, NoMarker: %d)\n",
+		len(degraded), manualCount, len(degraded)-manualCount)
+	return 0
+}
+
+// renderCISDegradedMarkdown은 degraded 항목 list를 운영자 가이드 markdown으로 변환.
+//
+// 구조: 헤더(생성 시각·통계) → Manual 섹션(assessment_status=Manual) → NoMarker 섹션(자동 변환
+// 패턴 미매칭). 각 항목은 ## ID title + 메타 + audit code block + remediation.
+func renderCISDegradedMarkdown(degraded []converter.CISDegradedItem) string {
+	var b strings.Builder
+	manual := make([]converter.CISDegradedItem, 0)
+	noMarker := make([]converter.CISDegradedItem, 0)
+	for _, d := range degraded {
+		if strings.Contains(d.Reason, "Manual") {
+			manual = append(manual, d)
+		} else {
+			noMarker = append(noMarker, d)
+		}
+	}
+
+	fmt.Fprintf(&b, "# CIS Ubuntu 24.04 — Degraded items 운영자 가이드\n\n")
+	fmt.Fprintf(&b, "> 생성: %s · 자동 변환 안 된 항목들의 audit·remediation 정리.\n",
+		time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+	fmt.Fprintf(&b, "> 운영자가 각 항목을 수동으로 검토하거나 customer 환경 fixture로 customizing할 때 활용.\n\n")
+	fmt.Fprintf(&b, "**통계**: 총 %d건 degraded (Manual: %d / NoMarker: %d).\n\n",
+		len(degraded), len(manual), len(noMarker))
+	fmt.Fprintf(&b, "---\n\n")
+
+	if len(manual) > 0 {
+		fmt.Fprintf(&b, "## Manual review (assessment_status=Manual, %d건)\n\n", len(manual))
+		fmt.Fprintf(&b, "CIS 가이드가 명시적으로 manual review를 요구한 항목들. 자동 변환 불가능 — 운영자가 customer 환경 정책에 따라 직접 검증.\n\n")
+		for _, d := range manual {
+			renderCISDegradedSection(&b, d)
+		}
+	}
+
+	if len(noMarker) > 0 {
+		fmt.Fprintf(&b, "## NoMarker (자동 변환 패턴 미매칭, %d건)\n\n", len(noMarker))
+		fmt.Fprintf(&b, "audit text가 9 자동 변환 패턴(PASS marker / Nothing returned / is installed / stat permission / sshd boolean·numeric·range / multi-line cmd / hashbang body wrap / grep verify / awk exact)에 잡히지 않은 항목들. 향후 converter 패턴 확장 또는 수동 fixture 작성으로 cover 가능.\n\n")
+		for _, d := range noMarker {
+			renderCISDegradedSection(&b, d)
+		}
+	}
+	return b.String()
+}
+
+func renderCISDegradedSection(b *strings.Builder, d converter.CISDegradedItem) {
+	fmt.Fprintf(b, "### %s — %s\n\n", d.ID, d.Title)
+	fmt.Fprintf(b, "**Reason**: `%s`\n\n", d.Reason)
+	if d.AssessmentStatus != "" {
+		fmt.Fprintf(b, "**Assessment**: %s\n\n", d.AssessmentStatus)
+	}
+	if len(d.ProfileApplicability) > 0 {
+		fmt.Fprintf(b, "**Profile**: %s\n\n", strings.Join(d.ProfileApplicability, ", "))
+	}
+	if d.Description != "" {
+		fmt.Fprintf(b, "**Description**:\n\n%s\n\n", d.Description)
+	}
+	if d.Rationale != "" {
+		fmt.Fprintf(b, "**Rationale**:\n\n%s\n\n", d.Rationale)
+	}
+	if d.Audit != "" {
+		fmt.Fprintf(b, "**Audit guide**:\n\n```\n%s\n```\n\n", d.Audit)
+	}
+	if d.Remediation != "" {
+		fmt.Fprintf(b, "**Remediation**:\n\n```\n%s\n```\n\n", d.Remediation)
+	}
+	fmt.Fprintf(b, "---\n\n")
 }
 
 // loadEd25519PrivateKey는 raw 64-byte Ed25519 private key 파일을 로드합니다.

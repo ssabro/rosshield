@@ -43,6 +43,22 @@ type CISConvertReport struct {
 	Degraded         []string // "<check_id>: <reason>"
 }
 
+// CISDegradedItem은 자동 변환 안 된 항목의 원본 정보를 운영자에게 노출 — 수동 변환 가이드.
+//
+// 본 구조는 docs 서브커맨드 (pack-tools docs)가 markdown 생성에 사용. cisItem은 unexported지만
+// 본 구조는 exported로 외부 호출자(main, 다른 패키지)가 활용 가능.
+type CISDegradedItem struct {
+	ID                   string
+	Title                string
+	Reason               string // "Manual" 또는 "audit lacks ** PASS ** marker (natural-language manual)" 등
+	AssessmentStatus     string // "Automated" / "Manual"
+	ProfileApplicability []string
+	Description          string
+	Rationale            string
+	Audit                string
+	Remediation          string
+}
+
 // CIS JSON 와이어 형식 — 변환에 필요한 필드만 정의 (unknown 필드는 무시).
 type cisDocument struct {
 	Benchmark string    `json:"benchmark"`
@@ -193,6 +209,48 @@ func convertCISItem(it cisItem) (Check, string) {
 	check.AuditCommand = "true"
 	check.EvaluationRule = degradedEvalRuleJSON
 	return check, "audit lacks ** PASS ** marker (natural-language manual)"
+}
+
+// ListCISDegraded는 baseline JSON에서 자동 변환 안 된 항목들의 원본 정보를 반환.
+//
+// 운영자 수동 변환 가이드 markdown 생성용 (pack-tools docs 서브커맨드). ConvertCIS와
+// 동일한 분류 로직을 한번 더 호출하지 않고, convertCISItem의 degraded reason을 ID별
+// 매핑한 후 cisItem 원본 매칭.
+//
+// 반환 순서: input JSON 순서 보존 (CIS section 순서 유지).
+func ListCISDegraded(jsonBytes []byte) ([]CISDegradedItem, error) {
+	dec := json.NewDecoder(bytes.NewReader(jsonBytes))
+	dec.UseNumber()
+	var doc cisDocument
+	if err := dec.Decode(&doc); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrCISDecodeFailed, err)
+	}
+	if len(doc.Items) == 0 {
+		return nil, ErrCISNoItems
+	}
+
+	out := make([]CISDegradedItem, 0)
+	for _, it := range doc.Items {
+		if it.ID == "" {
+			continue
+		}
+		_, reason := convertCISItem(it)
+		if reason == "" {
+			continue
+		}
+		out = append(out, CISDegradedItem{
+			ID:                   it.ID,
+			Title:                it.Title,
+			Reason:               reason,
+			AssessmentStatus:     it.AssessmentStatus,
+			ProfileApplicability: it.ProfileApplicability,
+			Description:          it.Description,
+			Rationale:            it.Rationale,
+			Audit:                it.Audit,
+			Remediation:          it.Remediation,
+		})
+	}
+	return out, nil
 }
 
 // classifyCISSeverity는 CIS item을 severity(low/medium/high)로 분류합니다.

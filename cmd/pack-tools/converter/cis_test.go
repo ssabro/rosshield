@@ -156,6 +156,15 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === ListCISDegraded — degraded 항목 운영자 가이드 docs 자료 추출 ===
+const cisListDegradedFixture = `{
+  "items": [
+    {"id":"A","title":"good auto","assessment_status":"Automated","profile_applicability":["Level 1 - Server"],"audit":"#!/usr/bin/env bash\n{ printf '** PASS **' }"},
+    {"id":"B","title":"manual item","assessment_status":"Manual","audit":"manual review needed"},
+    {"id":"C","title":"no marker","assessment_status":"Automated","profile_applicability":["Level 2 - Server"],"audit":"# echo hello\nhello"}
+  ]
+}`
+
 // === Severity classification fixture (Level 1/2 + critical section) ===
 const cisSeverityFixture = `{
   "items": [
@@ -499,6 +508,42 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestListCISDegradedReturnsManualAndNoMarkerOnly는 ListCISDegraded가 자동 변환된 항목은
+// 제외하고 Manual + NoMarker degraded 항목만 원본 정보와 함께 반환하는지 검증.
+func TestListCISDegradedReturnsManualAndNoMarkerOnly(t *testing.T) {
+	t.Parallel()
+	degraded, err := converter.ListCISDegraded([]byte(cisListDegradedFixture))
+	if err != nil {
+		t.Fatalf("ListCISDegraded: %v", err)
+	}
+	if len(degraded) != 2 {
+		t.Fatalf("len(degraded) = %d, want 2 (B Manual + C NoMarker, A excluded as auto-converted)", len(degraded))
+	}
+	// B: Manual
+	if degraded[0].ID != "B" {
+		t.Errorf("[0].ID = %q, want B", degraded[0].ID)
+	}
+	if !strings.Contains(degraded[0].Reason, "Manual") {
+		t.Errorf("[0].Reason = %q, want contains Manual", degraded[0].Reason)
+	}
+	if degraded[0].AssessmentStatus != "Manual" {
+		t.Errorf("[0].AssessmentStatus = %q, want Manual", degraded[0].AssessmentStatus)
+	}
+	if degraded[0].Audit != "manual review needed" {
+		t.Errorf("[0].Audit = %q", degraded[0].Audit)
+	}
+	// C: NoMarker (Level 2)
+	if degraded[1].ID != "C" {
+		t.Errorf("[1].ID = %q, want C", degraded[1].ID)
+	}
+	if strings.Contains(degraded[1].Reason, "Manual") {
+		t.Errorf("[1] should NOT be Manual: %q", degraded[1].Reason)
+	}
+	if len(degraded[1].ProfileApplicability) != 1 || degraded[1].ProfileApplicability[0] != "Level 2 - Server" {
+		t.Errorf("[1].ProfileApplicability = %v", degraded[1].ProfileApplicability)
 	}
 }
 
