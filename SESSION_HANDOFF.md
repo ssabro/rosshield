@@ -630,14 +630,25 @@ fleetguard/                         # 디스크 폴더명 (Go 모듈과 무관)
 2. **E22-F BOOLEAN 회수 design + 점진 적용** — driver mismatch 위험 분석 + customer query plan + Phase 4 carryover 마감. 1일+
 3. **6.2.3.x auditd rules 21건 cover** — multi-cmd + 정확 expected output 매칭 + base64 sub-shell 합성 확장. 1일+
 
-### 작은 후보 (0.3~0.5일, 자율 진행 가능)
+### 작은 후보 (자율 진행)
 
-4. **/system 페이지에 usage 통계 카드** — backend metric을 별 endpoint로 노출 후 카드. 0.5일.
-5. ~~packs severity 카드~~ ✅ 완료 (`20f588f`).
-6. ~~scan progress card ETA~~ ✅ 완료 (`7790c41`).
-7. ~~PDF report severity 섹션~~ ✅ 완료 (`d7bf238`).
-8. **CompliancePage에 ETA / progress hint** — 새 후보 (0.3일).
-9. **scans list에 severity 필터 추가** — 다른 페이지 severity UX 일관 (0.3일).
+5. ~~packs severity 카드~~ ✅ (`20f588f`).
+6. ~~scan progress card ETA~~ ✅ (`7790c41`).
+7. ~~PDF report severity 섹션~~ ✅ (`d7bf238`).
+
+### 확인 필요 (자율 진행 검토 결과 부적합 또는 backlog 의사결정)
+
+4. **/system 페이지 usage 통계 카드** — Prometheus /metrics는 별 port → backend JSON endpoint 추가 필수. 0.5일 → 1일 추정. backend 결선 의사결정 필요.
+8. ~~CompliancePage ETA~~ — framework snapshot은 즉시 생성이라 ETA 의미 모호. **취소**.
+9. ~~scans list severity 필터~~ — ScanSession 자체에 severity 필드 없음(check 단위). backend 변경 + scan_results aggregate 필요. **취소**.
+
+### 다음 세션 진입점 (사용자 합의 필요)
+
+A. **/system usage 카드 backend 결선** — JSON endpoint `/api/v1/usage/stats?tenant=...` 추가 + UI 카드 (0.5~1일)
+B. **scans list severity aggregate column** — backend list API에 each session의 severity별 failed count 추가 (0.5~1일)
+C. **PDF download endpoint 구현** — 큰 작업 1일+ (이전 세션 plateau 지점)
+D. **6.2.3.x auditd rules 21건 cover** — multi-cmd + 정확 expected 합성 (1일+)
+E. **E22-F BOOLEAN 회수 design** — driver mismatch 위험 분석 + 점진 적용 계획 (1일+)
 
 ### Phase 5 사용자 트랙 (외부 의존)
 
