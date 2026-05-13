@@ -149,6 +149,8 @@ func convertCISItem(it cisItem) (Check, string) {
 	//  1) 표준 PASS 마커 + bash hashbang (기존 로직)
 	//  2) "Nothing should be returned" 패턴 + 마지막 shell line 추출 (CIS 자연어 가이드 다수)
 	//  3) "is installed" 또는 dpkg-query &&/echo 긍정 기대 패턴
+	//  4) stat/ls 파일 권한 검증 (octal mode + Uid:( 0/root))
+	//  5) sshd -T | grep <option> 동적 설정 검증 (yes/no)
 	if strings.Contains(it.Audit, "** PASS **") {
 		body, ok := extractCISBashBody(it.Audit)
 		if !ok {
@@ -219,10 +221,10 @@ func looksLikeShellCommand(line string) bool {
 // synthesizeCISShellAssertion은 자연어 가이드에서 expected outcome을 추론해 bash를 합성합니다.
 //
 // 매핑:
-//  1. "Nothing should be returned" / "Nothing is returned" → expect 빈 출력 → cmd 출력 비어야 PASS
-//  2. "<X> is installed" 같은 긍정 echo 기대 → cmd 출력 비어 있지 않아야 PASS
-//
-// 기타 패턴(stat, find, getfacl 등)은 향후 epic. 현재는 두 패턴이 CIS 232건 중 ~100건 cover.
+//  1. "Nothing should be returned" / "Nothing is returned" → expect 빈 출력
+//  2. "<X> is installed" 같은 긍정 echo 기대 → 비어 있지 않아야 PASS
+//  3. stat/ls 파일 권한 — `# stat -Lc ...` + audit 텍스트에 octal mode → ≤ expected 비교 + Uid 검증
+//  4. sshd -T | grep — `# sshd -T | grep ...` + audit 텍스트에 "set to (yes|no)" → 마지막 토큰 비교
 func synthesizeCISShellAssertion(audit string) (string, bool) {
 	cmd, ok := extractCISLastShellLine(audit)
 	if !ok {
@@ -233,6 +235,14 @@ func synthesizeCISShellAssertion(audit string) (string, bool) {
 		return synthesizeExpectEmpty(cmd), true
 	case regexpExpectNonEmpty.MatchString(audit):
 		return synthesizeExpectNonEmpty(cmd), true
+	case isStatCommand(cmd):
+		if mode, ok2 := extractExpectedOctalMode(audit); ok2 {
+			return synthesizeExpectStatPerm(cmd, mode), true
+		}
+	case isSSHDCommand(cmd):
+		if val, ok2 := extractExpectedSSHDValue(audit); ok2 {
+			return synthesizeExpectSSHDOption(cmd, val), true
+		}
 	}
 	return "", false
 }
@@ -243,7 +253,42 @@ var (
 	// regexpExpectNonEmpty은 "<X> is installed" 같은 긍정 echo 기대 패턴 (대소문자 무시).
 	// 같은 audit에 "Nothing should be returned"가 있으면 우선순위로 expect-empty가 잡힘 (위 switch).
 	regexpExpectNonEmpty = regexp.MustCompile(`(?i)(is\s+installed|is\s+enabled|is\s+active)\b`)
+	// regexpExpectedOctalMode는 audit 텍스트에서 첫 8진수 mode를 추출합니다.
+	// CIS 7.x 시스템 파일 권한 가이드는 보통 "Access: (0640/-rw-r-----)" 또는
+	// "0640 or more restrictive" 형태로 expected mode를 명시.
+	regexpExpectedOctalMode = regexp.MustCompile(`0[0-7]{3,4}`)
+	// regexpExpectedSSHDValue는 "set to yes" / "set to no" / "set to a value of yes" 등에서
+	// expected boolean 값을 추출합니다 (대소문자 무시, 첫 매치 사용).
+	regexpExpectedSSHDValue = regexp.MustCompile(`(?i)set\s+to\s+(?:a\s+value\s+of\s+)?["']?(yes|no)["']?`)
 )
+
+// isStatCommand는 cmd line이 `stat ` 으로 시작하는지 검사 (LS 가이드도 일부 stat 명령으로 정규화됨).
+func isStatCommand(cmd string) bool {
+	return strings.HasPrefix(cmd, "stat ")
+}
+
+// isSSHDCommand는 cmd line이 `sshd ` 또는 `sshd\t` 로 시작하는지 검사.
+func isSSHDCommand(cmd string) bool {
+	return strings.HasPrefix(cmd, "sshd ")
+}
+
+// extractExpectedOctalMode는 audit 텍스트에서 첫 8진수 mode(예 "0640")를 반환.
+func extractExpectedOctalMode(audit string) (string, bool) {
+	m := regexpExpectedOctalMode.FindString(audit)
+	if m == "" {
+		return "", false
+	}
+	return m, true
+}
+
+// extractExpectedSSHDValue는 audit 텍스트에서 expected boolean 값("yes" 또는 "no")을 반환.
+func extractExpectedSSHDValue(audit string) (string, bool) {
+	m := regexpExpectedSSHDValue.FindStringSubmatch(audit)
+	if len(m) < 2 {
+		return "", false
+	}
+	return strings.ToLower(m[1]), true
+}
 
 // synthesizeExpectEmpty는 cmd 출력이 비어 있으면 PASS, 아니면 FAIL 출력하는 bash를 생성.
 func synthesizeExpectEmpty(cmd string) string {
@@ -259,6 +304,40 @@ func synthesizeExpectEmpty(cmd string) string {
 func synthesizeExpectNonEmpty(cmd string) string {
 	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
 		"if [ -n \"$out\" ]; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// synthesizeExpectStatPerm는 stat 명령 출력에서 octal mode를 추출해 expectedMode 이하인지(즉
+// 더 제한적이거나 같음) 확인 + Uid:( 0/ root) 가 포함되어야 PASS 출력.
+//
+// CIS 7.x 시스템 파일 권한 가이드는 거의 모두 "owned by root, group root, mode ≤ X" 형태이므로
+// expectedOwner는 "root"로 고정. 향후 group 일치(shadow 등)는 별도 epic.
+//
+// stat 명령 형식 가정: `stat -Lc 'Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /path`
+// 이 형식은 CIS audit 가이드의 표준 출력 형태.
+func synthesizeExpectStatPerm(cmd, expectedMode string) string {
+	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
+		"mode=\"$(printf '%s\\n' \"$out\" | sed -n 's|.*Access: (\\([0-7]\\{3,4\\}\\)/.*|\\1|p' | head -1)\"\n" +
+		"if [ -n \"$mode\" ] && [ \"$((8#$mode))\" -le \"$((8#" + expectedMode + "))\" ] " +
+		"&& printf '%s\\n' \"$out\" | grep -qE 'Uid: \\(\\s*0/'; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// synthesizeExpectSSHDOption은 sshd -T grep 출력의 마지막 토큰을 lowercase로 expectedValue와
+// 비교해 PASS/FAIL 출력. CIS 5.1.x sshd 옵션 검증의 표준 패턴.
+//
+// sshd -T 출력은 `<option> <value>` 한 줄 형태이고, grep으로 옵션 필터된 후 awk가
+// 마지막 필드 추출. expectedValue는 "yes" 또는 "no" (extractExpectedSSHDValue가 lowercase로 정규화).
+func synthesizeExpectSSHDOption(cmd, expectedValue string) string {
+	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
+		"val=\"$(printf '%s\\n' \"$out\" | awk '{print tolower($NF)}')\"\n" +
+		"if [ \"$val\" = \"" + expectedValue + "\" ]; then\n" +
 		"  printf '%s\\n' \"** PASS **\"\n" +
 		"else\n" +
 		"  printf '%s\\n' \"** FAIL **\"\n" +

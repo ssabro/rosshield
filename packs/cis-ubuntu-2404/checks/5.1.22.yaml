@@ -10,10 +10,18 @@ metadata:
         addition to PAM account and session module processing for all authentication types.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | grep -i usepam 2>/dev/null)"
+        val="$(printf '\''%s\n'\'' "$out" | awk '\''{print tolower($NF)}'\'')"
+        if [ "$val" = "yes" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         When usePAM is set to yes, PAM runs through account and session types properly. This
         is important if you want to restrict access to services based off of IP, time or other

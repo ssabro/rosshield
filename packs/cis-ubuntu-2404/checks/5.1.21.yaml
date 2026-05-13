@@ -8,10 +8,18 @@ metadata:
         the SSH daemon.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | grep permituserenvironment 2>/dev/null)"
+        val="$(printf '\''%s\n'\'' "$out" | awk '\''{print tolower($NF)}'\'')"
+        if [ "$val" = "no" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Permitting users the ability to set environment variables through the SSH daemon could
         potentially allow users to bypass security controls (e.g. setting an execution path that

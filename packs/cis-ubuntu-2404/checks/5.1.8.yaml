@@ -20,10 +20,18 @@ metadata:
         their home machines.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | grep -i disableforwarding 2>/dev/null)"
+        val="$(printf '\''%s\n'\'' "$out" | awk '\''{print tolower($NF)}'\'')"
+        if [ "$val" = "yes" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Disable X11 forwarding unless there is an operational requirement to use X11
         applications directly. There is a small risk that the remote X11 servers of users who are

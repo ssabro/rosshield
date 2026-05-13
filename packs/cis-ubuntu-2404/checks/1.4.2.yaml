@@ -8,10 +8,18 @@ metadata:
         unlocking boot options.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(stat -Lc '\''Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' 2>/dev/null)"
+        mode="$(printf '\''%s\n'\'' "$out" | sed -n '\''s|.*Access: (\([0-7]\{3,4\}\)/.*|\1|p'\'' | head -1)"
+        if [ -n "$mode" ] && [ "$((8#$mode))" -le "$((8#0600))" ] && printf '\''%s\n'\'' "$out" | grep -qE '\''Uid: \(\s*0/'\''; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Setting the permissions to read and write for root only prevents non-root users from
         seeing the boot parameters or changing them. Non-root users who read the boot

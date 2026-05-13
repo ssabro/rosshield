@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: 7.1.5
+spec:
+  cases:
+    - name: passes when stdout contains "** PASS **"
+      input:
+        stdout: '** PASS **'
+        stderr: ""
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: fails when stdout contains "** FAIL **"
+      input:
+        stdout: '** FAIL **'
+        stderr: ""
+        exitCode: 0
+      expectedOutcome: FAIL

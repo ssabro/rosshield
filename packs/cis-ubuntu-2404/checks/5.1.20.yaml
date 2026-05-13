@@ -8,10 +8,18 @@ metadata:
         default is prohibit-password.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T -C user=sshuser | grep permitrootlogin 2>/dev/null)"
+        val="$(printf '\''%s\n'\'' "$out" | awk '\''{print tolower($NF)}'\'')"
+        if [ "$val" = "no" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Disallowing root logins over SSH requires system admins to authenticate using their
         own individual account, then escalating to root. This limits opportunity for non-

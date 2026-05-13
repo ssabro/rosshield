@@ -8,10 +8,18 @@ metadata:
         system.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(stat -Lc '\''Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' /etc/group- 2>/dev/null)"
+        mode="$(printf '\''%s\n'\'' "$out" | sed -n '\''s|.*Access: (\([0-7]\{3,4\}\)/.*|\1|p'\'' | head -1)"
+        if [ -n "$mode" ] && [ "$((8#$mode))" -le "$((8#0644))" ] && printf '\''%s\n'\'' "$out" | grep -qE '\''Uid: \(\s*0/'\''; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         It is critical to ensure that the /etc/group- file is protected from unauthorized access.
         Although it is protected by default, the file permissions could be changed either

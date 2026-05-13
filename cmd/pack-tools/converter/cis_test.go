@@ -73,17 +73,51 @@ const cisExpectInstalledFixture = `{
   ]
 }`
 
-// === audit가 자연어만 (no marker) ===
+// === audit가 자연어만 (no marker) — 어떤 자동 변환 패턴에도 안 잡혀야 함 ===
 const cisNoMarkerFixture = `{
   "benchmark": "CIS",
   "version": "1.0",
   "items": [
     {
-      "id": "5.1.22",
-      "title": "Verify UsePAM=yes",
+      "id": "X.99",
+      "title": "Verify random thing",
       "assessment_status": "Automated",
-      "audit": "Run the following command to verify UsePAM is set to yes:\n# sshd -T | grep -i usepam\nusepam yes",
-      "rationale": "PAM provides..."
+      "audit": "Run the following command to inspect the value:\n# echo something\nThe operator should review.",
+      "rationale": "Manual review required."
+    }
+  ]
+}`
+
+// === Pattern 4: stat 권한 검증 — Access octal mode + Uid 0/root ===
+const cisExpectStatPermFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "7.1.1",
+      "title": "Ensure permissions on /etc/passwd are configured",
+      "assessment_status": "Automated",
+      "audit": "Run the following command to verify access to /etc/passwd is 0644 or more restrictive, Uid is 0/root and Gid is 0/root.\n# stat -Lc 'Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)' /etc/passwd\nAccess: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root)"
+    }
+  ]
+}`
+
+// === Pattern 5: sshd -T grep — set to yes/no ===
+const cisExpectSSHDOptionFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "5.1.11",
+      "title": "Ensure sshd IgnoreRhosts is enabled",
+      "assessment_status": "Automated",
+      "audit": "Run the following command to verify IgnoreRhosts is set to yes:\n# sshd -T | grep ignorerhosts\nignorerhosts yes"
+    },
+    {
+      "id": "5.1.9",
+      "title": "Ensure sshd GSSAPIAuthentication is disabled",
+      "assessment_status": "Automated",
+      "audit": "Run the following command to verify GSSAPIAuthentication is set to no:\n# sshd -T | grep gssapiauthentication\ngssapiauthentication no"
     }
   ]
 }`
@@ -176,6 +210,60 @@ func TestConvertCISExpectEmptyPatternAutoConverts(t *testing.T) {
 	}
 	if string(c.EvaluationRule) != `{"op":"contains","value":"** PASS **"}` {
 		t.Errorf("EvaluationRule = %s", c.EvaluationRule)
+	}
+}
+
+// TestConvertCISExpectStatPermAutoConverts는 stat 권한 가이드(`# stat -Lc ... /etc/passwd` +
+// "0644 or more restrictive, Uid is 0/root")가 octal mode 비교 + Uid grep 합성으로
+// 자동 변환되는지 검증.
+func TestConvertCISExpectStatPermAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectStatPermFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "stat -Lc") {
+		t.Errorf("AuditCommand missing extracted stat line: %q", c.AuditCommand)
+	}
+	// 합성된 bash는 audit에서 추출한 첫 octal mode("0644")로 8진수 비교.
+	if !strings.Contains(c.AuditCommand, "8#0644") {
+		t.Errorf("AuditCommand missing 8# octal compare with 0644: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "Uid: (") {
+		t.Errorf("AuditCommand missing Uid: ( root check: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISExpectSSHDOptionAutoConverts는 sshd -T grep + "set to yes/no" 패턴이
+// 마지막 토큰 비교 합성으로 자동 변환되는지 검증.
+func TestConvertCISExpectSSHDOptionAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectSSHDOptionFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 2 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:2", report)
+	}
+	// 5.1.11: expected yes
+	c1 := pack.Checks[0]
+	if !strings.Contains(c1.AuditCommand, "sshd -T | grep ignorerhosts") {
+		t.Errorf("5.1.11 missing extracted sshd line: %q", c1.AuditCommand)
+	}
+	if !strings.Contains(c1.AuditCommand, `"$val" = "yes"`) {
+		t.Errorf("5.1.11 expected val == yes compare: %q", c1.AuditCommand)
+	}
+	// 5.1.9: expected no
+	c2 := pack.Checks[1]
+	if !strings.Contains(c2.AuditCommand, "sshd -T | grep gssapiauthentication") {
+		t.Errorf("5.1.9 missing extracted sshd line: %q", c2.AuditCommand)
+	}
+	if !strings.Contains(c2.AuditCommand, `"$val" = "no"`) {
+		t.Errorf("5.1.9 expected val == no compare: %q", c2.AuditCommand)
 	}
 }
 

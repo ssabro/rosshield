@@ -8,10 +8,18 @@ metadata:
         in RhostsRSAAuthentication or HostbasedAuthentication.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T -C user=sshuser | grep ignorerhosts 2>/dev/null)"
+        val="$(printf '\''%s\n'\'' "$out" | awk '\''{print tolower($NF)}'\'')"
+        if [ "$val" = "yes" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: Setting this parameter forces users to enter a password when authenticating with SSH.
     fixGuidance: |-
         Edit the /etc/ssh/sshd_config file to set the IgnoreRhosts parameter to yes above
