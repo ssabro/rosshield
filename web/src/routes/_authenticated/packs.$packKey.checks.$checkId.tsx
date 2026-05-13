@@ -102,6 +102,26 @@ function CheckDetailPage(): React.ReactElement {
         </CardContent>
       </Card>
 
+      {c.auditCommand === 'true' && c.packKey === 'cis-ubuntu-2404' && (
+        <Card className="border-yellow-500/40 bg-yellow-500/5">
+          <CardHeader>
+            <CardTitle className="text-sm text-yellow-700 dark:text-yellow-400">
+              {t('checks.detail.degraded.title')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-foreground">{t('checks.detail.degraded.description')}</p>
+            <p className="text-xs text-muted-foreground">
+              {t('checks.detail.degraded.docsHint')}{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                docs/operations/cis-ubuntu-2404-degraded.md
+              </code>
+              {' '}— {t('checks.detail.degraded.searchHint', { checkId: c.checkId })}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>{t('checks.detail.auditCommand')}</CardTitle>

@@ -524,6 +524,11 @@ export const ko = {
   'checks.detail.selftest.empty': '이 검사에 selftest 케이스가 없습니다',
   'checks.detail.selftest.unsupported': 'Selftest는 built-in 팩에서만 지원됩니다 (또는 자동 변환 실패한 검사)',
   'checks.detail.selftest.error': 'Selftest 정보를 가져오지 못했습니다',
+  'checks.detail.degraded.title': 'degraded — 자동 변환되지 않은 검사',
+  'checks.detail.degraded.description':
+    '이 검사는 9 자동 변환 패턴(PASS marker / Nothing returned / is installed / stat permission / sshd boolean·numeric·range / multi-line cmd / hashbang body wrap / grep verify / awk exact)에 매칭되지 않아 audit command가 placeholder로 설정되어 있습니다. 운영자가 customer 환경에 맞춰 수동으로 audit command + evaluation rule을 작성하거나 별 fixture를 적용해야 합니다.',
+  'checks.detail.degraded.docsHint': '운영자 가이드:',
+  'checks.detail.degraded.searchHint': 'markdown 파일에서 "{checkId}" 검색 시 해당 항목의 audit·remediation 가이드 확인 가능',
 
   'system.backups.section': '백업 (E28)',
   'system.backups.intro':
@@ -1312,6 +1317,11 @@ export const en: Record<keyof typeof ko, string> = {
   'checks.detail.selftest.empty': 'No selftest cases for this check',
   'checks.detail.selftest.unsupported': 'Selftest only available for built-in packs (or auto-converted checks)',
   'checks.detail.selftest.error': 'Failed to load selftest',
+  'checks.detail.degraded.title': 'degraded — auto-conversion failed for this check',
+  'checks.detail.degraded.description':
+    'This check did not match any of the 9 auto-conversion patterns (PASS marker / Nothing returned / is installed / stat permission / sshd boolean·numeric·range / multi-line cmd / hashbang body wrap / grep verify / awk exact). The audit command is set to a placeholder. Operators must manually write audit command + evaluation rule for the customer environment, or apply a custom fixture.',
+  'checks.detail.degraded.docsHint': 'Operator guide:',
+  'checks.detail.degraded.searchHint': 'search for "{checkId}" in the markdown to view the audit·remediation guide',
 
   'system.backups.section': 'Backups (E28)',
   'system.backups.intro':
