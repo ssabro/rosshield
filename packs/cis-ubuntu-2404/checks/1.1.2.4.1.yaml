@@ -8,10 +8,17 @@ metadata:
         dynamic data. Some directories created by these processes may be world-writable.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /var 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The reasoning for mounting /var on a separate partition is as follows.
         The default installation only creates a single / partition. Since the /var directory may

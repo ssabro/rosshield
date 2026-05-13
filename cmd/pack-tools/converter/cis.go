@@ -358,7 +358,10 @@ var (
 	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned|should\s+not\s+be\s+(returned|in\s+use)|no\s+\S+(?:\s+\S+){0,10}\s+should\s+be\s+returned`)
 	// regexpExpectNonEmpty은 "<X> is installed" 같은 긍정 echo 기대 패턴 (대소문자 무시).
 	// 같은 audit에 "Nothing should be returned"가 있으면 우선순위로 expect-empty가 잡힘 (위 switch).
-	regexpExpectNonEmpty = regexp.MustCompile(`(?i)(is\s+installed|is\s+enabled|is\s+active)\b`)
+	//
+	// 추가 변형: "is mounted" (CIS 1.1.2.x.1 partition findmnt 검증 — 마지막 shell line이
+	// `# findmnt -kn /<path>`이고 출력 non-empty면 mounted, empty면 unmounted = FAIL).
+	regexpExpectNonEmpty = regexp.MustCompile(`(?i)(is\s+installed|is\s+enabled|is\s+active|is\s+mounted)\b`)
 	// regexpExpectedOctalMode는 audit 텍스트에서 첫 8진수 mode를 추출합니다.
 	// CIS 7.x 시스템 파일 권한 가이드는 보통 "Access: (0640/-rw-r-----)" 또는
 	// "0640 or more restrictive" 형태로 expected mode를 명시.

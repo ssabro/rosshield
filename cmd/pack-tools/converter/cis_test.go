@@ -156,6 +156,20 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 7b: 'is mounted' — findmnt 출력 non-empty 검증 (CIS 1.1.2.x.1) ===
+const cisExpectIsMountedFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "1.1.2.1.1.synth",
+      "title": "Ensure /tmp is a separate partition (synthetic)",
+      "assessment_status": "Automated",
+      "audit": "Run the following command and verify the output shows that /tmp is mounted.\n# findmnt -kn /tmp\nExample output:\n/tmp tmpfs tmpfs rw,nosuid,nodev,noexec"
+    }
+  ]
+}`
+
 // === Pattern 8: multi-line shell line — sshd | grep PCRE regex가 PDF rendering으로 분할 ===
 // 5.1.6 Ciphers · 5.1.15 MACs · 5.1.12 KexAlgorithms 형식. extractCISLastShellLine이
 // 첫 줄 `# sshd -T | grep -Pi --` (dangling --) 또는 `# sshd ... '...regex...` (unmatched ')
@@ -383,6 +397,26 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISExpectIsMountedAutoConverts는 "is mounted" 패턴이 expect-non-empty 분기로
+// 자동 변환되는지 검증 (CIS 1.1.2.x.1 partition findmnt 검증).
+func TestConvertCISExpectIsMountedAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectIsMountedFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "findmnt -kn /tmp") {
+		t.Errorf("missing findmnt cmd: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "[ -n") {
+		t.Errorf("should use expect-non-empty branch: %q", c.AuditCommand)
 	}
 }
 

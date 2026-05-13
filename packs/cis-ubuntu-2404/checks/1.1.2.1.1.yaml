@@ -33,10 +33,17 @@ metadata:
         physical RAM. The default, when neither size nor nr_blocks is specified, is size=50%.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(systemctl is-enabled tmp.mount 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Making /tmp its own file system allows an administrator to set additional mount options
         such as the noexec option on the mount, making /tmp useless for an attacker to install

@@ -8,10 +8,17 @@ metadata:
         memory that facilitates inter process communication (IPC).
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /dev/shm 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Making /dev/shm its own file system allows an administrator to set additional mount
         options such as the noexec option on the mount, making /dev/shm useless for an

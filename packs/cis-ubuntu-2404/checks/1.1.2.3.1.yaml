@@ -6,10 +6,17 @@ metadata:
     description: The /home directory is used to support disk storage needs of local users.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(findmnt -kn /home 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The default installation only creates a single / partition. Since the /home directory
         contains user generated data, there is a risk of resource exhaustion. It will essentially

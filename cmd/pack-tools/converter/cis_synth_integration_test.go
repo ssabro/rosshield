@@ -356,6 +356,43 @@ func TestSynth_SSHDNumericGT_FAIL_WhenOutputEmpty(t *testing.T) {
 	}
 }
 
+// is mounted: findmnt 출력 non-empty이면 PASS (CIS 1.1.2.x.1 partition 검증).
+func TestSynth_IsMounted_PASS_WhenFindmntReturnsRow(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.mounted.pass", "assessment_status": "Automated",
+    "audit": "Verify /tmp is mounted:\n# findmnt -kn /tmp\nExample: /tmp tmpfs"
+  }]
+}`
+	mock := `findmnt() { echo "/tmp tmpfs tmpfs rw,nosuid,nodev,noexec"; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS for findmnt non-empty, got: %s", out)
+	}
+}
+
+func TestSynth_IsMounted_FAIL_WhenFindmntEmpty(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.mounted.fail", "assessment_status": "Automated",
+    "audit": "Verify /tmp is mounted:\n# findmnt -kn /tmp\nExample: /tmp tmpfs"
+  }]
+}`
+	mock := `findmnt() { :; }` // unmounted = 빈 출력
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** FAIL **")) {
+		t.Errorf("expected FAIL for findmnt empty, got: %s", out)
+	}
+}
+
 // multi-line 흡수 5.1.6 형식: dangling `--` + quoted regex split + "No <X> ... should be returned".
 func TestSynth_MultiLineCipher_PASS_WhenNoWeakCipher(t *testing.T) {
 	bashPath := resolveBash()
