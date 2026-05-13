@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/errors'
 import { API_BASE_PATH } from '@/api/client'
-import { useBackups, useIsAdminOrAuditor, useLicenseInfo, usePacks } from '@/api/hooks'
+import { useBackups, useIsAdminOrAuditor, useLicenseInfo, usePacks, useUsageStats } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
@@ -82,6 +82,7 @@ function SystemPage(): React.ReactElement {
       <HealthCard />
       <HACard />
       <LicenseUsageCard />
+      <UsageStatsCard />
       <PacksCard />
       <BackupsCard />
     </div>
@@ -300,6 +301,51 @@ function LicenseUsageCard(): React.ReactElement {
               }
               mono
             />
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function UsageStatsCard(): React.ReactElement {
+  const t = useT()
+  const q = useUsageStats()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          {t('system.usage.section')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {q.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+        {q.isError && (
+          <p className="text-destructive">
+            {q.error instanceof ApiError ? q.error.message : t('system.usage.error')}
+          </p>
+        )}
+        {q.isSuccess && (
+          <>
+            <p className="text-xs text-muted-foreground">{t('system.usage.processScopeNote')}</p>
+            <Row label={t('system.usage.scansStarted')} value={String(q.data.scansStarted)} mono />
+            <Row
+              label={t('system.usage.scansCompleted')}
+              value={`${q.data.scansCompletedSum} (completed: ${q.data.scansCompleted.completed ?? 0}, failed: ${q.data.scansCompleted.failed ?? 0}, cancelled: ${q.data.scansCompleted.cancelled ?? 0})`}
+              mono
+            />
+            <Row label={t('system.usage.violations')} value={String(q.data.scanFailedChecks)} mono />
+            {q.data.scansCompletedSum > 0 && (
+              <Row
+                label={t('system.usage.violationRate')}
+                value={
+                  (q.data.scanFailedChecks / q.data.scansCompletedSum).toFixed(2) +
+                  ' / scan'
+                }
+                mono
+              />
+            )}
           </>
         )}
       </CardContent>

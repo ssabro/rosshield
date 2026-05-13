@@ -601,6 +601,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/usage/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tenant 사용 통계 (Prometheus counter snapshot)
+         * @description 현재 인증된 tenant의 누적 카운트 (scan started/completed by status/failed checks).
+         *     process scope — restart 시 0부터 다시 카운트. 정확한 누적은 외부 Prometheus + Grafana 권장.
+         *     모든 인증 사용자 read 가능 (sensitive data 0). Metrics registry 미설정 시 503.
+         */
+        get: operations["getUsageStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/head": {
         parameters: {
             query?: never;
@@ -1377,6 +1399,20 @@ export interface components {
             hashHex: string;
             /** Format: date-time */
             updatedAt?: string;
+        };
+        UsageStats: {
+            /** @description Tenant ID (요청 컨텍스트에서 추출) */
+            tenant: string;
+            /** @description rosshield_scan_started_total{tenant} 누적 카운트 */
+            scansStarted: number;
+            /** @description Status별 분포 (completed|failed|cancelled). missing key는 0으로 해석. */
+            scansCompleted: {
+                [key: string]: number;
+            };
+            /** @description rosshield_scan_failed_checks_total{tenant} — 누적 violation */
+            scanFailedChecks: number;
+            /** @description scansCompleted 전체 합 — UI violation rate 분모 활용 */
+            scansCompletedSum: number;
         };
         Report: {
             id: string;
@@ -2767,6 +2803,36 @@ export interface operations {
             };
             /** @description builtin pack 아님 또는 selftest 부재 */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getUsageStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageStats"];
+                };
+            };
+            /** @description Metrics registry not configured */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

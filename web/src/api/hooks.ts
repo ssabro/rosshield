@@ -563,6 +563,36 @@ export const useBackups = () => {
   })
 }
 
+// useUsageStats — /system 페이지 UsageStatsCard용. 인증 사용자 read-only.
+//   GET /api/v1/usage/stats — Prometheus counter snapshot (process scope).
+//   30s polling — 카운터 변화 reflect (E38 onboarding/billing 즉시 가시성).
+export interface UsageStats {
+  tenant: string
+  scansStarted: number
+  scansCompleted: Record<string, number>
+  scanFailedChecks: number
+  scansCompletedSum: number
+}
+
+export const useUsageStats = () => {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery({
+    queryKey: ['usage', 'stats'],
+    queryFn: async (): Promise<UsageStats> => {
+      const { data, error, response } = await apiClient.GET('/api/v1/usage/stats')
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as UsageStats
+    },
+    enabled: !!accessToken,
+    refetchInterval: 30_000,
+  })
+}
+
 // useAuditHead — B1 Web UI Audit 페이지. tenant scope chain head.
 export interface AuditHead {
   tenantId: string

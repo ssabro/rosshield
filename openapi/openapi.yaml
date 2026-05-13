@@ -921,6 +921,32 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/usage/stats:
+    get:
+      tags: [usage]
+      operationId: getUsageStats
+      summary: Tenant 사용 통계 (Prometheus counter snapshot)
+      description: |
+        현재 인증된 tenant의 누적 카운트 (scan started/completed by status/failed checks).
+        process scope — restart 시 0부터 다시 카운트. 정확한 누적은 외부 Prometheus + Grafana 권장.
+        모든 인증 사용자 read 가능 (sensitive data 0). Metrics registry 미설정 시 503.
+      x-status: phase5
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageStats"
+        "503":
+          description: Metrics registry not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/audit/head:
     get:
       tags: [audit]
@@ -2227,6 +2253,19 @@ components:
         seq:       { type: integer, format: int64 }
         hashHex:   { type: string, description: "Hash bytes (32B) hex-encoded — 64 chars" }
         updatedAt: { type: string, format: date-time }
+
+    UsageStats:
+      type: object
+      required: [tenant, scansStarted, scansCompleted, scanFailedChecks, scansCompletedSum]
+      properties:
+        tenant:            { type: string, description: "Tenant ID (요청 컨텍스트에서 추출)" }
+        scansStarted:      { type: number, description: "rosshield_scan_started_total{tenant} 누적 카운트" }
+        scansCompleted:
+          type: object
+          additionalProperties: { type: number }
+          description: "Status별 분포 (completed|failed|cancelled). missing key는 0으로 해석."
+        scanFailedChecks:  { type: number, description: "rosshield_scan_failed_checks_total{tenant} — 누적 violation" }
+        scansCompletedSum: { type: number, description: "scansCompleted 전체 합 — UI violation rate 분모 활용" }
 
     # ─── Reporting ────────────────────────────────────────────────────────
     Report:

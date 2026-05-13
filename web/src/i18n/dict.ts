@@ -533,6 +533,13 @@ export const ko = {
   'checks.detail.degraded.searchHint': 'markdown 파일에서 "{checkId}" 검색 시 해당 항목의 audit·remediation 가이드 확인 가능',
 
   'system.backups.section': '백업 (E28)',
+  'system.usage.section': '사용 통계 (Prometheus counter — process scope)',
+  'system.usage.error': '통계 카운트 조회 실패',
+  'system.usage.processScopeNote': 'process restart 시 0부터 다시 카운트 — 정확한 누적은 Prometheus + Grafana 권장.',
+  'system.usage.scansStarted': '시작된 스캔',
+  'system.usage.scansCompleted': '완료된 스캔',
+  'system.usage.violations': '누적 violation (failed check)',
+  'system.usage.violationRate': '평균 violation rate',
   'system.backups.intro':
     '서버 실행 중에도 SQLite VACUUM INTO + tar.gz로 일관 스냅샷을 떠낼 수 있습니다.',
   'system.backups.cli.label': 'CLI 명령',
@@ -1328,6 +1335,13 @@ export const en: Record<keyof typeof ko, string> = {
   'checks.detail.degraded.searchHint': 'search for "{checkId}" in the markdown to view the audit·remediation guide',
 
   'system.backups.section': 'Backups (E28)',
+  'system.usage.section': 'Usage stats (Prometheus counter — process scope)',
+  'system.usage.error': 'Failed to load usage counts',
+  'system.usage.processScopeNote': 'Counters reset to 0 on process restart — for accurate aggregates use Prometheus + Grafana.',
+  'system.usage.scansStarted': 'Scans started',
+  'system.usage.scansCompleted': 'Scans completed',
+  'system.usage.violations': 'Cumulative violations (failed checks)',
+  'system.usage.violationRate': 'Avg violation rate',
   'system.backups.intro':
     'Take consistent snapshots while the server is running using SQLite VACUUM INTO + tar.gz.',
   'system.backups.cli.label': 'CLI command',
