@@ -8,10 +8,17 @@ metadata:
         privilege escalation.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -r "^[^#].*\!authenticate" /etc/sudoers* 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Without re-authentication, users may access resources or perform tasks for which they
         do not have authorization.

@@ -156,6 +156,22 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 7d: 'no results are returned' / 'if any line is found' 변형 expect-empty ===
+const cisExpectEmptyVariantsFixture = `{
+  "items": [
+    {
+      "id": "x.noresults.synth", "title": "no results variant",
+      "assessment_status": "Automated",
+      "audit": "Run the following commands and verify no results are returned:\n# awk -F: '($1==\"shadow\")' /etc/group"
+    },
+    {
+      "id": "x.ifanyline.synth", "title": "if any line found variant",
+      "assessment_status": "Automated",
+      "audit": "Verify the configuration:\n# grep -r '^[^#].*NOPASSWD' /etc/sudoers*\nIf any line is found refer to the remediation procedure below."
+    }
+  ]
+}`
+
 // === Pattern 6c: sshd numeric range "between N and M" (5.1.13 LoginGraceTime) ===
 const cisExpectSSHDRangeFixture = `{
   "items": [
@@ -469,6 +485,24 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISExpectEmptyVariantsAutoConverts는 "no results are returned" / "if any line
+// is found" 변형이 expect-empty 분기로 자동 변환되는지 검증 (7.2.4 / 5.2.4 등 형식).
+func TestConvertCISExpectEmptyVariantsAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectEmptyVariantsFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 2 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:2", report)
+	}
+	for _, c := range pack.Checks {
+		if !strings.Contains(c.AuditCommand, "[ -z") {
+			t.Errorf("%s should use expect-empty branch: %q", c.ID, c.AuditCommand)
+		}
 	}
 }
 

@@ -8,10 +8,17 @@ metadata:
         before authentication is permitted. By default, no banner is displayed.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -Psi -- "(\\\v|\\\r|\\\m|\\\s|\b$(grep '\''^ID='\'' /etc/os-release | cut -d= -f2 | sed -e '\''s/"//g'\'')\b)" "$(sshd -T | awk '\''$1 == "banner" {print $2}'\'')" 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Banners are used to warn connecting users of the particular site's policy regarding
         connection. Presenting a warning message prior to the normal user login may assist the

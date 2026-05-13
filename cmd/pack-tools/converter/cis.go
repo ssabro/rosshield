@@ -417,17 +417,20 @@ func isGrepCommand(cmd string) bool {
 
 var (
 	// regexpExpectEmpty은 "Nothing should be returned" / "no output should be returned" /
-	// "should not be returned/in use" / "No <X...> should be returned" 류 자연어를 매칭
-	// (대소문자 무시).
+	// "should not be returned/in use" / "No <X...> should be returned" / "no results are returned"
+	// / "if any line is (found|returned)" 류 자연어를 매칭 (대소문자 무시).
 	//
 	// 추가 변형 cover:
 	//  - "should not be returned/in use" — 직접 부정 표현
 	//  - "No <subject>...should be returned" — 5.1.6 Ciphers / 5.1.15 MACs / 5.1.12 KexAlgorithms
 	//    "No ciphers in the list below should be returned" 형태 (subject 사이 단어 0~10개)
+	//  - "no results are returned" — 7.2.4 등 multi-cmd negative validation
+	//  - "if any line is (found|returned)" — 5.2.4 sudo NOPASSWD 등 conditional negative
+	//    "If any line is found refer to the remediation procedure below" — 라인 발견 시 조치 필요 = 빈 출력이 정상
 	//
 	// multi-line cmd 흡수(absorbCISContinuation) 적용 후 안전 — 이전엔 첫 줄만 추출돼
 	// grep 인자 누락 false PASS 위험으로 비활성화 상태였음.
-	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned|should\s+not\s+be\s+(returned|in\s+use)|no\s+\S+(?:\s+\S+){0,10}\s+should\s+be\s+returned`)
+	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned|should\s+not\s+be\s+(returned|in\s+use)|no\s+\S+(?:\s+\S+){0,10}\s+should\s+be\s+returned|no\s+results\s+are\s+returned|if\s+any\s+line\s+is\s+(found|returned)`)
 	// regexpExpectNonEmpty은 "<X> is installed" 같은 긍정 echo 기대 패턴 (대소문자 무시).
 	// 같은 audit에 "Nothing should be returned"가 있으면 우선순위로 expect-empty가 잡힘 (위 switch).
 	//
