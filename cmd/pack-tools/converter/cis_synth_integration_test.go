@@ -356,6 +356,43 @@ func TestSynth_SSHDNumericGT_FAIL_WhenOutputEmpty(t *testing.T) {
 	}
 }
 
+// awk verify only X: 정확 매칭 — out == expected이면 PASS.
+func TestSynth_AwkVerifyOnly_PASS_WhenExactMatch(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.awkonly.pass", "assessment_status": "Automated",
+    "audit": "Verify that only \"root\" is returned:\n# awk -F: '($3 == 0) { print $1 }' /etc/passwd\nroot"
+  }]
+}`
+	mock := `awk() { echo "root"; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS for exact match 'root', got: %s", out)
+	}
+}
+
+func TestSynth_AwkVerifyOnly_FAIL_WhenExtraValue(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.awkonly.fail", "assessment_status": "Automated",
+    "audit": "Verify that only \"root\" is returned:\n# awk -F: '($3 == 0) { print $1 }' /etc/passwd\nroot"
+  }]
+}`
+	mock := "awk() { printf '%s\\n%s\\n' 'root' 'admin'; }" // root 외 추가 user
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** FAIL **")) {
+		t.Errorf("expected FAIL for extra UID-0 user 'admin', got: %s", out)
+	}
+}
+
 // grep verify output matches: grep regex가 valid alternation 포함, 출력 non-empty이면 PASS.
 func TestSynth_GrepVerifyOutput_PASS_WhenGrepMatchesValid(t *testing.T) {
 	bashPath := resolveBash()

@@ -337,8 +337,10 @@ func looksLikeShellCommand(line string) bool {
 //  3. stat/ls 파일 권한 — octal mode → ≤ expected 비교 + Uid 검증
 //  4. grep + "verify output matches/is" / "ensure output is in compliance" → expect-non-empty
 //     (CIS 6.2.2.x auditd config — grep regex가 valid value alternation 포함, 출력 non-empty == valid)
-//  5. "Nothing should be returned" → expect 빈 출력
-//  6. "<X> is installed/enabled/active/mounted" → 비어 있지 않아야 PASS
+//  5. grep + "is X or Y in" + cmd alternation → expect-non-empty (5.4.1.4 ENCRYPT_METHOD 형식)
+//  6. awk + "verify that only X is returned" → 정확 매칭 (5.4.2.1 형식)
+//  7. "Nothing should be returned" → expect 빈 출력
+//  8. "<X> is installed/enabled/active/mounted" → 비어 있지 않아야 PASS
 func synthesizeCISShellAssertion(audit string) (string, bool) {
 	cmd, ok := extractCISLastShellLine(audit)
 	if !ok {
@@ -363,6 +365,18 @@ func synthesizeCISShellAssertion(audit string) (string, bool) {
 	if isGrepCommand(cmd) && regexpVerifyOutputMatches.MatchString(audit) {
 		return synthesizeExpectNonEmpty(cmd), true
 	}
+	// grep + "is X or Y in" + cmd 자체 alternation 보유 — 5.4.1.4 ENCRYPT_METHOD 형식.
+	// audit text가 "is sha512 or yescrypt in /etc/login.defs" 명시 + cmd grep regex가
+	// valid alternation `(SHA512|yescrypt)` 보유 → 출력 non-empty == valid.
+	if isGrepCommand(cmd) && regexpIsXOrYIn.MatchString(audit) && cmdHasAlternation(cmd) {
+		return synthesizeExpectNonEmpty(cmd), true
+	}
+	// awk + "verify that only X is returned" — 정확 매칭. 5.4.2.1 root 등.
+	if isAwkCommand(cmd) {
+		if expected, ok2 := extractExpectedOnlyValue(audit); ok2 {
+			return synthesizeExpectExact(cmd, expected), true
+		}
+	}
 	switch {
 	case regexpExpectEmpty.MatchString(audit):
 		return synthesizeExpectEmpty(cmd), true
@@ -370,6 +384,27 @@ func synthesizeCISShellAssertion(audit string) (string, bool) {
 		return synthesizeExpectNonEmpty(cmd), true
 	}
 	return "", false
+}
+
+// isAwkCommand는 cmd가 awk 시작인지 검사.
+func isAwkCommand(cmd string) bool {
+	return strings.HasPrefix(cmd, "awk ")
+}
+
+// cmdHasAlternation은 cmd 안에 PCRE alternation `(X|Y)` 패턴 보유 검사.
+// 단순 character class `[abc]` 는 제외. valid alternation token list 식별 휴리스틱.
+func cmdHasAlternation(cmd string) bool {
+	return regexpAlternationToken.MatchString(cmd)
+}
+
+// extractExpectedOnlyValue는 audit text에서 "verify that only \"X\" is returned" 형식의
+// expected single value를 추출. 5.4.2.1 root 등.
+func extractExpectedOnlyValue(audit string) (string, bool) {
+	m := regexpVerifyOnlyXReturned.FindStringSubmatch(audit)
+	if len(m) < 2 {
+		return "", false
+	}
+	return m[1], true
 }
 
 // isGrepCommand는 cmd가 grep으로 시작하는지 검사 (auditd config grep 패턴 detection).
@@ -421,6 +456,16 @@ var (
 	//
 	// "Output should be similar to" 변형 — CIS PAM 가이드 다수에서 사용 (5.3.3.3.x · 5.3.3.4.x).
 	regexpVerifyOutputMatches = regexp.MustCompile(`(?i)verify\s+(the\s+)?output\s+(matches|is)|output\s+(includes|matches|should\s+(match|be\s+similar))|ensure\s+output\s+is\s+in\s+compliance`)
+	// regexpIsXOrYIn은 "is X or Y in /etc/foo" 형식의 valid alternation 명시 표현 매칭
+	// (5.4.1.4 "is sha512 or yescrypt in /etc/login.defs" 형식).
+	// in 다음에 path가 있어야 너무 광범위 false positive 회피.
+	regexpIsXOrYIn = regexp.MustCompile(`(?i)is\s+\w+\s+or\s+\w+\s+in\s+\S+`)
+	// regexpAlternationToken은 cmd 내 PCRE alternation `(X|Y)` 패턴 보유 검사 (단순 토큰만,
+	// quantifier·anchor 없는 형태). 5.4.1.4 `(SHA512|yescrypt)` 같은 valid value list 식별.
+	regexpAlternationToken = regexp.MustCompile(`\([A-Za-z][A-Za-z0-9_-]*(\|[A-Za-z][A-Za-z0-9_-]*)+\)`)
+	// regexpVerifyOnlyXReturned는 "verify that only \"root\" is returned" 형식에서 expected
+	// single value 추출. 5.4.2.1 형식. 따옴표 양쪽 type 호환 (single·double·없음).
+	regexpVerifyOnlyXReturned = regexp.MustCompile(`(?i)verify\s+that\s+only\s+["']?([\w\-_:./]+)["']?\s+is\s+returned`)
 )
 
 // isStatCommand는 cmd line이 `stat ` 으로 시작하는지 검사 (LS 가이드도 일부 stat 명령으로 정규화됨).
@@ -543,6 +588,19 @@ func synthesizeBashBodyExpectNonEmpty(hashbangBody string) string {
 	encoded := base64.StdEncoding.EncodeToString([]byte(hashbangBody))
 	return "out=\"$(printf '%s' '" + encoded + "' | base64 -d | bash 2>/dev/null)\"\n" +
 		"if [ -n \"$out\" ]; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// synthesizeExpectExact은 cmd 출력이 expectedValue와 정확히 일치하면 PASS, 아니면 FAIL.
+// 5.4.2.1 같은 "verify that only X is returned" 형식 cover. trim 후 비교 (trailing newline
+// 정규화). expectedValue는 single line short string (path/username 등) 가정.
+func synthesizeExpectExact(cmd, expectedValue string) string {
+	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
+		"out=\"$(printf '%s' \"$out\" | sed -e 's/[[:space:]]*$//')\"\n" +
+		"if [ \"$out\" = \"" + expectedValue + "\" ]; then\n" +
 		"  printf '%s\\n' \"** PASS **\"\n" +
 		"else\n" +
 		"  printf '%s\\n' \"** FAIL **\"\n" +

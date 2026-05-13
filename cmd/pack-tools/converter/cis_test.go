@@ -156,6 +156,30 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 5b: grep + "is X or Y in /path" + cmd alternation (5.4.1.4 ENCRYPT_METHOD) ===
+const cisGrepIsXOrYInFixture = `{
+  "items": [
+    {
+      "id": "5.4.1.4.synth",
+      "title": "Ensure hashing algorithm is sha512 or yescrypt (synthetic)",
+      "assessment_status": "Automated",
+      "audit": "Run the following command to verify the hashing algorithm is sha512 or yescrypt in /etc/login.defs:\n# grep -Pi -- '^\\h*ENCRYPT_METHOD\\h+(SHA512|yescrypt)\\b' /etc/login.defs\nExample output:\nENCRYPT_METHOD SHA512"
+    }
+  ]
+}`
+
+// === Pattern 6b: awk + "verify that only X is returned" → 정확 매칭 (5.4.2.1 root) ===
+const cisAwkVerifyOnlyFixture = `{
+  "items": [
+    {
+      "id": "5.4.2.1.synth",
+      "title": "Ensure root is the only UID 0 account (synthetic)",
+      "assessment_status": "Automated",
+      "audit": "Run the following command and verify that only \"root\" is returned:\n# awk -F: '($3 == 0) { print $1 }' /etc/passwd\nroot"
+    }
+  ]
+}`
+
 // === Pattern 8b: grep + "Output should be similar to" + multi-line cmd (CIS 5.3.3.x PAM) ===
 const cisPAMOutputSimilarFixture = `{
   "items": [
@@ -433,6 +457,47 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISGrepIsXOrYInAutoConverts는 grep + "is X or Y in /path" 표현 + cmd 자체
+// alternation `(SHA512|yescrypt)` 보유 시 expect-non-empty로 자동 변환 (5.4.1.4 형식).
+func TestConvertCISGrepIsXOrYInAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisGrepIsXOrYInFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "ENCRYPT_METHOD") {
+		t.Errorf("missing ENCRYPT_METHOD grep: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "[ -n") {
+		t.Errorf("should use expect-non-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISAwkVerifyOnlyAutoConverts는 awk + "verify that only X is returned" 표현이
+// 정확 매칭 분기로 자동 변환되는지 검증 (5.4.2.1 root 형식).
+func TestConvertCISAwkVerifyOnlyAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisAwkVerifyOnlyFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "awk -F:") {
+		t.Errorf("missing awk cmd: %q", c.AuditCommand)
+	}
+	// "$out" = "root" 정확 매칭 분기 검증
+	if !strings.Contains(c.AuditCommand, `"$out" = "root"`) {
+		t.Errorf("should compare exact value 'root': %q", c.AuditCommand)
 	}
 }
 

@@ -6,10 +6,18 @@ metadata:
     description: Any account with UID 0 has superuser privileges on the system.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(awk -F: '\''($3 == 0) { print $1 }'\'' /etc/passwd 2>/dev/null)"
+        out="$(printf '\''%s'\'' "$out" | sed -e '\''s/[[:space:]]*$//'\'')"
+        if [ "$out" = "root" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         This access must be limited to only the default root account and only from the system
         console. Administrative access must be through an unprivileged account using an
