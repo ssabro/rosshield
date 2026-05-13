@@ -156,6 +156,18 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 8b: grep + "Output should be similar to" + multi-line cmd (CIS 5.3.3.x PAM) ===
+const cisPAMOutputSimilarFixture = `{
+  "items": [
+    {
+      "id": "5.3.3.4.1.synth",
+      "title": "Ensure pam_unix nullok is not set (synthetic multi-line)",
+      "assessment_status": "Automated",
+      "audit": "Verify nullok is not set:\n# grep -PH -- '^\\h*[^#\\n\\r]+\\h+pam_unix\\.so\\b' /etc/pam.d/common-\n{password,auth,account} | grep -Pv -- '\\bnullok\\b'\nOutput should be similar to:\n/etc/pam.d/common-password: pam_unix.so obscure use_authtok yescrypt"
+    }
+  ]
+}`
+
 // === Pattern 8: grep + "verify output matches" → expect-non-empty (CIS 6.2.2.x auditd config) ===
 const cisGrepVerifyOutputMatchesFixture = `{
   "items": [
@@ -421,6 +433,34 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISPAMOutputSimilarAutoConverts는 PAM 다중 라인 grep cmd + "Output should be
+// similar to" 패턴이 multi-line 흡수(trailing `-` + dangling `--` + brace expansion) 후
+// expect-non-empty 분기로 자동 변환되는지 검증 (CIS 5.3.3.4.1 형식).
+func TestConvertCISPAMOutputSimilarAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisPAMOutputSimilarFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "pam_unix") {
+		t.Errorf("missing pam_unix grep: %q", c.AuditCommand)
+	}
+	// trailing `-` + 다음 줄 brace expansion이 흡수되어 path 정확 복원
+	if !strings.Contains(c.AuditCommand, "/etc/pam.d/common-") || !strings.Contains(c.AuditCommand, "{password,auth,account}") {
+		t.Errorf("multi-line absorption failed (trailing - or brace): %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "grep -Pv") {
+		t.Errorf("missing second grep -Pv: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "[ -n") {
+		t.Errorf("should use expect-non-empty branch: %q", c.AuditCommand)
 	}
 }
 

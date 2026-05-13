@@ -14,10 +14,17 @@ metadata:
         algorithm to be used.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -PH -- '\''^\h*^\h*[^#\n\r]+\h+pam_unix\.so\b'\'' /etc/pam.d/common- {password,auth,account,session,session-noninteractive} | grep -Pv -- '\''\bremember=\d+\b'\'' 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The remember=n argument should be removed to ensure a strong password hashing
         algorithm is being used. A stronger hash provides additional protection to the system by

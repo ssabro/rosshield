@@ -300,9 +300,8 @@ func quotedContext(cmd string) bool {
 //   - dangling backslash `\\` (POSIX line continuation)
 //   - dangling pipe `|` 또는 `&` (다음 명령 필요)
 //   - unmatched single/double quote (quoted regex 미닫힘)
-//
-// trailing single hyphen `-`은 quoted regex alt 안의 hyphen 가능성으로 별도 검사 안 함
-// — 이 경우 quote balance 검사가 unmatched로 잡아 줌.
+//   - trailing single `-` AND quote balanced — 5.3.3.4.1 같은 path 분할 (`/etc/pam.d/common-`
+//     + 다음 줄 `{password,auth,...}`). quoted alt 안 trailing hyphen은 quote unmatched로 잡힘.
 func isCISCmdComplete(cmd string) bool {
 	trimmed := strings.TrimRight(cmd, " \t")
 	if strings.HasSuffix(trimmed, "--") ||
@@ -311,7 +310,11 @@ func isCISCmdComplete(cmd string) bool {
 		strings.HasSuffix(trimmed, "&") {
 		return false
 	}
-	return strings.Count(cmd, "'")%2 == 0 && strings.Count(cmd, `"`)%2 == 0
+	quoteBalanced := strings.Count(cmd, "'")%2 == 0 && strings.Count(cmd, `"`)%2 == 0
+	if quoteBalanced && strings.HasSuffix(trimmed, "-") {
+		return false
+	}
+	return quoteBalanced
 }
 
 // looksLikeShellCommand는 한 줄 텍스트가 실제 shell 명령인지 휴리스틱으로 판정합니다.
@@ -409,11 +412,15 @@ var (
 	// (5.1.7 ClientAliveInterval/CountMax 등 양수 검증).
 	regexpExpectedSSHDPositive = regexp.MustCompile(`(?i)(?:are|is)\s+greater\s+than\s+zero`)
 	// regexpVerifyOutputMatches는 grep + "verify (the )?output matches/is" 또는 "Output
-	// (includes|matches)" 또는 "ensure output is in compliance" 자연어를 매칭 (대소문자 무시).
+	// (includes|matches|should be similar)" 또는 "ensure output is in compliance" 자연어를
+	// 매칭 (대소문자 무시).
 	//
-	// CIS 6.2.2.x auditd config — grep regex가 valid value alternation 포함하므로 출력
-	// non-empty == valid 설정 = PASS. isGrepCommand 분기와 결합해 false positive 회피.
-	regexpVerifyOutputMatches = regexp.MustCompile(`(?i)verify\s+(the\s+)?output\s+(matches|is)|output\s+(includes|matches|should\s+match)|ensure\s+output\s+is\s+in\s+compliance`)
+	// CIS 6.2.2.x auditd config + 5.3.3.x PAM grep — regex가 valid value alternation 포함
+	// 또는 valid 설정 줄 매칭, 출력 non-empty == valid 설정 = PASS. isGrepCommand 분기와
+	// 결합해 false positive 회피.
+	//
+	// "Output should be similar to" 변형 — CIS PAM 가이드 다수에서 사용 (5.3.3.3.x · 5.3.3.4.x).
+	regexpVerifyOutputMatches = regexp.MustCompile(`(?i)verify\s+(the\s+)?output\s+(matches|is)|output\s+(includes|matches|should\s+(match|be\s+similar))|ensure\s+output\s+is\s+in\s+compliance`)
 )
 
 // isStatCommand는 cmd line이 `stat ` 으로 시작하는지 검사 (LS 가이드도 일부 stat 명령으로 정규화됨).
