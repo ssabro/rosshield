@@ -11,10 +11,17 @@ metadata:
         configuration settings.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -Ph -- '\''^\h*-e\h+2\b'\'' /etc/audit/rules.d/*.rules | tail -1 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         In immutable mode, unauthorized users cannot execute changes to the audit system to
         potentially hide malicious activity and then put the audit rules back. Users would most

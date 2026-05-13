@@ -8,10 +8,17 @@ metadata:
         the max file size. A value of keep_logs will rotate the logs but never delete old logs.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep max_log_file_action /etc/audit/auditd.conf 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         In high security contexts, the benefits of maintaining a long audit history exceed the cost
         of storing the audit history.

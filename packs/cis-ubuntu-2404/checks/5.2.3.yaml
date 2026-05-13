@@ -6,10 +6,17 @@ metadata:
     description: sudo can use a custom log file
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep -rPsi 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         A sudo log file simplifies auditing of sudo commands
         Impact:

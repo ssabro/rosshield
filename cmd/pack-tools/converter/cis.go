@@ -327,13 +327,15 @@ func looksLikeShellCommand(line string) bool {
 
 // synthesizeCISShellAssertion은 자연어 가이드에서 expected outcome을 추론해 bash를 합성합니다.
 //
-// 매핑 (sshd 분기는 일반 expect-empty/non-empty보다 우선 — 같은 audit에 "Nothing should be
-// returned"가 동시 존재해도 sshd 옵션 검증이 더 정확):
+// 매핑 (sshd/stat 분기는 일반 expect-empty/non-empty보다 우선 — 같은 audit에 "Nothing should be
+// returned"가 동시 존재해도 sshd/stat 검증이 더 정확):
 //  1. sshd 수치 옵션 — `is N or less`/`greater than zero` → 모든 출력 라인 마지막 토큰 정수 비교
 //  2. sshd boolean — "set to (yes|no)" → 마지막 토큰 lowercase 비교
 //  3. stat/ls 파일 권한 — octal mode → ≤ expected 비교 + Uid 검증
-//  4. "Nothing should be returned" → expect 빈 출력
-//  5. "<X> is installed/enabled/active" → 비어 있지 않아야 PASS
+//  4. grep + "verify output matches/is" / "ensure output is in compliance" → expect-non-empty
+//     (CIS 6.2.2.x auditd config — grep regex가 valid value alternation 포함, 출력 non-empty == valid)
+//  5. "Nothing should be returned" → expect 빈 출력
+//  6. "<X> is installed/enabled/active/mounted" → 비어 있지 않아야 PASS
 func synthesizeCISShellAssertion(audit string) (string, bool) {
 	cmd, ok := extractCISLastShellLine(audit)
 	if !ok {
@@ -352,6 +354,12 @@ func synthesizeCISShellAssertion(audit string) (string, bool) {
 			return synthesizeExpectStatPerm(cmd, mode), true
 		}
 	}
+	// grep + "verify output matches/is" 또는 "ensure output is in compliance" 분기.
+	// CIS 6.2.2.x auditd config처럼 grep regex가 valid value alternation(`(halt|single)`)을
+	// 포함해 출력 non-empty == valid 설정 인 경우. expect-non-empty 우선 적용.
+	if isGrepCommand(cmd) && regexpVerifyOutputMatches.MatchString(audit) {
+		return synthesizeExpectNonEmpty(cmd), true
+	}
 	switch {
 	case regexpExpectEmpty.MatchString(audit):
 		return synthesizeExpectEmpty(cmd), true
@@ -359,6 +367,11 @@ func synthesizeCISShellAssertion(audit string) (string, bool) {
 		return synthesizeExpectNonEmpty(cmd), true
 	}
 	return "", false
+}
+
+// isGrepCommand는 cmd가 grep으로 시작하는지 검사 (auditd config grep 패턴 detection).
+func isGrepCommand(cmd string) bool {
+	return strings.HasPrefix(cmd, "grep ")
 }
 
 var (
@@ -395,6 +408,12 @@ var (
 	// regexpExpectedSSHDPositive는 "greater than zero" / "are greater than zero" 형태를 매칭
 	// (5.1.7 ClientAliveInterval/CountMax 등 양수 검증).
 	regexpExpectedSSHDPositive = regexp.MustCompile(`(?i)(?:are|is)\s+greater\s+than\s+zero`)
+	// regexpVerifyOutputMatches는 grep + "verify (the )?output matches/is" 또는 "Output
+	// (includes|matches)" 또는 "ensure output is in compliance" 자연어를 매칭 (대소문자 무시).
+	//
+	// CIS 6.2.2.x auditd config — grep regex가 valid value alternation 포함하므로 출력
+	// non-empty == valid 설정 = PASS. isGrepCommand 분기와 결합해 false positive 회피.
+	regexpVerifyOutputMatches = regexp.MustCompile(`(?i)verify\s+(the\s+)?output\s+(matches|is)|output\s+(includes|matches|should\s+match)|ensure\s+output\s+is\s+in\s+compliance`)
 )
 
 // isStatCommand는 cmd line이 `stat ` 으로 시작하는지 검사 (LS 가이드도 일부 stat 명령으로 정규화됨).

@@ -12,10 +12,17 @@ metadata:
         reinforce the use of sudo for privileged access.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(grep <group_name> /etc/group 2>/dev/null)"
+        if [ -n "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Restricting the use of su , and using sudo in its place, provides system administrators
         better control of the escalation of user privileges to execute privileged commands. The

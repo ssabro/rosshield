@@ -8,7 +8,7 @@ metadata:
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -rPi -- '\''^\h*Defaults\h+([^#\n\r]+,\h*)?!use_pty\b'\'' /etc/sudoers* 2>/dev/null)"
-        if [ -z "$out" ]; then
+        if [ -n "$out" ]; then
           printf '\''%s\n'\'' "** PASS **"
         else
           printf '\''%s\n'\'' "** FAIL **"

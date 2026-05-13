@@ -156,6 +156,18 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 8: grep + "verify output matches" → expect-non-empty (CIS 6.2.2.x auditd config) ===
+const cisGrepVerifyOutputMatchesFixture = `{
+  "items": [
+    {
+      "id": "6.2.2.3.synth",
+      "title": "Ensure disk_full_action is configured (synthetic)",
+      "assessment_status": "Automated",
+      "audit": "Run the following command and verify the disk_full_action is set to either halt or single:\n# grep -Pi -- '^\\h*disk_full_action\\h*=\\h*(halt|single)\\b' /etc/audit/auditd.conf\ndisk_full_action = halt\nVerify the output matches the expected value."
+    }
+  ]
+}`
+
 // === Pattern 7c: hashbang body + expect-empty (PASS 마커 부재 7.2.x · 5.4.2.7 등) ===
 const cisHashbangBodyExpectEmptyFixture = `{
   "items": [
@@ -409,6 +421,27 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISGrepVerifyOutputMatchesAutoConverts는 grep + "verify output matches" /
+// "ensure output is in compliance" 패턴이 expect-non-empty 분기로 자동 변환되는지 검증
+// (CIS 6.2.2.x auditd config — grep regex가 valid alternation 포함, 출력 non-empty == valid).
+func TestConvertCISGrepVerifyOutputMatchesAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisGrepVerifyOutputMatchesFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "grep -Pi") {
+		t.Errorf("missing grep cmd: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "[ -n") {
+		t.Errorf("should use expect-non-empty branch: %q", c.AuditCommand)
 	}
 }
 

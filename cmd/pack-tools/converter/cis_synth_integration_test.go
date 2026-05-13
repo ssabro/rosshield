@@ -356,6 +356,43 @@ func TestSynth_SSHDNumericGT_FAIL_WhenOutputEmpty(t *testing.T) {
 	}
 }
 
+// grep verify output matches: grep regex가 valid alternation 포함, 출력 non-empty이면 PASS.
+func TestSynth_GrepVerifyOutput_PASS_WhenGrepMatchesValid(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.grep.pass", "assessment_status": "Automated",
+    "audit": "Verify the output matches:\n# grep -Pi -- 'disk_full_action\\h*=\\h*(halt|single)' /etc/audit/auditd.conf\ndisk_full_action = halt"
+  }]
+}`
+	mock := `grep() { echo 'disk_full_action = halt'; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS for grep returning valid match, got: %s", out)
+	}
+}
+
+func TestSynth_GrepVerifyOutput_FAIL_WhenGrepEmpty(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.grep.fail", "assessment_status": "Automated",
+    "audit": "Verify the output matches:\n# grep -Pi -- 'disk_full_action\\h*=\\h*(halt|single)' /etc/audit/auditd.conf\ndisk_full_action = halt"
+  }]
+}`
+	mock := `grep() { :; }` // 매치 없음 = invalid 설정
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** FAIL **")) {
+		t.Errorf("expected FAIL for grep empty (no valid value), got: %s", out)
+	}
+}
+
 // hashbang body expect-empty: base64 인코딩 + sub-shell 실행 → 출력 빈 PASS.
 func TestSynth_HashbangBody_PASS_WhenBodyEmptyOutput(t *testing.T) {
 	bashPath := resolveBash()
