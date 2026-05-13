@@ -203,3 +203,104 @@ func TestDownloadReport_Returns400WhenReportIDEmpty(t *testing.T) {
 
 // silence lint — errors import는 stub error 비교에 사용
 var _ = errors.Is
+
+// === VerifyReport handler 단위 테스트 ===
+
+func TestVerifyReport_Returns400WhenNotSigned(t *testing.T) {
+	t.Parallel()
+	const reportID = "rep_unsigned"
+	stub := &stubReportingService{
+		report: reporting.Report{
+			ID:        reportID,
+			TenantID:  "tn_test",
+			PDF:       []byte("pdf"),
+			Signature: reporting.ReportSignature{}, // zero
+		},
+	}
+	h := handlers.New(handlers.Deps{
+		Storage:      noopStorage{},
+		Reporting:    stub,
+		ReportSigner: &fakeSigner{},
+	})
+
+	req := httptest.NewRequest("POST", "/api/v1/reports/"+reportID+"/verify", nil)
+	req = req.WithContext(storage.WithTenantID(req.Context(), "tn_test"))
+	rec := httptest.NewRecorder()
+
+	h.VerifyReport(rec, req, reportID)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s, want 400", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "not signed") {
+		t.Errorf("body should mention 'not signed': %s", rec.Body.String())
+	}
+}
+
+func TestVerifyReport_Returns503WhenSignerNotConfigured(t *testing.T) {
+	t.Parallel()
+	h := handlers.New(handlers.Deps{
+		Storage:   noopStorage{},
+		Reporting: &stubReportingService{},
+		// ReportSigner nil
+	})
+
+	req := httptest.NewRequest("POST", "/api/v1/reports/x/verify", nil)
+	req = req.WithContext(storage.WithTenantID(req.Context(), "tn_test"))
+	rec := httptest.NewRecorder()
+
+	h.VerifyReport(rec, req, "x")
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s, want 503", rec.Code, rec.Body.String())
+	}
+}
+
+func TestVerifyReport_Returns404WhenNotFound(t *testing.T) {
+	t.Parallel()
+	stub := &stubReportingService{err: storage.ErrNotFound}
+	h := handlers.New(handlers.Deps{
+		Storage:      noopStorage{},
+		Reporting:    stub,
+		ReportSigner: &fakeSigner{},
+	})
+
+	req := httptest.NewRequest("POST", "/api/v1/reports/missing/verify", nil)
+	req = req.WithContext(storage.WithTenantID(req.Context(), "tn_test"))
+	rec := httptest.NewRecorder()
+
+	h.VerifyReport(rec, req, "missing")
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%s, want 404", rec.Code, rec.Body.String())
+	}
+}
+
+func TestVerifyReport_Returns401WithoutTenantContext(t *testing.T) {
+	t.Parallel()
+	h := handlers.New(handlers.Deps{
+		Storage:      noopStorage{},
+		Reporting:    &stubReportingService{},
+		ReportSigner: &fakeSigner{},
+	})
+
+	req := httptest.NewRequest("POST", "/api/v1/reports/x/verify", nil)
+	rec := httptest.NewRecorder()
+
+	h.VerifyReport(rec, req, "x")
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s, want 401", rec.Code, rec.Body.String())
+	}
+}
+
+// fakeSigner는 PublicKey()만 호출되는 signer.Signer stub. Sign/Verify는 호출 X.
+type fakeSigner struct{}
+
+func (fakeSigner) Sign([]byte) ([]byte, string, error) { return nil, "", nil }
+func (fakeSigner) Verify([]byte, []byte) error          { return nil }
+func (fakeSigner) PublicKey() []byte {
+	// 32B Ed25519 PublicKey size — VerifyReport 흐름에서 BuildBundle에 전달.
+	return make([]byte, 32)
+}
+func (fakeSigner) KeyID() string { return "test-key" }

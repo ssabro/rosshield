@@ -81,6 +81,91 @@ func (h *Handlers) ListReports(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// VerifyReportResponse는 POST /api/v1/reports/{id}/verify 응답입니다.
+//
+// VerifyBundle 결과를 클라이언트 친화적으로 펼침. ok=false면 reason에 사유.
+type verifyReportResponse struct {
+	OK            bool   `json:"ok"`
+	Reason        string `json:"reason,omitempty"`
+	PDFSize       int64  `json:"pdfSize"`
+	PDFSHA256     string `json:"pdfSha256"`
+	SignerKeyID   string `json:"signerKeyId"`
+	ChainHeadSeq  int64  `json:"chainHeadSeq"`
+	ChainHeadHash string `json:"chainHeadHash"`
+}
+
+// VerifyReport는 POST /api/v1/reports/{id}/verify 핸들러입니다.
+//
+// 절차:
+//  1. reporting.Service.GetReport(reportID) — tenant scope 자동 격리
+//  2. report.Signature.IsZero() → 400 (서명되지 않은 report)
+//  3. ReportSigner.PublicKey() — bundle 내 pub key와 매치 가정
+//  4. BuildBundle(report, pub) — 결정적 tar.gz 생성 (re-bundle for verification)
+//  5. VerifyBundle(bundle, pub) — 서명·anchor·sha256·pubkey 모두 검증
+//  6. 결과 JSON 응답
+//
+// re-build pattern은 외부 SDK(`rosshield-audit-verify`)와 동일 — server side에서도 같은
+// 검증 결과 보장. cross-validation 가능.
+func (h *Handlers) VerifyReport(w http.ResponseWriter, r *http.Request, reportID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if reportID == "" {
+		writeError(w, http.StatusBadRequest, "missing reportId")
+		return
+	}
+	if h.deps.ReportSigner == nil {
+		writeError(w, http.StatusServiceUnavailable, "report signer not configured")
+		return
+	}
+
+	var report reporting.Report
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		rp, e := h.deps.Reporting.GetReport(ctx, tx, reportID)
+		if e != nil {
+			return e
+		}
+		report = rp
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "report not found")
+			return
+		}
+		writeError(w, errorStatusFor(err), "get report failed")
+		return
+	}
+	if report.Signature.IsZero() {
+		writeError(w, http.StatusBadRequest, "report not signed (call sign first)")
+		return
+	}
+
+	pub := h.deps.ReportSigner.PublicKey()
+	bundle, err := reporting.BuildBundle(report, pub)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("build bundle failed: %v", err))
+		return
+	}
+	res, err := reporting.VerifyBundle(bundle, pub)
+	if err != nil && res.OK {
+		// VerifyBundle은 reason을 res.Reason에 채워 반환 — err는 일부 sentinel만.
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("verify failed: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, verifyReportResponse{
+		OK:            res.OK,
+		Reason:        res.Reason,
+		PDFSize:       res.PDFSize,
+		PDFSHA256:     res.PDFSHA256,
+		SignerKeyID:   res.SignerKeyID,
+		ChainHeadSeq:  res.ChainHeadSeq,
+		ChainHeadHash: res.ChainHeadHash,
+	})
+}
+
 // DownloadReport는 GET /api/v1/reports/{id}/download 핸들러입니다.
 //
 // reporting.Service.GetReport(reportID)로 PDF body + 메타 회수 후 streaming.

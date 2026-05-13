@@ -1,13 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
 
 import { FileText } from 'lucide-react'
 
-import { ApiError } from '@/api/errors'
+import { apiClient } from '@/api/client'
+import { ApiError, extractErrorMessage } from '@/api/errors'
 import { useReports } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { useAuthStore } from '@/stores/auth'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -44,7 +47,7 @@ function ReportsPage(): React.ReactElement {
                 <TableHead>{t('reports.table.signed')}</TableHead>
                 <TableHead>{t('reports.table.sha256')}</TableHead>
                 <TableHead className="text-right">
-                  {t('reports.table.download')}
+                  {t('reports.table.actions')}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -119,16 +122,88 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
         )}
       </TableCell>
       <TableCell className="font-mono text-xs">{sha}</TableCell>
-      <TableCell className="text-right">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => downloadReportPDF(report.id)}
-        >
-          {t('reports.action.download')}
-        </Button>
+      <TableCell className="space-y-1 text-right">
+        <div className="flex justify-end gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => downloadReportPDF(report.id)}
+          >
+            {t('reports.action.download')}
+          </Button>
+          {report.signed && <VerifyButton reportID={report.id} />}
+        </div>
       </TableCell>
     </TableRow>
+  )
+}
+
+// VerifyButton — signed report에 대해 server-side verify 실행 후 결과 inline 표시.
+//
+// useState로 ok/reason/loading 관리. ok=true는 success Badge, ok=false는 destructive Badge + reason.
+function VerifyButton({ reportID }: { reportID: string }): React.ReactElement {
+  const t = useT()
+  const [state, setState] = useState<{
+    loading: boolean
+    ok?: boolean
+    reason?: string
+    error?: string
+  }>({ loading: false })
+
+  const onClick = async () => {
+    setState({ loading: true })
+    try {
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/reports/{reportId}/verify',
+        { params: { path: { reportId: reportID } } },
+      )
+      if (error) {
+        setState({
+          loading: false,
+          error: extractErrorMessage(error, response.statusText),
+        })
+        return
+      }
+      const r = data as unknown as { ok: boolean; reason?: string }
+      setState({ loading: false, ok: r.ok, reason: r.reason })
+    } catch (e) {
+      setState({
+        loading: false,
+        error: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  return (
+    <span className="flex items-center gap-1.5">
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onClick}
+        disabled={state.loading}
+      >
+        {state.loading ? t('reports.action.verifying') : t('reports.action.verify')}
+      </Button>
+      {state.ok === true && (
+        <Badge variant="default" className="text-[10px]">
+          {t('reports.verify.ok')}
+        </Badge>
+      )}
+      {state.ok === false && (
+        <Badge
+          variant="destructive"
+          className="text-[10px]"
+          title={state.reason}
+        >
+          {t('reports.verify.failed')}
+        </Badge>
+      )}
+      {state.error && (
+        <span className="text-xs text-destructive" title={state.error}>
+          {t('reports.verify.error')}
+        </span>
+      )}
+    </span>
   )
 }
 

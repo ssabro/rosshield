@@ -174,6 +174,7 @@ func newMux(p *Platform) http.Handler {
 		SSO:               p.SSO,
 		Invitation:        p.Invitation,
 		Metrics:           p.Metrics,
+		ReportSigner:      p.ReportSigner,
 	})
 	h.Mount(apiRouter)
 

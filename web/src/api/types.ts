@@ -475,23 +475,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/reports/{reportId}:verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Verify the signature of a report */
-        post: operations["verifyReport"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/license": {
         parameters: {
             query?: never;
@@ -595,6 +578,28 @@ export interface paths {
         get: operations["getCheckSelftest"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/{reportId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify report signature + audit chain anchor (server-side)
+         * @description external SDK(`rosshield-audit-verify`)와 동일 검증을 server side에서 실행.
+         *     re-bundle 후 VerifyBundle — pub key는 ReportSigner.PublicKey() 활용.
+         *     signed 안 된 report는 400. ReportSigner 미설정 시 503.
+         */
+        post: operations["verifyReport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1420,6 +1425,28 @@ export interface components {
             hashHex: string;
             /** Format: date-time */
             updatedAt?: string;
+        };
+        VerifyReportResponse: {
+            /** @description true이면 모든 검증 통과 */
+            ok: boolean;
+            /** @description ok=false일 때 사람 읽기용 사유 */
+            reason?: string;
+            /**
+             * Format: int64
+             * @description PDF 크기 (bytes)
+             */
+            pdfSize: number;
+            /** @description PDF SHA256 hex (64자) */
+            pdfSha256: string;
+            /** @description 서명 키 ID */
+            signerKeyId: string;
+            /**
+             * Format: int64
+             * @description anchor의 audit chain head seq
+             */
+            chainHeadSeq: number;
+            /** @description anchor의 audit chain head hash hex */
+            chainHeadHash: string;
         };
         UsageStats: {
             /** @description Tenant ID (요청 컨텍스트에서 추출) */
@@ -2648,29 +2675,6 @@ export interface operations {
             default: components["responses"]["ErrorResponse"];
         };
     };
-    verifyReport: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                reportId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Verification result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Envelope"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
     getLicenseInfo: {
         parameters: {
             query?: never;
@@ -2823,6 +2827,47 @@ export interface operations {
                 };
             };
             /** @description builtin pack 아님 또는 selftest 부재 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    verifyReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reportId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verification result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyReportResponse"];
+                };
+            };
+            /** @description Report not signed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Report not found */
             404: {
                 headers: {
                     [name: string]: unknown;

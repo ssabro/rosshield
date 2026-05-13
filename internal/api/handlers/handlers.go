@@ -42,6 +42,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/license"
 	"github.com/ssabro/rosshield/internal/platform/metrics"
+	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -70,6 +71,7 @@ type Deps struct {
 	WebhookDispatcher *webhookrun.Dispatcher   // E29 — POST /webhooks/{id}/test (옵트인, nil이면 503)
 	Invitation        tenant.InvitationService // E21 — 초대·역할 (옵트인, nil이면 503)
 	Metrics           *metrics.Registry        // GET /api/v1/usage/stats — usage 통계 카운트 read (nil이면 503)
+	ReportSigner      signer.Signer            // POST /api/v1/reports/{id}/verify — public key 추출용 (R10-7 ReportSigner, nil이면 503)
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -134,6 +136,9 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/reports", h.ListReports)
 		r.Get("/api/v1/reports/{reportId}/download", func(w http.ResponseWriter, req *http.Request) {
 			h.DownloadReport(w, req, chi.URLParam(req, "reportId"))
+		})
+		r.Post("/api/v1/reports/{reportId}/verify", func(w http.ResponseWriter, req *http.Request) {
+			h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
 		})
 
 		// 미구현 endpoint들 (gen.Unimplemented 위임 — 자동 501)

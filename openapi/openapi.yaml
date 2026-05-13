@@ -741,24 +741,6 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
-  /api/v1/reports/{reportId}:verify:
-    post:
-      tags: [reporting]
-      operationId: verifyReport
-      summary: Verify the signature of a report
-      x-status: todo
-      parameters:
-        - { in: path, name: reportId, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: Verification result
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Envelope"
-        default:
-          $ref: "#/components/responses/ErrorResponse"
-
   /api/v1/license:
     get:
       tags: [tenant]
@@ -914,6 +896,43 @@ paths:
                 $ref: "#/components/schemas/CheckSelftest"
         "404":
           description: builtin pack 아님 또는 selftest 부재
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/reports/{reportId}/verify:
+    post:
+      tags: [reports]
+      operationId: verifyReport
+      summary: Verify report signature + audit chain anchor (server-side)
+      description: |
+        external SDK(`rosshield-audit-verify`)와 동일 검증을 server side에서 실행.
+        re-bundle 후 VerifyBundle — pub key는 ReportSigner.PublicKey() 활용.
+        signed 안 된 report는 400. ReportSigner 미설정 시 503.
+      x-status: phase5
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyReportResponse"
+        "400":
+          description: Report not signed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Report not found
           content:
             application/json:
               schema:
@@ -2282,6 +2301,18 @@ components:
         seq:       { type: integer, format: int64 }
         hashHex:   { type: string, description: "Hash bytes (32B) hex-encoded — 64 chars" }
         updatedAt: { type: string, format: date-time }
+
+    VerifyReportResponse:
+      type: object
+      required: [ok, pdfSize, pdfSha256, signerKeyId, chainHeadSeq, chainHeadHash]
+      properties:
+        ok:            { type: boolean, description: "true이면 모든 검증 통과" }
+        reason:        { type: string, description: "ok=false일 때 사람 읽기용 사유" }
+        pdfSize:       { type: integer, format: int64, description: "PDF 크기 (bytes)" }
+        pdfSha256:     { type: string, description: "PDF SHA256 hex (64자)" }
+        signerKeyId:   { type: string, description: "서명 키 ID" }
+        chainHeadSeq:  { type: integer, format: int64, description: "anchor의 audit chain head seq" }
+        chainHeadHash: { type: string, description: "anchor의 audit chain head hash hex" }
 
     UsageStats:
       type: object
