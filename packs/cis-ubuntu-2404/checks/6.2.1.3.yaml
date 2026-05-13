@@ -9,7 +9,7 @@ metadata:
     severity: medium
 spec:
     auditCommand: |-
-        bash -c 'out="$(find /boot -type f -name '\''grub.cfg'\'' -exec grep -Ph -- '\''^\h*linux'\'' {} + | 2>/dev/null)"
+        bash -c 'out="$(find /boot -type f -name '\''grub.cfg'\'' -exec grep -Ph -- '\''^\h*linux'\'' {} + | grep -v '\''audit=1'\'' 2>/dev/null)"
         if [ -z "$out" ]; then
           printf '\''%s\n'\'' "** PASS **"
         else

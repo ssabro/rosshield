@@ -156,6 +156,37 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 8: multi-line shell line — sshd | grep PCRE regex가 PDF rendering으로 분할 ===
+// 5.1.6 Ciphers · 5.1.15 MACs · 5.1.12 KexAlgorithms 형식. extractCISLastShellLine이
+// 첫 줄 `# sshd -T | grep -Pi --` (dangling --) 또는 `# sshd ... '...regex...` (unmatched ')
+// 만 추출하면 grep 인자 누락 → 빈 출력 → false PASS. multi-line 흡수 후 정확 변환.
+const cisExpectMultiLineCipherFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "5.1.6.synth",
+      "title": "Ensure sshd Ciphers are configured (synthetic multi-line)",
+      "assessment_status": "Automated",
+      "audit": "Run the following command to verify none of the weak ciphers are in use:\n# sshd -T | grep -Pi --\n'^ciphers\\h+\\\"?([^#\\n\\r]+,)?((3des|blowfish|cast128|aes(128|192|256))-\ncbc|arcfour(128|256)?|chacha20-\npoly1305@openssh\\.com)\\b'\nNo ciphers in the list below should be returned as they are weak.\n3des-cbc\naes128-cbc"
+    }
+  ]
+}`
+
+// === Pattern 9: multi-line shell line — dangling -- with quoted regex on next line ===
+const cisExpectMultiLineKexFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "5.1.12.synth",
+      "title": "Ensure sshd KexAlgorithms is configured (synthetic multi-line)",
+      "assessment_status": "Automated",
+      "audit": "Verify weak Key Exchange:\n# sshd -T | grep -Pi -- 'kexalgorithms\\h+([^#\\n\\r]+,)?(diffie-hellman-group1-\nsha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1)\\b'\nNothing should be returned"
+    }
+  ]
+}`
+
 // === audit에 PASS 마커 있지만 hashbang 없음 — fallback ===
 const cisMarkerNoHashbangFixture = `{
   "benchmark": "CIS",
@@ -352,6 +383,58 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISMultiLineCipherAutoConverts는 multi-line `# sshd -T | grep -Pi --` (dangling
+// `--`) + 다음 줄 quoted regex가 흡수되어 grep 인자 누락 없이 변환되는지 검증.
+func TestConvertCISMultiLineCipherAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectMultiLineCipherFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	// 흡수된 cmd는 첫 줄 `sshd -T | grep -Pi --` + 후속 quoted regex token이 join되어 있어야.
+	if !strings.Contains(c.AuditCommand, "sshd -T | grep -Pi --") {
+		t.Errorf("missing first line: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "ciphers") {
+		t.Errorf("missing absorbed regex content (ciphers): %q", c.AuditCommand)
+	}
+	// regex 분할 token "aes(128|192|256))-" + "cbc" 가 no-space join으로 "aes(128|192|256))-cbc" 복원.
+	if !strings.Contains(c.AuditCommand, "aes(128|192|256))-cbc") {
+		t.Errorf("hyphen-broken token not rejoined as -cbc: %q", c.AuditCommand)
+	}
+	// "No ciphers ... should be returned"가 expect-empty로 잡혀 [ -z ] 분기 합성.
+	if !strings.Contains(c.AuditCommand, "[ -z") {
+		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISMultiLineKexAlgorithmsAutoConverts는 dangling `--` + quoted regex가 같은
+// 줄에서 시작 후 다음 줄로 이어지는 케이스 (5.1.12 형식) 검증.
+func TestConvertCISMultiLineKexAlgorithmsAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectMultiLineKexFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "kexalgorithms") {
+		t.Errorf("missing kexalgorithms regex: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "group1-sha1") {
+		t.Errorf("hyphen-split token group1-sha1 not rejoined: %q", c.AuditCommand)
+	}
+	if !strings.Contains(c.AuditCommand, "[ -z") {
+		t.Errorf("should use expect-empty branch (Nothing should be returned): %q", c.AuditCommand)
 	}
 }
 

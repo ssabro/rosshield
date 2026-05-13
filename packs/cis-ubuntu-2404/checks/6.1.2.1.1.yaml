@@ -10,7 +10,7 @@ metadata:
     severity: medium
 spec:
     auditCommand: |-
-        bash -c 'out="$(dpkg-query -s systemd-journal-remote &>/dev/null && echo "systemd-journal- 2>/dev/null)"
+        bash -c 'out="$(dpkg-query -s systemd-journal-remote &>/dev/null && echo "systemd-journal-remote is installed" 2>/dev/null)"
         if [ -n "$out" ]; then
           printf '\''%s\n'\'' "** PASS **"
         else

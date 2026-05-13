@@ -192,7 +192,14 @@ var shellLineSkipRe = regexp.MustCompile(`(?i)^(run\s|example|verify|the\s|note:
 //
 // 마지막 명령을 우선시하는 이유: CIS audit 가이드는 일반적으로 자연어 설명 → 명령
 // 순서로 작성됨. 마지막 명령이 실제 검증 명령일 가능성 가장 높음.
+//
+// multi-line 흡수: 첫 # 줄 cmd가 dangling token(`--`/`\\`/`|`/`&`) 또는 unmatched quote를
+// 가지면 다음 줄들을 close 또는 자연어 경계까지 흡수(no space join — quoted regex 의미 보존).
+// CIS audit은 PDF rendering 한계로 단일 PCRE regex가 여러 줄로 분할되어 작성된 케이스
+// 다수(5.1.6 Ciphers · 5.1.12 KexAlgorithms · 5.1.15 MACs 등). 단일 줄만 추출하면 grep
+// 인자 누락 false PASS 위험.
 func extractCISLastShellLine(audit string) (string, bool) {
+	indices := cisShellLineRe.FindAllStringSubmatchIndex(audit, -1)
 	matches := cisShellLineRe.FindAllStringSubmatch(audit, -1)
 	for i := len(matches) - 1; i >= 0; i-- {
 		cand := strings.TrimSpace(matches[i][1])
@@ -204,9 +211,89 @@ func extractCISLastShellLine(audit string) (string, bool) {
 		if !looksLikeShellCommand(cand) {
 			continue
 		}
-		return cand, true
+		// 첫 줄 cmd가 incomplete이면 다음 줄들 흡수 시도 (matches[i][3]은 첫 줄 cmd 끝 offset).
+		afterFirst := audit[indices[i][3]:]
+		return absorbCISContinuation(cand, afterFirst), true
 	}
 	return "", false
+}
+
+// absorbCISContinuation은 첫 # 줄 cmd가 incomplete(dangling token 또는 unmatched quote)이면
+// 다음 줄들을 close 또는 자연어/주석 경계까지 흡수 후 join합니다.
+//
+// 종료 조건 (먼저 매치되는 것):
+//  1. cmd가 complete(quote balanced + no dangling token) — 정상 흡수 완료
+//  2. 다음 줄이 # 또는 - 시작 — 다음 명령 또는 자연어 (5.1.6의 "- IF -" 등)
+//  3. 다음 줄이 자연어 prefix(Run/Note/Verify/...) — shellLineSkipRe 매칭
+//  4. safety limit (8 lines / 4096 chars) — runaway 방어
+//
+// join 전략 (quote-balance 기반):
+//  - accumulated가 unmatched quote(quoted regex 안) → newline 제거 no-space join
+//    예: `aes(128|192|256))-` + `cbc|arcfour...` → `aes(128|192|256))-cbc|arcfour...` 정확 복원
+//  - accumulated가 balanced quote(보통 dangling flag/operator로 끝남) → space join
+//    예: `sshd -T | grep -Pi --` + `'^ciphers...` → `sshd -T | grep -Pi -- '^ciphers...`
+//        no-space join 시 `--'^ciphers'` 가 grep `--^ciphers` 단일 패턴으로 파싱되어 false PASS
+func absorbCISContinuation(first, after string) string {
+	if isCISCmdComplete(first) {
+		return first
+	}
+	const maxLines = 8
+	const maxLen = 4096
+	accumulated := first
+	consumed := 0
+	for _, line := range strings.Split(after, "\n") {
+		if consumed >= maxLines || len(accumulated) > maxLen {
+			break
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "-") {
+			break
+		}
+		if shellLineSkipRe.MatchString(trimmed) {
+			break
+		}
+		if quotedContext(accumulated) {
+			accumulated += trimmed
+		} else {
+			accumulated += " " + trimmed
+		}
+		consumed++
+		if isCISCmdComplete(accumulated) {
+			break
+		}
+	}
+	return accumulated
+}
+
+// quotedContext는 cmd가 unmatched quote(quoted regex/string 안) 상태인지 반환.
+// true면 다음 줄 join 시 newline 제거 no-space (regex 분할 token 복원).
+// false면 space join (dangling flag 다음 인자가 별 토큰으로 분리되어야 안전).
+func quotedContext(cmd string) bool {
+	return strings.Count(cmd, "'")%2 != 0 || strings.Count(cmd, `"`)%2 != 0
+}
+
+// isCISCmdComplete는 cmd가 complete(흡수 종료 가능)인지 판정.
+//
+// incomplete 조건:
+//   - dangling getopt `--` (인자 필요, 5.1.6 `sshd -T | grep -Pi --`)
+//   - dangling backslash `\\` (POSIX line continuation)
+//   - dangling pipe `|` 또는 `&` (다음 명령 필요)
+//   - unmatched single/double quote (quoted regex 미닫힘)
+//
+// trailing single hyphen `-`은 quoted regex alt 안의 hyphen 가능성으로 별도 검사 안 함
+// — 이 경우 quote balance 검사가 unmatched로 잡아 줌.
+func isCISCmdComplete(cmd string) bool {
+	trimmed := strings.TrimRight(cmd, " \t")
+	if strings.HasSuffix(trimmed, "--") ||
+		strings.HasSuffix(trimmed, "\\") ||
+		strings.HasSuffix(trimmed, "|") ||
+		strings.HasSuffix(trimmed, "&") {
+		return false
+	}
+	return strings.Count(cmd, "'")%2 == 0 && strings.Count(cmd, `"`)%2 == 0
 }
 
 // looksLikeShellCommand는 한 줄 텍스트가 실제 shell 명령인지 휴리스틱으로 판정합니다.
@@ -258,13 +345,17 @@ func synthesizeCISShellAssertion(audit string) (string, bool) {
 
 var (
 	// regexpExpectEmpty은 "Nothing should be returned" / "no output should be returned" /
-	// "should not be returned (in use)" 류 자연어를 매칭 (대소문자 무시).
+	// "should not be returned/in use" / "No <X...> should be returned" 류 자연어를 매칭
+	// (대소문자 무시).
 	//
-	// 비매칭 의도(별 epic): "No <X...> should be returned" 형태 (5.1.6 Ciphers /
-	// 5.1.15 MACs) — audit shell line이 정규식 multi-line line-continuation으로 작성되어
-	// extractCISLastShellLine이 첫 줄(`sshd -T | grep -Pi --`)만 추출 → 인자 누락 false PASS
-	// 위험. 별 epic에서 multi-line cmd 추출 + 정규식 확장 동시 적용해야 안전.
-	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned|should\s+not\s+be\s+(returned|in\s+use)`)
+	// 추가 변형 cover:
+	//  - "should not be returned/in use" — 직접 부정 표현
+	//  - "No <subject>...should be returned" — 5.1.6 Ciphers / 5.1.15 MACs / 5.1.12 KexAlgorithms
+	//    "No ciphers in the list below should be returned" 형태 (subject 사이 단어 0~10개)
+	//
+	// multi-line cmd 흡수(absorbCISContinuation) 적용 후 안전 — 이전엔 첫 줄만 추출돼
+	// grep 인자 누락 false PASS 위험으로 비활성화 상태였음.
+	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned|should\s+not\s+be\s+(returned|in\s+use)|no\s+\S+(?:\s+\S+){0,10}\s+should\s+be\s+returned`)
 	// regexpExpectNonEmpty은 "<X> is installed" 같은 긍정 echo 기대 패턴 (대소문자 무시).
 	// 같은 audit에 "Nothing should be returned"가 있으면 우선순위로 expect-empty가 잡힘 (위 switch).
 	regexpExpectNonEmpty = regexp.MustCompile(`(?i)(is\s+installed|is\s+enabled|is\s+active)\b`)

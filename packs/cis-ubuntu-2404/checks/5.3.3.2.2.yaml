@@ -13,7 +13,7 @@ metadata:
     severity: medium
 spec:
     auditCommand: |-
-        bash -c 'out="$(grep -Psi -- 2>/dev/null)"
+        bash -c 'out="$(grep -Psi -- '\''^\h*password\h+(requisite|required|sufficient)\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?minlen\h*=\h*([0-9]|1[0-3])\b'\'' /etc/pam.d/system-auth 2>/dev/null)"
         if [ -z "$out" ]; then
           printf '\''%s\n'\'' "** PASS **"
         else

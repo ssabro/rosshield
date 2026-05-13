@@ -16,10 +16,17 @@ metadata:
         o aes128-ctr
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | grep -Pi -- '\''^ciphers\h+\"?([^#\n\r]+,)?((3des|blowfish|cast128|aes(128|192|256))-cbc|arcfour(128|256)?|rijndael-cbc@lysator\.liu\.se|chacha20-poly1305@openssh\.com)\b'\'' 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Weak ciphers that are used for authentication to the cryptographic module cannot be
         relied upon to provide confidentiality or integrity, and system data may be compromised.

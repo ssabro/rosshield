@@ -12,7 +12,7 @@ metadata:
     severity: medium
 spec:
     auditCommand: |-
-        bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($5 > 365 || $5 < 1)print "User: " $1 " 2>/dev/null)"
+        bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($5 > 365 || $5 < 1)print "User: " $1 "PASS_MAX_DAYS: " $5}'\'' /etc/shadow 2>/dev/null)"
         if [ -z "$out" ]; then
           printf '\''%s\n'\'' "** PASS **"
         else

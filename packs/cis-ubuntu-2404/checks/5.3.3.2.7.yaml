@@ -14,7 +14,7 @@ metadata:
     severity: medium
 spec:
     auditCommand: |-
-        bash -c 'out="$(grep -PHsi -- 2>/dev/null)"
+        bash -c 'out="$(grep -PHsi -- '\''^\h*password\h+[^#\n\r]+\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?enforcing=0\b'\'' 2>/dev/null)"
         if [ -z "$out" ]; then
           printf '\''%s\n'\'' "** PASS **"
         else

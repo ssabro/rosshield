@@ -14,7 +14,7 @@ metadata:
     severity: medium
 spec:
     auditCommand: |-
-        bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($7 > 45 || $7 < 0)print "User: " $1 " INACTIVE: 2>/dev/null)"
+        bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($7 > 45 || $7 < 0)print "User: " $1 " INACTIVE:" $7}'\'' /etc/shadow 2>/dev/null)"
         if [ -z "$out" ]; then
           printf '\''%s\n'\'' "** PASS **"
         else
