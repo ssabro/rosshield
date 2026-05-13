@@ -156,6 +156,18 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 6c: sshd numeric range "between N and M" (5.1.13 LoginGraceTime) ===
+const cisExpectSSHDRangeFixture = `{
+  "items": [
+    {
+      "id": "5.1.13.synth",
+      "title": "Ensure sshd LoginGraceTime is configured (synthetic)",
+      "assessment_status": "Automated",
+      "audit": "Run the following command and verify that output LoginGraceTime is between 1 and 60 seconds:\n# sshd -T | grep logingracetime\nlogingracetime 60"
+    }
+  ]
+}`
+
 // === Pattern 5b: grep + "is X or Y in /path" + cmd alternation (5.4.1.4 ENCRYPT_METHOD) ===
 const cisGrepIsXOrYInFixture = `{
   "items": [
@@ -457,6 +469,27 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISExpectSSHDRangeAutoConverts는 sshd 옵션의 닫힌 범위 검증 ("is between N and M")이
+// 모든 출력 라인 마지막 토큰의 [lo, hi] 범위 비교로 자동 변환되는지 검증 (5.1.13 LoginGraceTime).
+func TestConvertCISExpectSSHDRangeAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectSSHDRangeFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "sshd -T | grep logingracetime") {
+		t.Errorf("missing extracted sshd line: %q", c.AuditCommand)
+	}
+	// -lt 1 (lo 위반) 또는 -gt 60 (hi 위반) 둘 다 FAIL
+	if !strings.Contains(c.AuditCommand, `"$val" -lt 1`) || !strings.Contains(c.AuditCommand, `"$val" -gt 60`) {
+		t.Errorf("missing range bounds 1/60: %q", c.AuditCommand)
 	}
 }
 

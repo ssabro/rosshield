@@ -356,6 +356,61 @@ func TestSynth_SSHDNumericGT_FAIL_WhenOutputEmpty(t *testing.T) {
 	}
 }
 
+// sshd numeric range: out 마지막 토큰이 [lo, hi] 범위면 PASS.
+func TestSynth_SSHDRange_PASS_WhenWithinRange(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.sshdrange.pass", "assessment_status": "Automated",
+    "audit": "Verify LoginGraceTime is between 1 and 60 seconds:\n# sshd -T | grep logingracetime\nlogingracetime 60"
+  }]
+}`
+	mock := `sshd() { echo "logingracetime 30"; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS for 30 in [1,60], got: %s", out)
+	}
+}
+
+func TestSynth_SSHDRange_FAIL_WhenBelowRange(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.sshdrange.below", "assessment_status": "Automated",
+    "audit": "Verify LoginGraceTime is between 1 and 60 seconds:\n# sshd -T | grep logingracetime\nlogingracetime 60"
+  }]
+}`
+	mock := `sshd() { echo "logingracetime 0"; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** FAIL **")) {
+		t.Errorf("expected FAIL for 0 < 1, got: %s", out)
+	}
+}
+
+func TestSynth_SSHDRange_FAIL_WhenAboveRange(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.sshdrange.above", "assessment_status": "Automated",
+    "audit": "Verify LoginGraceTime is between 1 and 60 seconds:\n# sshd -T | grep logingracetime\nlogingracetime 60"
+  }]
+}`
+	mock := `sshd() { echo "logingracetime 120"; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** FAIL **")) {
+		t.Errorf("expected FAIL for 120 > 60, got: %s", out)
+	}
+}
+
 // awk verify only X: 정확 매칭 — out == expected이면 PASS.
 func TestSynth_AwkVerifyOnly_PASS_WhenExactMatch(t *testing.T) {
 	bashPath := resolveBash()

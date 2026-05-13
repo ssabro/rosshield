@@ -11,10 +11,33 @@ metadata:
         is available for needed access.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(sshd -T | grep logingracetime 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** FAIL **"
+          exit 0
+        fi
+        fail=0
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          val="$(printf '\''%s'\'' "$line" | awk '\''{print $NF}'\'')"
+          case "$val" in *[!0-9]*|"") fail=1; break ;; esac
+          if [ "$val" -lt 1 ] || [ "$val" -gt 60 ]; then
+            fail=1
+            break
+          fi
+        done <<EOF
+        $out
+        EOF
+        if [ "$fail" -eq 0 ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Setting the LoginGraceTime parameter to a low number will minimize the risk of
         successful brute force attacks to the SSH server. It will also limit the number of

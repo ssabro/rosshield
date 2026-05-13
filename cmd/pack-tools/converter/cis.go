@@ -347,6 +347,9 @@ func synthesizeCISShellAssertion(audit string) (string, bool) {
 		return "", false
 	}
 	if isSSHDCommand(cmd) {
+		if lo, hi, ok2 := extractExpectedSSHDRange(audit); ok2 {
+			return synthesizeExpectSSHDRange(cmd, lo, hi), true
+		}
 		if op, threshold, ok2 := extractExpectedSSHDNumeric(audit); ok2 {
 			return synthesizeExpectSSHDNumeric(cmd, op, threshold), true
 		}
@@ -446,6 +449,9 @@ var (
 	// regexpExpectedSSHDPositive는 "greater than zero" / "are greater than zero" 형태를 매칭
 	// (5.1.7 ClientAliveInterval/CountMax 등 양수 검증).
 	regexpExpectedSSHDPositive = regexp.MustCompile(`(?i)(?:are|is)\s+greater\s+than\s+zero`)
+	// regexpExpectedSSHDRange는 "is between N and M (seconds)?" 형식의 닫힌 범위 추출
+	// (5.1.13 LoginGraceTime "is between 1 and 60 seconds" 등).
+	regexpExpectedSSHDRange = regexp.MustCompile(`(?i)is\s+between\s+(\d+)\s+and\s+(\d+)\b`)
 	// regexpVerifyOutputMatches는 grep + "verify (the )?output matches/is" 또는 "Output
 	// (includes|matches|should be similar)" 또는 "ensure output is in compliance" 자연어를
 	// 매칭 (대소문자 무시).
@@ -517,6 +523,22 @@ func extractExpectedSSHDNumeric(audit string) (op string, threshold int, ok bool
 		return "gt", 0, true
 	}
 	return "", 0, false
+}
+
+// extractExpectedSSHDRange는 audit 텍스트에서 "is between N and M" 형식의 수치 범위를 반환.
+// 5.1.13 LoginGraceTime "is between 1 and 60 seconds" 같은 닫힌 구간 [lo, hi] 검증용.
+// 미매칭 시 ok=false.
+func extractExpectedSSHDRange(audit string) (lo, hi int, ok bool) {
+	m := regexpExpectedSSHDRange.FindStringSubmatch(audit)
+	if len(m) < 3 {
+		return 0, 0, false
+	}
+	l, errL := strconv.Atoi(m[1])
+	h, errH := strconv.Atoi(m[2])
+	if errL != nil || errH != nil || l > h {
+		return 0, 0, false
+	}
+	return l, h, true
 }
 
 // synthesizeExpectEmpty는 cmd 출력이 비어 있으면 PASS, 아니면 FAIL 출력하는 bash를 생성.
@@ -601,6 +623,36 @@ func synthesizeExpectExact(cmd, expectedValue string) string {
 	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
 		"out=\"$(printf '%s' \"$out\" | sed -e 's/[[:space:]]*$//')\"\n" +
 		"if [ \"$out\" = \"" + expectedValue + "\" ]; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// synthesizeExpectSSHDRange는 sshd -T grep 출력의 모든 라인 마지막 토큰이 닫힌 범위
+// [lo, hi]에 있는지 검증 (5.1.13 LoginGraceTime "is between 1 and 60 seconds").
+//
+// 빈 출력은 즉시 FAIL (옵션 미설정 = invalid). 비정수 마지막 토큰 case 분기 보호 — false
+// positive 회피. lo > hi는 호출자(extractExpectedSSHDRange)에서 미리 차단.
+func synthesizeExpectSSHDRange(cmd string, lo, hi int) string {
+	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
+		"if [ -z \"$out\" ]; then\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"fail=0\n" +
+		"while IFS= read -r line; do\n" +
+		"  [ -z \"$line\" ] && continue\n" +
+		"  val=\"$(printf '%s' \"$line\" | awk '{print $NF}')\"\n" +
+		"  case \"$val\" in *[!0-9]*|\"\") fail=1; break ;; esac\n" +
+		"  if [ \"$val\" -lt " + strconv.Itoa(lo) + " ] || [ \"$val\" -gt " + strconv.Itoa(hi) + " ]; then\n" +
+		"    fail=1\n" +
+		"    break\n" +
+		"  fi\n" +
+		"done <<EOF\n" +
+		"$out\n" +
+		"EOF\n" +
+		"if [ \"$fail\" -eq 0 ]; then\n" +
 		"  printf '%s\\n' \"** PASS **\"\n" +
 		"else\n" +
 		"  printf '%s\\n' \"** FAIL **\"\n" +
