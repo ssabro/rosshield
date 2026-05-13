@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import * as React from 'react'
 import { useCallback, useEffect, useState } from 'react'
 
 import { apiClient } from '@/api/client'
@@ -485,15 +486,7 @@ function SessionGroup({
         </span>
       </div>
       {failureReason && status === 'failed' && (
-        <div
-          className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs text-destructive"
-          title={failureReason}
-        >
-          <span className="font-medium">
-            {t('robots.detail.results.failureReason')}:
-          </span>{' '}
-          <span className="break-words">{failureReason}</span>
-        </div>
+        <FailureReasonAlert reason={failureReason} />
       )}
       {!collapsed && (
         <div className="space-y-1">
@@ -577,10 +570,10 @@ function outcomeVariant(
 }
 
 // sessionStatusVariant — pending/running/completed/failed/cancelled를 Badge variant로 매핑.
-// completed=default(녹색 강조)·failed=destructive·running=secondary·나머지=outline.
+// completed=default(녹색 강조)·failed=destructive·running=secondary·cancelled=warning(노랑)·pending=outline.
 function sessionStatusVariant(
   status: string,
-): 'default' | 'destructive' | 'secondary' | 'outline' {
+): 'default' | 'destructive' | 'secondary' | 'outline' | 'warning' {
   switch (status) {
     case 'completed':
       return 'default'
@@ -589,10 +582,64 @@ function sessionStatusVariant(
     case 'running':
       return 'secondary'
     case 'cancelled':
+      return 'warning'
     case 'pending':
     default:
       return 'outline'
   }
+}
+
+// FAILURE_REASON_TRUNCATE_THRESHOLD — 한 줄 평균 길이 + 줄바꿈 개수 기반 임계값.
+// 이 이하면 truncate 없이 그대로, 초과 또는 줄바꿈 2개+면 expand 토글 노출.
+const FAILURE_REASON_TRUNCATE_THRESHOLD = 120
+
+// FailureReasonAlert — destructive 톤 alert + 임계값 초과 시 'Show more' 토글.
+//
+// 짧은 단일 줄(SSH 연결 실패 등)은 그대로 노출. 긴 stack trace 또는 여러 줄 메시지는
+// 첫 줄(또는 첫 120자)만 보이고 클릭으로 expand/collapse. monospace pre-wrap으로
+// 들여쓰기·줄바꿈 보존 (audit·디버깅 가독성).
+function FailureReasonAlert({ reason }: { reason: string }): React.ReactElement {
+  const t = useT()
+  const [expanded, setExpanded] = React.useState(false)
+  const lineCount = reason.split('\n').length
+  const isLong =
+    reason.length > FAILURE_REASON_TRUNCATE_THRESHOLD || lineCount > 1
+  const displayed = expanded || !isLong ? reason : truncateForFailureReason(reason)
+  return (
+    <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs text-destructive">
+      <div className="font-medium">
+        {t('robots.detail.results.failureReason')}:
+      </div>
+      {expanded ? (
+        <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px]">
+          {displayed}
+        </pre>
+      ) : (
+        <span className="break-words">{displayed}</span>
+      )}
+      {isLong && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="ml-2 text-[11px] underline hover:no-underline"
+        >
+          {expanded
+            ? t('robots.detail.results.showLess')
+            : t('robots.detail.results.showMore')}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// truncateForFailureReason — 첫 줄 또는 첫 N자(임계 - 20)에서 자르고 ellipsis.
+function truncateForFailureReason(reason: string): string {
+  const firstLine = reason.split('\n')[0] ?? ''
+  const limit = FAILURE_REASON_TRUNCATE_THRESHOLD - 20
+  if (firstLine.length <= limit) {
+    return firstLine + (reason.includes('\n') ? ' …' : '')
+  }
+  return firstLine.slice(0, limit) + '…'
 }
 
 function formatRelative(iso?: string): string {
@@ -779,6 +826,7 @@ function RotateCredentialCard({
                 pem={privateKeyPem}
                 passphrase={privateKeyPassphrase}
               />
+              <PubKeyFingerprintCompare />
             </>
           )}
           {error && (
@@ -886,6 +934,121 @@ function PemFingerprintPreview({
       <span className="text-[10px]">({result.keyType})</span>
     </p>
   )
+}
+
+// PubKeyFingerprintCompare — collapsed expandable. 운영자가 자신이 가진 .pub을 붙여넣어
+// fingerprint를 사전 확인 (PEM textarea의 fingerprint와 일치 여부 운영자가 시각 비교).
+//
+// client-side SubtleCrypto로 fingerprint 계산 — 별 endpoint 호출 없이 즉시. OpenSSH .pub
+// format: `ssh-<algo> <base64-data> <comment>`. fingerprint = SHA-256(base64-decoded-data)
+// → base64 (no pad).
+function PubKeyFingerprintCompare(): React.ReactElement {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [pubKey, setPubKey] = useState('')
+  const [computed, setComputed] = useState<{
+    fingerprint: string
+    keyType: string
+  } | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const trimmed = pubKey.trim()
+    if (!trimmed) {
+      setComputed(null)
+      setError('')
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const result = await computePubKeyFingerprint(trimmed)
+        if (cancelled) return
+        setComputed(result)
+        setError('')
+      } catch (e) {
+        if (cancelled) return
+        setComputed(null)
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [pubKey])
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-[11px] text-muted-foreground underline hover:no-underline"
+      >
+        {t('robots.detail.rotate.pubCompareToggle')}
+      </button>
+    )
+  }
+  return (
+    <div className="space-y-2 rounded border border-input bg-muted/20 px-3 py-2">
+      <Label htmlFor="rot-pub" className="text-xs">
+        {t('robots.detail.rotate.pubCompareLabel')}
+      </Label>
+      <textarea
+        id="rot-pub"
+        value={pubKey}
+        onChange={(e) => setPubKey(e.target.value)}
+        className="min-h-[48px] w-full rounded border border-input bg-background px-2 py-1 font-mono text-xs"
+        placeholder="ssh-ed25519 AAAA..."
+        autoComplete="off"
+      />
+      {error && (
+        <p className="font-mono text-xs text-destructive">
+          {t('robots.detail.rotate.pubCompareError')}: {error}
+        </p>
+      )}
+      {computed && (
+        <p className="font-mono text-xs text-muted-foreground">
+          {t('robots.detail.rotate.fingerprint')}: {computed.fingerprint}{' '}
+          <span className="text-[10px]">({computed.keyType})</span>
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(false)
+          setPubKey('')
+        }}
+        className="text-[11px] text-muted-foreground underline hover:no-underline"
+      >
+        {t('robots.detail.rotate.pubCompareHide')}
+      </button>
+    </div>
+  )
+}
+
+// computePubKeyFingerprint — OpenSSH `ssh-<algo> <base64-data> <comment>` format에서
+// SHA256 fingerprint 계산. ssh-keygen -lf 와 일치하는 표준 표현 ("SHA256:<base64-no-pad>").
+async function computePubKeyFingerprint(
+  pubKey: string,
+): Promise<{ fingerprint: string; keyType: string }> {
+  const parts = pubKey.split(/\s+/).filter(Boolean)
+  if (parts.length < 2) {
+    throw new Error('expected: <type> <base64-data> [comment]')
+  }
+  const keyType = parts[0]!
+  const base64Data = parts[1]!
+  let raw: Uint8Array
+  try {
+    raw = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0))
+  } catch {
+    throw new Error('invalid base64 in public key')
+  }
+  const digest = await crypto.subtle.digest('SHA-256', raw.buffer as ArrayBuffer)
+  const bytes = new Uint8Array(digest)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
+  const fingerprint = 'SHA256:' + btoa(bin).replace(/=+$/, '')
+  return { fingerprint, keyType }
 }
 
 // silence unused import (Robot type — referenced via useRobot return).
