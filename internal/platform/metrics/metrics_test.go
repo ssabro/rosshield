@@ -33,6 +33,8 @@ func TestMetricsEndpointExposesAllExpectedSeries(t *testing.T) {
 
 	// counter 1회 trigger — 빈 registry는 일부 시리즈가 안 나타남 (Prometheus 표준).
 	reg.ScansStartedTotal.WithLabelValues("tn_T").Inc()
+	reg.ScansCompletedTotal.WithLabelValues("tn_T", "completed").Inc()
+	reg.ScanFailedChecksTotal.WithLabelValues("tn_T").Add(3)
 	reg.WebhookDeliveriesTotal.WithLabelValues("success").Inc()
 	reg.InvitationsSentTotal.WithLabelValues("tn_T").Inc()
 	reg.InvitationsAcceptedTotal.WithLabelValues("tn_T").Inc()
@@ -49,6 +51,8 @@ func TestMetricsEndpointExposesAllExpectedSeries(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"rosshield_scan_started_total",
+		"rosshield_scan_completed_total",
+		"rosshield_scan_failed_checks_total",
 		"rosshield_webhook_deliveries_total",
 		"rosshield_invitation_sent_total",
 		"rosshield_invitation_accepted_total",
@@ -81,6 +85,32 @@ func TestScanStartedMetricIncrementsOnce(t *testing.T) {
 	}
 
 	waitForCounterValue(t, reg, "rosshield_scan_started_total", 1, 1*time.Second)
+}
+
+func TestScanCompletedMetricRecordsStatusAndFailedChecks(t *testing.T) {
+	t.Parallel()
+	reg := metrics.New()
+	bridge, bus := newBridgeFixture(t, reg)
+	defer cleanupBridgeFixture(t, bridge, bus)
+
+	// completed scan with 5 failed checks
+	if err := bus.Publish(context.Background(), eventbus.Event{
+		Type: "scan.completed", Version: 1, TenantID: "tn_X",
+		Payload: []byte(`{"sessionId":"s1","status":"completed","failed":5}`),
+	}); err != nil {
+		t.Fatalf("Publish completed: %v", err)
+	}
+	// failed scan with 0 failed checks (terminal failure 자체)
+	if err := bus.Publish(context.Background(), eventbus.Event{
+		Type: "scan.completed", Version: 1, TenantID: "tn_X",
+		Payload: []byte(`{"sessionId":"s2","status":"failed","failed":0}`),
+	}); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+
+	waitForCounterValue(t, reg, `rosshield_scan_completed_total{status="completed",tenant="tn_X"}`, 1, 1*time.Second)
+	waitForCounterValue(t, reg, `rosshield_scan_completed_total{status="failed",tenant="tn_X"}`, 1, 1*time.Second)
+	waitForCounterValue(t, reg, "rosshield_scan_failed_checks_total", 5, 1*time.Second)
 }
 
 func TestAuditCheckpointGaugeReflectsSeq(t *testing.T) {

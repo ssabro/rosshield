@@ -33,6 +33,8 @@ type Registry struct {
 	// === 핵심 counter (label: tenant) ===
 
 	ScansStartedTotal        *prometheus.CounterVec
+	ScansCompletedTotal      *prometheus.CounterVec // label: tenant, status (completed|failed|cancelled) — usage 통계
+	ScanFailedChecksTotal    *prometheus.CounterVec // label: tenant — completed scan별 failed check 누적 (violation rate 산정)
 	WebhookDeliveriesTotal   *prometheus.CounterVec // label: status (success|failed|dead)
 	InvitationsSentTotal     *prometheus.CounterVec
 	InvitationsAcceptedTotal *prometheus.CounterVec
@@ -72,6 +74,20 @@ func New() *Registry {
 		Subsystem: "scan",
 		Name:      "started_total",
 		Help:      "Number of scan sessions started, partitioned by tenant.",
+	}, []string{"tenant"})
+
+	r.ScansCompletedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "rosshield",
+		Subsystem: "scan",
+		Name:      "completed_total",
+		Help:      "Number of scan sessions reaching terminal state, partitioned by tenant and status (completed|failed|cancelled). Usage 통계 + sales pitch 자료.",
+	}, []string{"tenant", "status"})
+
+	r.ScanFailedChecksTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "rosshield",
+		Subsystem: "scan",
+		Name:      "failed_checks_total",
+		Help:      "Cumulative number of failed checks across all completed scans, partitioned by tenant. Used as violation rate signal (alongside scan_completed_total).",
 	}, []string{"tenant"})
 
 	r.WebhookDeliveriesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -133,6 +149,8 @@ func New() *Registry {
 
 	reg.MustRegister(
 		r.ScansStartedTotal,
+		r.ScansCompletedTotal,
+		r.ScanFailedChecksTotal,
 		r.WebhookDeliveriesTotal,
 		r.InvitationsSentTotal,
 		r.InvitationsAcceptedTotal,

@@ -119,7 +119,7 @@ URL: `https://grafana.example.internal/d/rosshield-ops/rosshield-operational-das
 
 ## 5. Dashboard 구조
 
-총 5 row · 12 panel. 메트릭은 모두 E27에서 노출하는 6종을 활용합니다.
+총 5 row · 12 panel. 메트릭은 모두 E27에서 노출하는 8종을 활용합니다 (2026-05-13: scan_completed/failed_checks 추가 — usage 통계).
 
 | Row | Panel | Type | 데이터 소스 (PromQL 요지) | 용도 |
 |---|---|---|---|---|
@@ -135,6 +135,17 @@ URL: `https://grafana.example.internal/d/rosshield-ops/rosshield-operational-das
 | **HA status** | HA role | gauge | `rosshield_ha_role` (0=follower, 1=leader) | --ha-enabled 시 활성 |
 | | Leader epoch (placeholder) | stat | `max(rosshield_ha_leader_epoch)` | **동상** |
 | | Failover count 24h (placeholder) | stat | `sum(increase(rosshield_ha_failover_total[24h]))` | **동상** — 3건 이상이면 P1 |
+
+### 5.2 Usage 통계 (2026-05-13 신규 — sales pitch / billing)
+
+새 메트릭 2종은 dashboard 즉시 panel 추가 가능 (PromQL 예):
+
+| 용도 | PromQL |
+|---|---|
+| 일간 완료 scan (status별) | `sum by (status) (increase(rosshield_scan_completed_total[24h]))` |
+| 누적 violation 카운트 (compliance KPI) | `sum by (tenant) (rosshield_scan_failed_checks_total)` |
+| Scan 성공률 (24h) | `sum(rate(rosshield_scan_completed_total{status="completed"}[24h])) / sum(rate(rosshield_scan_completed_total[24h]))` |
+| Tenant별 violation rate (failed/scan) | `sum by (tenant) (rate(rosshield_scan_failed_checks_total[24h])) / sum by (tenant) (rate(rosshield_scan_completed_total[24h]))` |
 
 ### 5.1 Tenant 변수
 

@@ -8,10 +8,10 @@ package metrics
 // 구독 topic:
 //
 //	scan.started        → ScansStartedTotal{tenant}.Inc()
+//	scan.completed      → ScansCompletedTotal{tenant, status}.Inc() + ScanFailedChecksTotal{tenant}.Add(failed)
 //	invitation.sent     → InvitationsSentTotal{tenant}.Inc()
 //	invitation.accepted → InvitationsAcceptedTotal{tenant}.Inc()
 //	audit.checkpoint    → AuditChainHeadSeq{tenant}.Set(seq) — payload 파싱
-//	scan.completed      → (no-op — webhook bridge가 처리, metric은 webhook delivery에서 별 counter)
 //
 // webhook delivery counter는 dispatcher에서 직접 증가하는 게 더 정확 — 본 bridge에서는 처리 안 함.
 
@@ -51,6 +51,7 @@ func (b *MetricsBridge) Start(ctx context.Context, bus eventbus.Bus) {
 		handler eventbus.Handler
 	}{
 		{"scan.started", b.handleScanStarted},
+		{"scan.completed", b.handleScanCompleted},
 		{"invitation.sent", b.handleInvitationSent},
 		{"invitation.accepted", b.handleInvitationAccepted},
 		{"audit.checkpoint", b.handleAuditCheckpoint},
@@ -62,7 +63,7 @@ func (b *MetricsBridge) Start(ctx context.Context, bus eventbus.Bus) {
 		b.subs = append(b.subs, sub)
 	}
 	b.logger.Info("metrics event bridge started",
-		"topics", []string{"scan.started", "invitation.sent", "invitation.accepted", "audit.checkpoint"})
+		"topics", []string{"scan.started", "scan.completed", "invitation.sent", "invitation.accepted", "audit.checkpoint"})
 }
 
 // Stop은 모든 구독을 cancel하고 worker 종료를 대기합니다.
@@ -83,6 +84,35 @@ func (b *MetricsBridge) handleScanStarted(_ context.Context, evt eventbus.Event)
 		return nil
 	}
 	b.reg.ScansStartedTotal.WithLabelValues(evt.TenantID).Inc()
+	return nil
+}
+
+// handleScanCompleted는 scan.completed 이벤트에서 status·failed count를 추출 → 두 metric 갱신.
+//
+// payload schema (scan.CompletedEventPayload): {"sessionId":"...","status":"completed|failed|cancelled",
+// "reason":"...","total":N,"completed":N,"failed":N}.
+//
+// usage 통계 (sales pitch / onboarding billing 자료):
+//   - ScansCompletedTotal{tenant, status} — completed/failed/cancelled 분포
+//   - ScanFailedChecksTotal{tenant} — 누적 violation 카운트 (compliance KPI)
+func (b *MetricsBridge) handleScanCompleted(_ context.Context, evt eventbus.Event) error {
+	if evt.TenantID == "" {
+		return nil
+	}
+	var payload struct {
+		Status string `json:"status"`
+		Failed int64  `json:"failed"`
+	}
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		return nil
+	}
+	if payload.Status == "" {
+		payload.Status = "unknown"
+	}
+	b.reg.ScansCompletedTotal.WithLabelValues(evt.TenantID, payload.Status).Inc()
+	if payload.Failed > 0 {
+		b.reg.ScanFailedChecksTotal.WithLabelValues(evt.TenantID).Add(float64(payload.Failed))
+	}
 	return nil
 }
 
