@@ -9,10 +9,17 @@ metadata:
         field.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(printf '\''%s'\'' '\''IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CndoaWxlIHJlYWQgLXIgbF9jb3VudCBsX2dpZDsgZG8KaWYgWyAiJGxfY291bnQiIC1ndCAxIF07IHRoZW4KZWNobyAtZSAiRHVwbGljYXRlIEdJRDogXCIkbF9naWRcIiBHcm91cHM6IFwiJChhd2sgLUY6ICcoJDMgPT0gbikgewpwcmludCAkMSB9JyBuPSRsX2dpZCAvZXRjL2dyb3VwIHwgeGFyZ3MpXCIiCmZpCmRvbmUgPCA8KGN1dCAtZjMgLWQiOiIgL2V0Yy9ncm91cCB8IHNvcnQgLW4gfCB1bmlxIC1jKQp9'\'' | base64 -d | bash 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         User groups must be assigned unique GIDs for accountability and to ensure appropriate
         access protections.

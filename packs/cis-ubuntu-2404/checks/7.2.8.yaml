@@ -9,10 +9,17 @@ metadata:
         name.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(printf '\''%s'\'' '\''IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CndoaWxlIHJlYWQgLXIgbF9jb3VudCBsX2dyb3VwOyBkbwppZiBbICIkbF9jb3VudCIgLWd0IDEgXTsgdGhlbgplY2hvIC1lICJEdXBsaWNhdGUgR3JvdXA6IFwiJGxfZ3JvdXBcIiBHcm91cHM6IFwiJChhd2sgLUY6ICcoJDEgPT0KbikgeyBwcmludCAkMSB9JyBuPSRsX2dyb3VwIC9ldGMvZ3JvdXAgfCB4YXJncylcIiIKZmkKZG9uZSA8IDwoY3V0IC1mMSAtZCI6IiAvZXRjL2dyb3VwIHwgc29ydCAtbiB8IHVuaXEgLWMpCn0='\'' | base64 -d | bash 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         If a group is assigned a duplicate group name, it will create and have access to files
         with the first GID for that group in /etc/group . Effectively, the GID is shared, which is

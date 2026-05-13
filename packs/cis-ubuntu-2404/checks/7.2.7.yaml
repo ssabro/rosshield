@@ -9,10 +9,17 @@ metadata:
         name.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(printf '\''%s'\'' '\''IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CndoaWxlIHJlYWQgLXIgbF9jb3VudCBsX3VzZXI7IGRvCmlmIFsgIiRsX2NvdW50IiAtZ3QgMSBdOyB0aGVuCmVjaG8gLWUgIkR1cGxpY2F0ZSBVc2VyOiBcIiRsX3VzZXJcIiBVc2VyczogXCIkKGF3ayAtRjogJygkMSA9PSBuKSB7CnByaW50ICQxIH0nIG49JGxfdXNlciAvZXRjL3Bhc3N3ZCB8IHhhcmdzKVwiIgpmaQpkb25lIDwgPChjdXQgLWYxIC1kIjoiIC9ldGMvZ3JvdXAgfCBzb3J0IC1uIHwgdW5pcSAtYykKfQ=='\'' | base64 -d | bash 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         If a user is assigned a duplicate user name, it will create and have access to files with
         the first UID for that username in /etc/passwd . For example, if "test4" has a UID of

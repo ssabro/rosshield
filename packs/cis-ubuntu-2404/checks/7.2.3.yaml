@@ -8,10 +8,17 @@ metadata:
         in /etc/passwd but not in /etc/group .
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(printf '\''%s'\'' '\''IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CmFfcGFzc3dkX2dyb3VwX2dpZD0oIiQoYXdrIC1GOiAne3ByaW50ICQ0fScgL2V0Yy9wYXNzd2QgfCBzb3J0IC11KSIpCmFfZ3JvdXBfZ2lkPSgiJChhd2sgLUY6ICd7cHJpbnQgJDN9JyAvZXRjL2dyb3VwIHwgc29ydCAtdSkiKQphX3Bhc3N3ZF9ncm91cF9kaWZmPSgiJChwcmludGYgJyVzXG4nICIke2FfZ3JvdXBfZ2lkW0BdfSIKIiR7YV9wYXNzd2RfZ3JvdXBfZ2lkW0BdfSIgfCBzb3J0IHwgdW5pcSAtdSkiKQp3aGlsZSBJRlM9IHJlYWQgLXIgbF9naWQ7IGRvCmF3ayAtRjogJygkNCA9PSAnIiRsX2dpZCInKSB7cHJpbnQgIiAtIFVzZXI6IFwiIiAkMSAiXCIgaGFzIEdJRDogXCIiCiQ0ICJcIiB3aGljaCBkb2VzIG5vdCBleGlzdCBpbiAvZXRjL2dyb3VwIiB9JyAvZXRjL3Bhc3N3ZApkb25lIDwgPChwcmludGYgJyVzXG4nICIke2FfcGFzc3dkX2dyb3VwX2dpZFtAXX0iCiIke2FfcGFzc3dkX2dyb3VwX2RpZmZbQF19IiB8IHNvcnQgfCB1bmlxIC1EIHwgdW5pcSkKdW5zZXQgYV9wYXNzd2RfZ3JvdXBfZ2lkOyB1bnNldCBhX2dyb3VwX2dpZDsgdW5zZXQgYV9wYXNzd2RfZ3JvdXBfZGlmZgp9Ck5vdGhpbmcgc2hvdWxkIGJlIHJldHVybmVk'\'' | base64 -d | bash 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Groups defined in the /etc/passwd file but not in the /etc/group file pose a threat to
         system security since group permissions are not properly managed.

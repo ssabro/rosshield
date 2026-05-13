@@ -156,6 +156,18 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Pattern 7c: hashbang body + expect-empty (PASS 마커 부재 7.2.x · 5.4.2.7 등) ===
+const cisHashbangBodyExpectEmptyFixture = `{
+  "items": [
+    {
+      "id": "7.2.5.synth",
+      "title": "Ensure no duplicate UIDs (synthetic)",
+      "assessment_status": "Automated",
+      "audit": "Run the following script and verify no results are returned:\n#!/usr/bin/env bash\n{\nwhile read -r l_count l_uid; do\n  if [ \"$l_count\" -gt 1 ]; then\n    echo -e \"Duplicate UID: $l_uid\"\n  fi\ndone < <(cut -f3 -d\":\" /etc/passwd | sort -n | uniq -c)\n}"
+    }
+  ]
+}`
+
 // === Pattern 7b: 'is mounted' — findmnt 출력 non-empty 검증 (CIS 1.1.2.x.1) ===
 const cisExpectIsMountedFixture = `{
   "benchmark": "CIS",
@@ -395,6 +407,27 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 		t.Errorf("report = %+v, want Converted:1", report)
 	}
 	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "[ -z") {
+		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISHashbangBodyExpectEmptyAutoConverts는 PASS 마커 부재 hashbang body가
+// base64 인코딩 + sub-shell 실행 + 출력 빈 검사로 자동 변환되는지 검증.
+// CIS 7.2.x duplicate UID/GID + 5.4.2.7 service account 등 cover.
+func TestConvertCISHashbangBodyExpectEmptyAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisHashbangBodyExpectEmptyFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "base64 -d | bash") {
+		t.Errorf("should use base64 sub-shell wrap: %q", c.AuditCommand)
+	}
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
 	}

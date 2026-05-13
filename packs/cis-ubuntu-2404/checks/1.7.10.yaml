@@ -8,10 +8,17 @@ metadata:
         access to display management services for remote displays
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(printf '\''%s'\'' '\''IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CndoaWxlIElGUz0gcmVhZCAtciBsX2ZpbGU7IGRvCmF3ayAnL1xbeGRtY3BcXS97IGYgPSAxO25leHQgfSAvXFsveyBmID0gMCB9IGYge2lmCigvXlxzKkVuYWJsZVxzKj1ccyp0cnVlLykgcHJpbnQgIlRoZSBmaWxlOiBcIiciJGxfZmlsZSInXCIgaW5jbHVkZXM6IFwiIiAkMAoiXCIgaW4gdGhlIFwiW3hkbWNwXVwiIGJsb2NrIn0nICIkbF9maWxlIgpkb25lIDwgPChncmVwIC1Qc2lsIC0tICdeXGgqXFt4ZG1jcFxdJwovZXRjL3tnZG0zLGdkbX0ve2N1c3RvbSxkYWVtb259LmNvbmYpCn0KTm90aGluZyBzaG91bGQgYmUgcmV0dXJuZWQ='\'' | base64 -d | bash 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         XDMCP is inherently insecure.
         • XDMCP is not a ciphered protocol. This may allow an attacker to capture

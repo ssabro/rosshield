@@ -356,6 +356,41 @@ func TestSynth_SSHDNumericGT_FAIL_WhenOutputEmpty(t *testing.T) {
 	}
 }
 
+// hashbang body expect-empty: base64 인코딩 + sub-shell 실행 → 출력 빈 PASS.
+func TestSynth_HashbangBody_PASS_WhenBodyEmptyOutput(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.hashbang.pass", "assessment_status": "Automated",
+    "audit": "Run the following script and verify no results are returned:\n#!/usr/bin/env bash\n{\nfor i in 1 2 3; do\n  : # do nothing - silent\ndone\n}"
+  }]
+}`
+	out := runSynthesizedAudit(t, bashPath, "", auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS for empty body output, got: %s", out)
+	}
+}
+
+func TestSynth_HashbangBody_FAIL_WhenBodyNonEmptyOutput(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	const fixture = `{
+  "items": [{
+    "id": "x.hashbang.fail", "assessment_status": "Automated",
+    "audit": "Run the following script and verify no results are returned:\n#!/usr/bin/env bash\n{\necho 'duplicate found'\n}"
+  }]
+}`
+	out := runSynthesizedAudit(t, bashPath, "", auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** FAIL **")) {
+		t.Errorf("expected FAIL for body emitting output, got: %s", out)
+	}
+}
+
 // is mounted: findmnt 출력 non-empty이면 PASS (CIS 1.1.2.x.1 partition 검증).
 func TestSynth_IsMounted_PASS_WhenFindmntReturnsRow(t *testing.T) {
 	bashPath := resolveBash()

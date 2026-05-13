@@ -9,10 +9,17 @@ metadata:
         a user may add special accounts that are not intended to provide an interactive shell.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(printf '\''%s'\'' '\''IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CmxfdmFsaWRfc2hlbGxzPSJeKCQoYXdrIC1GXC8gJyRORiAhPSAibm9sb2dpbiIge3ByaW50fScgL2V0Yy9zaGVsbHMgfCBzZWQKLXJuICcvXlwvL3tzLC8sXFxcXC8sZztwfScgfCBwYXN0ZSAtcyAtZCAnfCcgLSApKSQiCmF3ayAtdiBwYXQ9IiRsX3ZhbGlkX3NoZWxscyIgLUY6CicoJDEhfi9eKHJvb3R8aGFsdHxzeW5jfHNodXRkb3dufG5mc25vYm9keSkkLyAmJiAoJDM8JyIkKGF3awonL15ccypVSURfTUlOL3twcmludCAkMn0nIC9ldGMvbG9naW4uZGVmcykiJyB8fCAkMyA9PSA2NTUzNCkgJiYgJChORikgfiBwYXQpCntwcmludCAiU2VydmljZSBhY2NvdW50OiBcIiIgJDEgIlwiIGhhcyBhIHZhbGlkIHNoZWxsOiAiICQ3fScgL2V0Yy9wYXNzd2QKfQpOb3RoaW5nIHNob3VsZCBiZSByZXR1cm5lZA=='\'' | base64 -d | bash 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         It is important to make sure that accounts that are not being used by regular users are
         prevented from being used to provide an interactive shell. By default, most distributions

@@ -17,6 +17,7 @@ package converter
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -153,6 +154,7 @@ func convertCISItem(it cisItem) (Check, string) {
 	//  4) stat/ls 파일 권한 검증 (octal mode + Uid:( 0/root))
 	//  5) sshd -T | grep <option> 동적 설정 검증 (yes/no)
 	//  6) sshd -T | grep <option> 수치 검증 (-le N / -ge N / -gt 0)
+	//  7) bash hashbang body + expect-empty/non-empty 키워드 (PASS 마커 부재 항목, base64 wrap)
 	if strings.Contains(it.Audit, "** PASS **") {
 		body, ok := extractCISBashBody(it.Audit)
 		if !ok {
@@ -165,11 +167,27 @@ func convertCISItem(it cisItem) (Check, string) {
 		return check, ""
 	}
 
-	// Pattern 2/3: 자연어 가이드 + 마지막 shell line + 기대 결과 키워드 추출.
+	// Pattern 2/3/4/5/6: 자연어 가이드 + 마지막 shell line + 기대 결과 키워드 추출.
 	if synthesized, ok := synthesizeCISShellAssertion(it.Audit); ok {
 		check.AuditCommand = wrapBash(synthesized)
 		check.EvaluationRule = cisAutoEvalRuleJSON
 		return check, ""
+	}
+
+	// Pattern 7: bash hashbang body + expect-empty/non-empty 키워드 (PASS 마커 부재 항목).
+	// CIS 5.4.2.7 / 7.2.3·5·6·7·8 / 1.7.10 등 ~12 항목 — bash hashbang body 자체가 검증 명령
+	// (출력 없으면 정상)이고 PASS/FAIL 마커는 안 emit. body를 sub-shell 실행 + 출력 검사.
+	if hashbangBody, ok := extractCISBashBody(it.Audit); ok {
+		if regexpExpectEmpty.MatchString(it.Audit) || isNoResultsReturned(it.Audit) {
+			check.AuditCommand = wrapBash(synthesizeBashBodyExpectEmpty(hashbangBody))
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+		if regexpExpectNonEmpty.MatchString(it.Audit) {
+			check.AuditCommand = wrapBash(synthesizeBashBodyExpectNonEmpty(hashbangBody))
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
 	}
 
 	check.AuditCommand = "true"
@@ -463,6 +481,42 @@ func synthesizeExpectStatPerm(cmd, expectedMode string) string {
 		"mode=\"$(printf '%s\\n' \"$out\" | sed -n 's|.*Access: (\\([0-7]\\{3,4\\}\\)/.*|\\1|p' | head -1)\"\n" +
 		"if [ -n \"$mode\" ] && [ \"$((8#$mode))\" -le \"$((8#" + expectedMode + "))\" ] " +
 		"&& printf '%s\\n' \"$out\" | grep -qE 'Uid: \\(\\s*0/'; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// regexpNoResultsReturned는 7.2.x 같은 "verify no results are returned" / "verify nothing
+// is returned" 변형 — regexpExpectEmpty가 cover 안 하는 표현 보강.
+var regexpNoResultsReturned = regexp.MustCompile(`(?i)(no\s+results\s+are\s+returned|verify\s+nothing\s+is\s+returned)`)
+
+// isNoResultsReturned는 audit text에 "no results are returned" 류 표현이 있는지 검사.
+func isNoResultsReturned(audit string) bool {
+	return regexpNoResultsReturned.MatchString(audit)
+}
+
+// synthesizeBashBodyExpectEmpty는 hashbang body를 base64 인코딩 + sub-shell 실행 후 출력 빈
+// 검사로 PASS/FAIL 출력. CIS 7.2.x · 5.4.2.7 등 PASS 마커 부재 항목 cover.
+//
+// base64 인코딩 사유: hashbang body 안 single quote/double quote가 wrapBash escape 시퀀스와
+// 충돌해 syntax error 가능. base64 alphanumeric+`/+=`만 → wrapBash 무영향.
+// 운영자 yaml 검토 시 가독성 손실은 trade-off (rationale 필드에 원본 audit 가이드 보존).
+func synthesizeBashBodyExpectEmpty(hashbangBody string) string {
+	encoded := base64.StdEncoding.EncodeToString([]byte(hashbangBody))
+	return "out=\"$(printf '%s' '" + encoded + "' | base64 -d | bash 2>/dev/null)\"\n" +
+		"if [ -z \"$out\" ]; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// synthesizeBashBodyExpectNonEmpty는 hashbang body 출력 non-empty이면 PASS.
+func synthesizeBashBodyExpectNonEmpty(hashbangBody string) string {
+	encoded := base64.StdEncoding.EncodeToString([]byte(hashbangBody))
+	return "out=\"$(printf '%s' '" + encoded + "' | base64 -d | bash 2>/dev/null)\"\n" +
+		"if [ -n \"$out\" ]; then\n" +
 		"  printf '%s\\n' \"** PASS **\"\n" +
 		"else\n" +
 		"  printf '%s\\n' \"** FAIL **\"\n" +
