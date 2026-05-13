@@ -132,6 +132,9 @@ func (h *Handlers) Mount(r chi.Router) {
 			})
 		})
 		r.Get("/api/v1/reports", h.ListReports)
+		r.Get("/api/v1/reports/{reportId}/download", func(w http.ResponseWriter, req *http.Request) {
+			h.DownloadReport(w, req, chi.URLParam(req, "reportId"))
+		})
 
 		// 미구현 endpoint들 (gen.Unimplemented 위임 — 자동 501)
 		r.Get("/api/v1/audit/head", h.GetAuditHead)

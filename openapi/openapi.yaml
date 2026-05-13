@@ -921,6 +921,35 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  /api/v1/reports/{reportId}/download:
+    get:
+      tags: [reports]
+      operationId: downloadReport
+      summary: Download report PDF body
+      description: |
+        tenant scope에서 reportID로 조회 후 application/pdf 스트리밍.
+        http.ServeContent로 Range·Last-Modified 자동 처리. Content-Disposition attachment.
+      x-status: phase5
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: PDF body
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "404":
+          description: Report not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/usage/stats:
     get:
       tags: [usage]

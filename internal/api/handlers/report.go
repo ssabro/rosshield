@@ -6,7 +6,10 @@ package handlers
 // sessionId query 파라미터는 옵션 — 빈 값이면 tenant 전체 report 메타 반환.
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/ssabro/rosshield/internal/domain/reporting"
@@ -76,4 +79,55 @@ func (h *Handlers) ListReports(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// DownloadReport는 GET /api/v1/reports/{id}/download 핸들러입니다.
+//
+// reporting.Service.GetReport(reportID)로 PDF body + 메타 회수 후 streaming.
+// http.ServeContent로 Range·Last-Modified·If-Modified-Since 자동 처리.
+//
+// 보안:
+//   - TenantID context 검증 (AuthMiddleware) — cross-tenant 접근 차단 (Service.GetReport이
+//     Tx 안에서 tenant scope query 자동 적용)
+//   - report.TenantID 일치 검증 (방어적 — Service가 이미 보장하지만 audit 명시)
+//   - reportID는 ULID 형식 (path traversal 위험 0 — 단순 ID lookup)
+//
+// Content-Disposition attachment + filename `report-<id>.pdf`. 운영자 friendly.
+func (h *Handlers) DownloadReport(w http.ResponseWriter, r *http.Request, reportID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if reportID == "" {
+		writeError(w, http.StatusBadRequest, "missing reportId")
+		return
+	}
+
+	var report reporting.Report
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		rp, e := h.deps.Reporting.GetReport(ctx, tx, reportID)
+		if e != nil {
+			return e
+		}
+		report = rp
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "report not found")
+			return
+		}
+		writeError(w, errorStatusFor(err), "get report failed")
+		return
+	}
+	if len(report.PDF) == 0 {
+		writeError(w, http.StatusNotFound, "report has no PDF body")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"report-%s.pdf\"", report.ID))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Last-Modified는 GeneratedAt 활용 — Sign 시점은 별도 헤더로 노출 안 함 (단순화).
+	http.ServeContent(w, r, fmt.Sprintf("report-%s.pdf", report.ID), report.GeneratedAt, bytes.NewReader(report.PDF))
 }

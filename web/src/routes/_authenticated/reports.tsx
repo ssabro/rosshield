@@ -7,6 +7,7 @@ import { useReports } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -16,12 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 import type { Report } from '@/api/hooks'
 
@@ -40,8 +35,7 @@ function ReportsPage(): React.ReactElement {
       />
 
       <div className="rounded-md border">
-        <TooltipProvider>
-          <Table>
+        <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t('reports.table.id')}</TableHead>
@@ -95,7 +89,6 @@ function ReportsPage(): React.ReactElement {
                 ))}
             </TableBody>
           </Table>
-        </TooltipProvider>
       </div>
     </div>
   )
@@ -127,17 +120,13 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
       </TableCell>
       <TableCell className="font-mono text-xs">{sha}</TableCell>
       <TableCell className="text-right">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {/* disabled 버튼은 pointer events가 없어 tooltip이 안 뜸 → span으로 감싼다 */}
-            <span tabIndex={0}>
-              <Button size="sm" variant="outline" disabled>
-                {t('reports.action.download')}
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{t('reports.action.download.tooltip')}</TooltipContent>
-        </Tooltip>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => downloadReportPDF(report.id)}
+        >
+          {t('reports.action.download')}
+        </Button>
       </TableCell>
     </TableRow>
   )
@@ -150,6 +139,32 @@ function formatDate(iso: string): string {
   } catch {
     return iso
   }
+}
+
+// downloadReportPDF — `<a download>` 트릭으로 PDF blob 다운로드.
+//
+// apiClient는 application/pdf binary 응답을 다루기 까다로워 raw fetch + Blob 처리.
+// Authorization 헤더는 useAuthStore의 accessToken을 동기 read.
+async function downloadReportPDF(reportID: string): Promise<void> {
+  const token = useAuthStore.getState().accessToken
+  if (!token) return
+  const resp = await fetch(`/api/v1/reports/${encodeURIComponent(reportID)}/download`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!resp.ok) {
+    // 실패는 console에만 — 운영자가 다시 시도. 본 PR은 download UX만이라 toast 별 epic.
+    console.error('downloadReportPDF failed:', resp.status, resp.statusText)
+    return
+  }
+  const blob = await resp.blob()
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `report-${reportID}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.URL.revokeObjectURL(url)
 }
 
 export const Route = createFileRoute('/_authenticated/reports')({

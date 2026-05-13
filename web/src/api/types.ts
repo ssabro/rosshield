@@ -601,6 +601,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/{reportId}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download report PDF body
+         * @description tenant scope에서 reportID로 조회 후 application/pdf 스트리밍.
+         *     http.ServeContent로 Range·Last-Modified 자동 처리. Content-Disposition attachment.
+         */
+        get: operations["downloadReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usage/stats": {
         parameters: {
             query?: never;
@@ -2802,6 +2823,38 @@ export interface operations {
                 };
             };
             /** @description builtin pack 아님 또는 selftest 부재 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    downloadReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reportId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PDF body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Report not found */
             404: {
                 headers: {
                     [name: string]: unknown;
