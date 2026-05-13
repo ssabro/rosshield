@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { FileText } from 'lucide-react'
 
@@ -12,6 +12,14 @@ import { useT } from '@/i18n/t'
 import { useAuthStore } from '@/stores/auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -124,6 +132,7 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
       <TableCell className="font-mono text-xs">{sha}</TableCell>
       <TableCell className="space-y-1 text-right">
         <div className="flex justify-end gap-1">
+          <PreviewButton reportID={report.id} />
           <Button
             size="sm"
             variant="outline"
@@ -283,22 +292,27 @@ function formatDate(iso: string): string {
   }
 }
 
-// downloadReportPDF — `<a download>` 트릭으로 PDF blob 다운로드.
+// fetchReportPDFBlob — Authorization 헤더 포함 raw fetch로 PDF blob 응답 획득.
 //
-// apiClient는 application/pdf binary 응답을 다루기 까다로워 raw fetch + Blob 처리.
-// Authorization 헤더는 useAuthStore의 accessToken을 동기 read.
-async function downloadReportPDF(reportID: string): Promise<void> {
+// apiClient는 application/pdf binary를 다루기 까다로워 raw fetch + Blob 처리.
+// download/preview 양쪽에서 공유.
+async function fetchReportPDFBlob(reportID: string): Promise<Blob | null> {
   const token = useAuthStore.getState().accessToken
-  if (!token) return
+  if (!token) return null
   const resp = await fetch(`/api/v1/reports/${encodeURIComponent(reportID)}/download`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!resp.ok) {
-    // 실패는 console에만 — 운영자가 다시 시도. 본 PR은 download UX만이라 toast 별 epic.
-    console.error('downloadReportPDF failed:', resp.status, resp.statusText)
-    return
+    console.error('fetchReportPDFBlob failed:', resp.status, resp.statusText)
+    return null
   }
-  const blob = await resp.blob()
+  return resp.blob()
+}
+
+// downloadReportPDF — `<a download>` 트릭으로 PDF blob 다운로드.
+async function downloadReportPDF(reportID: string): Promise<void> {
+  const blob = await fetchReportPDFBlob(reportID)
+  if (!blob) return
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -307,6 +321,88 @@ async function downloadReportPDF(reportID: string): Promise<void> {
   a.click()
   a.remove()
   window.URL.revokeObjectURL(url)
+}
+
+// PreviewButton — Dialog + iframe + blob URL로 inline PDF 미리보기.
+//
+// 다운로드 흐름과 다르게 blob URL을 모달 lifetime 동안 유지 → close 시 revoke.
+// useEffect로 open ↔ blob URL lifecycle 동기화 (StrictMode double-invoke 안전).
+function PreviewButton({ reportID }: { reportID: string }): React.ReactElement {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [state, setState] = useState<{
+    loading: boolean
+    blobUrl?: string
+    error?: string
+  }>({ loading: false })
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    let createdUrl: string | undefined
+    setState({ loading: true })
+    void (async () => {
+      const blob = await fetchReportPDFBlob(reportID)
+      if (cancelled) return
+      if (!blob) {
+        setState({ loading: false, error: t('reports.preview.error') })
+        return
+      }
+      createdUrl = window.URL.createObjectURL(blob)
+      setState({ loading: false, blobUrl: createdUrl })
+    })()
+    return () => {
+      cancelled = true
+      if (createdUrl) window.URL.revokeObjectURL(createdUrl)
+    }
+  }, [open, reportID, t])
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        {t('reports.action.preview')}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{t('reports.preview.title')}</DialogTitle>
+            <DialogDescription className="font-mono text-xs">
+              {reportID}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="h-[70vh] w-full overflow-hidden rounded border bg-muted/30">
+            {state.loading && (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                {t('reports.preview.loading')}
+              </div>
+            )}
+            {state.error && (
+              <div className="flex h-full items-center justify-center text-sm text-destructive">
+                {state.error}
+              </div>
+            )}
+            {state.blobUrl && (
+              <iframe
+                src={state.blobUrl}
+                title={t('reports.preview.title')}
+                className="h-full w-full border-0"
+              >
+                {t('reports.preview.fallback')}
+              </iframe>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => downloadReportPDF(reportID)}>
+              {t('reports.action.download')}
+            </Button>
+            <Button onClick={() => setOpen(false)}>
+              {t('reports.preview.close')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
 
 export const Route = createFileRoute('/_authenticated/reports')({
