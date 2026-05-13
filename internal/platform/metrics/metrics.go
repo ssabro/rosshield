@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // Registry는 rosshield-scoped Prometheus registry입니다.
@@ -178,4 +179,40 @@ func (r *Registry) Handler() http.Handler {
 // 도메인 코드는 사용 금지 — 본 패키지의 typed counter 메서드만 호출.
 func (r *Registry) PrometheusRegistry() *prometheus.Registry {
 	return r.reg
+}
+
+// TenantUsage는 한 tenant의 누적 사용 통계입니다 (E38 onboarding/billing 자료).
+//
+// 본 구조는 handlers/usage_stats.go의 JSON 응답 source. Prometheus dto 추상화 차단 —
+// handler는 prometheus 패키지를 import하지 않고, 본 helper만 호출.
+type TenantUsage struct {
+	ScansStarted     float64            // rosshield_scan_started_total{tenant}
+	ScansCompleted   map[string]float64 // status (completed|failed|cancelled) → 카운트
+	ScanFailedChecks float64            // rosshield_scan_failed_checks_total{tenant} 누적 violation
+}
+
+// GetTenantUsage는 주어진 tenant의 사용 통계 카운트를 반환합니다.
+//
+// 첫 호출 시 metric series가 없으면 0 series가 자동 생성되지만 무해 (Prometheus 표준).
+// counter는 process restart 시 0부터 다시 카운트 — 본 helper는 정확한 누적이 아닌 process
+// scope 카운트를 반환. 정확한 누적은 외부 Prometheus + Grafana로 구현.
+func (r *Registry) GetTenantUsage(tenantID string) TenantUsage {
+	out := TenantUsage{
+		ScansCompleted: map[string]float64{},
+	}
+	out.ScansStarted = readCounterValue(r.ScansStartedTotal.WithLabelValues(tenantID))
+	for _, status := range []string{"completed", "failed", "cancelled"} {
+		out.ScansCompleted[status] = readCounterValue(r.ScansCompletedTotal.WithLabelValues(tenantID, status))
+	}
+	out.ScanFailedChecks = readCounterValue(r.ScanFailedChecksTotal.WithLabelValues(tenantID))
+	return out
+}
+
+// readCounterValue는 prometheus.Counter의 현재 값을 반환합니다 (dto 직접 노출 회피).
+func readCounterValue(c prometheus.Counter) float64 {
+	m := &dto.Metric{}
+	if err := c.Write(m); err != nil {
+		return 0
+	}
+	return m.Counter.GetValue()
 }

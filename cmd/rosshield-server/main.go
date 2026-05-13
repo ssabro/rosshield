@@ -173,6 +173,7 @@ func newMux(p *Platform) http.Handler {
 		WebhookDispatcher: p.WebhookDispatcher,
 		SSO:               p.SSO,
 		Invitation:        p.Invitation,
+		Metrics:           p.Metrics,
 	})
 	h.Mount(apiRouter)
 

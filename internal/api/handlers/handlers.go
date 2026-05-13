@@ -41,6 +41,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/license"
+	"github.com/ssabro/rosshield/internal/platform/metrics"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
@@ -68,6 +69,7 @@ type Deps struct {
 	Webhook           webhook.Service          // E23-C Phase 3 — Webhook CRUD HTTP 표면
 	WebhookDispatcher *webhookrun.Dispatcher   // E29 — POST /webhooks/{id}/test (옵트인, nil이면 503)
 	Invitation        tenant.InvitationService // E21 — 초대·역할 (옵트인, nil이면 503)
+	Metrics           *metrics.Registry        // GET /api/v1/usage/stats — usage 통계 카운트 read (nil이면 503)
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -133,6 +135,7 @@ func (h *Handlers) Mount(r chi.Router) {
 
 		// 미구현 endpoint들 (gen.Unimplemented 위임 — 자동 501)
 		r.Get("/api/v1/audit/head", h.GetAuditHead)
+		r.Get("/api/v1/usage/stats", h.GetUsageStats)
 		r.Get("/api/v1/tenants/current", h.GetCurrentTenant)
 		r.Get("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
 			h.GetRobot(w, req, chi.URLParam(req, "robotId"))
