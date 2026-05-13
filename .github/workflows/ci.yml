@@ -107,6 +107,22 @@ jobs:
       - name: Run PG integration tests
         run: go test -tags=integration -count=1 -timeout=8m ./internal/platform/storage/postgres/... ./internal/platform/ha/...
 
+  cis-synth-integration:
+    name: CIS converter synth bash regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # bash는 ubuntu-latest에 기본 가용 (GNU bash 5.x). resolveBash가 PATH lookup.
+      - name: Run CIS synth integration tests
+        run: go test -tags=cis_synth_integration -count=1 -timeout=4m -v ./cmd/pack-tools/converter/
+
   tpm-integration:
     name: TPM integration (go-tpm-tools simulator)
     runs-on: ubuntu-latest
