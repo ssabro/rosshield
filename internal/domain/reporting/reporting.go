@@ -118,7 +118,11 @@ type PDFInput struct {
 	AuditAnchor PDFAuditAnchor
 }
 
-// PDFStats는 outcome 별 집계입니다.
+// PDFStats는 outcome 별 + severity 별 집계입니다.
+//
+// SeverityLow/Medium/High/Critical은 row의 severity 분포 (CIS pack 등 base에서). 운영자가
+// 컴플라이언스 보고 시 "전체 N건 중 high N건 우선 조치" 형태로 활용. CIS Ubuntu 24.04
+// 기준 분포는 high 98 / medium 146 / low 68 / critical 0 (Phase 5 severity classification).
 type PDFStats struct {
 	TotalChecks   int
 	Pass          int
@@ -126,6 +130,11 @@ type PDFStats struct {
 	Error         int
 	Indeterminate int
 	Skipped       int
+
+	SeverityLow      int
+	SeverityMedium   int
+	SeverityHigh     int
+	SeverityCritical int
 }
 
 // PDFCheckRow는 PDF 본문에 출력되는 한 row입니다.

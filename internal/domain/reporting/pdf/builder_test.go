@@ -247,6 +247,39 @@ func TestBuildAppliesPassFailColors(t *testing.T) {
 	}
 }
 
+// TestBuildIncludesSeveritySectionWhenAnySeverityNonZero — Phase 5 severity classification
+// 활용. SeverityHigh > 0 시 PDF byte length가 0 카운트 baseline보다 큼 (섹션 추가).
+// SeverityCounts 모두 0이면 섹션 skip(byte 동일).
+func TestBuildIncludesSeveritySectionWhenAnySeverityNonZero(t *testing.T) {
+	requireFont(t)
+	// baseline: severity counts 모두 0 → 섹션 skip
+	in := minimalInput()
+	out0, err := pdf.New().Build(in)
+	if err != nil {
+		t.Fatalf("Build baseline: %v", err)
+	}
+
+	// severity counts 채움 → 섹션 추가
+	in.Stats.SeverityHigh = 5
+	in.Stats.SeverityMedium = 3
+	out1, err := pdf.New().Build(in)
+	if err != nil {
+		t.Fatalf("Build with severity: %v", err)
+	}
+
+	if len(out1) <= len(out0) {
+		t.Fatalf("severity 섹션 추가 후 byte length가 같거나 더 작음: baseline=%d severity=%d", len(out0), len(out1))
+	}
+	// 같은 input의 결정성 검증
+	out2, err := pdf.New().Build(in)
+	if err != nil {
+		t.Fatalf("Build #2: %v", err)
+	}
+	if sha256Hex(out1) != sha256Hex(out2) {
+		t.Fatalf("결정성 깨짐: severity 섹션 hash mismatch")
+	}
+}
+
 // TestBuildOutputsValidPDFHeader — PDF magic + EOF 마커 확인.
 func TestBuildOutputsValidPDFHeader(t *testing.T) {
 	requireFont(t)

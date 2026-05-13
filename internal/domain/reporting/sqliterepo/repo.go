@@ -508,6 +508,7 @@ func (r *Repo) assembleRows(ctx context.Context, tx storage.Tx, results []ScanRe
 		}
 		rows = append(rows, row)
 		bumpStats(&stats, res.Outcome)
+		bumpSeverityStats(&stats, severity)
 	}
 
 	// 안정 정렬 — 같은 입력은 같은 순서를 보장 (결정성).
@@ -533,6 +534,21 @@ func bumpStats(s *reporting.PDFStats, outcome string) {
 		s.Indeterminate++
 	case "skipped":
 		s.Skipped++
+	}
+}
+
+// bumpSeverityStats는 severity 4-tier 분포를 카운트합니다.
+// 빈 string 또는 unknown은 무시 (severity 미지정 row).
+func bumpSeverityStats(s *reporting.PDFStats, severity string) {
+	switch severity {
+	case "low":
+		s.SeverityLow++
+	case "medium":
+		s.SeverityMedium++
+	case "high":
+		s.SeverityHigh++
+	case "critical":
+		s.SeverityCritical++
 	}
 }
 

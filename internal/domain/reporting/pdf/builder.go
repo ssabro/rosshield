@@ -89,7 +89,10 @@ type PDFInput struct {
 	AuditAnchor PDFAuditAnchor
 }
 
-// PDFStats는 outcome 분포 요약입니다.
+// PDFStats는 outcome 분포 요약 + severity 분포입니다.
+//
+// SeverityLow/Medium/High/Critical은 row의 severity 분포 (CIS pack 등 base에서). 0 카운트는
+// 통계 섹션에서 노출 X (compact). 도메인 어댑터(reporting.PDFStats)와 1:1 mirror.
 type PDFStats struct {
 	TotalChecks   int
 	Pass          int
@@ -97,6 +100,11 @@ type PDFStats struct {
 	Error         int
 	Indeterminate int
 	Skipped       int
+
+	SeverityLow      int
+	SeverityMedium   int
+	SeverityHigh     int
+	SeverityCritical int
 }
 
 // PDFCheckRow는 single check 결과입니다. 한 row가 한 화면 블록을 차지합니다(긴 텍스트는
@@ -259,7 +267,48 @@ func writeMetaAndStatsPage(doc *gopdf.GoPdf, in PDFInput) error {
 		doc.Br(lineHeightPt)
 	}
 	setColor(doc, colorBlack)
+
+	// 심각도(severity) 분포 — Phase 5 severity classification(CIS Level 1/2 + critical section).
+	// 0 카운트인 tier는 노출 X (compact). 모두 0이면 섹션 자체 skip.
+	if hasAnySeverity(in.Stats) {
+		doc.Br(lineHeightPt)
+		if err := doc.SetFont(fontFamilyKR, "", headerSize); err != nil {
+			return err
+		}
+		doc.SetX(pageMarginPt)
+		if err := doc.Cell(nil, "── 심각도 분포 ──"); err != nil {
+			return err
+		}
+		doc.Br(lineHeightPt)
+		if err := doc.SetFont(fontFamilyKR, "", bodySize); err != nil {
+			return err
+		}
+		sevRows := []struct {
+			label string
+			count int
+		}{
+			{"CRITICAL", in.Stats.SeverityCritical},
+			{"HIGH", in.Stats.SeverityHigh},
+			{"MEDIUM", in.Stats.SeverityMedium},
+			{"LOW", in.Stats.SeverityLow},
+		}
+		for _, sr := range sevRows {
+			if sr.count == 0 {
+				continue
+			}
+			doc.SetX(pageMarginPt + 16)
+			if err := doc.Cell(nil, fmt.Sprintf("%-15s %d", sr.label+":", sr.count)); err != nil {
+				return err
+			}
+			doc.Br(lineHeightPt)
+		}
+	}
 	return nil
+}
+
+// hasAnySeverity는 Stats에 severity 카운트가 1건 이상 있는지 검사 — 모두 0이면 섹션 skip.
+func hasAnySeverity(s PDFStats) bool {
+	return s.SeverityLow > 0 || s.SeverityMedium > 0 || s.SeverityHigh > 0 || s.SeverityCritical > 0
 }
 
 // writeCheckRowsPages — 페이지 2~N: check 상세.
