@@ -13,7 +13,7 @@ metadata:
         system calls have been executed. Further, ensure to write an audit record to the
         configured audit log file upon exit, tagging the records with a unique identifier such as
         "time-change".
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

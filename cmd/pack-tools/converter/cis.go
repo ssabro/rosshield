@@ -136,7 +136,7 @@ func convertCISItem(it cisItem) (Check, string) {
 		ID:          it.ID,
 		Title:       it.Title,
 		Description: it.Description,
-		Severity:    DefaultSeverity, // CIS는 명시 severity 없음
+		Severity:    classifyCISSeverity(it),
 		Rationale:   it.Rationale,
 		FixGuidance: it.Remediation,
 	}
@@ -193,6 +193,49 @@ func convertCISItem(it cisItem) (Check, string) {
 	check.AuditCommand = "true"
 	check.EvaluationRule = degradedEvalRuleJSON
 	return check, "audit lacks ** PASS ** marker (natural-language manual)"
+}
+
+// classifyCISSeverity는 CIS item을 severity(low/medium/high)로 분류합니다.
+//
+// 우선순위 (먼저 매치되는 것):
+//   1. profile_applicability에 "Level 2" 포함 (단독 또는 mixed) → low
+//      Level 2는 CIS 정의상 "defense in depth, may impact functionality" — 운영 환경
+//      추가 강화로 미충족이라도 즉각 조치 우선순위 낮음.
+//   2. Critical CIS sections (Level 1 한정) → high
+//      - 5.x section: sudo + sshd + PAM + password/user (인증·권한 핵심)
+//      - 6.1.x section: cron permissions (스케줄 작업 무결성)
+//      - 6.2.x section: audit rules (시스템 감사 무결성)
+//      - 7.1.x section: system file permissions (/etc/passwd · /etc/shadow 등 핵심 파일)
+//   3. 기본 → medium (Level 1, 보통 컴플라이언스 항목)
+//
+// 운영자 우선순위 부여 — `medium` 일괄 fallback에서 첫 분류 도입. 기존 nrobotcheck
+// baseline JSON에는 명시 severity 필드가 없으므로 휴리스틱이 정답.
+func classifyCISSeverity(it cisItem) string {
+	for _, p := range it.ProfileApplicability {
+		if strings.Contains(p, "Level 2") {
+			return "low"
+		}
+	}
+	if isCriticalCISSection(it.ID) {
+		return "high"
+	}
+	return DefaultSeverity
+}
+
+// isCriticalCISSection은 CIS section ID로 critical 여부 판정.
+// 5.x (인증) / 6.1.x (cron) / 6.2.x (audit) / 7.1.x (시스템 파일) 만 high.
+// 7.2.x (user/group integrity) · 6.3.x · 1~4.x (filesystem/services/network/firewall) 은 medium.
+func isCriticalCISSection(id string) bool {
+	if strings.HasPrefix(id, "5.") {
+		return true
+	}
+	if strings.HasPrefix(id, "6.1.") || strings.HasPrefix(id, "6.2.") {
+		return true
+	}
+	if strings.HasPrefix(id, "7.1.") {
+		return true
+	}
+	return false
 }
 
 // cisShellLineRe는 audit 텍스트에서 한 줄 shell 명령(`# <cmd>`)을 매칭합니다.

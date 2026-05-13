@@ -4,7 +4,7 @@ metadata:
     id: 1.1.2.3.1
     title: 1.1.2.3.1 Ensure separate partition exists for /home (Automated)
     description: The /home directory is used to support disk storage needs of local users.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(findmnt -kn /home 2>/dev/null)"

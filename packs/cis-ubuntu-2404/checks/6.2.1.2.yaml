@@ -4,7 +4,7 @@ metadata:
     id: 6.2.1.2
     title: 6.2.1.2 Ensure auditd service is enabled and active (Automated)
     description: Turn on the auditd daemon to record system events.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active auditd | grep '\''^active'\'' 2>/dev/null)"

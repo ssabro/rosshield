@@ -6,7 +6,7 @@ metadata:
     description: |-
         The PermitRootLogin parameter specifies if the root user can log in using SSH. The
         default is prohibit-password.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T -C user=sshuser | grep permitrootlogin 2>/dev/null)"

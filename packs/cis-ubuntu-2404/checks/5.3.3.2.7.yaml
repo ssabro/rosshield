@@ -11,7 +11,7 @@ metadata:
         This setting applies only to the pam_pwquality module and possibly other applications
         that explicitly change their behavior based on it. It does not affect pwmake(1) and
         pwscore(1).
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -PHsi -- '\''^\h*password\h+[^#\n\r]+\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?enforcing=0\b'\'' 2>/dev/null)"

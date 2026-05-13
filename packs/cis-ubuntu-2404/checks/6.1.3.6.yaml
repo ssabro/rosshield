@@ -6,7 +6,7 @@ metadata:
     description: |-
         rsyslog supports the ability to send log events it gathers to a remote log host or to
         receive messages from remote hosts, thus enabling centralized log management.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

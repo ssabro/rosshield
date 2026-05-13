@@ -7,7 +7,7 @@ metadata:
         Audit tools include, but are not limited to, vendor-provided and open source audit tools
         needed to successfully view and manipulate audit information system activity and
         records. Audit tools include custom queries and report generators.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(stat -Lc "%n %G" /sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace 2>/dev/null)"

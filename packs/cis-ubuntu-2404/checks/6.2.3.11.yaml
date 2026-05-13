@@ -11,7 +11,7 @@ metadata:
         • /var/log/btmp - keeps track of failed login attempts and can be read by
         entering the command /usr/bin/last -f /var/log/btmp.
         All audit records will be tagged with the identifier "session."
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

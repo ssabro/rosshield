@@ -22,7 +22,7 @@ metadata:
         • The generation of user passwords is done by PAM and subject to the PAM
         configuration.
         • It is recommended to set this variable consistently with the PAM configuration.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Pi -- '\''^\h*ENCRYPT_METHOD\h+(SHA512|yescrypt)\b'\'' /etc/login.defs 2>/dev/null)"

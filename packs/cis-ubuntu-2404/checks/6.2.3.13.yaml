@@ -11,7 +11,7 @@ metadata:
         • rename - rename a file
         • renameat rename a file attribute system calls and tags them with the identifier
         "delete".
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

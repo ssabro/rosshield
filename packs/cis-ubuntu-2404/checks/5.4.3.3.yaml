@@ -67,7 +67,7 @@ metadata:
         3. On the pam_umask.so module in /etc/pam.d/postlogin
         4. In the file /etc/login.defs
         5. In the file /etc/default/login
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

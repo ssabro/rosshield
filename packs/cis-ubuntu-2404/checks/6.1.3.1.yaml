@@ -6,7 +6,7 @@ metadata:
     description: |-
         The rsyslog software is recommended in environments where journald does not
         meet operation requirements.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(dpkg-query -s rsyslog &>/dev/null && echo "rsyslog is installed" 2>/dev/null)"

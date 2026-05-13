@@ -11,7 +11,7 @@ metadata:
         The value is stored in the shadow password file. An input of 0 will disable an expired
         password with no delay. An input of -1 will blank the respective field in the shadow
         password file.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($7 > 45 || $7 < 0)print "User: " $1 " INACTIVE:" $7}'\'' /etc/shadow 2>/dev/null)"

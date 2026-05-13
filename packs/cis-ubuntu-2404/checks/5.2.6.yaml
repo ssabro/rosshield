@@ -8,7 +8,7 @@ metadata:
         there are multiple administrative tasks to perform. The timeout can be modified to suit
         local security policies.
         This default is distribution specific. See audit section for further information.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

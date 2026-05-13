@@ -4,7 +4,7 @@ metadata:
     id: 6.2.4.5
     title: 6.2.4.5 Ensure audit configuration files mode is configured (Automated)
     description: Audit configuration files control auditd and what events are audited.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

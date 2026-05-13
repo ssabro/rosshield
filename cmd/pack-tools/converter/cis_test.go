@@ -156,6 +156,20 @@ const cisExpectShouldNotBeReturnedFixture = `{
   ]
 }`
 
+// === Severity classification fixture (Level 1/2 + critical section) ===
+const cisSeverityFixture = `{
+  "items": [
+    {"id":"1.1.1.1","title":"Filesystem","assessment_status":"Automated","profile_applicability":["Level 1 - Server","Level 1 - Workstation"],"audit":"x"},
+    {"id":"5.1.1","title":"sshd","assessment_status":"Automated","profile_applicability":["Level 1 - Server","Level 1 - Workstation"],"audit":"x"},
+    {"id":"6.2.3.1","title":"audit","assessment_status":"Automated","profile_applicability":["Level 1 - Server","Level 1 - Workstation"],"audit":"x"},
+    {"id":"7.1.1","title":"sysfile perm","assessment_status":"Automated","profile_applicability":["Level 1 - Server","Level 1 - Workstation"],"audit":"x"},
+    {"id":"7.2.1","title":"user integrity","assessment_status":"Automated","profile_applicability":["Level 1 - Server","Level 1 - Workstation"],"audit":"x"},
+    {"id":"6.3.1","title":"misc","assessment_status":"Automated","profile_applicability":["Level 1 - Server","Level 1 - Workstation"],"audit":"x"},
+    {"id":"3.5.1","title":"network L2","assessment_status":"Automated","profile_applicability":["Level 2 - Server","Level 2 - Workstation"],"audit":"x"},
+    {"id":"5.9.9","title":"sshd L2","assessment_status":"Automated","profile_applicability":["Level 2 - Server","Level 2 - Workstation"],"audit":"x"}
+  ]
+}`
+
 // === Pattern 7d: 'no results are returned' / 'if any line is found' 변형 expect-empty ===
 const cisExpectEmptyVariantsFixture = `{
   "items": [
@@ -485,6 +499,37 @@ func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
 	c := pack.Checks[0]
 	if !strings.Contains(c.AuditCommand, "[ -z") {
 		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
+	}
+}
+
+// TestConvertCISSeverityClassification은 CIS section + Level 매핑이 의도대로 분류되는지 검증.
+// Level 2 → low (정의상 defense in depth) / 5.x·6.1·6.2·7.1 Level 1 → high / 그 외 Level 1 → medium.
+func TestConvertCISSeverityClassification(t *testing.T) {
+	t.Parallel()
+	pack, _, err := converter.ConvertCIS([]byte(cisSeverityFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	want := map[string]string{
+		"1.1.1.1": "medium", // L1 filesystem
+		"5.1.1":   "high",   // L1 sshd
+		"6.2.3.1": "high",   // L1 audit rules
+		"7.1.1":   "high",   // L1 system file perm
+		"7.2.1":   "medium", // L1 user integrity (7.1만 high, 7.2 제외)
+		"6.3.1":   "medium", // L1 misc (6.1·6.2만 high)
+		"3.5.1":   "low",    // L2 우선 — section 무관
+		"5.9.9":   "low",    // L2 sshd 라도 우선
+	}
+	for _, c := range pack.Checks {
+		got := c.Severity
+		expected, ok := want[c.ID]
+		if !ok {
+			t.Errorf("unexpected check ID: %s", c.ID)
+			continue
+		}
+		if got != expected {
+			t.Errorf("%s: severity = %q, want %q", c.ID, got, expected)
+		}
 	}
 }
 

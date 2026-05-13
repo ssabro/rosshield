@@ -31,7 +31,7 @@ metadata:
         • suspend, the audit daemon will stop writing records to the disk
         • single, the audit daemon will put the computer system in single user mode
         • halt, the audit daemon will shut down the system
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

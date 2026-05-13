@@ -6,7 +6,7 @@ metadata:
     description: |-
         The file /etc/ssh/sshd_config, and files ending in .conf in the
         /etc/ssh/sshd_config.d directory, contain configuration specifications for sshd.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

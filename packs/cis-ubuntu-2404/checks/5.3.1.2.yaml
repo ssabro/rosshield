@@ -4,7 +4,7 @@ metadata:
     id: 5.3.1.2
     title: 5.3.1.2 Ensure libpam-modules is installed (Automated)
     description: Pluggable Authentication Modules for PAM
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(dpkg-query -s libpam-modules | grep -P -- '\''^(Status|Version)\b'\'' 2>/dev/null)"

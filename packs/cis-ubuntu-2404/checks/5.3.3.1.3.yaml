@@ -8,7 +8,7 @@ metadata:
         root_unlock_time=n - This option implies even_deny_root option. Allow access after n
         seconds to root account after the account is locked. In case the option is not specified
         the value is the same as of the unlock_time option.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Pi -- '\''^\h*auth\h+([^#\n\r]+\h+)pam_faillock\.so\h+([^#\n\r]+\h+)?root_unlock_time\h*=\h*([1-9]|[1-5][0-9])\b'\'' /etc/pam.d/common-auth 2>/dev/null)"

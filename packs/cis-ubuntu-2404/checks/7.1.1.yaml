@@ -6,7 +6,7 @@ metadata:
     description: |-
         The /etc/passwd file contains user account information that is used by many system
         utilities and therefore must be readable for these utilities to operate.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(stat -Lc '\''Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' /etc/passwd 2>/dev/null)"

@@ -9,7 +9,7 @@ metadata:
         running on a local network with no specific configuration. For example, a user can plug
         a computer into a network and Avahi automatically finds printers to print to, files to look
         at and people to talk to, as well as network services running on the machine.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active avahi-daemon.socket avahi-daemon.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"

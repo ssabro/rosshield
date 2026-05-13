@@ -21,7 +21,7 @@ metadata:
         o diffie-hellman-group16-sha512
         o diffie-hellman-group18-sha512
         o diffie-hellman-group14-sha256
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T | grep -Pi -- '\''kexalgorithms\h+([^#\n\r]+,)?(diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group-exchange-sha1)\b'\'' 2>/dev/null)"

@@ -9,7 +9,7 @@ metadata:
         system reboot.
         Note: This setting will require the system to be rebooted to update the active auditd
         configuration settings.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Ph -- '\''^\h*-e\h+2\b'\'' /etc/audit/rules.d/*.rules | tail -1 2>/dev/null)"

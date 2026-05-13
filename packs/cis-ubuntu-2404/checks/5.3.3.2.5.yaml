@@ -9,7 +9,7 @@ metadata:
         check is disabled if the value is 0.
         Note: Most such passwords will not pass the simplicity check unless the sequence is
         only a minor part of the password.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Psi -- '\''^\h*password\h+(requisite|required|sufficient)\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?maxsequence\h*=\h*(0|[4-9]|[1-9][0-9]+)\b'\'' /etc/pam.d/common-password 2>/dev/null)"

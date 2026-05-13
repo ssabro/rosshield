@@ -6,7 +6,7 @@ metadata:
     description: |-
         The pwquality difok option sets the number of characters in a password that must not
         be present in the old password.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Psi -- '\''^\h*password\h+(requisite|required|sufficient)\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?difok\h*=\h*([0-1])\b'\'' /etc/pam.d/common-password 2>/dev/null)"

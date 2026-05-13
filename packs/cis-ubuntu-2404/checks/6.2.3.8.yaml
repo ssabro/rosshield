@@ -21,7 +21,7 @@ metadata:
         The parameters in this section will watch the files to see if they have been opened for
         write or have had attribute changes (e.g. permissions) and tag them with the identifier
         "identity" in the audit log file.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

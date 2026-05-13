@@ -6,7 +6,7 @@ metadata:
     description: |-
         The nullok argument overrides the default action of pam_unix.so to not permit the
         user access to a service if their official password is blank.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -PH -- '\''^\h*^\h*[^#\n\r]+\h+pam_unix\.so\b'\'' /etc/pam.d/common- {password,auth,account,session,session-noninteractive} | grep -Pv -- '\''\bnullok\b'\'' 2>/dev/null)"

@@ -8,7 +8,7 @@ metadata:
         options are specifically not recommended other than strictly for debugging SSH
         communications. These levels provide so much data that it is difficult to identify
         important security information, and may violate the privacy of users.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

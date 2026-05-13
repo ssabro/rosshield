@@ -8,7 +8,7 @@ metadata:
         system with logs or making the logs unmanageably large. The file
         /etc/logrotate.d/rsyslog is the configuration file used to rotate log files created by
         rsyslog.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

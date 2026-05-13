@@ -6,7 +6,7 @@ metadata:
     description: |-
         Administrators may delete users or groups from the system and neglect to remove all
         files and/or directories owned by those users or groups.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

@@ -6,7 +6,7 @@ metadata:
     description: |-
         The root user can execute any command on the system and could be fooled into
         executing programs unintentionally if the PATH is not set correctly.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

@@ -6,7 +6,7 @@ metadata:
     description: |-
         Journald will create logfiles that do not already exist on the system. This setting controls
         what permissions will be applied to these newly created files.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

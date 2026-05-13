@@ -6,7 +6,7 @@ metadata:
     description: |-
         The usermod command can be used to specify which group the root account belongs
         to. This affects permissions of files that are created by the root account.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

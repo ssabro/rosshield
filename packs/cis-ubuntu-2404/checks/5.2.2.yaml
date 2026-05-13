@@ -4,7 +4,7 @@ metadata:
     id: 5.2.2
     title: 5.2.2 Ensure sudo commands use pty (Automated)
     description: sudo can be configured to run only from a pseudo terminal (pseudo-pty).
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -rPi -- '\''^\h*Defaults\h+([^#\n\r]+,\h*)?!use_pty\b'\'' /etc/sudoers* 2>/dev/null)"

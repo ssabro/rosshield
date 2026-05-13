@@ -4,7 +4,7 @@ metadata:
     id: 1.1.2.6.1
     title: 1.1.2.6.1 Ensure separate partition exists for /var/log (Automated)
     description: The /var/log directory is used by system services to store log data.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(findmnt -kn /var/log 2>/dev/null)"

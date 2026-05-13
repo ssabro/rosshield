@@ -9,7 +9,7 @@ metadata:
         In general log files are found in /var/log/, although application can be configured to
         store logs elsewhere. Should your application store logs in another, ensure to run the
         same test on that location.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

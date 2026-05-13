@@ -4,7 +4,7 @@ metadata:
     id: 6.1.3.2
     title: 6.1.3.2 Ensure rsyslog service is enabled and active (Automated)
     description: Once the rsyslog package is installed, ensure that the service is enabled.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active rsyslog.service 2>/dev/null)"

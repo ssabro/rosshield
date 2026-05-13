@@ -6,7 +6,7 @@ metadata:
     description: |-
         By default GNOME automatically mounts removable media when inserted as a
         convenience to the user.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

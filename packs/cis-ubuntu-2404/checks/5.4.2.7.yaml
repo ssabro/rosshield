@@ -7,7 +7,7 @@ metadata:
         There are a number of accounts provided with most distributions that are used to
         manage applications and are not intended to provide an interactive shell. Furthermore,
         a user may add special accounts that are not intended to provide an interactive shell.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(printf '\''%s'\'' '\''IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CmxfdmFsaWRfc2hlbGxzPSJeKCQoYXdrIC1GXC8gJyRORiAhPSAibm9sb2dpbiIge3ByaW50fScgL2V0Yy9zaGVsbHMgfCBzZWQKLXJuICcvXlwvL3tzLC8sXFxcXC8sZztwfScgfCBwYXN0ZSAtcyAtZCAnfCcgLSApKSQiCmF3ayAtdiBwYXQ9IiRsX3ZhbGlkX3NoZWxscyIgLUY6CicoJDEhfi9eKHJvb3R8aGFsdHxzeW5jfHNodXRkb3dufG5mc25vYm9keSkkLyAmJiAoJDM8JyIkKGF3awonL15ccypVSURfTUlOL3twcmludCAkMn0nIC9ldGMvbG9naW4uZGVmcykiJyB8fCAkMyA9PSA2NTUzNCkgJiYgJChORikgfiBwYXQpCntwcmludCAiU2VydmljZSBhY2NvdW50OiBcIiIgJDEgIlwiIGhhcyBhIHZhbGlkIHNoZWxsOiAiICQ3fScgL2V0Yy9wYXNzd2QKfQpOb3RoaW5nIHNob3VsZCBiZSByZXR1cm5lZA=='\'' | base64 -d | bash 2>/dev/null)"

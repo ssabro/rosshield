@@ -10,7 +10,7 @@ metadata:
         uncommenting the pam_wheel.so statement in /etc/pam.d/su, the su command will
         only allow users in a specific groups to execute su. This group should be empty to
         reinforce the use of sudo for privileged access.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep <group_name> /etc/group 2>/dev/null)"

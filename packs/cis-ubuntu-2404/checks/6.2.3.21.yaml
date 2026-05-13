@@ -10,7 +10,7 @@ metadata:
         guaranteed that loading the rule sets via augenrules --load will result in all rules
         being loaded or even that the user will be informed if there was a problem loading the
         rules.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

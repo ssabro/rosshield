@@ -8,7 +8,7 @@ metadata:
         network printers. A system running CUPS can also accept print jobs from remote
         systems and print them to local printers. It also provides a web based remote
         administration capability.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active cups.socket cups.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"

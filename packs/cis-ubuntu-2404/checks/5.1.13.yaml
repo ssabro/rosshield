@@ -9,7 +9,7 @@ metadata:
         unauthenticated connections can exist. Like other session controls in this session the
         Grace Period should be limited to appropriate organizational limits to ensure the service
         is available for needed access.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T | grep logingracetime 2>/dev/null)"

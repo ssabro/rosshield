@@ -10,7 +10,7 @@ metadata:
         settings. To lock down a dconf key or subpath, create a locks subdirectory in the keyfile
         directory. The files inside this directory contain a list of keys or subpaths to lock. Just as
         with the keyfiles, you may add any number of files to this directory.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

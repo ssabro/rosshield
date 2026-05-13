@@ -6,7 +6,7 @@ metadata:
     description: |-
         use_authtok - When password changing enforce the module to set the new password
         to the one provided by a previously stacked password module
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -PH -- '\''^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?use_authtok\b'\'' 2>/dev/null)"

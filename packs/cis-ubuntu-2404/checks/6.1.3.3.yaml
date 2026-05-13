@@ -7,7 +7,7 @@ metadata:
         Data from systemd-journald may be stored in volatile memory or persisted locally on
         the server. Utilities exist to accept remote export of systemd-journald logs, however,
         use of the rsyslog service provides a consistent means of log collection and export.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

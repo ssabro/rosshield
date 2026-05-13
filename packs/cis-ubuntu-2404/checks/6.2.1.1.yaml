@@ -6,7 +6,7 @@ metadata:
     description: |-
         auditd is the userspace component to the Linux Auditing System. It's responsible for
         writing audit records to the disk
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(dpkg-query -s audispd-plugins &>/dev/null && echo audispd-plugins is 2>/dev/null)"

@@ -6,7 +6,7 @@ metadata:
     description: |-
         /etc/security/opasswd and it's backup /etc/security/opasswd.old hold user's
         previous passwords if pam_unix or pam_pwhistory is in use on the system
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

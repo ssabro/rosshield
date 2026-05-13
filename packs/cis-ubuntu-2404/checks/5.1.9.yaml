@@ -6,7 +6,7 @@ metadata:
     description: |-
         The GSSAPIAuthentication parameter specifies whether user authentication based on
         GSSAPI is allowed
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T -C user=sshuser | grep gssapiauthentication 2>/dev/null)"

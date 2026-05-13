@@ -7,7 +7,7 @@ metadata:
         The /etc/shadow file is used to store the information about user accounts that is critical
         to the security of those accounts, such as the hashed password and other security
         information.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(stat -Lc '\''Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' /etc/shadow 2>/dev/null)"

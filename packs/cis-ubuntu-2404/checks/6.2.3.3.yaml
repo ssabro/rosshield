@@ -10,7 +10,7 @@ metadata:
         /var/log/sudo.log . Any time a command is executed, an audit event will be
         triggered as the /var/log/sudo.log file will be opened for write and the executed
         administration command will be written to the log.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

@@ -10,7 +10,7 @@ metadata:
         in.
         • /var/run/faillock - directory maintains records of login failures via the
         pam_faillock module.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

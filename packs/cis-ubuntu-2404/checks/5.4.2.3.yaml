@@ -6,7 +6,7 @@ metadata:
     description: |-
         The groupmod command can be used to specify which group the root group belongs
         to. This affects permissions of files that are group owned by the root group.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

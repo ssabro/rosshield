@@ -7,7 +7,7 @@ metadata:
         Journald systemd-journal-remote supports the ability to send log events it gathers to
         a remote log host or to receive messages from remote hosts, thus enabling centralized
         log management.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(dpkg-query -s systemd-journal-remote &>/dev/null && echo "systemd-journal-remote is installed" 2>/dev/null)"

@@ -10,7 +10,7 @@ metadata:
         directories.
         Note: If a different Mandatory Access Control method is used, changes to the
         corresponding directories should be audited.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

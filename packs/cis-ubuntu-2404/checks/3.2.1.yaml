@@ -8,7 +8,7 @@ metadata:
         supports streaming media and telephony. DCCP provides a way to gain access to
         congestion control, without having to do it at the application layer, but does not provide
         in-sequence delivery.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

@@ -19,7 +19,7 @@ metadata:
         The legacy $FileCreateMode may be specified multiple times. If so, it specifies the
         creation mode for all selector lines that follow until the next $FileCreateMode
         parameter. Order of lines is vitally important.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

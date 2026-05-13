@@ -8,7 +8,7 @@ metadata:
         multiple windows in which to run programs and various add on. The X Windows system
         is typically used on workstations where users login, but not on servers where users
         typically do not login.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

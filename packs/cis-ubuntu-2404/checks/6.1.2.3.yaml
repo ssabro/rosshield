@@ -6,7 +6,7 @@ metadata:
     description: |-
         The journald system includes the capability of compressing overly large files to avoid
         filling up the system with logs or making the logs unmanageably large.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

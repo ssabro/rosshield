@@ -8,7 +8,7 @@ metadata:
         the chacl command.
         chacl is an IRIX-compatibility command, and is maintained for those users who are
         familiar with its use from either XFS or IRIX.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

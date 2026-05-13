@@ -26,7 +26,7 @@ metadata:
         • yescrypt - When a user changes their password next, encrypt it with the
         yescrypt algorithm. The yescrypt algorithm must be supported by the crypt(3)
         function.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -PH -- '\''^\h*password\h+([^#\n\r]+)\h+pam_unix\.so\h+([^#\n\r]+\h+)?(sha512|yescrypt)\b'\'' /etc/pam.d/common-password 2>/dev/null)"

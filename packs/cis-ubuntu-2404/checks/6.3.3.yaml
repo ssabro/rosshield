@@ -44,7 +44,7 @@ metadata:
         config file execution.
         • Environment variable names are limited to alphanumeric characters (A-Za-z0-9)
         and the underscore '_' and must not begin with a digit.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

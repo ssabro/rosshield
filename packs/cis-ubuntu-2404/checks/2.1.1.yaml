@@ -6,7 +6,7 @@ metadata:
     description: |-
         autofs allows automatic mounting of devices, typically including CD/DVDs and USB
         drives.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active autofs.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"

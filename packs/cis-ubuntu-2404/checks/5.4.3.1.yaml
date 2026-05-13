@@ -9,7 +9,7 @@ metadata:
         Be aware that there are programs which consult this file to find out if a user is a normal
         user; for example, FTP daemons traditionally disallow access to users with shells not
         included in this file.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Ps '\''^\h*([^#\n\r]+)?\/nologin\b'\'' /etc/shells 2>/dev/null)"

@@ -6,7 +6,7 @@ metadata:
     description: |-
         Monitor privileged programs, those that have the setuid and/or setgid bit set on
         execution, to determine if unprivileged users are running these commands.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

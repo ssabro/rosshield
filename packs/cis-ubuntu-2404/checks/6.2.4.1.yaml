@@ -4,7 +4,7 @@ metadata:
     id: 6.2.4.1
     title: 6.2.4.1 Ensure audit log files mode is configured (Automated)
     description: Audit log files contain information about the system and system activity.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

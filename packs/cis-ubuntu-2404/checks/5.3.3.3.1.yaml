@@ -9,7 +9,7 @@ metadata:
         remembered is set via the remember argument value in set for the pam_pwhistory
         module.
         • remember=<N> - <N> is the number of old passwords to remember
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Psi -- '\''^\h*password\h+[^#\n\r]+\h+pam_pwhistory\.so\h+([^#\n\r]+\h+)?remember=\d+\b'\'' /etc/pam.d/common-password 2>/dev/null)"

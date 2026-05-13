@@ -6,7 +6,7 @@ metadata:
     description: |-
         Data from journald should be kept in the confines of the service and not forwarded to
         other services.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

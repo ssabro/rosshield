@@ -4,7 +4,7 @@ metadata:
     id: 6.2.4.3
     title: 6.2.4.3 Ensure audit log files group owner is configured (Automated)
     description: Audit log files contain information about the system and system activity.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Piws -- '\''^\h*log_group\h*=\h*\H+\b'\'' /etc/audit/auditd.conf | grep - Pvi -- '\''(adm)'\'' 2>/dev/null)"

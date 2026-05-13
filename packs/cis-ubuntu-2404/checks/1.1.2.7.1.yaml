@@ -4,7 +4,7 @@ metadata:
     id: 1.1.2.7.1
     title: 1.1.2.7.1 Ensure separate partition exists for /var/log/audit (Automated)
     description: The auditing daemon, auditd, stores log data in the /var/log/audit directory.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(findmnt -kn /var/log/audit 2>/dev/null)"

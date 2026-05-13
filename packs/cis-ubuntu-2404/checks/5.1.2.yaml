@@ -9,7 +9,7 @@ metadata:
         private key that corresponds to a public key will be able to authenticate successfully.
         The private keys need to be stored and handled carefully, and no copies of the private
         key should be distributed.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

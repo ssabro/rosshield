@@ -7,7 +7,7 @@ metadata:
         The /var/tmp directory is a world-writable directory used for temporary storage by all
         users and some applications. Temporary files residing in /var/tmp are to be preserved
         between reboots.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(findmnt -kn /var/tmp 2>/dev/null)"

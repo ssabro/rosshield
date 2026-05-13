@@ -6,7 +6,7 @@ metadata:
     description: |-
         The Banner parameter specifies a file whose contents must be sent to the remote user
         before authentication is permitted. By default, no banner is displayed.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Psi -- "(\\\v|\\\r|\\\m|\\\s|\b$(grep '\''^ID='\'' /etc/os-release | cut -d= -f2 | sed -e '\''s/"//g'\'')\b)" "$(sshd -T | awk '\''$1 == "banner" {print $2}'\'')" 2>/dev/null)"

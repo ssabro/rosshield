@@ -12,7 +12,7 @@ metadata:
         remote hosts and receiving incoming logs.
         • With regards to receiving logs, there are two services; systemd-journal-
         remote.socket and systemd-journal-remote.service.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active systemd-journal-remote.socket systemd-journal- remote.service | grep -P -- '\''^active'\'' 2>/dev/null)"

@@ -6,7 +6,7 @@ metadata:
     description: |-
         The MaxSessions parameter specifies the maximum number of open sessions
         permitted from a given connection.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T -C user=sshuser | grep maxsessions 2>/dev/null)"

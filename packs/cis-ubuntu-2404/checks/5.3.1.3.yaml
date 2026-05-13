@@ -10,7 +10,7 @@ metadata:
         This module can be plugged into the password stack of a given service to provide some
         plug-in strength-checking for passwords. The code was originally based on
         pam_cracklib module and the module is backwards compatible with its options.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(dpkg-query -s libpam-pwquality | grep -P -- '\''^(Status|Version)\b'\'' 2>/dev/null)"

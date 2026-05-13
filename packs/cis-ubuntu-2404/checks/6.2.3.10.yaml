@@ -8,7 +8,7 @@ metadata:
         the mounting and unmounting of file systems. The parameters below configure the
         system to create an audit record when the mount system call is used by a non-
         privileged user
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

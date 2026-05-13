@@ -6,7 +6,7 @@ metadata:
     description: |-
         The IgnoreRhosts parameter specifies that .rhosts and .shosts files will not be used
         in RhostsRSAAuthentication or HostbasedAuthentication.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T -C user=sshuser | grep ignorerhosts 2>/dev/null)"

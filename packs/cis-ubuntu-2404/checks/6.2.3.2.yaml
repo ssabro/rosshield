@@ -6,7 +6,7 @@ metadata:
     description: |-
         sudo provides users with temporary elevated privileges to perform operations, either as
         the superuser or another user.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

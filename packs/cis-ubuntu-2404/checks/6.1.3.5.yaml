@@ -6,7 +6,7 @@ metadata:
     description: |-
         The rsyslog and configuration files specifies rules for logging and which files are to be
         used to log certain classes of messages.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

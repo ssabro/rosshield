@@ -31,7 +31,7 @@ metadata:
         denying specific groups of users to ssh into the system. The list consists
         of space separated group names. Numeric group IDs are not recognized
         with this variable.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

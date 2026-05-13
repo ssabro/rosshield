@@ -8,7 +8,7 @@ metadata:
         set to yes this will enable PAM authentication using
         ChallengeResponseAuthentication and PasswordAuthentication directives in
         addition to PAM account and session module processing for all authentication types.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T | grep -i usepam 2>/dev/null)"

@@ -18,7 +18,7 @@ metadata:
         to legacy applications, going through firewalls, and some system administrators
         and IT professionals use it for opening backdoors into the internal network from
         their home machines.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T | grep -i disableforwarding 2>/dev/null)"

@@ -4,7 +4,7 @@ metadata:
     id: 5.4.1.6
     title: 5.4.1.6 Ensure all users last password change date is in the past (Automated)
     description: All users should have a password change date in the past.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

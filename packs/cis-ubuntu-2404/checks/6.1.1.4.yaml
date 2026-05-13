@@ -7,7 +7,7 @@ metadata:
         Best practices recommend that a single centralized logging system be used for log
         management, choose a single service either rsyslog - OR - journald to be used as a
         single centralized logging system.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

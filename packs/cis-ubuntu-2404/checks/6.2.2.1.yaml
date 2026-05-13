@@ -6,7 +6,7 @@ metadata:
     description: |-
         Configure the maximum size of the audit log file. Once the log reaches the maximum
         size, it will be rotated and a new log file will be started.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Po -- '\''^\h*max_log_file\h*=\h*\d+\b'\'' /etc/audit/auditd.conf 2>/dev/null)"

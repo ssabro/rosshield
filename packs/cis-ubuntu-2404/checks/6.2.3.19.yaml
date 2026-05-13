@@ -16,7 +16,7 @@ metadata:
         • query_module - query the kernel for various bits pertaining to modules
         Any execution of the loading and unloading module programs and system calls will
         trigger an audit record with an identifier of modules.
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

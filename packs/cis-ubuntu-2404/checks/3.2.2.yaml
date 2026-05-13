@@ -6,7 +6,7 @@ metadata:
     description: |-
         The Transparent Inter-Process Communication (TIPC) protocol is designed to provide
         communication between cluster nodes.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

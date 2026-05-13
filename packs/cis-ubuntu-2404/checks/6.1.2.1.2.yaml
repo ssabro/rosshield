@@ -6,7 +6,7 @@ metadata:
     description: |-
         Journald systemd-journal-upload supports the ability to send log events it gathers to
         a remote log host.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

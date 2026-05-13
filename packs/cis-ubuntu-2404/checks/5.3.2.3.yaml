@@ -14,7 +14,7 @@ metadata:
         considered strong, prompt for the password a second time (to verify that it was typed
         correctly on the first occasion). All being well, the password is passed on to subsequent
         modules to be installed as the new authentication token.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -P -- '\''\bpam_pwquality\.so\b'\'' /etc/pam.d/common-password 2>/dev/null)"

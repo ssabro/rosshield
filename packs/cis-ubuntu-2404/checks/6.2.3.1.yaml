@@ -10,7 +10,7 @@ metadata:
         scope. The file /etc/sudoers, or files in /etc/sudoers.d, will be written to when the
         file(s) or related attributes have changed. The audit records will be tagged with the
         identifier "scope".
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

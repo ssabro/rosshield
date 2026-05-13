@@ -10,7 +10,7 @@ metadata:
         printed but root can change the password anyway.
         Note: The root is not asked for an old password so the checks that compare the old and
         new password are not performed.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Psi -- '\''^\h*enforce_for_root\b'\'' /etc/security/pwquality.conf 2>/dev/null)"

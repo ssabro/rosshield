@@ -23,7 +23,7 @@ metadata:
         • fremovexattr
         In all cases, an audit record will only be written for non-system user ids and will ignore
         Daemon events. All audit records will be tagged with the identifier "perm_mod."
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

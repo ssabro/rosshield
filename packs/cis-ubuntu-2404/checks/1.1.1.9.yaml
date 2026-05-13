@@ -9,7 +9,7 @@ metadata:
         has led to USB-based malware being a simple and common means for network
         infiltration and a first step to establishing a persistent threat within a networked
         environment.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

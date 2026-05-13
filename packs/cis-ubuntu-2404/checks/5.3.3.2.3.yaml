@@ -20,7 +20,7 @@ metadata:
         • lcredit - The maximum credit for having lowercase characters in the new
         password. If less than 0 it is the minimum number of lowercase characters in the
         new password. e.g. lcredit = -1 requires at least one lowercase character
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

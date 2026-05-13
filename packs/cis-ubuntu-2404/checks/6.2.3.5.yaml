@@ -15,7 +15,7 @@ metadata:
         • /etc/network/ - directory containing network interface scripts and
         configurations files
         • /etc/netplan/ - central location for YAML networking configurations files
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

@@ -7,7 +7,7 @@ metadata:
         Data from journald may be stored in volatile memory or persisted locally on the server.
         Logs in memory will be lost upon a system reboot. By persisting logs to local disk on the
         server they are protected from loss due to a reboot.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

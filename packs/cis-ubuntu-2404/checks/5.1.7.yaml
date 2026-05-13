@@ -29,7 +29,7 @@ metadata:
         ClientAliveInterval is set to 15, and ClientAliveCountMax is left at the default,
         unresponsive SSH clients will be disconnected after approximately 45 seconds.
         Setting a zero ClientAliveCountMax disables connection termination.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T -C user=sshuser | grep -Pi -- '\''(clientaliveinterval|clientalivecountmax)'\'' 2>/dev/null)"

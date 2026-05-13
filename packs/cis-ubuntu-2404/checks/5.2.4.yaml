@@ -6,7 +6,7 @@ metadata:
     description: |-
         The operating system must be configured so that users must provide a password for
         privilege escalation.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -r "^[^#].*NOPASSWD" /etc/sudoers* 2>/dev/null)"

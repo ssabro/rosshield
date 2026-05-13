@@ -7,7 +7,7 @@ metadata:
         PASS_MIN_DAYS <N> - The minimum number of days allowed between password
         changes. Any password changes attempted sooner than this will be rejected. If not
         specified, 0 will be assumed (which disables the restriction).
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

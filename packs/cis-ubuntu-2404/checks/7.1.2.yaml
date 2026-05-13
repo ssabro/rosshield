@@ -4,7 +4,7 @@ metadata:
     id: 7.1.2
     title: 7.1.2 Ensure permissions on /etc/passwd- are configured (Automated)
     description: The /etc/passwd- file contains backup user account information.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(stat -Lc '\''Access: (%#a/%A) Uid: ( %u/ %U) Gid: { %g/ %G)'\'' /etc/passwd- Access: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: { 0/ root) 2>/dev/null)"

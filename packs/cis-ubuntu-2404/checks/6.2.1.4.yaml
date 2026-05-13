@@ -11,7 +11,7 @@ metadata:
         messages, will ensure that a queue cannot grow beyond a certain size. If an audit event
         is logged which would grow the queue beyond this limit, then a failure occurs and is
         handled according to the system configuration
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(find /boot -type f -name '\''grub.cfg'\'' -exec grep -Ph -- '\''^\h*linux'\'' {} + | grep -Pv '\''audit_backlog_limit=\d+\b'\'' 2>/dev/null)"

@@ -6,7 +6,7 @@ metadata:
     description: |-
         The PermitUserEnvironment option allows users to present environment options to
         the SSH daemon.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T | grep permituserenvironment 2>/dev/null)"

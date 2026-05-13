@@ -6,7 +6,7 @@ metadata:
     description: |-
         The /etc/group file contains a list of all the valid groups defined in the system. The
         command below allows read/write access for root and read access for everyone else.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(stat -Lc '\''Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' /etc/group 2>/dev/null)"

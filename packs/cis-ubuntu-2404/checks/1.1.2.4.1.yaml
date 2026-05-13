@@ -6,7 +6,7 @@ metadata:
     description: |-
         The /var directory is used by daemons and other system services to temporarily store
         dynamic data. Some directories created by these processes may be world-writable.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(findmnt -kn /var 2>/dev/null)"

@@ -9,7 +9,7 @@ metadata:
         PASS_MAX_DAYS <N> - The maximum number of days a password may be used. If the
         password is older than this, a password change will be forced. If not specified, -1 will be
         assumed (which disables the restriction).
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($5 > 365 || $5 < 1)print "User: " $1 "PASS_MAX_DAYS: " $5}'\'' /etc/shadow 2>/dev/null)"

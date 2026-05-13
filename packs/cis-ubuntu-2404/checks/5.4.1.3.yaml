@@ -9,7 +9,7 @@ metadata:
         PASS_WARN_AGE <N> - The number of days warning given before a password expires. A
         zero means warning is given only upon the day of expiration, a negative value means
         no warning is given. If not specified, no warning will be provided.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(awk -F: '\''($2~/^\$.+\$/) {if($6 < 7)print "User: " $1 " PASS_WARN_AGE: "$6}'\'' /etc/shadow 2>/dev/null)"

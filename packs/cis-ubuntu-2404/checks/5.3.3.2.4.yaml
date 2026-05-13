@@ -6,7 +6,7 @@ metadata:
     description: |-
         The pwquality maxrepeat option sets the maximum number of allowed same
         consecutive characters in a new password.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -Psi -- '\''^\h*password\h+(requisite|required|sufficient)\h+pam_pwquality\.so\h+([^#\n\r]+\h+)?maxrepeat\h*=\h*(0|[4-9]|[1-9][0-9]+)\b'\'' /etc/pam.d/common-password 2>/dev/null)"

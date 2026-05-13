@@ -19,7 +19,7 @@ metadata:
         The authentication component performs the task of checking the users credentials
         (password). The default action of this module is to not permit the user access to a
         service if their official password is blank.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -P -- '\''\bpam_unix\.so\b'\'' /etc/pam.d/common- {account,session,auth,password} 2>/dev/null)"

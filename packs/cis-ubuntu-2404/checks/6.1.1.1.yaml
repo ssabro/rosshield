@@ -6,7 +6,7 @@ metadata:
     description: |-
         Ensure that the systemd-journald service is enabled to allow capturing of logging
         events.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active systemd-journald.service 2>/dev/null)"

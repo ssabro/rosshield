@@ -11,7 +11,7 @@ metadata:
         sense to use this module in conjunction with NIS or LDAP, since the old passwords are
         stored on the local machine and are not available on another machine for password
         history checking.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -P -- '\''\bpam_pwhistory\.so\b'\'' /etc/pam.d/common-password 2>/dev/null)"

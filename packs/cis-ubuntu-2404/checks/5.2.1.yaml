@@ -7,7 +7,7 @@ metadata:
         sudo allows a permitted user to execute a command as the superuser or another user,
         as specified by the security policy. The invoking user's real (not effective) user ID is
         used to determine the user name with which to query the security policy.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(dpkg-query -s sudo-ldap &>/dev/null && echo "sudo-ldap is installed" 2>/dev/null)"

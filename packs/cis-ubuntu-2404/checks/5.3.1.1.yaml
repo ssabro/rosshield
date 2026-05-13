@@ -4,7 +4,7 @@ metadata:
     id: 5.3.1.1
     title: 5.3.1.1 Ensure latest version of pam is installed (Automated)
     description: Updated versions of PAM include additional functionality
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

@@ -7,7 +7,7 @@ metadata:
         The MaxAuthTries parameter specifies the maximum number of authentication
         attempts permitted per connection. When the login failure count reaches half the
         number, error messages will be written to the syslog file detailing the login failure.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T -C user=sshuser | grep maxauthtries 2>/dev/null)"

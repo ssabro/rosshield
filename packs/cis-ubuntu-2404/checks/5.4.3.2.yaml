@@ -24,7 +24,7 @@ metadata:
         /etc/bashrc also invokes /etc/profile.d/*.sh if non-login shell, but redirects
         output to /dev/null if non-interactive. Is only executed for interactive shells
         or if BASH_ENV is set to /etc/bashrc.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

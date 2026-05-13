@@ -6,7 +6,7 @@ metadata:
     description: |-
         rsyslog supports the ability to receive messages from remote hosts, thus acting as a
         log server. Clients should not receive data from other hosts.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

@@ -6,7 +6,7 @@ metadata:
     description: |-
         The /etc/group- file contains a backup list of all the valid groups defined in the
         system.
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(stat -Lc '\''Access: (%#a/%A) Uid: ( %u/ %U) Gid: ( %g/ %G)'\'' /etc/group- Access: (0644/-rw-r--r--) Uid: ( 0/ root) Gid: ( 0/ root) 2>/dev/null)"

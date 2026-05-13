@@ -4,7 +4,7 @@ metadata:
     id: 6.2.4.4
     title: 6.2.4.4 Ensure the audit log file directory mode is configured (Automated)
     description: The audit log directory contains audit log files.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash

@@ -6,7 +6,7 @@ metadata:
     description: |-
         Configure grub2 so that processes that are capable of being audited can be audited
         even if they start up prior to auditd startup.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(find /boot -type f -name '\''grub.cfg'\'' -exec grep -Ph -- '\''^\h*linux'\'' {} + | grep -v '\''audit=1'\'' 2>/dev/null)"

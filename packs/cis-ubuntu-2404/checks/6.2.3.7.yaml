@@ -15,7 +15,7 @@ metadata:
         • is not a Daemon event (auid=4294967295/unset/-1)
         • if the system call returned EACCES (permission denied) or EPERM (some other
         permanent error associated with the specific system call)
-    severity: medium
+    severity: low
 spec:
     auditCommand: "true"
     evaluationRule:

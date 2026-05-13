@@ -4,7 +4,7 @@ metadata:
     id: 5.2.3
     title: 5.2.3 Ensure sudo log file exists (Automated)
     description: sudo can use a custom log file
-    severity: medium
+    severity: high
 spec:
     auditCommand: |-
         bash -c 'out="$(grep -rPsi 2>/dev/null)"

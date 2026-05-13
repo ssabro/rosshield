@@ -8,7 +8,7 @@ metadata:
         data between devices over short distances. It employs UHF radio waves in the ISM
         bands, from 2.402 GHz to 2.48 GHz. It is mainly used as an alternative to wire
         connections.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c 'out="$(systemctl is-active bluetooth.service 2>/dev/null | grep '\''^active'\'' 2>/dev/null)"

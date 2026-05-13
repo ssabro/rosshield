@@ -8,7 +8,7 @@ metadata:
         permissions, even if the user running the program is not the owner or a member of the
         group. The most common reason for a SUID or SGID program is to enable users to
         perform functions (such as changing their password) that require root privileges.
-    severity: medium
+    severity: high
 spec:
     auditCommand: "true"
     evaluationRule:

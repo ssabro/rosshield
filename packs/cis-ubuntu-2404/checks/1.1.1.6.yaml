@@ -7,7 +7,7 @@ metadata:
         overlayfs is a Linux filesystem that layers multiple filesystems to create a single
         unified view which allows a user to "merge" several mount points into a unified
         filesystem.
-    severity: medium
+    severity: low
 spec:
     auditCommand: |-
         bash -c '#!/usr/bin/env bash
