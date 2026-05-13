@@ -188,6 +188,14 @@ type Config struct {
 	BackupSchedule     string // cron spec (예: "@every 24h" 또는 "0 15 3 * * *"). 빈 값 = 자동 백업 비활성.
 	BackupDir          string // 빈 값이면 DataDir/backups.
 	BackupSkipEvidence bool
+
+	// CheckTimeoutDefaultSec는 scanrun.Orchestrator가 CheckDef.TimeoutSec=0인 항목에
+	// 적용할 default SSH exec timeout. 0이면 scan.DefaultCheckTimeoutSec(10초). per-check
+	// TimeoutSec은 항상 우선 — 본 값은 fallback default만 조정.
+	//
+	// 운영자 시나리오: 합성 multi-line bash 또는 base64 sub-shell wrap이 customer 환경에서
+	// 더 긴 시간이 필요하면 ↑, fail-fast 정책이면 ↓.
+	CheckTimeoutDefaultSec int
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -1082,6 +1090,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Clock:     clk,
 		Evidence:  evidenceSvc,
 		// WorkerLimit은 default(R4-4 — 10).
+		CheckTimeoutDefaultSec: cfg.CheckTimeoutDefaultSec,
 	})
 
 	// (LLM·Compliance는 위에서 결선됨 — E17 Suggester 주입 흐름)

@@ -267,6 +267,7 @@ func main() {
 	backupSchedule := flag.String("backup-schedule", "", "Auto backup cron spec (B7 후속). Empty = disabled. Examples: '@every 24h', '0 15 3 * * *' (daily 03:15 UTC).")
 	backupDir := flag.String("backup-dir", "", "Auto backup output directory (B7 후속). Empty = <data-dir>/backups.")
 	backupSkipEvidence := flag.Bool("backup-skip-evidence", false, "Auto backup excludes evidence/ (faster, smaller, metadata-only).")
+	checkTimeoutDefaultSec := flag.Int("check-timeout-default-sec", 0, "Default SSH exec timeout for checks with TimeoutSec=0. 0 uses scan.DefaultCheckTimeoutSec (10s). Per-check TimeoutSec always wins.")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
@@ -327,9 +328,10 @@ func main() {
 		HALeaderID:          *haLeaderID,
 		HAAdvertisedAddr:    *haAdvertised,
 		KeystoreType:        *keystoreType,
-		BackupSchedule:      *backupSchedule,
-		BackupDir:           *backupDir,
-		BackupSkipEvidence:  *backupSkipEvidence,
+		BackupSchedule:         *backupSchedule,
+		BackupDir:              *backupDir,
+		BackupSkipEvidence:     *backupSkipEvidence,
+		CheckTimeoutDefaultSec: *checkTimeoutDefaultSec,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

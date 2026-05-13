@@ -51,6 +51,11 @@ type Deps struct {
 
 	// WorkerLimit은 한 Run 내 동시 worker 최대 수. 0이면 DefaultWorkerLimit.
 	WorkerLimit int
+
+	// CheckTimeoutDefaultSec는 CheckDef.TimeoutSec=0일 때 적용할 default. 0이면
+	// scan.DefaultCheckTimeoutSec(10초). 운영자가 customer 환경에 맞춰 조정 가능
+	// (긴 합성 bash 또는 빠른 fail-fast 정책). per-check TimeoutSec은 항상 우선.
+	CheckTimeoutDefaultSec int
 }
 
 // Orchestrator는 scan session의 fan-out 실행 + 결과 기록 + 이벤트 publish를 관장합니다.
@@ -183,7 +188,13 @@ func (o *Orchestrator) runEmpty(ctx context.Context, tenantID storage.TenantID, 
 func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID, sessionID string, robot scan.RobotTarget, check scan.CheckDef) {
 	timeout := time.Duration(check.TimeoutSec) * time.Second
 	if timeout <= 0 {
-		timeout = time.Duration(scan.DefaultCheckTimeoutSec) * time.Second
+		// CheckDef.TimeoutSec 미설정 — Deps.CheckTimeoutDefaultSec 또는 const fallback.
+		// 운영자가 bootstrap config로 customer 환경별 조정 가능 (긴 multi-line cmd 또는 빠른 fail-fast).
+		defaultSec := o.deps.CheckTimeoutDefaultSec
+		if defaultSec <= 0 {
+			defaultSec = scan.DefaultCheckTimeoutSec
+		}
+		timeout = time.Duration(defaultSec) * time.Second
 	}
 
 	var (
