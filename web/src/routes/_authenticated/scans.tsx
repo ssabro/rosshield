@@ -508,6 +508,14 @@ function SessionProgressCard({
             </span>
             <span>{percent}%</span>
           </div>
+          {(() => {
+            const eta = computeETA(status, session.startedAt, completed, total)
+            return eta ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t('scans.session.eta', { eta })}
+              </p>
+            ) : null
+          })()}
         </div>
         {ws.error && <p className="text-xs text-destructive">{ws.error}</p>}
         {!isTerminal && (
@@ -563,6 +571,49 @@ function sourceLabel(
     default:
       return t('scans.session.source.idle')
   }
+}
+
+// computeETA — running scan의 estimated time remaining 계산.
+//
+// 공식: avgPerCheck = elapsed / completed, remaining = (total - completed) * avgPerCheck.
+// 조건 (모두 true일 때만 ETA 노출):
+//   - status === 'running'
+//   - startedAt 존재 + valid date
+//   - completed > 0 (분모 0 회피, 첫 check 끝나야 추정 가능)
+//   - completed < total (이미 완료면 ETA 무의미)
+//   - elapsed > 1초 (너무 짧으면 추정 부정확)
+//
+// 출력: "1m 23s" / "45s" / "1h 5m" 형식. 단위 테스트 대상으로 export.
+export function computeETA(
+  status: string,
+  startedAt: string | null | undefined,
+  completed: number,
+  total: number,
+): string | null {
+  if (status !== 'running') return null
+  if (!startedAt) return null
+  if (completed <= 0 || completed >= total) return null
+  const startMs = new Date(startedAt).getTime()
+  if (Number.isNaN(startMs)) return null
+  const elapsedMs = Date.now() - startMs
+  if (elapsedMs < 1000) return null
+  const avgMs = elapsedMs / completed
+  const remainingMs = (total - completed) * avgMs
+  return formatDuration(remainingMs)
+}
+
+// formatDuration — milliseconds를 short form(`Nh Nm` / `Nm Ns` / `Ns`)으로 변환.
+function formatDuration(ms: number): string {
+  const totalSec = Math.max(1, Math.round(ms / 1000))
+  if (totalSec < 60) return `${totalSec}s`
+  const min = Math.floor(totalSec / 60)
+  const sec = totalSec % 60
+  if (min < 60) {
+    return sec > 0 ? `${min}m ${sec}s` : `${min}m`
+  }
+  const hr = Math.floor(min / 60)
+  const remMin = min % 60
+  return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`
 }
 
 function statusVariant(
