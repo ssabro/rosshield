@@ -138,20 +138,34 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
   )
 }
 
+
+// VerifyResult는 verify endpoint 응답 (verifyReportResponse mirror).
+interface VerifyResult {
+  ok: boolean
+  reason?: string
+  pdfSize: number
+  pdfSha256: string
+  signerKeyId: string
+  chainHeadSeq: number
+  chainHeadHash: string
+}
+
 // VerifyButton — signed report에 대해 server-side verify 실행 후 결과 inline 표시.
 //
-// useState로 ok/reason/loading 관리. ok=true는 success Badge, ok=false는 destructive Badge + reason.
+// useState로 result/loading/error 관리. ok=true는 success Badge, ok=false는 destructive Badge.
+// 결과 옆 "상세" 토글 — 클릭 시 chain head + signer keyId + sha256 detail panel expand.
 function VerifyButton({ reportID }: { reportID: string }): React.ReactElement {
   const t = useT()
   const [state, setState] = useState<{
     loading: boolean
-    ok?: boolean
-    reason?: string
+    result?: VerifyResult
     error?: string
   }>({ loading: false })
+  const [expanded, setExpanded] = useState(false)
 
   const onClick = async () => {
     setState({ loading: true })
+    setExpanded(false)
     try {
       const { data, error, response } = await apiClient.POST(
         '/api/v1/reports/{reportId}/verify',
@@ -164,8 +178,8 @@ function VerifyButton({ reportID }: { reportID: string }): React.ReactElement {
         })
         return
       }
-      const r = data as unknown as { ok: boolean; reason?: string }
-      setState({ loading: false, ok: r.ok, reason: r.reason })
+      const r = data as unknown as VerifyResult
+      setState({ loading: false, result: r })
     } catch (e) {
       setState({
         loading: false,
@@ -175,35 +189,88 @@ function VerifyButton({ reportID }: { reportID: string }): React.ReactElement {
   }
 
   return (
-    <span className="flex items-center gap-1.5">
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={onClick}
-        disabled={state.loading}
-      >
-        {state.loading ? t('reports.action.verifying') : t('reports.action.verify')}
-      </Button>
-      {state.ok === true && (
-        <Badge variant="default" className="text-[10px]">
-          {t('reports.verify.ok')}
-        </Badge>
-      )}
-      {state.ok === false && (
-        <Badge
-          variant="destructive"
-          className="text-[10px]"
-          title={state.reason}
+    <div className="flex flex-col items-end gap-1">
+      <span className="flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onClick}
+          disabled={state.loading}
         >
-          {t('reports.verify.failed')}
-        </Badge>
+          {state.loading ? t('reports.action.verifying') : t('reports.action.verify')}
+        </Button>
+        {state.result?.ok === true && (
+          <Badge variant="default" className="text-[10px]">
+            {t('reports.verify.ok')}
+          </Badge>
+        )}
+        {state.result?.ok === false && (
+          <Badge
+            variant="destructive"
+            className="text-[10px]"
+            title={state.result.reason}
+          >
+            {t('reports.verify.failed')}
+          </Badge>
+        )}
+        {state.result && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[10px] text-muted-foreground underline hover:no-underline"
+            aria-expanded={expanded}
+          >
+            {expanded ? t('reports.verify.hideDetail') : t('reports.verify.showDetail')}
+          </button>
+        )}
+        {state.error && (
+          <span className="text-xs text-destructive" title={state.error}>
+            {t('reports.verify.error')}
+          </span>
+        )}
+      </span>
+      {expanded && state.result && (
+        <VerifyDetail result={state.result} />
       )}
-      {state.error && (
-        <span className="text-xs text-destructive" title={state.error}>
-          {t('reports.verify.error')}
-        </span>
+    </div>
+  )
+}
+
+// VerifyDetail — verify 응답의 chain head + signer keyId + sha256 펼친 패널.
+//
+// 운영자가 audit anchor와 cross-check 시 활용 — 같은 chainHeadHash가 별 PC에서 외부 SDK
+// 검증 결과와 일치하는지 시각 비교 가능.
+function VerifyDetail({ result }: { result: VerifyResult }): React.ReactElement {
+  const t = useT()
+  return (
+    <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-left text-[11px] font-mono">
+      <DetailRow label={t('reports.verify.detail.signerKeyId')} value={result.signerKeyId || '-'} />
+      <DetailRow
+        label={t('reports.verify.detail.chainHeadSeq')}
+        value={String(result.chainHeadSeq)}
+      />
+      <DetailRow
+        label={t('reports.verify.detail.chainHeadHash')}
+        value={result.chainHeadHash || '-'}
+      />
+      <DetailRow label={t('reports.verify.detail.pdfSha256')} value={result.pdfSha256 || '-'} />
+      <DetailRow
+        label={t('reports.verify.detail.pdfSize')}
+        value={`${result.pdfSize} bytes`}
+      />
+      {result.reason && (
+        <DetailRow label={t('reports.verify.detail.reason')} value={result.reason} />
       )}
-    </span>
+    </div>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: string }): React.ReactElement {
+  return (
+    <div className="grid grid-cols-[8rem_1fr] gap-2">
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="break-all">{value}</span>
+    </div>
   )
 }
 
