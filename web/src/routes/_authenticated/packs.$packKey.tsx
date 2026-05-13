@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
 import { usePack } from '@/api/hooks'
@@ -28,6 +29,7 @@ function PackDetailPage(): React.ReactElement {
   const { packKey } = Route.useParams()
   const t = useT()
   const detailQuery = usePack(packKey)
+  const [severityFilter, setSeverityFilter] = useState<string>('')
 
   if (detailQuery.isPending) {
     return (
@@ -94,6 +96,14 @@ function PackDetailPage(): React.ReactElement {
         </CardContent>
       </Card>
 
+      {pack.checks.length > 0 && (
+        <SeverityStats
+          checks={pack.checks}
+          active={severityFilter}
+          onClick={(s) => setSeverityFilter(s)}
+        />
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>{t('packs.detail.checks')}</CardTitle>
@@ -111,7 +121,7 @@ function PackDetailPage(): React.ReactElement {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pack.checks.map((c) => (
+                {filterChecksBySeverity(pack.checks, severityFilter).map((c) => (
                   <CheckRow key={c.id} check={c} packKey={pack.packKey} />
                 ))}
               </TableBody>
@@ -164,6 +174,70 @@ function SeverityBadge({
     critical: 'destructive',
   }
   return <Badge variant={variant[severity]}>{severity}</Badge>
+}
+
+// SeverityStats — pack의 checks를 severity별 카운트 카드 4개로 요약 + 클릭으로 필터.
+//
+// findings.tsx의 패턴 재사용. CIS pack은 critical/high/medium/low 4-tier(info 부재).
+// 클릭 시 active 카드는 ring 강조. 같은 카드 재클릭은 필터 해제.
+function SeverityStats({
+  checks,
+  active,
+  onClick,
+}: {
+  checks: PackCheck[]
+  active: string
+  onClick: (severity: string) => void
+}): React.ReactElement {
+  const t = useT()
+  const counts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 }
+  for (const c of checks) {
+    if (counts[c.severity] !== undefined) {
+      counts[c.severity]!++
+    }
+  }
+  const order: Array<{ severity: string; bg: string; text: string }> = [
+    { severity: 'critical', bg: 'bg-destructive/10', text: 'text-destructive' },
+    { severity: 'high', bg: 'bg-destructive/10', text: 'text-destructive' },
+    { severity: 'medium', bg: 'bg-primary/10', text: 'text-primary' },
+    { severity: 'low', bg: 'bg-muted', text: 'text-muted-foreground' },
+  ]
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {order.map((o) => {
+        const isActive = active === o.severity
+        const count = counts[o.severity] ?? 0
+        return (
+          <button
+            key={o.severity}
+            type="button"
+            onClick={() => onClick(isActive ? '' : o.severity)}
+            aria-pressed={isActive}
+            aria-label={t('packs.detail.severityStats.toggle', {
+              severity: o.severity,
+              count: count.toString(),
+            })}
+            className={`flex flex-col items-start gap-1 rounded-md border px-3 py-2 text-left transition-all hover:border-foreground/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${o.bg} ${
+              isActive ? 'ring-2 ring-foreground/40' : ''
+            }`}
+          >
+            <span className={`text-xs font-medium uppercase ${o.text}`}>{o.severity}</span>
+            <span className="text-2xl font-bold leading-none">{count}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// filterChecksBySeverity — active severity 필터 적용. 빈 string이면 전체.
+// 단위 테스트(packs.$packKey.test.tsx) 대상으로 export.
+export function filterChecksBySeverity(
+  checks: PackCheck[],
+  severity: string,
+): PackCheck[] {
+  if (!severity) return checks
+  return checks.filter((c) => c.severity === severity)
 }
 
 export const Route = createFileRoute('/_authenticated/packs/$packKey')({
