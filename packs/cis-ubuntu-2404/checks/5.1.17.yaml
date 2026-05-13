@@ -11,6 +11,22 @@ spec:
     auditCommand: |-
         bash -c 'out="$(sshd -T -C user=sshuser | grep maxsessions 2>/dev/null)"
         if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** FAIL **"
+          exit 0
+        fi
+        fail=0
+        while IFS= read -r line; do
+          [ -z "$line" ] && continue
+          val="$(printf '\''%s'\'' "$line" | awk '\''{print $NF}'\'')"
+          case "$val" in *[!0-9]*|"") fail=1; break ;; esac
+          if ! [ "$val" -le 10 ]; then
+            fail=1
+            break
+          fi
+        done <<EOF
+        $out
+        EOF
+        if [ "$fail" -eq 0 ]; then
           printf '\''%s\n'\'' "** PASS **"
         else
           printf '\''%s\n'\'' "** FAIL **"

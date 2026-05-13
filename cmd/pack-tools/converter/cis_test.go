@@ -122,6 +122,40 @@ const cisExpectSSHDOptionFixture = `{
   ]
 }`
 
+// === Pattern 6: sshd -T grep — 수치 ≤ N / > 0 ===
+const cisExpectSSHDNumericFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "5.1.16",
+      "title": "Ensure sshd MaxAuthTries is configured",
+      "assessment_status": "Automated",
+      "audit": "Run the following command and verify that MaxAuthTries is 4 or less:\n# sshd -T | grep maxauthtries\nmaxauthtries 4"
+    },
+    {
+      "id": "5.1.7",
+      "title": "Ensure sshd ClientAliveInterval and ClientAliveCountMax are configured",
+      "assessment_status": "Automated",
+      "audit": "Run the following command and verify ClientAliveInterval and ClientAliveCountMax are greater than zero:\n# sshd -T | grep -Pi -- '(clientaliveinterval|clientalivecountmax)'\nclientaliveinterval 15\nclientalivecountmax 3"
+    }
+  ]
+}`
+
+// === Pattern 7: 'should not be returned' — explicit negative validation (직접 표현) ===
+const cisExpectShouldNotBeReturnedFixture = `{
+  "benchmark": "CIS",
+  "version": "1.0",
+  "items": [
+    {
+      "id": "X.99.1",
+      "title": "Ensure weak option not in use (synthetic)",
+      "assessment_status": "Automated",
+      "audit": "Verify the option output:\n# echo weakopt\nThe weak option should not be in use."
+    }
+  ]
+}`
+
 // === audit에 PASS 마커 있지만 hashbang 없음 — fallback ===
 const cisMarkerNoHashbangFixture = `{
   "benchmark": "CIS",
@@ -264,6 +298,60 @@ func TestConvertCISExpectSSHDOptionAutoConverts(t *testing.T) {
 	}
 	if !strings.Contains(c2.AuditCommand, `"$val" = "no"`) {
 		t.Errorf("5.1.9 expected val == no compare: %q", c2.AuditCommand)
+	}
+}
+
+// TestConvertCISExpectSSHDNumericPatternAutoConverts는 sshd -T grep + "is N or less" /
+// "greater than zero" 패턴이 모든 출력 라인 마지막 토큰의 정수 비교로 자동 변환되는지 검증.
+func TestConvertCISExpectSSHDNumericPatternAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectSSHDNumericFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 2 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:2", report)
+	}
+	// 5.1.16: MaxAuthTries ≤ 4
+	c1 := pack.Checks[0]
+	if !strings.Contains(c1.AuditCommand, "sshd -T | grep maxauthtries") {
+		t.Errorf("5.1.16 missing extracted sshd line: %q", c1.AuditCommand)
+	}
+	if !strings.Contains(c1.AuditCommand, `"$val" -le 4`) {
+		t.Errorf("5.1.16 missing -le 4 compare: %q", c1.AuditCommand)
+	}
+	// 5.1.7: ClientAlive* > 0 (multi-line grep)
+	c2 := pack.Checks[1]
+	if !strings.Contains(c2.AuditCommand, "clientaliveinterval|clientalivecountmax") {
+		t.Errorf("5.1.7 missing extracted multi-option grep: %q", c2.AuditCommand)
+	}
+	if !strings.Contains(c2.AuditCommand, `"$val" -gt 0`) {
+		t.Errorf("5.1.7 missing -gt 0 compare: %q", c2.AuditCommand)
+	}
+	// 비정수 마지막 토큰 즉시 FAIL 보호 — case 분기로 표현
+	if !strings.Contains(c2.AuditCommand, "*[!0-9]*") {
+		t.Errorf("5.1.7 missing non-integer guard: %q", c2.AuditCommand)
+	}
+}
+
+// TestConvertCISExpectShouldNotBeReturnedAutoConverts는 "should not be in use" 직접 표현이
+// expect-empty 분기로 자동 변환되는지 검증.
+//
+// 비포함(별 epic): "No <subject>... should be returned" 형태 (5.1.6 Ciphers / 5.1.15 MACs) —
+// audit shell line이 multi-line line-continuation이라 extractCISLastShellLine이 첫 줄만 추출
+// → grep 인자 누락 false PASS 위험. multi-line cmd 추출 epic 후 정규식 확장 안전.
+func TestConvertCISExpectShouldNotBeReturnedAutoConverts(t *testing.T) {
+	t.Parallel()
+	pack, report, err := converter.ConvertCIS([]byte(cisExpectShouldNotBeReturnedFixture), converter.CISConvertOptions{})
+	if err != nil {
+		t.Fatalf("ConvertCIS: %v", err)
+	}
+	if report.Converted != 1 || report.DegradedNoMarker != 0 {
+		t.Errorf("report = %+v, want Converted:1", report)
+	}
+	c := pack.Checks[0]
+	if !strings.Contains(c.AuditCommand, "[ -z") {
+		t.Errorf("should use expect-empty branch: %q", c.AuditCommand)
 	}
 }
 

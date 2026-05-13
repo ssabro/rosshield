@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -151,6 +152,7 @@ func convertCISItem(it cisItem) (Check, string) {
 	//  3) "is installed" 또는 dpkg-query &&/echo 긍정 기대 패턴
 	//  4) stat/ls 파일 권한 검증 (octal mode + Uid:( 0/root))
 	//  5) sshd -T | grep <option> 동적 설정 검증 (yes/no)
+	//  6) sshd -T | grep <option> 수치 검증 (-le N / -ge N / -gt 0)
 	if strings.Contains(it.Audit, "** PASS **") {
 		body, ok := extractCISBashBody(it.Audit)
 		if !ok {
@@ -220,36 +222,49 @@ func looksLikeShellCommand(line string) bool {
 
 // synthesizeCISShellAssertion은 자연어 가이드에서 expected outcome을 추론해 bash를 합성합니다.
 //
-// 매핑:
-//  1. "Nothing should be returned" / "Nothing is returned" → expect 빈 출력
-//  2. "<X> is installed" 같은 긍정 echo 기대 → 비어 있지 않아야 PASS
-//  3. stat/ls 파일 권한 — `# stat -Lc ...` + audit 텍스트에 octal mode → ≤ expected 비교 + Uid 검증
-//  4. sshd -T | grep — `# sshd -T | grep ...` + audit 텍스트에 "set to (yes|no)" → 마지막 토큰 비교
+// 매핑 (sshd 분기는 일반 expect-empty/non-empty보다 우선 — 같은 audit에 "Nothing should be
+// returned"가 동시 존재해도 sshd 옵션 검증이 더 정확):
+//  1. sshd 수치 옵션 — `is N or less`/`greater than zero` → 모든 출력 라인 마지막 토큰 정수 비교
+//  2. sshd boolean — "set to (yes|no)" → 마지막 토큰 lowercase 비교
+//  3. stat/ls 파일 권한 — octal mode → ≤ expected 비교 + Uid 검증
+//  4. "Nothing should be returned" → expect 빈 출력
+//  5. "<X> is installed/enabled/active" → 비어 있지 않아야 PASS
 func synthesizeCISShellAssertion(audit string) (string, bool) {
 	cmd, ok := extractCISLastShellLine(audit)
 	if !ok {
 		return "", false
+	}
+	if isSSHDCommand(cmd) {
+		if op, threshold, ok2 := extractExpectedSSHDNumeric(audit); ok2 {
+			return synthesizeExpectSSHDNumeric(cmd, op, threshold), true
+		}
+		if val, ok2 := extractExpectedSSHDValue(audit); ok2 {
+			return synthesizeExpectSSHDOption(cmd, val), true
+		}
+	}
+	if isStatCommand(cmd) {
+		if mode, ok2 := extractExpectedOctalMode(audit); ok2 {
+			return synthesizeExpectStatPerm(cmd, mode), true
+		}
 	}
 	switch {
 	case regexpExpectEmpty.MatchString(audit):
 		return synthesizeExpectEmpty(cmd), true
 	case regexpExpectNonEmpty.MatchString(audit):
 		return synthesizeExpectNonEmpty(cmd), true
-	case isStatCommand(cmd):
-		if mode, ok2 := extractExpectedOctalMode(audit); ok2 {
-			return synthesizeExpectStatPerm(cmd, mode), true
-		}
-	case isSSHDCommand(cmd):
-		if val, ok2 := extractExpectedSSHDValue(audit); ok2 {
-			return synthesizeExpectSSHDOption(cmd, val), true
-		}
 	}
 	return "", false
 }
 
 var (
-	// regexpExpectEmpty은 "Nothing should be returned" 류 자연어를 매칭 (대소문자 무시).
-	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned`)
+	// regexpExpectEmpty은 "Nothing should be returned" / "no output should be returned" /
+	// "should not be returned (in use)" 류 자연어를 매칭 (대소문자 무시).
+	//
+	// 비매칭 의도(별 epic): "No <X...> should be returned" 형태 (5.1.6 Ciphers /
+	// 5.1.15 MACs) — audit shell line이 정규식 multi-line line-continuation으로 작성되어
+	// extractCISLastShellLine이 첫 줄(`sshd -T | grep -Pi --`)만 추출 → 인자 누락 false PASS
+	// 위험. 별 epic에서 multi-line cmd 추출 + 정규식 확장 동시 적용해야 안전.
+	regexpExpectEmpty = regexp.MustCompile(`(?i)nothing\s+(should|is)\s+(be\s+)?returned|no\s+output\s+(should|is)\s+(be\s+)?returned|should\s+not\s+be\s+(returned|in\s+use)`)
 	// regexpExpectNonEmpty은 "<X> is installed" 같은 긍정 echo 기대 패턴 (대소문자 무시).
 	// 같은 audit에 "Nothing should be returned"가 있으면 우선순위로 expect-empty가 잡힘 (위 switch).
 	regexpExpectNonEmpty = regexp.MustCompile(`(?i)(is\s+installed|is\s+enabled|is\s+active)\b`)
@@ -260,6 +275,14 @@ var (
 	// regexpExpectedSSHDValue는 "set to yes" / "set to no" / "set to a value of yes" 등에서
 	// expected boolean 값을 추출합니다 (대소문자 무시, 첫 매치 사용).
 	regexpExpectedSSHDValue = regexp.MustCompile(`(?i)set\s+to\s+(?:a\s+value\s+of\s+)?["']?(yes|no)["']?`)
+	// regexpExpectedSSHDLessOrEqual는 "is N or less" / "verify ... is N or less" 형태에서
+	// 임계값 N을 추출합니다 (5.1.16 MaxAuthTries · 5.1.17 MaxSessions 등).
+	regexpExpectedSSHDLessOrEqual = regexp.MustCompile(`(?i)is\s+(\d+)\s+or\s+less`)
+	// regexpExpectedSSHDGreaterOrEqual는 "is N or more" 형태에서 N을 추출합니다.
+	regexpExpectedSSHDGreaterOrEqual = regexp.MustCompile(`(?i)is\s+(\d+)\s+or\s+more`)
+	// regexpExpectedSSHDPositive는 "greater than zero" / "are greater than zero" 형태를 매칭
+	// (5.1.7 ClientAliveInterval/CountMax 등 양수 검증).
+	regexpExpectedSSHDPositive = regexp.MustCompile(`(?i)(?:are|is)\s+greater\s+than\s+zero`)
 )
 
 // isStatCommand는 cmd line이 `stat ` 으로 시작하는지 검사 (LS 가이드도 일부 stat 명령으로 정규화됨).
@@ -288,6 +311,29 @@ func extractExpectedSSHDValue(audit string) (string, bool) {
 		return "", false
 	}
 	return strings.ToLower(m[1]), true
+}
+
+// extractExpectedSSHDNumeric은 audit 텍스트에서 sshd 옵션의 수치 비교 op·threshold를 반환.
+//
+// 우선순위: "is N or less" → ("le", N) / "is N or more" → ("ge", N) / "greater than zero" → ("gt", 0).
+// 같은 audit에 둘 이상 매칭 시 첫 발견 우선(보수적). 미매칭 시 ok=false.
+func extractExpectedSSHDNumeric(audit string) (op string, threshold int, ok bool) {
+	if m := regexpExpectedSSHDLessOrEqual.FindStringSubmatch(audit); len(m) >= 2 {
+		n, err := strconv.Atoi(m[1])
+		if err == nil {
+			return "le", n, true
+		}
+	}
+	if m := regexpExpectedSSHDGreaterOrEqual.FindStringSubmatch(audit); len(m) >= 2 {
+		n, err := strconv.Atoi(m[1])
+		if err == nil {
+			return "ge", n, true
+		}
+	}
+	if regexpExpectedSSHDPositive.MatchString(audit) {
+		return "gt", 0, true
+	}
+	return "", 0, false
 }
 
 // synthesizeExpectEmpty는 cmd 출력이 비어 있으면 PASS, 아니면 FAIL 출력하는 bash를 생성.
@@ -338,6 +384,40 @@ func synthesizeExpectSSHDOption(cmd, expectedValue string) string {
 	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
 		"val=\"$(printf '%s\\n' \"$out\" | awk '{print tolower($NF)}')\"\n" +
 		"if [ \"$val\" = \"" + expectedValue + "\" ]; then\n" +
+		"  printf '%s\\n' \"** PASS **\"\n" +
+		"else\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"fi\n"
+}
+
+// synthesizeExpectSSHDNumeric은 sshd -T grep 출력의 모든 라인 마지막 토큰을 정수로 추출해
+// op·threshold와 비교 — 모든 라인이 비교 통과해야 PASS, 출력 비어 있으면 FAIL.
+//
+// op는 bash test operator: "le" (≤) / "ge" (≥) / "gt" (>) / "lt" (<).
+//
+// 두 옵션 동시 검증(5.1.7 ClientAliveInterval+CountMax) 케이스도 cover — grep 한 번에 두 라인
+// 출력, 둘 다 임계값 비교 통과해야 PASS.
+//
+// 비정수 마지막 토큰(예: 옵션이 string 값)은 즉시 FAIL — false positive 회피.
+func synthesizeExpectSSHDNumeric(cmd, op string, threshold int) string {
+	return "out=\"$(" + cmd + " 2>/dev/null)\"\n" +
+		"if [ -z \"$out\" ]; then\n" +
+		"  printf '%s\\n' \"** FAIL **\"\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"fail=0\n" +
+		"while IFS= read -r line; do\n" +
+		"  [ -z \"$line\" ] && continue\n" +
+		"  val=\"$(printf '%s' \"$line\" | awk '{print $NF}')\"\n" +
+		"  case \"$val\" in *[!0-9]*|\"\") fail=1; break ;; esac\n" +
+		"  if ! [ \"$val\" -" + op + " " + strconv.Itoa(threshold) + " ]; then\n" +
+		"    fail=1\n" +
+		"    break\n" +
+		"  fi\n" +
+		"done <<EOF\n" +
+		"$out\n" +
+		"EOF\n" +
+		"if [ \"$fail\" -eq 0 ]; then\n" +
 		"  printf '%s\\n' \"** PASS **\"\n" +
 		"else\n" +
 		"  printf '%s\\n' \"** FAIL **\"\n" +
