@@ -33,10 +33,16 @@ metadata:
         with this variable.
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(sshd -T | grep -Pi -- '\''^\h*(allow|deny)(users|groups)\h+\H+'\'' 2>/dev/null)
+        found=0
+        for token in "allowusers" "allowgroups" "denyusers" "denygroups"; do
+          printf '\''%s\n'\'' "$out" | grep -qiF -- "$token" && { found=1; break; }
+        done
+        if [ "$found" -eq 1 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Restricting which users can remotely access the system via SSH will help ensure that
         only authorized users access the system.

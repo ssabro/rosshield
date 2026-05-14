@@ -10,10 +10,16 @@ metadata:
         important security information, and may violate the privacy of users.
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(sshd -T | grep loglevel 2>/dev/null)
+        found=0
+        for token in "loglevel INFO:" "loglevel VERBOSE" "loglevel INFO"; do
+          printf '\''%s\n'\'' "$out" | grep -qiF -- "$token" && { found=1; break; }
+        done
+        if [ "$found" -eq 1 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         The INFO level is the basic level that only records login activity of SSH users. In many
         situations, such as Incident Response, it is important to determine when a particular

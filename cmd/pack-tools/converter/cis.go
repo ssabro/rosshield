@@ -190,6 +190,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		return check, ""
 	}
 
+	// Pattern 11 (E-1 G11): `sshd -T | grep <key>` + multi-line OR alternation — 5.1.4 + 5.1.14.
+	// cmd 실행 후 expected substring 1+ 매칭이면 PASS (case insensitive).
+	if isSshdGrepOrAuditText(it.Audit) {
+		if synthesized, ok := synthesizeSshdGrepOr(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 10 (E-1 G15): multi-cmd `grep -Pi -- '...'` /etc/audit/auditd.conf — 6.2.2.3.
 	// 2+ grep 명령 모두 non-empty이면 PASS. narrow(auditd.conf 경로 명시)로 false trigger 0.
 	if isMultiGrepAuditdAuditText(it.Audit) {
