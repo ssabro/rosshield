@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 20 (G10 부분): hashbang body 자체 PASSED/FAILED emit (5.4.3.2). body base64 wrap →
+	// 실행 → 출력 substring 매칭. 5.4.1.6 (shebang-less {} block + expect-empty)는 별 fix epic.
+	if isHashbangPassFailEmitAuditText(it.Audit) {
+		if synthesized, ok := synthesizeHashbangPassFailEmit(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 19 (G3): nftables include + awk hook block scan (4.3.10) — 90% 도달 마지막 epic.
 	// hardcoded 3 hook (input/forward/output) + policy drop substring 검증.
 	if isNftIncludeAuditText(it.Audit) {

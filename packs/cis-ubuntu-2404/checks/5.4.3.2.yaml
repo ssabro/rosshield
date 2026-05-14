@@ -26,10 +26,15 @@ metadata:
         or if BASH_ENV is set to /etc/bashrc.
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(printf '\''%s'\'' "IyEvdXNyL2Jpbi9lbnYgYmFzaAp7Cm91dHB1dDE9IiIgb3V0cHV0Mj0iIgpbIC1mIC9ldGMvYmFzaHJjIF0gJiYgQlJDPSIvZXRjL2Jhc2hyYyIKZm9yIGYgaW4gIiRCUkMiIC9ldGMvcHJvZmlsZSAvZXRjL3Byb2ZpbGUuZC8qLnNoIDsgZG8KZ3JlcCAtUHEgJ15ccyooW14jXStccyspP1RNT1VUPSg5MDB8WzEtOF1bMC05XVswLTldfFsxLTldWzAtOV18WzEtCjldKVxiJyAiJGYiICYmIGdyZXAgLVBxCideXHMqKFteI10rO1xzKik/cmVhZG9ubHlccytUTU9VVChccyt8XHMqO3xccyokfD0oOTAwfFsxLThdWzAtOV1bMC05XXxbMS0KOV1bMC05XXxbMS05XSkpXGInICIkZiIgJiYgZ3JlcCAtUHEKJ15ccyooW14jXSs7XHMqKT9leHBvcnRccytUTU9VVChccyt8XHMqO3xccyokfD0oOTAwfFsxLThdWzAtOV1bMC05XXxbMS05XVswLQo5XXxbMS05XSkpXGInICIkZiIgJiYKb3V0cHV0MT0iJGYiCmRvbmUKZ3JlcCAtUHEgJ15ccyooW14jXStccyspP1RNT1VUPSg5WzAtOV1bMS05XXw5WzEtOV1bMC05XXwwK3xbMS05XVxkezMsfSlcYicKL2V0Yy9wcm9maWxlIC9ldGMvcHJvZmlsZS5kLyouc2ggIiRCUkMiICYmIG91dHB1dDI9JChncmVwIC1QcwonXlxzKihbXiNdK1xzKyk/VE1PVVQ9KDlbMC05XVsxLTldfDlbMS05XVswLTldfDArfFsxLTldXGR7Myx9KVxiJwovZXRjL3Byb2ZpbGUgL2V0Yy9wcm9maWxlLmQvKi5zaCAkQlJDKQppZiBbIC1uICIkb3V0cHV0MSIgXSAmJiBbIC16ICIkb3V0cHV0MiIgXTsgdGhlbgplY2hvIC1lICJcblBBU1NFRFxuXG5UTU9VVCBpcyBjb25maWd1cmVkIGluOiBcIiRvdXRwdXQxXCJcbiIKZWxzZQpbIC16ICIkb3V0cHV0MSIgXSAmJiBlY2hvIC1lICJcbkZBSUxFRFxuXG5UTU9VVCBpcyBub3QgY29uZmlndXJlZFxuIgpbIC1uICIkb3V0cHV0MiIgXSAmJiBlY2hvIC1lICJcbkZBSUxFRFxuXG5UTU9VVCBpcyBpbmNvcnJlY3RseQpjb25maWd1cmVkIGluOiBcIiRvdXRwdXQyXCJcbiIKZmkKfQ==" | base64 -d | bash 2>/dev/null)
+        case "$out" in
+          *PASSED*) printf '\''** PASS **\n'\'' ;;
+          *) printf '\''fail: %s\n'\'' "$out"; printf '\''** FAIL **\n'\'' ;;
+        esac'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Setting a timeout value reduces the window of opportunity for unauthorized user access
         to another user's shell session that has been left unattended. It also ends the inactive
