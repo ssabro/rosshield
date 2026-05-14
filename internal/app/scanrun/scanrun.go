@@ -150,7 +150,8 @@ outer:
 // Cancel은 in-flight session의 ctx를 취소하고 DB를 cancelled로 전이합니다.
 //
 // in-flight가 아니더라도 (이미 종료됐거나 시작 전) DB 전이는 시도. terminal이면 ErrInvalidTransition.
-// 갱신된 ScanSession + 에러 반환 — 호출자가 응답 직렬화에 사용.
+// terminal 전이 직후 같은 Tx 안에서 RecomputeSeverityAggregate 호출 — atomic 일관성(D26 §5.4).
+// 갱신된 ScanSession + 에러 반환 — 호출자가 응답 직렬화에 사용. SeverityFailed 4 컬럼은 재조회로 채움.
 func (o *Orchestrator) Cancel(ctx context.Context, tenantID storage.TenantID, sessionID, reason string) (scan.ScanSession, error) {
 	o.mu.Lock()
 	cancel, inFlight := o.cancels[sessionID]
@@ -161,9 +162,16 @@ func (o *Orchestrator) Cancel(ctx context.Context, tenantID storage.TenantID, se
 	var session scan.ScanSession
 	txCtx := storage.WithTenantID(ctx, tenantID)
 	err := o.deps.Storage.Tx(txCtx, func(ctx context.Context, tx storage.Tx) error {
-		s, e := o.deps.Scan.CancelSession(ctx, tx, sessionID, reason)
-		if e != nil {
+		if _, e := o.deps.Scan.CancelSession(ctx, tx, sessionID, reason); e != nil {
 			return e
+		}
+		if e := o.deps.Scan.RecomputeSeverityAggregate(ctx, tx, sessionID); e != nil {
+			return fmt.Errorf("scanrun: recompute severity aggregate (cancel): %w", e)
+		}
+		// CancelSession 반환값은 재계산 전 상태 — 4 컬럼이 모두 0. 재조회로 갱신값 채움.
+		s, e := o.deps.Scan.GetSession(ctx, tx, sessionID)
+		if e != nil {
+			return fmt.Errorf("scanrun: re-read session after recompute (cancel): %w", e)
 		}
 		session = s
 		return nil
@@ -320,13 +328,34 @@ func (o *Orchestrator) finalize(ctx context.Context, tenantID storage.TenantID, 
 	return nil
 }
 
+// transitionTo는 Service.TransitionSession을 단일 Tx에 wrap합니다.
+//
+// target이 terminal(completed/failed/cancelled)이면 같은 Tx 안에서 RecomputeSeverityAggregate
+// 호출 — atomic 일관성 + list polling 비용 0(D26 §5.4). 비-terminal 전이(running)는 재계산 X.
+// terminal 시 반환 ScanSession은 재조회로 SeverityFailed 4 필드 채움.
 func (o *Orchestrator) transitionTo(ctx context.Context, tenantID storage.TenantID, sessionID string, target scan.SessionStatus, reason string) (scan.ScanSession, error) {
 	txCtx := storage.WithTenantID(ctx, tenantID)
 	var out scan.ScanSession
 	if err := o.deps.Storage.Tx(txCtx, func(c context.Context, tx storage.Tx) error {
 		s, err := o.deps.Scan.TransitionSession(c, tx, sessionID, target, reason)
+		if err != nil {
+			return err
+		}
 		out = s
-		return err
+		if !target.IsTerminal() {
+			return nil
+		}
+		if err := o.deps.Scan.RecomputeSeverityAggregate(c, tx, sessionID); err != nil {
+			return fmt.Errorf("scanrun: recompute severity aggregate: %w", err)
+		}
+		// TransitionSession 반환값은 재계산 전 — SeverityFailed 4 필드가 모두 0.
+		// 재조회로 갱신된 row를 캡처해 호출자(API 응답·publishCompleted)에 정확한 값 전달.
+		refreshed, err := o.deps.Scan.GetSession(c, tx, sessionID)
+		if err != nil {
+			return fmt.Errorf("scanrun: re-read session after recompute: %w", err)
+		}
+		out = refreshed
+		return nil
 	}); err != nil {
 		return scan.ScanSession{}, err
 	}

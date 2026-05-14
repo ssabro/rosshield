@@ -241,6 +241,40 @@ VALUES (?, ?, ?, 't', 'medium', '{"op":"equals","value":"ok"}')`,
 	}
 }
 
+// seedSeverityChecks는 4 severity별(critical/high/medium/low) pack_check를 INSERT하고,
+// 각 EvalRuleJSON에 severity 키를 인코딩한 CheckDef 슬라이스를 반환합니다 — 테스트의 evaluator가
+// rule 디코드해서 severity별 outcome을 분기 가능. h.packCheckIDs는 건드리지 않음(별 헬퍼와 독립).
+// 반환 순서: critical, high, medium, low.
+func (h *harness) seedSeverityChecks() []scan.CheckDef {
+	h.t.Helper()
+	sevList := []string{"critical", "high", "medium", "low"}
+	if err := h.store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		for i, sev := range sevList {
+			id := fmt.Sprintf("ck_sev_%s", sev)
+			rule := fmt.Sprintf(`{"severity":%q}`, sev)
+			if _, err := tx.Exec(ctx, `INSERT INTO pack_checks (id, pack_id, check_id, title, severity, evaluation_rule)
+VALUES (?, ?, ?, 't', ?, ?)`,
+				id, h.packID, fmt.Sprintf("CIS-SEV-%d", i), sev, rule); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		h.t.Fatalf("seedSeverityChecks: %v", err)
+	}
+	out := make([]scan.CheckDef, 0, len(sevList))
+	for i, sev := range sevList {
+		out = append(out, scan.CheckDef{
+			PackCheckID:  fmt.Sprintf("ck_sev_%s", sev),
+			Code:         fmt.Sprintf("CIS-SEV-%d", i),
+			AuditCommand: []string{"echo", "ok"},
+			TimeoutSec:   2,
+			EvalRuleJSON: []byte(fmt.Sprintf(`{"severity":%q}`, sev)),
+		})
+	}
+	return out
+}
+
 // startSession은 pending 상태의 ScanSession을 생성합니다.
 func (h *harness) startSession(total int) string {
 	h.t.Helper()
@@ -602,5 +636,103 @@ func TestRunSSHErrorRecordedAsErrorOutcome(t *testing.T) {
 	}
 	if !strings.Contains(results[0].EvalReason, "connection refused") {
 		t.Errorf("EvalReason = %q, want to contain 'connection refused'", results[0].EvalReason)
+	}
+}
+
+// === B Stage 3 — Run 정상 완료 시 SeverityFailed 4 컬럼 자동 갱신 (D26 §5.4) ===
+func TestRunCompletedRecomputesSeverityAggregate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 4)
+	h.seedFleetAndPack("tn_SEV", "fl_SEV", "pk_SEV")
+	h.seedRobots(1)
+	checks := h.seedSeverityChecks()
+	sessionID := h.startSession(len(checks))
+
+	// severity → outcome 매트릭스: critical=fail, high=fail, medium=pass, low=fail.
+	// 기대 SeverityFailed = {Critical:1, High:1, Medium:0, Low:1}.
+	severityToOutcome := map[string]scan.Outcome{
+		"critical": scan.OutcomeFail,
+		"high":     scan.OutcomeFail,
+		"medium":   scan.OutcomePass,
+		"low":      scan.OutcomeFail,
+	}
+	h.evaluator.eval = func(rule []byte, _ scan.ExecResult) (scan.EvalResult, error) {
+		var r struct {
+			Severity string `json:"severity"`
+		}
+		_ = json.Unmarshal(rule, &r)
+		out, ok := severityToOutcome[r.Severity]
+		if !ok {
+			out = scan.OutcomePass
+		}
+		return scan.EvalResult{Outcome: out}, nil
+	}
+
+	if err := h.orch.Run(context.Background(), h.tenantID, sessionID, h.makeTargets(), checks); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	final := h.reload(sessionID)
+	if final.Status != scan.StatusCompleted {
+		t.Fatalf("Status = %s, want completed", final.Status)
+	}
+	want := scan.SeverityFailed{Critical: 1, High: 1, Medium: 0, Low: 1}
+	if final.SeverityFailed != want {
+		t.Errorf("SeverityFailed = %+v, want %+v", final.SeverityFailed, want)
+	}
+	// progress.Failed는 fail+error 합 — severity 분포(3 fail)와 일치.
+	if final.Progress.Failed != 3 {
+		t.Errorf("Progress.Failed = %d, want 3", final.Progress.Failed)
+	}
+}
+
+// === B Stage 3 — Cancel 시 SeverityFailed 4 컬럼 갱신 + 반환값 SeverityFailed 채워짐 ===
+//
+// Run을 거치지 않고 직접 RecordResult로 결과 기록 후 Orchestrator.Cancel — 결정론적 시나리오.
+// (R4-5: Run 중 Cancel은 in-flight worker가 timeout까지 대기하므로 결과 카운트 비결정적.)
+func TestCancelRecomputesSeverityAggregate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1)
+	h.seedFleetAndPack("tn_CSEV", "fl_CSEV", "pk_CSEV")
+	h.seedRobots(1)
+	checks := h.seedSeverityChecks()
+	sessionID := h.startSession(len(checks))
+
+	// pending → running 전이 후 critical·high만 fail 기록(2건). medium/low는 미기록.
+	if err := h.store.Tx(storage.WithTenantID(context.Background(), h.tenantID),
+		func(ctx context.Context, tx storage.Tx) error {
+			if _, err := h.scanSvc.TransitionSession(ctx, tx, sessionID, scan.StatusRunning, ""); err != nil {
+				return err
+			}
+			for _, c := range checks[:2] { // critical, high
+				if _, err := h.scanSvc.RecordResult(ctx, tx, scan.RecordResultRequest{
+					SessionID:   sessionID,
+					RobotID:     h.robotIDs[0],
+					CheckID:     c.Code,
+					PackCheckID: c.PackCheckID,
+					Outcome:     scan.OutcomeFail,
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+		t.Fatalf("seed running + results: %v", err)
+	}
+
+	cancelled, err := h.orch.Cancel(context.Background(), h.tenantID, sessionID, "user-requested")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if cancelled.Status != scan.StatusCancelled {
+		t.Fatalf("Cancel.Status = %s, want cancelled", cancelled.Status)
+	}
+	want := scan.SeverityFailed{Critical: 1, High: 1, Medium: 0, Low: 0}
+	if cancelled.SeverityFailed != want {
+		t.Errorf("Cancel return SeverityFailed = %+v, want %+v", cancelled.SeverityFailed, want)
+	}
+	// 재조회로도 동일 — 영속성 검증.
+	reloaded := h.reload(sessionID)
+	if reloaded.SeverityFailed != want {
+		t.Errorf("reload SeverityFailed = %+v, want %+v", reloaded.SeverityFailed, want)
 	}
 }
