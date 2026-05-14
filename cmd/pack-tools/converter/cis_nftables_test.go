@@ -92,6 +92,72 @@ func TestExtractNftHookChecks_Pairs(t *testing.T) {
 	}
 }
 
+// === G2 (4.3.4 — 단일 nft list tables) ===
+
+const audit_4_3_4 = `Run the following command to verify that a nftables table exists:
+# nft list tables
+Return should include a list of nftables:
+Example:
+table inet filter`
+
+func TestIsNftListTablesAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isNftListTablesAuditText(audit_4_3_4) {
+		t.Errorf("isNftListTablesAuditText(4.3.4) = false, want true")
+	}
+}
+
+func TestIsNftListTablesAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"nft list ruleset (G1, list tables 아님)", audit_4_3_8},
+		{"non-nftables (gsettings)", audit_1_7_6},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isNftListTablesAuditText(tc.audit) {
+				t.Errorf("isNftListTablesAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestExtractNftListTablesExpected(t *testing.T) {
+	t.Parallel()
+	cmd, exp, ok := extractNftListTablesExpected(audit_4_3_4)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	if cmd != "nft list tables" {
+		t.Errorf("cmd = %q, want %q", cmd, "nft list tables")
+	}
+	if exp != "table inet filter" {
+		t.Errorf("expected = %q, want %q", exp, "table inet filter")
+	}
+}
+
+func TestSynthesizeNftListTables_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeNftListTables(audit_4_3_4)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		"out=$(nft list tables 2>/dev/null)",
+		`grep -qF -- "table inet filter"`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 func TestSynthesizeNftHook_Output(t *testing.T) {
 	t.Parallel()
 	bash, ok := synthesizeNftHook(audit_4_3_8)

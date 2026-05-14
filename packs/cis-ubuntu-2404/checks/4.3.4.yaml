@@ -8,10 +8,12 @@ metadata:
         of this family. Tables can have one of five families.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(nft list tables 2>/dev/null)
+        printf '\''%s'\'' "$out" | grep -qF -- "table inet filter" && printf '\''** PASS **\n'\'' || { printf '\''miss: expected %s\n'\'' "table inet filter"; printf '\''** FAIL **\n'\''; }'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         nftables doesn't have any default tables. Without a table being built, nftables will not
         filter network traffic.

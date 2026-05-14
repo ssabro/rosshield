@@ -21,6 +21,12 @@ import (
 // regexpNftListRulesetCmd는 `# nft list ruleset | grep '...'` 명령 라인 감지.
 var regexpNftListRulesetCmd = regexp.MustCompile(`^#\s+(nft\s+list\s+ruleset\s+\|\s+grep\s+.+)$`)
 
+// regexpNftListTablesCmd는 `# nft list tables` 단일 명령 라인 감지 (G2 4.3.4).
+var regexpNftListTablesCmd = regexp.MustCompile(`^#\s+(nft\s+list\s+tables)\s*$`)
+
+// regexpReturnShouldInclude는 "Return should include" phrase 검출.
+var regexpReturnShouldInclude = regexp.MustCompile(`(?i)Return\s+should\s+include`)
+
 // nftHookCheck는 단일 cmd × expected 쌍입니다.
 type nftHookCheck struct {
 	cmd, expected string
@@ -90,5 +96,75 @@ func synthesizeNftHook(audit string) (string, bool) {
 			i, c.expected, i, c.expected)
 	}
 	sb.WriteString("if [ \"$missing\" -eq 0 ]; then printf '** PASS **\\n'; else printf '** FAIL **\\n'; fi")
+	return sb.String(), true
+}
+
+// extractNftListTablesExpected는 G2 (4.3.4) audit text에서 단일 cmd + expected 라인을 추출합니다.
+//
+// 인식 조건:
+//   - 단일 `# nft list tables` 명령 (정확)
+//   - "Return should include" phrase 존재
+//   - phrase 이후 첫 non-empty + non-heading 라인이 expected (`table inet filter` 등)
+//
+// "Example:" / "Note:" / 빈 라인은 skip하고 다음 의미있는 라인 추출.
+func extractNftListTablesExpected(audit string) (cmd, expected string, ok bool) {
+	lines := strings.Split(audit, "\n")
+	var cmdFound bool
+	var phraseIdx int = -1
+	for i, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if !cmdFound {
+			if m := regexpNftListTablesCmd.FindStringSubmatch(line); m != nil {
+				cmd = m[1]
+				cmdFound = true
+			}
+		}
+		if phraseIdx < 0 && regexpReturnShouldInclude.MatchString(line) {
+			phraseIdx = i
+		}
+	}
+	if !cmdFound || phraseIdx < 0 {
+		return "", "", false
+	}
+	for i := phraseIdx + 1; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "Example:") || strings.HasPrefix(line, "Note:") {
+			continue
+		}
+		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "Run") {
+			break
+		}
+		expected = line
+		break
+	}
+	if expected == "" {
+		return "", "", false
+	}
+	return cmd, expected, true
+}
+
+// isNftListTablesAuditText는 G2 합성 대상인지 판정합니다.
+func isNftListTablesAuditText(audit string) bool {
+	_, _, ok := extractNftListTablesExpected(audit)
+	return ok
+}
+
+// synthesizeNftListTables는 단일 cmd 실행 + expected substring 매칭 합성 bash 생성.
+//
+// 4.3.4 특화: `nft list tables` 출력에 expected substring 포함이면 PASS, 미포함 FAIL.
+// "should include" semantic이라 정확 라인 매칭 X — substring으로 충분.
+func synthesizeNftListTables(audit string) (string, bool) {
+	cmd, expected, ok := extractNftListTablesExpected(audit)
+	if !ok {
+		return "", false
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "out=$(%s 2>/dev/null)\n", cmd)
+	fmt.Fprintf(&sb,
+		"printf '%%s' \"$out\" | grep -qF -- %q && printf '** PASS **\\n' || { printf 'miss: expected %%s\\n' %q; printf '** FAIL **\\n'; }",
+		expected, expected)
 	return sb.String(), true
 }

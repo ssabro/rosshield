@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 12b (E-2 G2): 단일 `# nft list tables` + "Return should include" + expected substring.
+	// 4.3.4 — `nft list tables` 출력에 expected(`table inet filter`) 포함이면 PASS.
+	if isNftListTablesAuditText(it.Audit) {
+		if synthesized, ok := synthesizeNftListTables(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 11 (E-1 G11): `sshd -T | grep <key>` + multi-line OR alternation — 5.1.4 + 5.1.14.
 	// cmd 실행 후 expected substring 1+ 매칭이면 PASS (case insensitive).
 	if isSshdGrepOrAuditText(it.Audit) {
