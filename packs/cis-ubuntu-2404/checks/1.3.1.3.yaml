@@ -6,10 +6,22 @@ metadata:
     description: AppArmor profiles define what resources applications are able to access.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'profiles_out=$(apparmor_status 2>/dev/null | grep profiles)
+        processes_out=$(apparmor_status 2>/dev/null | grep processes)
+        loaded=$(printf '\''%s\n'\'' "$profiles_out" | awk '\''/profiles are loaded/{print $1; exit}'\'')
+        complain=$(printf '\''%s\n'\'' "$profiles_out" | awk '\''/profiles are in complain mode/{print $1; exit}'\'')
+        unconfined=$(printf '\''%s\n'\'' "$processes_out" | awk '\''/processes are unconfined/{print $1; exit}'\'')
+        loaded=${loaded:-0}
+        complain=${complain:-0}
+        unconfined=${unconfined:-0}
+        missing=0
+        [ "$loaded" -gt 0 ] || { printf '\''fail: profiles loaded=%s\n'\'' "$loaded"; missing=$((missing+1)); }
+        [ "$unconfined" -eq 0 ] || { printf '\''fail: unconfined=%s\n'\'' "$unconfined"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Security configuration requirements vary from site to site. Some sites may mandate a
         policy that is stricter than the default policy, which is perfectly acceptable. This item is

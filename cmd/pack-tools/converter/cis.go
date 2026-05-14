@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 16 (E-3 G8): `apparmor_status | grep profiles/processes` count 추출 + 비교.
+	// 1.3.1.3 (either) + 1.3.1.4 (strict). mode phrase 자동 판정 (D-E3-2).
+	if isApparmorCountAuditText(it.Audit) {
+		if synthesized, ok := synthesizeApparmorCount(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 15 (E-3 G12): `# [ -e <path> ] && stat -Lc '...' <path>` 옵트 + expected substring.
 	// 1.6.4 (단일 path) + 7.1.10 (다중 path). 파일 미존재 시 PASS 처리.
 	if isStatOptAuditText(it.Audit) {
