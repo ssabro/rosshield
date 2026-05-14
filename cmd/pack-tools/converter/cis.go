@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 21 (G6 부분): `ufw status verbose | grep Default:` + alternation 매칭 (4.2.7).
+	// 4.2.4 (multi-line table + 2 cmd)는 별 epic.
+	if isUfwStatusDefaultAuditText(it.Audit) {
+		if synthesized, ok := synthesizeUfwStatusDefault(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 20 (G10 부분): hashbang body 자체 PASSED/FAILED emit (5.4.3.2). body base64 wrap →
 	// 실행 → 출력 substring 매칭. 5.4.1.6 (shebang-less {} block + expect-empty)는 별 fix epic.
 	if isHashbangPassFailEmitAuditText(it.Audit) {

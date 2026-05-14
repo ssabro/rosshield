@@ -10,10 +10,18 @@ metadata:
         blocked
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(ufw status verbose 2>/dev/null | grep -i '\''^Default:'\'')
+        if [ -z "$out" ]; then printf '\''fail: no Default line\n'\''; printf '\''** FAIL **\n'\''; exit 0; fi
+        if printf '\''%s'\'' "$out" | grep -qiE '\''(deny|reject|disabled)'\''; then
+          printf '\''** PASS **\n'\''
+        else
+          printf '\''fail: %s\n'\'' "$out"
+          printf '\''** FAIL **\n'\''
+        fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         With a default accept policy the firewall will accept any packet that is not configured to
         be denied. It is easier to allow list acceptable usage than to deny list unacceptable
