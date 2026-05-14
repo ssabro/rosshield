@@ -203,11 +203,11 @@ func synthesizeAuditctlMatch(audit string) (bash string, ok bool) {
 	sb.WriteString("missing=0\n")
 	sb.WriteString("for r in \"${need_disk[@]}\"; do\n")
 	sb.WriteString("  r_subst=${r//__UID_MIN__/$UID_MIN}\n")
-	sb.WriteString("  printf '%s\\n' \"$disk_out\" | grep -qxF \"$r_subst\" || { printf 'miss-disk: %s\\n' \"$r_subst\"; missing=$((missing+1)); }\n")
+	sb.WriteString("  printf '%s\\n' \"$disk_out\" | grep -qxF -- \"$r_subst\" || { printf 'miss-disk: %s\\n' \"$r_subst\"; missing=$((missing+1)); }\n")
 	sb.WriteString("done\n")
 	sb.WriteString("for r in \"${need_run[@]}\"; do\n")
 	sb.WriteString("  r_subst=${r//__UID_MIN__/$UID_MIN}\n")
-	sb.WriteString("  printf '%s\\n' \"$run_out\" | grep -qxF \"$r_subst\" || { printf 'miss-run: %s\\n' \"$r_subst\"; missing=$((missing+1)); }\n")
+	sb.WriteString("  printf '%s\\n' \"$run_out\" | grep -qxF -- \"$r_subst\" || { printf 'miss-run: %s\\n' \"$r_subst\"; missing=$((missing+1)); }\n")
 	sb.WriteString("done\n")
 	sb.WriteString("if [ \"$missing\" -eq 0 ]; then printf '** PASS **\\n'; else printf '** FAIL **\\n'; fi\n")
 	return sb.String(), true
@@ -234,12 +234,12 @@ func collectAuditRuleLines(block string) []string {
 			out = append(out, line)
 			continue
 		}
-		// continuation: 직전 라인이 audit rule이고 본 라인이 새 rule이 아니면 join.
-		if len(out) > 0 {
+		// continuation: 직전 라인이 audit rule이고 본 라인이 `-` 시작(audit rule의 wrap 토큰
+		// — 예: `-F arch=...`)이면 join. heading("Running"·"On disk")은 `-` 미시작이라 종료.
+		if len(out) > 0 && strings.HasPrefix(line, "-") {
 			out[len(out)-1] = out[len(out)-1] + " " + line
 			continue
 		}
-		// rule이 시작되기 전에 비-rule 라인 → 종료.
 		break
 	}
 	return out

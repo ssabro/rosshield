@@ -595,3 +595,111 @@ func TestSynth_MultiLineCipher_FAIL_WhenWeakCipherPresent(t *testing.T) {
 		t.Errorf("expected FAIL when 3des-cbc present in sshd output, got: %s", out)
 	}
 }
+
+// === D Stage 3 — auditctl 합성 (synthesizeAuditctlMatch) — 4 case ===
+//
+// audit text fixture는 6.2.3.1 형식(단순 sudoers watch + on-disk 2 + running 2)을 base로,
+// case별 mock의 cat/auditctl 출력을 변경하여 합성 bash의 흐름 검증.
+
+// audit_6_2_3_1_min은 6.2.3.1 essential 형식 — 인식기·추출기 매칭 + on-disk 2 lines + running 2 lines.
+const audit_6_2_3_1_min = `On disk\n# awk '/^ *-w/' /etc/audit/rules.d/*.rules\nVerify the output matches:\n-w /etc/sudoers -p wa -k scope\n-w /etc/sudoers.d -p wa -k scope\nRunning\n# auditctl -l | awk '/^ *-w/'\nVerify the output matches:\n-w /etc/sudoers -p wa -k scope\n-w /etc/sudoers.d -p wa -k scope`
+
+// case 1: PASS — cat + auditctl 모두 expected 라인 emit (정확 매칭).
+func TestSynth_AuditctlMatch_PASS_WhenAllRulesPresent(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	fixture := `{
+  "items": [{
+    "id": "6.2.3.1", "assessment_status": "Automated",
+    "audit": "` + audit_6_2_3_1_min + `"
+  }]
+}`
+	// normalize_fn이 -k → -F key= 변환하므로 mock 출력은 -k 또는 -F key= 어느 쪽이든 OK.
+	// 본 case는 -k(short) — normalize_fn이 -F key=로 변환 후 expected와 정확 매칭.
+	mock := `cat() { printf '%s\n' '-w /etc/sudoers -p wa -k scope' '-w /etc/sudoers.d -p wa -k scope'; }
+auditctl() { printf '%s\n' '-w /etc/sudoers -p wa -k scope' '-w /etc/sudoers.d -p wa -k scope'; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS when all rules present, got: %s", out)
+	}
+}
+
+// case 2: FAIL — on-disk에서 sudoers.d 라인 누락 → missing > 0 → FAIL.
+func TestSynth_AuditctlMatch_FAIL_WhenOnDiskMissingRule(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	fixture := `{
+  "items": [{
+    "id": "6.2.3.1", "assessment_status": "Automated",
+    "audit": "` + audit_6_2_3_1_min + `"
+  }]
+}`
+	// cat은 sudoers.d 라인 누락(1 라인만), auditctl은 전부 있음.
+	mock := `cat() { printf '%s\n' '-w /etc/sudoers -p wa -k scope'; }
+auditctl() { printf '%s\n' '-w /etc/sudoers -p wa -k scope' '-w /etc/sudoers.d -p wa -k scope'; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** FAIL **")) {
+		t.Errorf("expected FAIL when on-disk missing rule, got: %s", out)
+	}
+	if !bytes.Contains([]byte(out), []byte("miss-disk:")) {
+		t.Errorf("expected miss-disk diagnostic line, got: %s", out)
+	}
+}
+
+// case 3: PASS — syscall sort normalize 검증.
+// expected: `-S adjtimex,settimeofday`, mock auditctl 출력: `-S settimeofday,adjtimex`.
+// normalize_fn의 sort + tr + paste pipe가 정렬해서 expected와 매칭되어야 PASS.
+const audit_6_2_3_4_min = `On disk\n# awk '/^ *-a *always,exit/' /etc/audit/rules.d/*.rules\nVerify the output matches:\n-a always,exit -F arch=b64 -S adjtimex,settimeofday -k time-change\nRunning\n# auditctl -l | awk '/^ *-a *always,exit/'\nVerify the output includes:\n-a always,exit -F arch=b64 -S adjtimex,settimeofday -F key=time-change`
+
+func TestSynth_AuditctlMatch_PASS_WhenSyscallOrderDiffers(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	fixture := `{
+  "items": [{
+    "id": "6.2.3.4", "assessment_status": "Automated",
+    "audit": "` + audit_6_2_3_4_min + `"
+  }]
+}`
+	// running 출력의 syscall 순서가 expected와 다름(settimeofday,adjtimex vs adjtimex,settimeofday).
+	// normalize_fn이 양쪽 모두 정렬하면 매칭 성공.
+	mock := `cat() { printf '%s\n' '-a always,exit -F arch=b64 -S adjtimex,settimeofday -k time-change'; }
+auditctl() { printf '%s\n' '-a always,exit -F arch=b64 -S settimeofday,adjtimex -F key=time-change'; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS after normalize_fn sorts syscalls, got: %s", out)
+	}
+}
+
+// case 4: PASS — UID_MIN 1001 환경에서 placeholder 치환 + auid!= 동치 통일.
+// expected에 `auid>=1000` + `auid!=unset`, mock 출력에 `auid>=1001` + `auid!=-1`.
+// 합성 bash가 UID_MIN=1001 환경 변수 + normalize_fn auid!= 통일로 매칭 성공.
+const audit_6_2_3_7_min = `On disk\n# {\nUID_MIN=$(awk ...)\n[ -n \"${UID_MIN}\" ] && awk \"/^ *-a *always,exit/ ... -F *auid>=${UID_MIN}\" /etc/audit/rules.d/*.rules\n}\nVerify the output includes:\n-a always,exit -F arch=b64 -S creat,open -F auid>=1000 -F auid!=unset -k access\nRunning\n# {\nUID_MIN=$(awk ...)\n[ -n \"${UID_MIN}\" ] && auditctl -l | awk \"/^ *-a *always,exit/ ...\"\n}\nVerify the output includes:\n-a always,exit -F arch=b64 -S open,creat -F auid>=1000 -F auid!=-1 -F key=access`
+
+func TestSynth_AuditctlMatch_PASS_WhenUIDMin1001AndAuidEquivalence(t *testing.T) {
+	bashPath := resolveBash()
+	if bashPath == "" {
+		t.Skip("bash not found")
+	}
+	fixture := `{
+  "items": [{
+    "id": "6.2.3.7", "assessment_status": "Automated",
+    "audit": "` + audit_6_2_3_7_min + `"
+  }]
+}`
+	// UID_MIN=1001 환경. expected의 auid>=1000은 placeholder __UID_MIN__로 normalize되고,
+	// 합성 bash 안에서 ${UID_MIN}=1001로 치환 → mock 출력의 auid>=1001과 매칭.
+	// 또한 auid!=-1, auid!=unset은 normalize_fn에서 모두 auid!=unset로 통일.
+	mock := `export UID_MIN=1001
+cat() { printf '%s\n' '-a always,exit -F arch=b64 -S creat,open -F auid>=1001 -F auid!=unset -k access'; }
+auditctl() { printf '%s\n' '-a always,exit -F arch=b64 -S open,creat -F auid>=1001 -F auid!=-1 -F key=access'; }`
+	out := runSynthesizedAudit(t, bashPath, mock, auditFromFixture(t, fixture))
+	if !bytes.Contains([]byte(out), []byte("** PASS **")) {
+		t.Errorf("expected PASS with UID_MIN=1001 + auid equivalence, got: %s", out)
+	}
+}

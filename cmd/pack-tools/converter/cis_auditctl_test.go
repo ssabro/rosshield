@@ -291,7 +291,7 @@ func TestSynthesizeAuditctlMatch(t *testing.T) {
 				`-w /etc/sudoers -p wa -F key=scope`,    // -k → -F key= normalize
 				`-w /etc/sudoers.d -p wa -F key=scope`,
 				"normalize_fn() {",
-				"grep -qxF",
+				"grep -qxF --",
 				"** PASS **",
 				"** FAIL **",
 			},

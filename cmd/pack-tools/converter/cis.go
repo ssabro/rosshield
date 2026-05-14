@@ -190,6 +190,20 @@ func convertCISItem(it cisItem) (Check, string) {
 		return check, ""
 	}
 
+	// Pattern 8: 6.2.3.x auditd rules — auditctl -l + Verify the output matches/includes
+	// + audit rule lines. on-disk(/etc/audit/rules.d/*.rules) + running(auditctl -l) 양쪽
+	// expected를 normalize 후 grep 매칭, missing 카운트 0이면 PASS. design doc:
+	// docs/design/notes/cis-6-2-3-auditd-design.md (D Stage 3 결선).
+	//
+	// hashbang body 가진 6.2.3.19 등도 본 분기로 우선 매칭(Pattern 7보다 specific).
+	if isAuditctlAuditText(it.Audit) {
+		if synthesized, ok := synthesizeAuditctlMatch(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 7: bash hashbang body + expect-empty/non-empty 키워드 (PASS 마커 부재 항목).
 	// CIS 5.4.2.7 / 7.2.3·5·6·7·8 / 1.7.10 등 ~12 항목 — bash hashbang body 자체가 검증 명령
 	// (출력 없으면 정상)이고 PASS/FAIL 마커는 안 emit. body를 sub-shell 실행 + 출력 검사.
