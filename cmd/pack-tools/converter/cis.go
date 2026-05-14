@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 15 (E-3 G12): `# [ -e <path> ] && stat -Lc '...' <path>` 옵트 + expected substring.
+	// 1.6.4 (단일 path) + 7.1.10 (다중 path). 파일 미존재 시 PASS 처리.
+	if isStatOptAuditText(it.Audit) {
+		if synthesized, ok := synthesizeStatOpt(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 14 (E-3 G9): `# dpkg-query ...` + expected substring 매칭. 1.7.1 (not-installed) +
 	// 5.3.1.1 (Status: install ok installed). 2.1.20 (cmd wrap + Nothing returned)는 별 epic.
 	if isDpkgQueryAuditText(it.Audit) {

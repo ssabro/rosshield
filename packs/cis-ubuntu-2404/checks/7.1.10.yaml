@@ -8,10 +8,24 @@ metadata:
         previous passwords if pam_unix or pam_pwhistory is in use on the system
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'missing=0
+        out_0=$([ -e "/etc/security/opasswd" ] && stat -Lc '\''%n Access: (%#a/%A) Uid: ( 2>/dev/null)
+        if [ -n "$out_0" ]; then
+          printf '\''%s'\'' "$out_0" | grep -qF -- "%u/ %U) Gid: ( %g/ %G)'\'' /etc/security/opasswd" || { printf '\''miss-0: %s\n'\'' "%u/ %U) Gid: ( %g/ %G)'\'' /etc/security/opasswd"; missing=$((missing+1)); }
+          printf '\''%s'\'' "$out_0" | grep -qF -- "/etc/security/opasswd Access: (0600/-rw-------) Uid: ( 0/ root) Gid: ( 0/" || { printf '\''miss-0: %s\n'\'' "/etc/security/opasswd Access: (0600/-rw-------) Uid: ( 0/ root) Gid: ( 0/"; missing=$((missing+1)); }
+          printf '\''%s'\'' "$out_0" | grep -qF -- "root)" || { printf '\''miss-0: %s\n'\'' "root)"; missing=$((missing+1)); }
+        fi
+        out_1=$([ -e "/etc/security/opasswd.old" ] && stat -Lc '\''%n Access: (%#a/%A) Uid: 2>/dev/null)
+        if [ -n "$out_1" ]; then
+          printf '\''%s'\'' "$out_1" | grep -qF -- "( %u/ %U) Gid: ( %g/ %G)'\'' /etc/security/opasswd.old" || { printf '\''miss-1: %s\n'\'' "( %u/ %U) Gid: ( %g/ %G)'\'' /etc/security/opasswd.old"; missing=$((missing+1)); }
+          printf '\''%s'\'' "$out_1" | grep -qF -- "/etc/security/opasswd.old Access: (0600/-rw-------) Uid: ( 0/ root) Gid: (" || { printf '\''miss-1: %s\n'\'' "/etc/security/opasswd.old Access: (0600/-rw-------) Uid: ( 0/ root) Gid: ("; missing=$((missing+1)); }
+          printf '\''%s'\'' "$out_1" | grep -qF -- "0/ root)" || { printf '\''miss-1: %s\n'\'' "0/ root)"; missing=$((missing+1)); }
+        fi
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         It is critical to ensure that /etc/security/opasswd is protected from unauthorized
         access. Although it is protected by default, the file permissions could be changed either
