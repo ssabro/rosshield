@@ -190,6 +190,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		return check, ""
 	}
 
+	// Pattern 12 (E-2 G1): `nft list ruleset | grep 'hook X'` 3+ cmds + 각 expected substring 매칭.
+	// 4.3.5 (chain 존재 검증) + 4.3.8 (policy drop 포함 검증). expected가 audit text에서 파생.
+	if isNftHookAuditText(it.Audit) {
+		if synthesized, ok := synthesizeNftHook(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 11 (E-1 G11): `sshd -T | grep <key>` + multi-line OR alternation — 5.1.4 + 5.1.14.
 	// cmd 실행 후 expected substring 1+ 매칭이면 PASS (case insensitive).
 	if isSshdGrepOrAuditText(it.Audit) {
