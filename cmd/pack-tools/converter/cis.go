@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 13 (E-2 G4 부분): 단일 `# iptables -L` + 3+ "Chain X (policy Y)" expected substring 매칭.
+	// 4.4.2.1만 cover. 4.4.2.2(`-v -n` + multi-line table)는 별 epic.
+	if isIptablesChainPolicyAuditText(it.Audit) {
+		if synthesized, ok := synthesizeIptablesChainPolicy(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 12b (E-2 G2): 단일 `# nft list tables` + "Return should include" + expected substring.
 	// 4.3.4 — `nft list tables` 출력에 expected(`table inet filter`) 포함이면 PASS.
 	if isNftListTablesAuditText(it.Audit) {

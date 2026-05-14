@@ -13,10 +13,16 @@ metadata:
         default policy in your firewall management to apply on boot as well
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(iptables -L 2>/dev/null)
+        missing=0
+        printf '\''%s'\'' "$out" | grep -qF -- "Chain INPUT (policy DROP)" || { printf '\''miss-0: %s\n'\'' "Chain INPUT (policy DROP)"; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out" | grep -qF -- "Chain FORWARD (policy DROP)" || { printf '\''miss-1: %s\n'\'' "Chain FORWARD (policy DROP)"; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out" | grep -qF -- "Chain OUTPUT (policy DROP)" || { printf '\''miss-2: %s\n'\'' "Chain OUTPUT (policy DROP)"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         With a default accept policy the firewall will accept any packet that is not configured to
         be denied. It is easier to allow list acceptable usage than to deny list unacceptable
