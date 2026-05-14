@@ -200,6 +200,15 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 18 (G14): grub.cfg multi-line verify (1.4.1) — 2 cmd × placeholder substring 매칭.
+	if isGrubCfgAuditText(it.Audit) {
+		if synthesized, ok := synthesizeGrubCfg(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 17 (G16): passwd/group awk + alternative — 5.4.2.2 + 5.4.2.3 (exact root:N) +
 	// 5.4.2.4 (alternation User: "..." Password is status: P|L). 90% 도달 경로 핵심 epic.
 	if isPasswdAwkAuditText(it.Audit) {

@@ -8,10 +8,18 @@ metadata:
         enter a password before being able to set command line boot parameters
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'missing=0
+        out_0=$(grep "^set superusers" /boot/grub/grub.cfg 2>/dev/null)
+        printf '\''%s'\'' "$out_0" | grep -qF -- "set superusers=\"" || { printf '\''miss-0: token %s\n'\'' "set superusers=\""; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out_0" | grep -qF -- "\"" || { printf '\''miss-0: token %s\n'\'' "\""; missing=$((missing+1)); }
+        out_1=$(awk -F. '\''/^\s*password/ {print $1"."$2"."$3}'\'' /boot/grub/grub.cfg 2>/dev/null)
+        printf '\''%s'\'' "$out_1" | grep -qF -- "password_pbkdf2" || { printf '\''miss-1: token %s\n'\'' "password_pbkdf2"; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out_1" | grep -qF -- "grub.pbkdf2.sha512" || { printf '\''miss-1: token %s\n'\'' "grub.pbkdf2.sha512"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Requiring a boot password upon execution of the boot loader will prevent an
         unauthorized user from entering boot parameters or changing the boot partition. This
