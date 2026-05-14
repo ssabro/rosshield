@@ -1,0 +1,35 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.4.1.2
+    title: 5.4.1.2 Ensure minimum password days is configured (Manual)
+    description: |-
+        PASS_MIN_DAYS는 패스워드 변경 후 최소 경과일. 0이면 제한 없음(즉시 재변경 가능)
+        — 패스워드 재사용 우회 위험. CIS는 "follows local site policy"로 표현, 일반적으로
+        ≥1을 권장.
+    severity: low
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 5.4.1.2 — PASS_MIN_DAYS 정책 검토.
+
+            확인 절차:
+              1. `grep -E '^\s*PASS_MIN_DAYS\s+' /etc/login.defs`
+              2. `awk -F: '($4<1){print $1":"$4}' /etc/shadow` — 사용자별 최소 일수 0 검출
+              3. site policy(예: ISMS-P 5.2.1, 통상 ≥1) 기준과 대조
+
+            판정 기준:
+              PASS  — login.defs PASS_MIN_DAYS ≥1 + 모든 사용자 shadow 4번째 필드 ≥1
+              FAIL  — 1+ 사용자가 최소 일수 0 또는 login.defs 0
+              REVIEW — site policy 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        Restricting how often users can rotate passwords prevents trivial cycling that
+        circumvents password reuse history controls.
+    fixGuidance: |-
+        Edit /etc/login.defs:
+            PASS_MIN_DAYS   1
+        Apply to existing users:
+            chage --mindays 1 <user>

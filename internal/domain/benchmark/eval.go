@@ -63,6 +63,16 @@ type AndNode struct{ Args []EvalNode }
 type OrNode struct{ Args []EvalNode }
 type NotNode struct{ Arg EvalNode }
 
+// ManualNode는 운영자 정성 검토 결과를 표현합니다.
+//
+// audit 명령 실행 결과(Stdout/Stderr/ExitCode)는 무시 — DefaultVerdict 그대로 반환.
+// 운영자가 fixture 작성 시 prompt(CIS audit text의 review 절)를 보고 환경에 맞춰
+// PASS/FAIL/REVIEW를 직접 판정. selftest fixture는 expectedOutcome으로 검증.
+type ManualNode struct {
+	Prompt         string
+	DefaultVerdict EvalStatus // PASS/FAIL/INDETERMINATE 중 하나(REVIEW = INDETERMINATE).
+}
+
 func (EqualsNode) isNode()    {}
 func (NotEqualsNode) isNode() {}
 func (ContainsNode) isNode()  {}
@@ -76,6 +86,7 @@ func (LTENode) isNode()       {}
 func (AndNode) isNode()       {}
 func (OrNode) isNode()        {}
 func (NotNode) isNode()       {}
+func (ManualNode) isNode()    {}
 
 // ----- 평가 구현 -----
 
@@ -228,6 +239,24 @@ func (n NotNode) Eval(in EvalInput) (EvalResult, error) {
 		return pass(), nil
 	default: // INDETERMINATE
 		return r, nil
+	}
+}
+
+// ManualNode: audit 입력 무시 + DefaultVerdict 그대로 반환.
+//
+// PASS → 운영자 fixture가 "PASS" 명시(자동 변환 비대상이지만 환경상 항상 만족).
+// FAIL → 운영자 fixture가 "FAIL" 명시(환경상 항상 미흡).
+// INDETERMINATE(REVIEW) → 운영자 정성 검토 필요(default).
+func (n ManualNode) Eval(in EvalInput) (EvalResult, error) {
+	switch n.DefaultVerdict {
+	case StatusPass:
+		return pass(), nil
+	case StatusFail:
+		return fail("manual: defaultVerdict=fail (" + trim(n.Prompt, 64) + ")"), nil
+	case StatusIndeterminate:
+		return indeterminate("manual: review required (" + trim(n.Prompt, 64) + ")"), nil
+	default:
+		return EvalResult{}, fmt.Errorf("manual: invalid defaultVerdict %q", n.DefaultVerdict)
 	}
 }
 

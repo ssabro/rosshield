@@ -1,0 +1,38 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.1.1.10
+    title: 1.1.1.10 Ensure unused filesystems kernel modules are not available (Manual)
+    description: |-
+        Filesystem kernel modules can be loaded into the Linux kernel to extend filesystem
+        capabilities. Unused modules expand the local attack surface — known CVEs span afs,
+        ceph, cifs, exfat, ext, fat, fscache, fuse, gfs2, nfs_common, nfsd, smbfs_common.
+        Operator must enumerate loaded/available modules and disable those not required by
+        site workload (per CIS recommendation).
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 1.1.1.10 — 미사용 filesystem kernel module 비활성화 검토.
+
+            확인 절차:
+              1. `lsmod | egrep -i 'afs|ceph|cifs|exfat|ext|fat|fscache|fuse|gfs2|nfs_common|nfsd|smbfs_common'`
+              2. `find /lib/modules/$(uname -r)/kernel/fs -type f -name '*.ko*'` (로드 가능 목록)
+              3. site workload 매트릭스와 대조 — 사용하지 않는 모듈은 modprobe blacklist 적용
+
+            판정 기준:
+              PASS  — 위 12 모듈 중 site workload에서 사용하지 않는 모듈이 모두 blacklist
+              FAIL  — 미사용 모듈이 로드되어 있거나 modprobe로 로드 가능
+              REVIEW — fleet 표준 workload 매트릭스 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        Loadable filesystem modules are an attractive abuse vector for rootkits and persistence
+        on compromised hosts. Removing unneeded filesystem types reduces the local attack
+        surface against known kernel CVEs.
+    fixGuidance: |-
+        For each unused module, add to /etc/modprobe.d/<module>.conf:
+            install <module> /bin/false
+            blacklist <module>
+        Then reboot or `modprobe -r <module>` if currently loaded.

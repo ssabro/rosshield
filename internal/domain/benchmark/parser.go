@@ -66,9 +66,42 @@ func parseNode(raw json.RawMessage) (EvalNode, error) {
 		return parseLogicNode(raw, func(args []EvalNode) EvalNode { return OrNode{Args: args} })
 	case "not":
 		return parseNotNode(raw)
+	case "manual":
+		return parseManualNode(raw)
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownOp, disc.Op)
 	}
+}
+
+// parseManualNode는 manual fixture op를 파싱합니다 (D-MAN-3 schema).
+//
+// 형식: {"op":"manual","prompt":"<운영자 review 절>","defaultVerdict":"pass|fail|review"}
+// REVIEW는 INDETERMINATE에 매핑.
+func parseManualNode(raw json.RawMessage) (EvalNode, error) {
+	var s struct {
+		Op             string `json:"op"`
+		Prompt         string `json:"prompt"`
+		DefaultVerdict string `json:"defaultVerdict"`
+	}
+	if err := decodeJSONStrict(raw, &s); err != nil {
+		return nil, err
+	}
+	if s.Prompt == "" {
+		return nil, fmt.Errorf("%w: manual: prompt required", ErrInvalidEvalRule)
+	}
+	var v EvalStatus
+	switch s.DefaultVerdict {
+	case "pass":
+		v = StatusPass
+	case "fail":
+		v = StatusFail
+	case "review", "":
+		v = StatusIndeterminate
+	default:
+		return nil, fmt.Errorf("%w: manual: defaultVerdict must be pass|fail|review, got %q",
+			ErrInvalidEvalRule, s.DefaultVerdict)
+	}
+	return ManualNode{Prompt: s.Prompt, DefaultVerdict: v}, nil
 }
 
 func parseStringNode(raw json.RawMessage, field string, factory func(string) EvalNode) (EvalNode, error) {

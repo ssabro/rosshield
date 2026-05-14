@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 1.1.1.10
+spec:
+    cases:
+        - name: "default review verdict (no audit cmd execution)"
+          input:
+              stdout: ""
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "audit input ignored — verdict still review"
+          input:
+              stdout: "fuse 167936 1\nnfsd 593920 13"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE

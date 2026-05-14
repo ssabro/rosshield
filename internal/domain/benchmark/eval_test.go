@@ -46,6 +46,7 @@ func TestEvaluationRuleExpressionSafeSubset(t *testing.T) {
 		"and":        `{"op":"and","args":[{"op":"empty"}]}`,
 		"or":         `{"op":"or","args":[{"op":"empty"}]}`,
 		"not":        `{"op":"not","arg":{"op":"empty"}}`,
+		"manual":     `{"op":"manual","prompt":"site policy review","defaultVerdict":"review"}`,
 	}
 	for name, body := range allowed {
 		t.Run("allow_"+name, func(t *testing.T) {

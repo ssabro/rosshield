@@ -1,0 +1,40 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 5.3.3.2.3
+    title: 5.3.3.2.3 Ensure password complexity is configured (Manual)
+    description: |-
+        pam_pwquality 또는 pwquality.conf의 minclass / dcredit / ucredit / lcredit / ocredit를
+        site policy에 맞춰 설정해야 한다. CIS는 음수(`-1`)로 "최소 1개" 요구를 표현.
+        운영자가 site password policy(예: ISMS-P, ISO27001 부속서 A) 기준에 부합하는지
+        확인.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 5.3.3.2.3 — 패스워드 복잡도 정책 검토.
+
+            확인 절차:
+              1. `grep -E '^\s*(minclass|dcredit|ucredit|lcredit|ocredit)\s*=' /etc/security/pwquality.conf /etc/security/pwquality.conf.d/*.conf 2>/dev/null`
+              2. `grep -E 'pam_pwquality\.so' /etc/pam.d/common-password` — pam stack에서 활성 여부
+              3. site password policy(예: minclass≥3, dcredit=-1, ucredit=-1, lcredit=-1, ocredit=-1)와 대조
+
+            판정 기준:
+              PASS  — 5 매개변수 모두 site policy 기준 이상
+              FAIL  — 1+ 매개변수 미설정 또는 정책 미달
+              REVIEW — 기관 password policy 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        Strong password complexity raises the cost of brute-force and dictionary attacks.
+        Excessive complexity, however, encourages predictable patterns; site policy must
+        balance mathematical entropy with usability.
+    fixGuidance: |-
+        Edit /etc/security/pwquality.conf (or a drop-in under /etc/security/pwquality.conf.d/):
+            minclass = 3
+            dcredit  = -1
+            ucredit  = -1
+            lcredit  = -1
+            ocredit  = -1
+        Verify pam_pwquality.so present in /etc/pam.d/common-password.

@@ -17,7 +17,9 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -164,9 +166,35 @@ func runConvertCIS(inputPath, outputDir string, opts converter.CISConvertOptions
 		fmt.Fprintf(os.Stderr, "convert: %v\n", err)
 		return 1
 	}
+	// D-MAN-1: outputDir 안의 manual fixture 서브디렉토리(checks/manual/, selftest/manual/)는
+	// 운영자 수동 작성 — 자동 변환 결과로 덮어쓰면 안 됨. WriteToDir는 outputDir이
+	// 존재하면 ErrOutputExists로 거부하므로, manual/ 백업 → 디렉토리 삭제 → WriteToDir →
+	// 복원의 round-trip 패턴으로 보존한다.
+	manualBackup, err := backupManualFixtures(outputDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "convert: backup manual fixtures: %v\n", err)
+		return 1
+	}
+	defer func() {
+		if manualBackup != "" {
+			_ = os.RemoveAll(manualBackup)
+		}
+	}()
+	if _, err := os.Stat(outputDir); err == nil {
+		if err := os.RemoveAll(outputDir); err != nil {
+			fmt.Fprintf(os.Stderr, "convert: cleanup output: %v\n", err)
+			return 1
+		}
+	}
 	if err := converter.WriteToDir(pack, outputDir); err != nil {
 		fmt.Fprintf(os.Stderr, "convert: write output: %v\n", err)
 		return 1
+	}
+	if manualBackup != "" {
+		if err := restoreManualFixtures(manualBackup, outputDir); err != nil {
+			fmt.Fprintf(os.Stderr, "convert: restore manual fixtures: %v\n", err)
+			return 1
+		}
 	}
 
 	fmt.Printf("CIS Ubuntu 변환 완료: %s\n", outputDir)
@@ -176,6 +204,111 @@ func runConvertCIS(inputPath, outputDir string, opts converter.CISConvertOptions
 	fmt.Printf("  degraded: Manual=%d, NoMarker=%d (Phase 2 fixture 필요)\n",
 		report.DegradedManual, report.DegradedNoMarker)
 	return 0
+}
+
+// backupManualFixtures는 outputDir 안의 운영자 수동 작성 fixture 디렉토리
+// (checks/manual/ + selftest/manual/)를 임시 디렉토리로 복사한다.
+//
+// outputDir이 없거나 두 디렉토리 모두 없으면 ""(빈 문자열) + nil 반환 — 호출자는
+// restore 단계 skip. 임시 디렉토리는 호출자가 RemoveAll로 정리한다.
+func backupManualFixtures(outputDir string) (string, error) {
+	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	subs := []string{
+		filepath.Join("checks", "manual"),
+		filepath.Join("selftest", "manual"),
+	}
+	hasAny := false
+	for _, sub := range subs {
+		if _, err := os.Stat(filepath.Join(outputDir, sub)); err == nil {
+			hasAny = true
+			break
+		}
+	}
+	if !hasAny {
+		return "", nil
+	}
+	tmp, err := os.MkdirTemp("", "rosshield-pack-manual-*")
+	if err != nil {
+		return "", err
+	}
+	for _, sub := range subs {
+		src := filepath.Join(outputDir, sub)
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		if err := copyDir(src, filepath.Join(tmp, sub)); err != nil {
+			_ = os.RemoveAll(tmp)
+			return "", err
+		}
+	}
+	return tmp, nil
+}
+
+// restoreManualFixtures는 backupManualFixtures가 만든 임시 디렉토리에서
+// outputDir로 manual fixture를 복원한다.
+func restoreManualFixtures(backup, outputDir string) error {
+	subs := []string{
+		filepath.Join("checks", "manual"),
+		filepath.Join("selftest", "manual"),
+	}
+	for _, sub := range subs {
+		src := filepath.Join(backup, sub)
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		dst := filepath.Join(outputDir, sub)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		if err := copyDir(src, dst); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyDir(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return copyFile(src, dst, info.Mode())
+	}
+	if err := os.MkdirAll(dst, info.Mode()); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := copyDir(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func runArchive(args []string) int {

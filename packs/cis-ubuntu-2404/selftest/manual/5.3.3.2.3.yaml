@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 5.3.3.2.3
+spec:
+    cases:
+        - name: "default review verdict (no audit cmd execution)"
+          input:
+              stdout: ""
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "audit input ignored — verdict still review"
+          input:
+              stdout: "minclass = 4\ndcredit = -1\nucredit = -1\nlcredit = -1\nocredit = -1"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
