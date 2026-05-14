@@ -15,10 +15,16 @@ metadata:
         iptables documentation and set any restrictions in compliance with site policy
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'missing=0
+        out_0=$(iptables -L INPUT -v -n 2>/dev/null)
+        printf '\''%s'\'' "$out_0" | grep -qF -- "ACCEPT all -- lo * 0.0.0.0/0" || { printf '\''miss-0: %s\n'\'' "ACCEPT all -- lo * 0.0.0.0/0"; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out_0" | grep -qF -- "DROP all -- * * 127.0.0.0/8" || { printf '\''miss-0: %s\n'\'' "DROP all -- * * 127.0.0.0/8"; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out_0" | grep -qF -- "ACCEPT tcp -- * * 0.0.0.0/0" || { printf '\''miss-0: %s\n'\'' "ACCEPT tcp -- * * 0.0.0.0/0"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Without a firewall rule configured for open ports default firewall policy will drop all
         packets to these ports.

@@ -70,6 +70,90 @@ func TestExtractIptablesChainExpecteds(t *testing.T) {
 	}
 }
 
+// === 4.4.2.2 iptables -L X -v -n + multi-line table ===
+
+const audit_4_4_2_2_full = `Run the following commands and verify output includes the listed rules in order (pkts and bytes counts may differ, prot may be all or 0):
+# iptables -L INPUT -v -n
+Chain INPUT (policy DROP 0 packets, 0 bytes)
+pkts bytes target prot opt in out source destination
+0 0 ACCEPT all -- lo * 0.0.0.0/0 0.0.0.0/0
+0 0 DROP all -- * * 127.0.0.0/8 0.0.0.0/0
+# iptables -L OUTPUT -v -n
+Chain OUTPUT (policy DROP 0 packets, 0 bytes)
+pkts bytes target prot opt in out source destination
+0 0 ACCEPT all -- * lo 0.0.0.0/0 0.0.0.0/0`
+
+func TestIsIptablesVerboseAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isIptablesVerboseAuditText(audit_4_4_2_2_full) {
+		t.Errorf("isIptablesVerboseAuditText(4.4.2.2) = false, want true")
+	}
+}
+
+func TestIsIptablesVerboseAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"4.4.2.1 (단순 -L, -v -n 부재)", audit_4_4_2_1},
+		{"non-iptables (sshd)", audit_nonGsettings},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isIptablesVerboseAuditText(tc.audit) {
+				t.Errorf("isIptablesVerboseAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestExtractIptablesVerboseChecks(t *testing.T) {
+	t.Parallel()
+	checks, ok := extractIptablesVerboseChecks(audit_4_4_2_2_full)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	if len(checks) != 2 {
+		t.Fatalf("checks count = %d, want 2", len(checks))
+	}
+	// cmd 1 INPUT 2 token (ACCEPT lo + DROP 127.0.0.0)
+	if !strings.Contains(checks[0].cmd, "INPUT") {
+		t.Errorf("cmd[0] missing INPUT: %q", checks[0].cmd)
+	}
+	if len(checks[0].tokens) != 2 {
+		t.Errorf("INPUT tokens = %d, want 2 (%#v)", len(checks[0].tokens), checks[0].tokens)
+	}
+	// cmd 2 OUTPUT 1 token (ACCEPT lo)
+	if !strings.Contains(checks[1].cmd, "OUTPUT") {
+		t.Errorf("cmd[1] missing OUTPUT: %q", checks[1].cmd)
+	}
+	if len(checks[1].tokens) != 1 {
+		t.Errorf("OUTPUT tokens = %d, want 1 (%#v)", len(checks[1].tokens), checks[1].tokens)
+	}
+}
+
+func TestSynthesizeIptablesVerbose_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeIptablesVerbose(audit_4_4_2_2_full)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		"out_0=$(iptables -L INPUT -v -n",
+		"out_1=$(iptables -L OUTPUT -v -n",
+		`grep -qF -- "ACCEPT all -- lo`,
+		`grep -qF -- "DROP all -- * * 127.0.0.0/8`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 func TestSynthesizeIptablesChainPolicy_Output(t *testing.T) {
 	t.Parallel()
 	bash, ok := synthesizeIptablesChainPolicy(audit_4_4_2_1)

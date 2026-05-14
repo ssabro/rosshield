@@ -37,6 +37,15 @@ var regexpAuditPassedEmit = regexp.MustCompile(`(?i)Audit\s+Passed`)
 // regexpAuditFailEmit는 body 안 "** FAIL **" / "Audit Result:" 키워드 감지 (4.2.6).
 var regexpAuditFailEmit = regexp.MustCompile(`\*\*\s*FAIL\s*\*\*`)
 
+// regexpAllOutputIsOK는 "all output is OK" / "Verify that all output is OK" phrase 감지 (6.2.3.6).
+var regexpAllOutputIsOK = regexp.MustCompile(`(?i)all\s+output\s+is\s+OK`)
+
+// regexpHashbangBodyOKEmit는 body 안 `OK:` printf emit 감지 (6.2.3.6 시그니처).
+var regexpHashbangBodyOKEmit = regexp.MustCompile(`printf\s+"OK:`)
+
+// regexpHashbangBodyWarningEmit는 body 안 `Warning:` printf emit 감지.
+var regexpHashbangBodyWarningEmit = regexp.MustCompile(`printf\s+"Warning:`)
+
 // regexpBraceBlockStart는 `{` 단독 라인(블록 시작) 감지.
 var regexpBraceBlockStart = regexp.MustCompile(`^\s*\{\s*$`)
 
@@ -74,6 +83,44 @@ func synthesizeHashbangPassFailEmit(audit string) (string, bool) {
 	sb.WriteString("  *PASSED*) printf '** PASS **\\n' ;;\n")
 	sb.WriteString("  *) printf 'fail: %s\\n' \"$out\"; printf '** FAIL **\\n' ;;\n")
 	sb.WriteString("esac")
+	return sb.String(), true
+}
+
+// isHashbangAllOKAuditText는 6.2.3.6 합성 대상인지 판정.
+//
+// 인식 조건:
+//   - extractCISBashBody hashbang body 추출 가능
+//   - body 안 `printf "OK:` + `printf "Warning:` 둘 다 substring 포함
+//   - audit text에 "all output is OK" phrase
+func isHashbangAllOKAuditText(audit string) bool {
+	if !regexpAllOutputIsOK.MatchString(audit) {
+		return false
+	}
+	body, ok := extractCISBashBody(audit)
+	if !ok {
+		return false
+	}
+	return regexpHashbangBodyOKEmit.MatchString(body) &&
+		regexpHashbangBodyWarningEmit.MatchString(body)
+}
+
+// synthesizeHashbangAllOK는 6.2.3.6 합성 bash 생성.
+//
+// hashbang body 그대로 base64 wrap → 실행 → 출력에 "Warning:" substring 미포함이면 PASS.
+// "all output is OK" 의도(Warning 없으면 통과).
+func synthesizeHashbangAllOK(audit string) (string, bool) {
+	if !isHashbangAllOKAuditText(audit) {
+		return "", false
+	}
+	body, _ := extractCISBashBody(audit)
+	encoded := base64.StdEncoding.EncodeToString([]byte(body))
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "out=$(printf '%%s' %q | base64 -d | bash 2>/dev/null)\n", encoded)
+	sb.WriteString("if printf '%s' \"$out\" | grep -qF -- \"Warning:\"; then\n")
+	sb.WriteString("  printf 'fail: %s\\n' \"$out\"; printf '** FAIL **\\n'\n")
+	sb.WriteString("else\n")
+	sb.WriteString("  printf '** PASS **\\n'\n")
+	sb.WriteString("fi")
 	return sb.String(), true
 }
 

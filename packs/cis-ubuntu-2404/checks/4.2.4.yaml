@@ -8,10 +8,16 @@ metadata:
         traffic to the loopback network (127.0.0.0/8 for IPv4 and ::1/128 for IPv6).
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out1=$(grep -P -- '\''lo|127.0.0.0'\'' /etc/ufw/before.rules 2>/dev/null)
+        out2=$(ufw status verbose 2>/dev/null)
+        missing=0
+        printf '\''%s'\'' "$out1" | grep -qF -- "-i lo -j ACCEPT" || { printf '\''miss-1: -i lo -j ACCEPT\n'\''; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out2" | grep -qE -- "Anywhere.*DENY IN.*127\.0\.0\.0" || { printf '\''miss-2: Anywhere DENY IN 127.0.0.0\n'\''; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Loopback traffic is generated between processes on machine and is typically critical to
         operation of the system. The loopback interface is the only place that loopback network

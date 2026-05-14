@@ -56,6 +56,67 @@ func TestIsHashbangPassFailEmitAuditText_Negative(t *testing.T) {
 	}
 }
 
+// === 6.2.3.6 hashbang body all OK / Warning emit ===
+
+const audit_6_2_3_6 = `On disk configuration
+Run the following script to check on disk rules:
+#!/usr/bin/env bash
+{
+for PARTITION in $(findmnt -n -l -k -it $(awk '/nodev/ { print $2 }' /proc/filesystems | paste -sd,) | grep -Pv "noexec|nosuid" | awk '{print $1}'); do
+for PRIVILEGED in $(find "${PARTITION}" -xdev -perm /6000 -type f); do
+grep -qr "${PRIVILEGED}" /etc/audit/rules.d && printf "OK: '${PRIVILEGED}' found in auditing rules.\n" || printf "Warning: '${PRIVILEGED}' not found in on disk configuration.\n"
+done
+done
+}
+Verify that all output is OK.`
+
+func TestIsHashbangAllOKAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isHashbangAllOKAuditText(audit_6_2_3_6) {
+		t.Errorf("isHashbangAllOKAuditText(6.2.3.6) = false, want true")
+	}
+}
+
+func TestIsHashbangAllOKAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"5.4.3.2 (PASSED/FAILED 다른 키워드)", audit_5_4_3_2},
+		{"all output is OK 없음", `#!/usr/bin/env bash
+printf "OK:..."
+printf "Warning:..."`},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isHashbangAllOKAuditText(tc.audit) {
+				t.Errorf("isHashbangAllOKAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestSynthesizeHashbangAllOK_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeHashbangAllOK(audit_6_2_3_6)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		`out=$(printf '%s'`,
+		`base64 -d | bash 2>/dev/null)`,
+		`if printf '%s' "$out" | grep -qF -- "Warning:"`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 // === 4.2.6 Audit Result emit (G5 부분 cover) ===
 
 const audit_4_2_6 = `Run the following script to verify a firewall rule exists for all open ports:

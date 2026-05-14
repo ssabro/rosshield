@@ -24,6 +24,13 @@ import (
 // regexpIptablesListCmd는 단일 `# iptables -L` 명령 라인 감지 (정확 매칭, -v/-n 옵션 부재).
 var regexpIptablesListCmd = regexp.MustCompile(`^#\s+(iptables\s+-L)\s*$`)
 
+// regexpIptablesListVerboseCmd는 `# iptables -L <CHAIN> -v -n` 명령 감지 (4.4.2.2).
+var regexpIptablesListVerboseCmd = regexp.MustCompile(`^#\s+(iptables\s+-L\s+\w+\s+-v\s+-n)\s*$`)
+
+// regexpIptablesAcceptDropLine는 multi-line table의 핵심 ACCEPT/DROP 라인 감지.
+// (pkts) (bytes) (target ACCEPT|DROP) all -- (in) (out) (src) (dst) [추가]
+var regexpIptablesAcceptDropLine = regexp.MustCompile(`^\d+\s+\d+\s+(ACCEPT|DROP)\s+\w+\s+--\s+\S+\s+\S+\s+\S+\s+\S+`)
+
 // regexpIptablesChainPolicy는 expected 라인이 `Chain X (policy Y)` 형태인지 검사.
 var regexpIptablesChainPolicy = regexp.MustCompile(`^Chain\s+\w+\s+\(policy\s+\w+\)`)
 
@@ -74,6 +81,92 @@ func extractIptablesChainExpecteds(audit string) (cmd string, expecteds []string
 func isIptablesChainPolicyAuditText(audit string) bool {
 	_, _, ok := extractIptablesChainExpecteds(audit)
 	return ok
+}
+
+// iptablesVerboseCheck는 단일 cmd × 핵심 expected token 슬라이스.
+type iptablesVerboseCheck struct {
+	cmd    string
+	tokens []string // 핵심 ACCEPT/DROP 라인의 target+src/dst 부분
+}
+
+// extractIptablesVerboseChecks: 1+ `# iptables -L X -v -n` cmd + 각 cmd 직후 multi-line table.
+//
+// 인식 조건:
+//   - 1+ `iptables -L <CHAIN> -v -n` 명령
+//   - 각 cmd 직후 `Chain X (policy Y ...)` 헤더 + table rows
+//   - rows 중 ACCEPT/DROP 라인을 핵심 token으로 추출
+func extractIptablesVerboseChecks(audit string) ([]iptablesVerboseCheck, bool) {
+	lines := strings.Split(audit, "\n")
+	var checks []iptablesVerboseCheck
+	for i, raw := range lines {
+		line := strings.TrimSpace(raw)
+		m := regexpIptablesListVerboseCmd.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		check := iptablesVerboseCheck{cmd: m[1]}
+		for j := i + 1; j < len(lines); j++ {
+			next := strings.TrimSpace(lines[j])
+			if next == "" {
+				continue
+			}
+			if strings.HasPrefix(next, "#") || strings.HasPrefix(next, "Run") ||
+				strings.HasPrefix(next, "Verify") || strings.HasPrefix(next, "Note") {
+				break
+			}
+			if regexpIptablesAcceptDropLine.MatchString(next) {
+				// 핵심 token: `target proto -- in out src dst` 부분 (count 제외)
+				// 단순화: 라인 그대로 저장(grep 매칭 시 count 차이 graceful 위해 partial 추출)
+				// "ACCEPT all -- lo * 0.0.0.0/0 0.0.0.0/0" 같은 substring
+				idx := regexpIptablesAcceptDropLine.FindStringIndex(next)
+				if idx != nil {
+					// pkts bytes 제외하고 target부터
+					tokens := strings.Fields(next)
+					if len(tokens) >= 8 {
+						// tokens[0]=pkts tokens[1]=bytes tokens[2]=target ...
+						core := strings.Join(tokens[2:8], " ")
+						check.tokens = append(check.tokens, core)
+					}
+				}
+			}
+		}
+		if len(check.tokens) > 0 {
+			checks = append(checks, check)
+		}
+	}
+	if len(checks) < 1 {
+		return nil, false
+	}
+	return checks, true
+}
+
+// isIptablesVerboseAuditText는 4.4.2.2 합성 대상 판정.
+func isIptablesVerboseAuditText(audit string) bool {
+	_, ok := extractIptablesVerboseChecks(audit)
+	return ok
+}
+
+// synthesizeIptablesVerbose는 multi-cmd substring 매칭 합성 bash 생성.
+//
+// 각 cmd 실행 → 핵심 ACCEPT/DROP token substring 매칭. pkts/bytes count 차이는 graceful
+// (token에 count 제외).
+func synthesizeIptablesVerbose(audit string) (string, bool) {
+	checks, ok := extractIptablesVerboseChecks(audit)
+	if !ok {
+		return "", false
+	}
+	var sb strings.Builder
+	sb.WriteString("missing=0\n")
+	for i, c := range checks {
+		fmt.Fprintf(&sb, "out_%d=$(%s 2>/dev/null)\n", i, c.cmd)
+		for _, tok := range c.tokens {
+			fmt.Fprintf(&sb,
+				"printf '%%s' \"$out_%d\" | grep -qF -- %q || { printf 'miss-%d: %%s\\n' %q; missing=$((missing+1)); }\n",
+				i, tok, i, tok)
+		}
+	}
+	sb.WriteString("if [ \"$missing\" -eq 0 ]; then printf '** PASS **\\n'; else printf '** FAIL **\\n'; fi")
+	return sb.String(), true
 }
 
 // synthesizeIptablesChainPolicy는 cmd 실행 + expected substring 매칭 합성 bash 생성.

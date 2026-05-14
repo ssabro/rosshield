@@ -209,6 +209,34 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 23 (잔여 6.2.3.6): hashbang body + "all output is OK" + Warning emit. body 실행
+	// + 출력 Warning 미포함이면 PASS. 시스템 의존 traverse는 audit text 의도 그대로.
+	if isHashbangAllOKAuditText(it.Audit) {
+		if synthesized, ok := synthesizeHashbangAllOK(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 24 (잔여 4.4.2.2): `iptables -L X -v -n` + multi-line table ACCEPT/DROP token 매칭.
+	if isIptablesVerboseAuditText(it.Audit) {
+		if synthesized, ok := synthesizeIptablesVerbose(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 25 (잔여 4.2.4): `grep before.rules` + `ufw status verbose` 2 cmd × loopback 검증.
+	if isUfwLoopbackAuditText(it.Audit) {
+		if synthesized, ok := synthesizeUfwLoopback(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 21 (G6 부분): `ufw status verbose | grep Default:` + alternation 매칭 (4.2.7).
 	// 4.2.4 (multi-line table + 2 cmd)는 별 epic.
 	if isUfwStatusDefaultAuditText(it.Audit) {

@@ -8,10 +8,16 @@ metadata:
         execution, to determine if unprivileged users are running these commands.
     severity: low
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(printf '\''%s'\'' "IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CmZvciBQQVJUSVRJT04gaW4gJChmaW5kbW50IC1uIC1sIC1rIC1pdCAkKGF3ayAnL25vZGV2LyB7IHByaW50ICQyIH0nCi9wcm9jL2ZpbGVzeXN0ZW1zIHwgcGFzdGUgLXNkLCkgfCBncmVwIC1QdiAibm9leGVjfG5vc3VpZCIgfCBhd2sgJ3twcmludAokMX0nKTsgZG8KZm9yIFBSSVZJTEVHRUQgaW4gJChmaW5kICIke1BBUlRJVElPTn0iIC14ZGV2IC1wZXJtIC82MDAwIC10eXBlIGYpOyBkbwpncmVwIC1xciAiJHtQUklWSUxFR0VEfSIgL2V0Yy9hdWRpdC9ydWxlcy5kICYmIHByaW50ZiAiT0s6Cicke1BSSVZJTEVHRUR9JyBmb3VuZCBpbiBhdWRpdGluZyBydWxlcy5cbiIgfHwgcHJpbnRmICJXYXJuaW5nOgonJHtQUklWSUxFR0VEfScgbm90IGZvdW5kIGluIG9uIGRpc2sgY29uZmlndXJhdGlvbi5cbiIKZG9uZQpkb25lCn0KVmVyaWZ5IHRoYXQgYWxsIG91dHB1dCBpcyBPSy4KUnVubmluZyBjb25maWd1cmF0aW9uClJ1biB0aGUgZm9sbG93aW5nIHNjcmlwdCB0byBjaGVjayBsb2FkZWQgcnVsZXM6CiMhL3Vzci9iaW4vZW52IGJhc2gKewpSVU5OSU5HPSQoYXVkaXRjdGwgLWwpClsgLW4gIiR7UlVOTklOR30iIF0gJiYgZm9yIFBBUlRJVElPTiBpbiAkKGZpbmRtbnQgLW4gLWwgLWsgLWl0ICQoYXdrCicvbm9kZXYvIHsgcHJpbnQgJDIgfScgL3Byb2MvZmlsZXN5c3RlbXMgfCBwYXN0ZSAtc2QsKSB8IGdyZXAgLVB2CiJub2V4ZWN8bm9zdWlkIiB8IGF3ayAne3ByaW50ICQxfScpOyBkbwpmb3IgUFJJVklMRUdFRCBpbiAkKGZpbmQgIiR7UEFSVElUSU9OfSIgLXhkZXYgLXBlcm0gLzYwMDAgLXR5cGUgZik7IGRvCnByaW50ZiAtLSAiJHtSVU5OSU5HfSIgfCBncmVwIC1xICIke1BSSVZJTEVHRUR9IiAmJiBwcmludGYgIk9LOgonJHtQUklWSUxFR0VEfScgZm91bmQgaW4gYXVkaXRpbmcgcnVsZXMuXG4iIHx8IHByaW50ZiAiV2FybmluZzoKJyR7UFJJVklMRUdFRH0nIG5vdCBmb3VuZCBpbiBydW5uaW5nIGNvbmZpZ3VyYXRpb24uXG4iCmRvbmUKZG9uZSBcCnx8IHByaW50ZiAiRVJST1I6IFZhcmlhYmxlICdSVU5OSU5HJyBpcyB1bnNldC5cbiIKfQpWZXJpZnkgdGhhdCBhbGwgb3V0cHV0IGlzIE9LLgpTcGVjaWFsIG1vdW50IHBvaW50cwpJZiB0aGVyZSBhcmUgYW55IHNwZWNpYWwgbW91bnQgcG9pbnRzIHRoYXQgYXJlIG5vdCB2aXNpYmxlIGJ5IGRlZmF1bHQgZnJvbSBmaW5kbW50IGFzIHBlcgp0aGUgYWJvdmUgYXVkaXQsIHNhaWQgZmlsZSBzeXN0ZW1zIHdvdWxkIGhhdmUgdG8gYmUgbWFudWFsbHkgYXVkaXRlZC4=" | base64 -d | bash 2>/dev/null)
+        if printf '\''%s'\'' "$out" | grep -qF -- "Warning:"; then
+          printf '\''fail: %s\n'\'' "$out"; printf '\''** FAIL **\n'\''
+        else
+          printf '\''** PASS **\n'\''
+        fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Execution of privileged commands by non-privileged users could be an indication of
         someone trying to gain unauthorized access to the system.

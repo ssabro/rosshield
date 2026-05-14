@@ -13,10 +13,17 @@ metadata:
         default policy in your firewall management to apply on boot as well
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'missing=0
+        out_0=$(iptables -L INPUT -v -n 2>/dev/null)
+        printf '\''%s'\'' "$out_0" | grep -qF -- "ACCEPT all -- lo * 0.0.0.0/0" || { printf '\''miss-0: %s\n'\'' "ACCEPT all -- lo * 0.0.0.0/0"; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out_0" | grep -qF -- "DROP all -- * * 127.0.0.0/8" || { printf '\''miss-0: %s\n'\'' "DROP all -- * * 127.0.0.0/8"; missing=$((missing+1)); }
+        out_1=$(iptables -L OUTPUT -v -n 2>/dev/null)
+        printf '\''%s'\'' "$out_1" | grep -qF -- "ACCEPT all -- * lo 0.0.0.0/0" || { printf '\''miss-1: %s\n'\'' "ACCEPT all -- * lo 0.0.0.0/0"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Loopback traffic is generated between processes on machine and is typically critical to
         the operation of the system. The loopback interface is the only place that loopback

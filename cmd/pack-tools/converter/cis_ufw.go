@@ -22,6 +22,18 @@ import (
 // regexpUfwStatusDefaultCmd는 `# ufw status verbose | grep Default:` 명령 라인 감지.
 var regexpUfwStatusDefaultCmd = regexp.MustCompile(`^#\s+(ufw\s+status\s+verbose\s*\|\s*grep\s+Default:?)\s*$`)
 
+// regexpUfwBeforeRulesGrep는 `# grep -P -- '...' /etc/ufw/before.rules` 명령 감지 (4.2.4).
+var regexpUfwBeforeRulesGrep = regexp.MustCompile(`^#\s+(grep\s+-P\s+--\s+.+/etc/ufw/before\.rules)\s*$`)
+
+// regexpUfwStatusVerboseCmd는 `# ufw status verbose` 명령 감지 (4.2.4 cmd2).
+var regexpUfwStatusVerboseCmd = regexp.MustCompile(`^#\s+(ufw\s+status\s+verbose)\s*$`)
+
+// regexpUfwAcceptLine는 `-A ufw-before-(input|output) ... -j ACCEPT` 라인 감지 (4.2.4 expected).
+var regexpUfwAcceptLine = regexp.MustCompile(`^-A\s+ufw-before-\w+.*-j\s+ACCEPT`)
+
+// regexpUfwDenyLine는 `Anywhere ... DENY IN ...` 라인 감지 (4.2.4 expected).
+var regexpUfwDenyLine = regexp.MustCompile(`^Anywhere.*DENY\s+IN`)
+
 // regexpUfwExampleOutput는 "Example output:" phrase 감지(cmd 직후 위치 확인용).
 var regexpUfwExampleOutput = regexp.MustCompile(`(?i)Example\s+output:?`)
 
@@ -50,6 +62,54 @@ func isUfwStatusDefaultAuditText(audit string) bool {
 		}
 	}
 	return hasCmd && hasDefaultLine
+}
+
+// isUfwLoopbackAuditText는 4.2.4 합성 대상 판정.
+//
+// 인식 조건:
+//   - `grep ... /etc/ufw/before.rules` cmd + `ufw status verbose` cmd 둘 다
+//   - audit text 안 ufw-before ACCEPT 라인 + Anywhere DENY 라인 둘 다 substring 포함
+func isUfwLoopbackAuditText(audit string) bool {
+	hasGrepCmd := false
+	hasUfwCmd := false
+	hasAcceptExp := false
+	hasDenyExp := false
+	for _, raw := range strings.Split(audit, "\n") {
+		line := strings.TrimSpace(raw)
+		if regexpUfwBeforeRulesGrep.MatchString(line) {
+			hasGrepCmd = true
+		}
+		if regexpUfwStatusVerboseCmd.MatchString(line) {
+			hasUfwCmd = true
+		}
+		if regexpUfwAcceptLine.MatchString(line) {
+			hasAcceptExp = true
+		}
+		if regexpUfwDenyLine.MatchString(line) {
+			hasDenyExp = true
+		}
+	}
+	return hasGrepCmd && hasUfwCmd && hasAcceptExp && hasDenyExp
+}
+
+// synthesizeUfwLoopback는 4.2.4 합성 bash 생성.
+//
+// 2 cmd 실행:
+//   - grep -P -- 'lo|127.0.0.0' /etc/ufw/before.rules 출력에 `-A ufw-before-input -i lo -j ACCEPT` substring
+//   - ufw status verbose 출력에 `Anywhere DENY IN 127.0.0.0/8` substring
+//
+// 둘 다 통과해야 PASS. (단순화: 핵심 token "-i lo -j ACCEPT" + "DENY IN 127.0.0.0" substring 매칭)
+func synthesizeUfwLoopback(audit string) (string, bool) {
+	if !isUfwLoopbackAuditText(audit) {
+		return "", false
+	}
+	const body = `out1=$(grep -P -- 'lo|127.0.0.0' /etc/ufw/before.rules 2>/dev/null)
+out2=$(ufw status verbose 2>/dev/null)
+missing=0
+printf '%s' "$out1" | grep -qF -- "-i lo -j ACCEPT" || { printf 'miss-1: -i lo -j ACCEPT\n'; missing=$((missing+1)); }
+printf '%s' "$out2" | grep -qE -- "Anywhere.*DENY IN.*127\.0\.0\.0" || { printf 'miss-2: Anywhere DENY IN 127.0.0.0\n'; missing=$((missing+1)); }
+if [ "$missing" -eq 0 ]; then printf '** PASS **\n'; else printf '** FAIL **\n'; fi`
+	return body, true
 }
 
 // synthesizeUfwStatusDefault는 cmd 실행 + "Default:" 라인 alternation 매칭 합성 bash 생성.
