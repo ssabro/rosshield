@@ -105,6 +105,9 @@ func (s *orchScan) CancelSession(_ context.Context, _ storage.Tx, _, _ string) (
 func (s *orchScan) RecordResult(_ context.Context, _ storage.Tx, _ scan.RecordResultRequest) (scan.ScanResult, error) {
 	panic("unused")
 }
+func (s *orchScan) RecomputeSeverityAggregate(_ context.Context, _ storage.Tx, _ string) error {
+	panic("unused")
+}
 
 type orchEvidence struct{}
 

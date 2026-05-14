@@ -377,6 +377,18 @@ type Service interface {
 	// ListResultsByRobot은 robot의 최근 scan results를 executed_at DESC로 반환합니다.
 	// limit <= 0이면 default 50. tenant scope.
 	ListResultsByRobot(ctx context.Context, tx storage.Tx, robotID string, limit int) ([]ScanResult, error)
+
+	// RecomputeSeverityAggregate은 scan_results × pack_checks GROUP BY severity 집계로
+	// scan_sessions의 severity_*_failed 4 컬럼(critical/high/medium/low)을 갱신합니다.
+	//
+	// 호출 contract: scanrun terminal transition(completed/failed/cancelled) 직후 같은 Tx
+	// 안에서 호출 — 모든 RecordResult가 commit된 시점이라 atomic 일관성 보장. list 응답은
+	// 이 컬럼을 직접 SELECT하므로 polling 비용 0(D26 design doc §4 옵션 B).
+	//
+	// outcome='fail'만 카운트(D26-3) — indeterminate/error/skipped는 분리 X. info severity는
+	// 미카운트(D26-1) — CIS pack 0건 + insight 별 도메인. session 미발견·tenant 미일치 시
+	// silent no-op(UPDATE rows=0) — caller가 사전에 GetSession으로 검증.
+	RecomputeSeverityAggregate(ctx context.Context, tx storage.Tx, sessionID string) error
 }
 
 // 공통 에러.

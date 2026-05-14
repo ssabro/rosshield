@@ -367,6 +367,56 @@ SELECT r.id, r.session_id, r.tenant_id, r.robot_id, r.check_id, r.pack_check_id,
 	return out, nil
 }
 
+// RecomputeSeverityAggregate은 scan_results × pack_checks GROUP BY severity 집계로
+// scan_sessions의 severity_*_failed 4 컬럼을 단일 UPDATE에 갱신합니다 (D26 design doc).
+//
+// 호출 contract: scanrun terminal transition(completed/failed/cancelled) 직후 같은 Tx
+// 안에서 호출 — list polling 비용 0(컬럼 직접 SELECT). outcome='fail'만 카운트(D26-3),
+// info severity 미카운트(D26-1). tenant 미일치·session 미발견 시 silent no-op.
+//
+// 단일 UPDATE + 4 inline COALESCE 서브쿼리 — 마이그레이션 backfill과 동일 패턴이지만
+// 4개 별 UPDATE 대신 single statement(런타임 cost 1 roundtrip). SQLite/PG 둘 다 호환.
+func (r *Repo) RecomputeSeverityAggregate(ctx context.Context, tx storage.Tx, sessionID string) error {
+	tenantID := tx.TenantID()
+	if tenantID == "" {
+		return storage.ErrTenantMissing
+	}
+	const stmt = `
+UPDATE scan_sessions
+   SET severity_critical_failed = COALESCE(
+           (SELECT COUNT(*) FROM scan_results sr
+              JOIN pack_checks pc ON pc.id = sr.pack_check_id
+             WHERE sr.session_id = ?
+               AND sr.outcome = 'fail'
+               AND pc.severity = 'critical'), 0),
+       severity_high_failed = COALESCE(
+           (SELECT COUNT(*) FROM scan_results sr
+              JOIN pack_checks pc ON pc.id = sr.pack_check_id
+             WHERE sr.session_id = ?
+               AND sr.outcome = 'fail'
+               AND pc.severity = 'high'), 0),
+       severity_medium_failed = COALESCE(
+           (SELECT COUNT(*) FROM scan_results sr
+              JOIN pack_checks pc ON pc.id = sr.pack_check_id
+             WHERE sr.session_id = ?
+               AND sr.outcome = 'fail'
+               AND pc.severity = 'medium'), 0),
+       severity_low_failed = COALESCE(
+           (SELECT COUNT(*) FROM scan_results sr
+              JOIN pack_checks pc ON pc.id = sr.pack_check_id
+             WHERE sr.session_id = ?
+               AND sr.outcome = 'fail'
+               AND pc.severity = 'low'), 0)
+ WHERE id = ? AND tenant_id = ?`
+	if _, err := tx.Exec(ctx, stmt,
+		sessionID, sessionID, sessionID, sessionID,
+		sessionID, string(tenantID),
+	); err != nil {
+		return fmt.Errorf("scan: recompute severity aggregate: %w", err)
+	}
+	return nil
+}
+
 // scanResultRowWithPackKey는 ListResultsByRobot용 — JOIN으로 추가된 pack_key + session.started_at + completed_at + failure_reason 함께 scan.
 // session.started_at/completed_at은 nullable(pending/running 상태) — sql.NullString로 받아 nil 처리.
 // failure_reason은 빈 string default(failed가 아닌 상태).
@@ -440,7 +490,9 @@ func parseNullableRFC(s sql.NullString, label string) (*time.Time, error) {
 const sessionSelectColumns = `
 SELECT id, tenant_id, fleet_id, pack_id, trigger, status,
        progress_total, progress_completed, progress_failed,
-       failure_reason, created_at, updated_at, started_at, completed_at`
+       failure_reason, created_at, updated_at, started_at, completed_at,
+       severity_critical_failed, severity_high_failed,
+       severity_medium_failed, severity_low_failed`
 
 const resultSelectColumns = `
 SELECT id, session_id, tenant_id, robot_id, check_id, pack_check_id,
@@ -490,10 +542,12 @@ func scanSessionRow(scanFn func(...any) error) (scan.ScanSession, error) {
 		failureReason, createdAt, updatedAt            string
 		total, completed, failed                       int
 		startedAt, completedAt                         sql.NullString
+		sevCritical, sevHigh, sevMedium, sevLow        int
 	)
 	if err := scanFn(&id, &tenantID, &fleetID, &packID, &trigger, &status,
 		&total, &completed, &failed,
-		&failureReason, &createdAt, &updatedAt, &startedAt, &completedAt); err != nil {
+		&failureReason, &createdAt, &updatedAt, &startedAt, &completedAt,
+		&sevCritical, &sevHigh, &sevMedium, &sevLow); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return scan.ScanSession{}, storage.ErrNotFound
 		}
@@ -515,6 +569,12 @@ func scanSessionRow(scanFn func(...any) error) (scan.ScanSession, error) {
 		Trigger:       scan.SessionTrigger(trigger),
 		Status:        scan.SessionStatus(status),
 		Progress:      scan.SessionProgress{Total: total, Completed: completed, Failed: failed},
+		SeverityFailed: scan.SeverityFailed{
+			Critical: sevCritical,
+			High:     sevHigh,
+			Medium:   sevMedium,
+			Low:      sevLow,
+		},
 		FailureReason: failureReason,
 		CreatedAt:     created,
 		UpdatedAt:     updated,

@@ -98,6 +98,57 @@ VALUES (?, ?, 'fleet-A', '', '{}', ?, ?)`,
 	}
 }
 
+// seedSeverityCheckMix는 RecomputeSeverityAggregate 통합 테스트용 — 4 severity별 pack_check + 2 robot.
+// (기존 seedRobotAndCheck는 단일 medium check만 → severity 분포 mix 검증 불가.)
+// 반환: 두 robot ID + severity → packCheckID 매핑.
+func seedSeverityCheckMix(t *testing.T, store storage.Storage, tenantID, fleetID, packID string) (robot1, robot2 string, packChecks map[string]string) {
+	t.Helper()
+	robot1 = "ro_SEV1_" + tenantID
+	robot2 = "ro_SEV2_" + tenantID
+	packChecks = map[string]string{
+		"critical": "pc_SEV_CRIT_" + tenantID,
+		"high":     "pc_SEV_HIGH_" + tenantID,
+		"medium":   "pc_SEV_MED_" + tenantID,
+		"low":      "pc_SEV_LOW_" + tenantID,
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	credID := "cr_SEV_" + tenantID
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO credentials (
+    id, tenant_id, type, encrypted_payload, encryption_meta,
+    rotation_due_at, created_at, updated_at, revoked_at
+) VALUES (?, ?, 'password', x'00', '{}', NULL, ?, ?, NULL)`,
+			credID, tenantID, now, now); err != nil {
+			return err
+		}
+		// 각 robot은 (tenant_id, host, port) UNIQUE 제약으로 다른 host 필요.
+		hosts := map[string]string{robot1: "h1", robot2: "h2"}
+		for _, robotID := range []string{robot1, robot2} {
+			if _, err := tx.Exec(ctx, `INSERT INTO robots (
+    id, tenant_id, fleet_id, credential_id, name, host, port,
+    auth_type, os_distro, ros_distro, tags, role, criticality,
+    created_at, updated_at, last_scan_at, deleted_at
+) VALUES (?, ?, ?, ?, ?, ?, 22, 'password', '', '', '[]', '', 'medium', ?, ?, NULL, NULL)`,
+				robotID, tenantID, fleetID, credID, robotID, hosts[robotID], now, now); err != nil {
+				return err
+			}
+		}
+		for sev, packCheckID := range packChecks {
+			checkID := "CIS-SEV-" + sev
+			if _, err := tx.Exec(ctx, `INSERT INTO pack_checks (
+    id, pack_id, check_id, title, severity, evaluation_rule
+) VALUES (?, ?, ?, ?, ?, '{"op":"equals","value":"ok"}')`,
+				packCheckID, packID, checkID, "sev-"+sev, sev); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seedSeverityCheckMix: %v", err)
+	}
+	return
+}
+
 // seedRobotAndCheck은 RecordResult 통합 테스트에 필요한 FK 만족용 raw INSERT 헬퍼입니다.
 func seedRobotAndCheck(t *testing.T, store storage.Storage, tenantID, fleetID, packID, robotID, packCheckID string) {
 	t.Helper()
@@ -1043,5 +1094,190 @@ func TestStartScanAcceptsSystemPack(t *testing.T) {
 	}
 	if session.PackID != systemPack {
 		t.Errorf("PackID = %s, want %s", session.PackID, systemPack)
+	}
+}
+
+// TestRecomputeSeverityAggregateEmptyResultsIsZero — fail 결과 0건 session에서 4 컬럼 모두 0.
+func TestRecomputeSeverityAggregateEmptyResultsIsZero(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+	const tenantID, fleetID, packID = "tn_SEV0", "fl_SEV0", "pk_SEV0"
+	seedTenantFleetPack(t, store, tenantID, fleetID, packID)
+
+	var sessionID string
+	ctx := tenantCtx(tenantID)
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		if err != nil {
+			return err
+		}
+		sessionID = s.ID
+		return repo.RecomputeSeverityAggregate(ctx, tx, sessionID)
+	}); err != nil {
+		t.Fatalf("StartScan/Recompute: %v", err)
+	}
+
+	var got scan.ScanSession
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.GetSession(ctx, tx, sessionID)
+		got = s
+		return err
+	}); err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if want := (scan.SeverityFailed{}); got.SeverityFailed != want {
+		t.Errorf("SeverityFailed = %+v, want zero %+v", got.SeverityFailed, want)
+	}
+}
+
+// TestRecomputeSeverityAggregateMixedSeverities — 4 severity 중 3종에 fail 분포 + non-fail 무시.
+//
+// matrix(2 robot × 4 check):
+//
+//	robot1: critical=fail, high=fail, medium=pass,    low=pass
+//	robot2: critical=fail, high=fail, medium=fail,    low=skipped
+//
+// expect: Critical=2, High=2, Medium=1, Low=0 — pass/skipped는 D26-3 미카운트.
+func TestRecomputeSeverityAggregateMixedSeverities(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+	const tenantID, fleetID, packID = "tn_SEVM", "fl_SEVM", "pk_SEVM"
+	seedTenantFleetPack(t, store, tenantID, fleetID, packID)
+	robot1, robot2, packChecks := seedSeverityCheckMix(t, store, tenantID, fleetID, packID)
+
+	var sessionID string
+	ctx := tenantCtx(tenantID)
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleetID, packID))
+		if err != nil {
+			return err
+		}
+		sessionID = s.ID
+		_, err = repo.TransitionSession(ctx, tx, sessionID, scan.StatusRunning, "")
+		return err
+	}); err != nil {
+		t.Fatalf("StartScan/Transition: %v", err)
+	}
+
+	matrix := []struct {
+		robotID, severity string
+		outcome           scan.Outcome
+	}{
+		{robot1, "critical", scan.OutcomeFail},
+		{robot1, "high", scan.OutcomeFail},
+		{robot1, "medium", scan.OutcomePass},
+		{robot1, "low", scan.OutcomePass},
+		{robot2, "critical", scan.OutcomeFail},
+		{robot2, "high", scan.OutcomeFail},
+		{robot2, "medium", scan.OutcomeFail},
+		{robot2, "low", scan.OutcomeSkipped},
+	}
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		for _, e := range matrix {
+			if _, err := repo.RecordResult(ctx, tx, scan.RecordResultRequest{
+				SessionID:   sessionID,
+				RobotID:     e.robotID,
+				CheckID:     "CIS-SEV-" + e.severity,
+				PackCheckID: packChecks[e.severity],
+				Outcome:     e.outcome,
+			}); err != nil {
+				return err
+			}
+		}
+		return repo.RecomputeSeverityAggregate(ctx, tx, sessionID)
+	}); err != nil {
+		t.Fatalf("RecordResult/Recompute: %v", err)
+	}
+
+	var got scan.ScanSession
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.GetSession(ctx, tx, sessionID)
+		got = s
+		return err
+	}); err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	want := scan.SeverityFailed{Critical: 2, High: 2, Medium: 1, Low: 0}
+	if got.SeverityFailed != want {
+		t.Errorf("SeverityFailed = %+v, want %+v", got.SeverityFailed, want)
+	}
+}
+
+// TestRecomputeSeverityAggregateRespectsTenantIsolation — 다른 tenant ctx로 호출 시 silent no-op.
+func TestRecomputeSeverityAggregateRespectsTenantIsolation(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+	const tenantA, fleetA, packA = "tn_SEVA", "fl_SEVA", "pk_SEVA"
+	const tenantB = "tn_SEVB"
+	seedTenantFleetPack(t, store, tenantA, fleetA, packA)
+	robotA1, _, packChecksA := seedSeverityCheckMix(t, store, tenantA, fleetA, packA)
+	// tenant B 등록만(스캔 없음) — RecomputeSeverityAggregate가 tenantB ctx에서 호출되어도
+	// tenantA의 session에 영향 X.
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, err := tx.Exec(ctx, `INSERT INTO tenants (id, name, plan, created_at) VALUES (?, 'b', 'desktop_free', ?)`,
+			tenantB, time.Now().UTC().Format(time.RFC3339Nano))
+		return err
+	}); err != nil {
+		t.Fatalf("seed tenantB: %v", err)
+	}
+
+	var sessionID string
+	if err := store.Tx(tenantCtx(tenantA), func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.StartScan(ctx, tx, sampleStartReq(fleetA, packA))
+		if err != nil {
+			return err
+		}
+		sessionID = s.ID
+		_, err = repo.TransitionSession(ctx, tx, sessionID, scan.StatusRunning, "")
+		if err != nil {
+			return err
+		}
+		_, err = repo.RecordResult(ctx, tx, scan.RecordResultRequest{
+			SessionID:   sessionID,
+			RobotID:     robotA1,
+			CheckID:     "CIS-SEV-critical",
+			PackCheckID: packChecksA["critical"],
+			Outcome:     scan.OutcomeFail,
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("seed scan A: %v", err)
+	}
+
+	// tenantB ctx에서 sessionID로 RecomputeSeverityAggregate — silent no-op (UPDATE rows=0).
+	if err := store.Tx(tenantCtx(tenantB), func(ctx context.Context, tx storage.Tx) error {
+		return repo.RecomputeSeverityAggregate(ctx, tx, sessionID)
+	}); err != nil {
+		t.Fatalf("Recompute from tenantB: %v", err)
+	}
+
+	// tenantA ctx에서 GetSession — severity_critical_failed=0 (tenantB 호출이 영향 X, 실 RecomputeSeverityAggregate는 미실행).
+	var got scan.ScanSession
+	if err := store.Tx(tenantCtx(tenantA), func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.GetSession(ctx, tx, sessionID)
+		got = s
+		return err
+	}); err != nil {
+		t.Fatalf("GetSession from tenantA: %v", err)
+	}
+	if want := (scan.SeverityFailed{}); got.SeverityFailed != want {
+		t.Errorf("SeverityFailed = %+v, want zero %+v (tenantB ctx must not modify tenantA session)", got.SeverityFailed, want)
+	}
+
+	// tenantA ctx에서 직접 호출 시에는 정상 갱신 — Critical: 1.
+	if err := store.Tx(tenantCtx(tenantA), func(ctx context.Context, tx storage.Tx) error {
+		return repo.RecomputeSeverityAggregate(ctx, tx, sessionID)
+	}); err != nil {
+		t.Fatalf("Recompute from tenantA: %v", err)
+	}
+	if err := store.Tx(tenantCtx(tenantA), func(ctx context.Context, tx storage.Tx) error {
+		s, err := repo.GetSession(ctx, tx, sessionID)
+		got = s
+		return err
+	}); err != nil {
+		t.Fatalf("GetSession after recompute: %v", err)
+	}
+	if want := (scan.SeverityFailed{Critical: 1}); got.SeverityFailed != want {
+		t.Errorf("SeverityFailed = %+v, want %+v", got.SeverityFailed, want)
 	}
 }

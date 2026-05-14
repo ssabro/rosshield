@@ -60,6 +60,9 @@ func (f *fakeScan) CancelSession(_ context.Context, _ storage.Tx, _, _ string) (
 func (f *fakeScan) RecordResult(_ context.Context, _ storage.Tx, _ scan.RecordResultRequest) (scan.ScanResult, error) {
 	panic("unused")
 }
+func (f *fakeScan) RecomputeSeverityAggregate(_ context.Context, _ storage.Tx, _ string) error {
+	panic("unused")
+}
 
 type fakeEvidence struct {
 	rec  evidence.Record
