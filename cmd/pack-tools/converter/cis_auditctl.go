@@ -12,7 +12,9 @@
 package converter
 
 import (
+	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -99,6 +101,116 @@ func extractAuditctlExpectedRules(audit string) (onDisk, running []string, ok bo
 		return nil, nil, false
 	}
 	return onDisk, running, true
+}
+
+// regexpSyscallList은 `-S syscall1,syscall2,...` 토큰 매칭. syscall 이름은 [a-zA-Z_] + 숫자.
+var regexpSyscallList = regexp.MustCompile(` -S [a-zA-Z_][a-zA-Z0-9_,]*`)
+
+// regexpKeyShort는 `-k <name>` 토큰 매칭(short form). running config는 `-F key=<name>` (long form) 사용.
+var regexpKeyShort = regexp.MustCompile(` -k ([!-~]+)`)
+
+// regexpAuidNotEq은 `-F auid!=N` (-1, 4294967295 등) 토큰 매칭. unset/-1/4294967295는 동치 — unset로 통일.
+var regexpAuidNotEq = regexp.MustCompile(` -F auid!=-?[0-9]+`)
+
+// regexpAuidGE는 `-F auid>=<N>` 토큰 매칭. UID_MIN 환경 변수 치환을 위해 N을 placeholder로.
+var regexpAuidGE = regexp.MustCompile(` -F auid>=([0-9]+)`)
+
+// normalizeAuditctlRule은 audit rule 라인의 표기 차이를 정규화합니다.
+//
+// 4 변환:
+//  1. `-S syscall1,syscall2,...` syscall set을 alphabet sort (running config에서 순서 다른 경우 cover, D26 §3.3 6.2.3.{4,5,7,9,13})
+//  2. `-k name` → `-F key=name` (on-disk short form ↔ running long form 통일)
+//  3. `-F auid!=-1` / `-F auid!=4294967295` → `-F auid!=unset` (CIS 표준 표현)
+//  4. `-F auid>=1000` → `-F auid>=__UID_MIN__` (환경 UID_MIN ≠ 1000 false FAIL 회피, 런타임 sed 치환)
+//
+// 입력은 단일 라인(continuation join 후 — Stage 1 collectAuditRuleLines가 처리).
+// 출력은 정규화된 단일 라인. file watch(`-w /path -p X -k key`)는 syscall 변환 X, key만 통일.
+func normalizeAuditctlRule(rule string) string {
+	out := rule
+	// 1. syscall set 정렬
+	out = regexpSyscallList.ReplaceAllStringFunc(out, func(match string) string {
+		// match = " -S syscall1,syscall2,..."
+		const prefix = " -S "
+		list := strings.TrimPrefix(match, prefix)
+		parts := strings.Split(list, ",")
+		sort.Strings(parts)
+		return prefix + strings.Join(parts, ",")
+	})
+	// 2. -k → -F key=
+	out = regexpKeyShort.ReplaceAllString(out, " -F key=$1")
+	// 3. auid!= 동치 통일
+	out = regexpAuidNotEq.ReplaceAllString(out, " -F auid!=unset")
+	// 4. auid>= placeholder
+	out = regexpAuidGE.ReplaceAllString(out, " -F auid>=__UID_MIN__")
+	return out
+}
+
+// synthesizeAuditctlMatch는 6.2.3.x audit text에서 합성 bash를 생성합니다.
+//
+// 합성 출력 구조:
+//
+//   - bash array `need_disk=( "rule1" "rule2" ... )` + `need_run=( ... )` (정규화된 라인)
+//   - normalize_fn (shell 함수) — stdin의 각 라인을 정규화(syscall sort + -k 통일 + auid 동치)
+//   - cat /etc/audit/rules.d/*.rules + auditctl -l 출력을 normalize → grep -qxF로 매칭
+//   - missing 카운트 0이면 `** PASS **`, 그 외 `** FAIL **` (CIS 마커, selftest harness 호환)
+//
+// `__UID_MIN__` placeholder는 런타임 `${UID_MIN:-1000}` 치환 (D-N-4).
+//
+// 반환 ok=false: extractAuditctlExpectedRules 실패 (예: phrase 1회만 등장).
+func synthesizeAuditctlMatch(audit string) (bash string, ok bool) {
+	onDisk, running, ok := extractAuditctlExpectedRules(audit)
+	if !ok {
+		return "", false
+	}
+	// 각 라인 normalize.
+	for i, r := range onDisk {
+		onDisk[i] = normalizeAuditctlRule(r)
+	}
+	for i, r := range running {
+		running[i] = normalizeAuditctlRule(r)
+	}
+	var sb strings.Builder
+	sb.WriteString("#!/usr/bin/env bash\n")
+	sb.WriteString("set -u\n")
+	sb.WriteString("UID_MIN=${UID_MIN:-1000}\n")
+	sb.WriteString("\n")
+	sb.WriteString("need_disk=(\n")
+	for _, r := range onDisk {
+		fmt.Fprintf(&sb, "  %q\n", r)
+	}
+	sb.WriteString(")\n")
+	sb.WriteString("need_run=(\n")
+	for _, r := range running {
+		fmt.Fprintf(&sb, "  %q\n", r)
+	}
+	sb.WriteString(")\n")
+	sb.WriteString("\n")
+	sb.WriteString("normalize_fn() {\n")
+	sb.WriteString("  while IFS= read -r line; do\n")
+	sb.WriteString("    case \"$line\" in\n")
+	sb.WriteString("      *' -S '*) \n")
+	sb.WriteString("        sycs=$(printf '%s' \"$line\" | sed -nE 's/.* -S ([a-zA-Z_][a-zA-Z0-9_,]*).*/\\1/p' | tr ',' '\\n' | sort -u | paste -sd ',')\n")
+	sb.WriteString("        line=$(printf '%s' \"$line\" | sed -E \"s/ -S [a-zA-Z_][a-zA-Z0-9_,]*/ -S $sycs/\")\n")
+	sb.WriteString("        ;;\n")
+	sb.WriteString("    esac\n")
+	sb.WriteString("    line=$(printf '%s' \"$line\" | sed -E 's/ -k ([!-~]+)/ -F key=\\1/g; s/ -F auid!=-?[0-9]+/ -F auid!=unset/g')\n")
+	sb.WriteString("    printf '%s\\n' \"$line\"\n")
+	sb.WriteString("  done\n")
+	sb.WriteString("}\n")
+	sb.WriteString("\n")
+	sb.WriteString("disk_out=$(cat /etc/audit/rules.d/*.rules 2>/dev/null | normalize_fn)\n")
+	sb.WriteString("run_out=$(auditctl -l 2>/dev/null | normalize_fn)\n")
+	sb.WriteString("missing=0\n")
+	sb.WriteString("for r in \"${need_disk[@]}\"; do\n")
+	sb.WriteString("  r_subst=${r//__UID_MIN__/$UID_MIN}\n")
+	sb.WriteString("  printf '%s\\n' \"$disk_out\" | grep -qxF \"$r_subst\" || { printf 'miss-disk: %s\\n' \"$r_subst\"; missing=$((missing+1)); }\n")
+	sb.WriteString("done\n")
+	sb.WriteString("for r in \"${need_run[@]}\"; do\n")
+	sb.WriteString("  r_subst=${r//__UID_MIN__/$UID_MIN}\n")
+	sb.WriteString("  printf '%s\\n' \"$run_out\" | grep -qxF \"$r_subst\" || { printf 'miss-run: %s\\n' \"$r_subst\"; missing=$((missing+1)); }\n")
+	sb.WriteString("done\n")
+	sb.WriteString("if [ \"$missing\" -eq 0 ]; then printf '** PASS **\\n'; else printf '** FAIL **\\n'; fi\n")
+	return sb.String(), true
 }
 
 // collectAuditRuleLines는 verify block에서 audit rule 라인만 추출합니다.

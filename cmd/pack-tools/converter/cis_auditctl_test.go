@@ -228,3 +228,158 @@ func TestExtractAuditctlExpectedRulesRejectsSinglePhrase(t *testing.T) {
 		t.Errorf("ok = true, want false (single phrase block)")
 	}
 }
+
+// === normalizeAuditctlRule (4 case) ===
+
+func TestNormalizeAuditctlRule(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, in, want string
+	}{
+		{
+			name: "file watch — 변경 0(syscall 무, key 본래 short만)",
+			// `-w /path -p X -k key`도 -k → -F key= 변환은 적용. 단 일부 audit text가 `-k key`로 끝나는 형식이라 통일.
+			in:   `-w /etc/sudoers -p wa -k scope`,
+			want: `-w /etc/sudoers -p wa -F key=scope`,
+		},
+		{
+			name: "syscall set 정렬 + key 통일 (6.2.3.4 running 라인)",
+			in:   `-a always,exit -F arch=b32 -S settimeofday,adjtimex -F key=time-change`,
+			want: `-a always,exit -F arch=b32 -S adjtimex,settimeofday -F key=time-change`,
+		},
+		{
+			name: "UID_MIN placeholder + auid!= 동치 통일 (6.2.3.7 running 라인)",
+			in:   `-a always,exit -F arch=b64 -S open,truncate,ftruncate,creat,openat -F exit=-EACCES -F auid>=1000 -F auid!=-1 -F key=access`,
+			want: `-a always,exit -F arch=b64 -S creat,ftruncate,open,openat,truncate -F exit=-EACCES -F auid>=__UID_MIN__ -F auid!=unset -F key=access`,
+		},
+		{
+			name: "auid!=4294967295 동치 + -k 양쪽 통일",
+			in:   `-a always,exit -F arch=b64 -S unlink -F auid>=1000 -F auid!=4294967295 -k delete`,
+			want: `-a always,exit -F arch=b64 -S unlink -F auid>=__UID_MIN__ -F auid!=unset -F key=delete`,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := normalizeAuditctlRule(tc.in)
+			if got != tc.want {
+				t.Errorf("normalizeAuditctlRule:\n  in   = %s\n  got  = %s\n  want = %s", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// === synthesizeAuditctlMatch (2 case — 출력 substring snapshot) ===
+
+func TestSynthesizeAuditctlMatch(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name           string
+		audit          string
+		wantSubstrings []string
+		wantRuleCount  int // need_disk + need_run 라인 수 합
+	}{
+		{
+			name:  "6.2.3.1 — 단순 watch 2/2",
+			audit: audit_6_2_3_1,
+			wantSubstrings: []string{
+				"#!/usr/bin/env bash",
+				"UID_MIN=${UID_MIN:-1000}",
+				"need_disk=(",
+				"need_run=(",
+				`-w /etc/sudoers -p wa -F key=scope`,    // -k → -F key= normalize
+				`-w /etc/sudoers.d -p wa -F key=scope`,
+				"normalize_fn() {",
+				"grep -qxF",
+				"** PASS **",
+				"** FAIL **",
+			},
+			wantRuleCount: 4, // 2 on-disk + 2 running
+		},
+		{
+			name:  "6.2.3.4 — multi-cmd 5/5 + syscall sort + key 통일",
+			audit: audit_6_2_3_4,
+			wantSubstrings: []string{
+				`-a always,exit -F arch=b64 -S adjtimex,settimeofday -F key=time-change`, // 정렬 후
+				`-a always,exit -F arch=b32 -S adjtimex,settimeofday -F key=time-change`, // running settimeofday,adjtimex → 정렬
+				`-w /etc/localtime -p wa -F key=time-change`,
+			},
+			wantRuleCount: 10, // 5 on-disk + 5 running
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			bash, ok := synthesizeAuditctlMatch(tc.audit)
+			if !ok {
+				t.Fatalf("synthesizeAuditctlMatch ok = false")
+			}
+			for _, sub := range tc.wantSubstrings {
+				if !contains(bash, sub) {
+					t.Errorf("output missing substring: %q\n  bash=%s", sub, bash)
+				}
+			}
+			// 라인 수 검증 — bash array 안 quote된 라인 카운트.
+			ruleLines := countQuotedRules(bash)
+			if ruleLines != tc.wantRuleCount {
+				t.Errorf("rule line count = %d, want %d\n  bash=%s", ruleLines, tc.wantRuleCount, bash)
+			}
+		})
+	}
+}
+
+// contains는 strings.Contains의 래퍼(테스트 가독성).
+func contains(haystack, needle string) bool {
+	return len(needle) == 0 || (len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0)
+}
+
+func indexOf(haystack, needle string) int {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return i
+		}
+	}
+	return -1
+}
+
+// countQuotedRules는 bash array 안 `  "..."` 패턴 라인 수를 셉니다.
+// 합성 출력에서 `\n  "rule"\n` 형식만 카운트 — 다른 string literal과 충돌 없음(2-space indent + quote).
+func countQuotedRules(bash string) int {
+	count := 0
+	for _, line := range splitLines(bash) {
+		trimmed := trimSpace(line)
+		if len(trimmed) >= 2 && trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"' {
+			count++
+		}
+	}
+	return count
+}
+
+func splitLines(s string) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			out = append(out, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
+	}
+	return out
+}
+
+func trimSpace(s string) string {
+	start := 0
+	for start < len(s) && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	end := len(s)
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\r') {
+		end--
+	}
+	return s[start:end]
+}
