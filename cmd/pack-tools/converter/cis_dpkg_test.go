@@ -111,6 +111,65 @@ func TestExtractDpkgChecks(t *testing.T) {
 	}
 }
 
+// === 2.1.20 emptyOutput mode (G9 7/7 마감) ===
+
+func TestIsDpkgQueryEmptyAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isDpkgQueryEmptyAuditText(audit_2_1_20) {
+		t.Errorf("isDpkgQueryEmptyAuditText(2.1.20) = false, want true")
+	}
+}
+
+func TestIsDpkgQueryEmptyAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"1.7.1 (다른 dpkg 패턴)", audit_1_7_1},
+		{"5.3.1.1 (다른 dpkg 패턴)", audit_5_3_1_1},
+		{"non-dpkg (sshd)", audit_nonGsettings},
+		{"Nothing returned 없음", `dpkg-query -s xserver-common &>/dev/null && echo "x"`},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isDpkgQueryEmptyAuditText(tc.audit) {
+				t.Errorf("isDpkgQueryEmptyAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestExtractDpkgEmptyCheck_Pkg(t *testing.T) {
+	t.Parallel()
+	pkg, ok := extractDpkgEmptyCheck(audit_2_1_20)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	if pkg != "xserver-common" {
+		t.Errorf("pkg = %q, want %q", pkg, "xserver-common")
+	}
+}
+
+func TestSynthesizeDpkgQueryEmpty_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeDpkgQueryEmpty(audit_2_1_20)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		`out=$(dpkg-query -s xserver-common 2>/dev/null && echo "xserver-common is installed")`,
+		`if [ -z "$out" ]`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 func TestSynthesizeDpkgQuery_Output(t *testing.T) {
 	t.Parallel()
 	bash, ok := synthesizeDpkgQuery(audit_5_3_1_1)

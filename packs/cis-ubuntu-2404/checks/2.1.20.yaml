@@ -10,10 +10,12 @@ metadata:
         typically do not login.
     severity: low
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(dpkg-query -s xserver-common 2>/dev/null && echo "xserver-common is installed")
+        if [ -z "$out" ]; then printf '\''** PASS **\n'\''; else printf '\''fail: %s\n'\'' "$out"; printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Unless your organization specifically requires graphical login access via X Windows,
         remove it to reduce the potential attack surface.

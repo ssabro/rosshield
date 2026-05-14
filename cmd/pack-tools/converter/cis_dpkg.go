@@ -26,6 +26,14 @@ import (
 // regexpDpkgQueryCmd는 `# dpkg-query ...` 명령 라인 감지 (단일 라인, multi-line wrap 미지원).
 var regexpDpkgQueryCmd = regexp.MustCompile(`^#\s+(dpkg-query\s+.+)$`)
 
+// regexpDpkgQueryEmptyCheck는 2.1.20 패턴 — `dpkg-query -s <pkg>` (`#` prefix 부재) +
+// `&>/dev/null && echo` 조합 + "Nothing should be returned" phrase.
+// pkg name 추출용.
+var regexpDpkgQueryDashS = regexp.MustCompile(`(?m)^\s*#?\s*dpkg-query\s+-s\s+(\S+)\s*&>/dev/null\s*&&\s*echo`)
+
+// regexpNothingShouldBeReturned는 "Nothing should be returned" phrase 감지.
+var regexpNothingShouldBeReturned = regexp.MustCompile(`(?i)Nothing\s+should\s+be\s+returned`)
+
 // extractDpkgChecks는 audit text에서 dpkg-query cmd + expected 라인을 추출합니다.
 //
 // 인식 조건:
@@ -98,5 +106,41 @@ func synthesizeDpkgQuery(audit string) (string, bool) {
 			exp, i, exp)
 	}
 	sb.WriteString("if [ \"$missing\" -eq 0 ]; then printf '** PASS **\\n'; else printf '** FAIL **\\n'; fi")
+	return sb.String(), true
+}
+
+// extractDpkgEmptyCheck는 2.1.20 패턴에서 패키지 이름을 추출.
+//
+// 인식 조건: `dpkg-query -s <pkg> &>/dev/null && echo` substring + "Nothing should be returned"
+// phrase 둘 다. 매칭 시 pkg 이름 반환.
+func extractDpkgEmptyCheck(audit string) (pkg string, ok bool) {
+	if !regexpNothingShouldBeReturned.MatchString(audit) {
+		return "", false
+	}
+	m := regexpDpkgQueryDashS.FindStringSubmatch(audit)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// isDpkgQueryEmptyAuditText는 2.1.20 합성 대상인지 판정.
+func isDpkgQueryEmptyAuditText(audit string) bool {
+	_, ok := extractDpkgEmptyCheck(audit)
+	return ok
+}
+
+// synthesizeDpkgQueryEmpty는 2.1.20 합성 bash 생성.
+//
+// 의미 합성: dpkg-query -s <pkg>가 미설치이면 stderr → null + && echo 미발동 → 출력 부재 = PASS.
+// 출력에 "is installed" substring 포함이면 패키지 설치된 상태 = FAIL.
+func synthesizeDpkgQueryEmpty(audit string) (string, bool) {
+	pkg, ok := extractDpkgEmptyCheck(audit)
+	if !ok {
+		return "", false
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "out=$(dpkg-query -s %s 2>/dev/null && echo \"%s is installed\")\n", pkg, pkg)
+	sb.WriteString("if [ -z \"$out\" ]; then printf '** PASS **\\n'; else printf 'fail: %s\\n' \"$out\"; printf '** FAIL **\\n'; fi")
 	return sb.String(), true
 }

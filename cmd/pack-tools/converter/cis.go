@@ -270,9 +270,19 @@ func convertCISItem(it cisItem) (Check, string) {
 	}
 
 	// Pattern 14 (E-3 G9): `# dpkg-query ...` + expected substring 매칭. 1.7.1 (not-installed) +
-	// 5.3.1.1 (Status: install ok installed). 2.1.20 (cmd wrap + Nothing returned)는 별 epic.
+	// 5.3.1.1 (Status: install ok installed).
 	if isDpkgQueryAuditText(it.Audit) {
 		if synthesized, ok := synthesizeDpkgQuery(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 14b (E-3 G9 7/7 마감 — 2.1.20): `dpkg-query -s <pkg> &>/dev/null && echo` +
+	// "Nothing should be returned" — 패키지 미설치이면 PASS.
+	if isDpkgQueryEmptyAuditText(it.Audit) {
+		if synthesized, ok := synthesizeDpkgQueryEmpty(it.Audit); ok {
 			check.AuditCommand = wrapBash(synthesized)
 			check.EvaluationRule = cisAutoEvalRuleJSON
 			return check, ""
