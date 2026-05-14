@@ -64,7 +64,7 @@ func TestStorageMigrateIdempotent(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		const wantVersion = 25 // 0001~0024 + 0025 scan_active_fleet_unique (partial unique index)
+		const wantVersion = 26 // 0001~0025 + 0026 scan_severity_aggregate (severity별 failed count 4 컬럼)
 		if maxVersion != wantVersion {
 			t.Errorf("max version_id = %d, want %d", maxVersion, wantVersion)
 		}

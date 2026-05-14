@@ -48,6 +48,7 @@ var expectedSequences = []string{
 	"0023_audit_leader_epoch",
 	"0024_pg_native_hotpath",
 	"0025_scan_active_fleet_unique",
+	"0026_scan_severity_aggregate",
 }
 
 // noopSequences 는 E22-E 폐기 — TestPGConversionMarkersPresent 함께 폐기됐으므로 미사용.

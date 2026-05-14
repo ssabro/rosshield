@@ -73,20 +73,34 @@ type SessionProgress struct {
 	Failed    int
 }
 
+// SeverityFailed는 scan_results.outcome='fail' × pack_checks.severity 그룹별 카운트입니다.
+//
+// scanrun terminal transition(completed/failed/cancelled) 시 atomic하게 집계되어
+// list polling 비용 0(컬럼 직접 SELECT). 4-tier(critical/high/medium/low) — info는
+// CIS pack 0건이고 Findings 페이지의 5-tier info는 별 도메인이라 미포함 (D26-1).
+// 결정·근거: docs/design/notes/scans-severity-aggregate-design.md
+type SeverityFailed struct {
+	Critical int
+	High     int
+	Medium   int
+	Low      int
+}
+
 // ScanSession은 한 번의 스캔 실행 단위입니다 (§04.2).
 type ScanSession struct {
-	ID            string // "scan_<ULID>" (R5-1)
-	TenantID      storage.TenantID
-	FleetID       string
-	PackID        string
-	Trigger       SessionTrigger
-	Status        SessionStatus
-	Progress      SessionProgress
-	FailureReason string // failed/cancelled 사유 (옵션)
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	StartedAt     *time.Time // pending → running 전이 시점
-	CompletedAt   *time.Time // terminal 전이 시점
+	ID             string // "scan_<ULID>" (R5-1)
+	TenantID       storage.TenantID
+	FleetID        string
+	PackID         string
+	Trigger        SessionTrigger
+	Status         SessionStatus
+	Progress       SessionProgress
+	SeverityFailed SeverityFailed // terminal transition 후에만 채워짐 (Stage 2 결선 예정).
+	FailureReason  string         // failed/cancelled 사유 (옵션)
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	StartedAt      *time.Time // pending → running 전이 시점
+	CompletedAt    *time.Time // terminal 전이 시점
 }
 
 // ScanResult는 (session × robot × check)의 단일 결과입니다 (§04.2).
