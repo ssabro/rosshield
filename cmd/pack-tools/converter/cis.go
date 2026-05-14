@@ -211,9 +211,19 @@ func convertCISItem(it cisItem) (Check, string) {
 	}
 
 	// Pattern 20 (G10 부분): hashbang body 자체 PASSED/FAILED emit (5.4.3.2). body base64 wrap →
-	// 실행 → 출력 substring 매칭. 5.4.1.6 (shebang-less {} block + expect-empty)는 별 fix epic.
+	// 실행 → 출력 substring 매칭.
 	if isHashbangPassFailEmitAuditText(it.Audit) {
 		if synthesized, ok := synthesizeHashbangPassFailEmit(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 20b (G10 7/2 마감 — 5.4.1.6): shebang 없는 `{}` block + "verify nothing is
+	// returned" phrase. block base64 wrap → 실행 → 출력 비어있으면 PASS.
+	if isBraceBlockEmptyAuditText(it.Audit) {
+		if synthesized, ok := synthesizeBraceBlockEmpty(it.Audit); ok {
 			check.AuditCommand = wrapBash(synthesized)
 			check.EvaluationRule = cisAutoEvalRuleJSON
 			return check, ""

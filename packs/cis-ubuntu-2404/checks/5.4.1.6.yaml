@@ -6,10 +6,12 @@ metadata:
     description: All users should have a password change date in the past.
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(printf '\''%s'\'' "ewp3aGlsZSBJRlM9IHJlYWQgLXIgbF91c2VyOyBkbwpsX2NoYW5nZT0kKGRhdGUgLWQgIiQoY2hhZ2UgLS1saXN0ICRsX3VzZXIgfCBncmVwICdeTGFzdCBwYXNzd29yZApjaGFuZ2UnIHwgY3V0IC1kOiAtZjIgfCBncmVwIC12ICduZXZlciQnKSIgKyVzKQppZiBbWyAiJGxfY2hhbmdlIiAtZ3QgIiQoZGF0ZSArJXMpIiBdXTsgdGhlbgplY2hvICJVc2VyOiBcIiRsX3VzZXJcIiBsYXN0IHBhc3N3b3JkIGNoYW5nZSB3YXMgXCIkKGNoYWdlIC0tbGlzdAokbF91c2VyIHwgZ3JlcCAnXkxhc3QgcGFzc3dvcmQgY2hhbmdlJyB8IGN1dCAtZDogLWYyKVwiIgpmaQpkb25lIDwgPChhd2sgLUY6ICckMn4vXlwkLitcJC97cHJpbnQgJDF9JyAvZXRjL3NoYWRvdykKfQ==" | base64 -d | bash 2>/dev/null)
+        if [ -z "$out" ]; then printf '\''** PASS **\n'\''; else printf '\''fail: %s\n'\'' "$out"; printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         If a user's recorded password change date is in the future, then they could bypass any
         set password expiration.

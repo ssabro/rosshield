@@ -28,6 +28,15 @@ var regexpHashbangBodyPassedEmit = regexp.MustCompile(`PASSED`)
 // regexpHashbangBodyFailedEmit는 FAILED emit substring 검사.
 var regexpHashbangBodyFailedEmit = regexp.MustCompile(`FAILED`)
 
+// regexpVerifyNothingReturned는 "verify nothing is returned" phrase 감지 (5.4.1.6).
+var regexpVerifyNothingReturned = regexp.MustCompile(`(?i)verify\s+nothing\s+is\s+returned`)
+
+// regexpBraceBlockStart는 `{` 단독 라인(블록 시작) 감지.
+var regexpBraceBlockStart = regexp.MustCompile(`^\s*\{\s*$`)
+
+// regexpBraceBlockEnd는 `}` 단독 라인(블록 끝) 감지.
+var regexpBraceBlockEnd = regexp.MustCompile(`^\s*\}\s*$`)
+
 // isHashbangPassFailEmitAuditText는 G10 5.4.3.2 합성 대상인지 판정.
 //
 // 인식 조건:
@@ -59,5 +68,59 @@ func synthesizeHashbangPassFailEmit(audit string) (string, bool) {
 	sb.WriteString("  *PASSED*) printf '** PASS **\\n' ;;\n")
 	sb.WriteString("  *) printf 'fail: %s\\n' \"$out\"; printf '** FAIL **\\n' ;;\n")
 	sb.WriteString("esac")
+	return sb.String(), true
+}
+
+// extractBraceBlock은 audit text에서 `{` ~ `}` block을 추출 (shebang 없이).
+//
+// 인식 조건: `{` 단독 라인 + 1+ body 라인 + `}` 단독 라인.
+// 첫 발견된 block만 추출(audit text의 단일 검증 script 가정).
+func extractBraceBlock(audit string) (string, bool) {
+	lines := strings.Split(audit, "\n")
+	startIdx := -1
+	for i, raw := range lines {
+		if regexpBraceBlockStart.MatchString(raw) {
+			startIdx = i
+			break
+		}
+	}
+	if startIdx < 0 {
+		return "", false
+	}
+	for j := startIdx + 1; j < len(lines); j++ {
+		if regexpBraceBlockEnd.MatchString(lines[j]) {
+			block := strings.Join(lines[startIdx:j+1], "\n")
+			return block, true
+		}
+	}
+	return "", false
+}
+
+// isBraceBlockEmptyAuditText는 5.4.1.6 합성 대상인지 판정.
+//
+// 인식 조건:
+//   - "verify nothing is returned" phrase
+//   - `{` ~ `}` block (shebang 없는)
+func isBraceBlockEmptyAuditText(audit string) bool {
+	if !regexpVerifyNothingReturned.MatchString(audit) {
+		return false
+	}
+	_, ok := extractBraceBlock(audit)
+	return ok
+}
+
+// synthesizeBraceBlockEmpty는 `{}` block을 base64 wrap → 실행 → 출력 비어있으면 PASS 합성.
+//
+// audit text 의도 (5.4.1.6): block 안 echo 발동 시 비-PASS 사용자 발견 → 출력 non-empty이면
+// FAIL. 출력 비어있으면 PASS.
+func synthesizeBraceBlockEmpty(audit string) (string, bool) {
+	if !isBraceBlockEmptyAuditText(audit) {
+		return "", false
+	}
+	block, _ := extractBraceBlock(audit)
+	encoded := base64.StdEncoding.EncodeToString([]byte(block))
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "out=$(printf '%%s' %q | base64 -d | bash 2>/dev/null)\n", encoded)
+	sb.WriteString("if [ -z \"$out\" ]; then printf '** PASS **\\n'; else printf 'fail: %s\\n' \"$out\"; printf '** FAIL **\\n'; fi")
 	return sb.String(), true
 }

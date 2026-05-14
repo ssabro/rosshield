@@ -56,6 +56,75 @@ func TestIsHashbangPassFailEmitAuditText_Negative(t *testing.T) {
 	}
 }
 
+// === 5.4.1.6 brace block + expect-empty ===
+
+func TestIsBraceBlockEmptyAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isBraceBlockEmptyAuditText(audit_5_4_1_6) {
+		t.Errorf("isBraceBlockEmptyAuditText(5.4.1.6) = false, want true")
+	}
+}
+
+func TestIsBraceBlockEmptyAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"verify phrase 없음", `# foo
+{
+echo bar
+}`},
+		{"{} block 없음", `Run the following command and verify nothing is returned
+echo "x"`},
+		{"5.4.3.2 (PASSED/FAILED emit, 별 분기)", audit_5_4_3_2},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isBraceBlockEmptyAuditText(tc.audit) {
+				t.Errorf("isBraceBlockEmptyAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestExtractBraceBlock(t *testing.T) {
+	t.Parallel()
+	block, ok := extractBraceBlock(audit_5_4_1_6)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	if !strings.HasPrefix(strings.TrimSpace(block), "{") {
+		t.Errorf("block prefix mismatch: %q", block)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(block), "}") {
+		t.Errorf("block suffix mismatch: %q", block)
+	}
+	if !strings.Contains(block, "while IFS=") {
+		t.Errorf("block missing body content: %q", block)
+	}
+}
+
+func TestSynthesizeBraceBlockEmpty_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeBraceBlockEmpty(audit_5_4_1_6)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		`out=$(printf '%s'`,
+		`base64 -d | bash 2>/dev/null)`,
+		`if [ -z "$out" ]`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 func TestSynthesizeHashbangPassFailEmit_Output(t *testing.T) {
 	t.Parallel()
 	bash, ok := synthesizeHashbangPassFailEmit(audit_5_4_3_2)
