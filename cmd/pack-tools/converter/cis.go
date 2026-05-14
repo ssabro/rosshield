@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 19 (G3): nftables include + awk hook block scan (4.3.10) — 90% 도달 마지막 epic.
+	// hardcoded 3 hook (input/forward/output) + policy drop substring 검증.
+	if isNftIncludeAuditText(it.Audit) {
+		if synthesized, ok := synthesizeNftInclude(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 18 (G14): grub.cfg multi-line verify (1.4.1) — 2 cmd × placeholder substring 매칭.
 	if isGrubCfgAuditText(it.Audit) {
 		if synthesized, ok := synthesizeGrubCfg(it.Audit); ok {

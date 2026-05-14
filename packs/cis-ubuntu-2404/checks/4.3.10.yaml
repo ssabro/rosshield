@@ -15,10 +15,18 @@ metadata:
         from anywhere, and applies nftables ruleset on boot.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'config_files=$(awk '\''$1 ~ /^\s*include/ { gsub("\"","",$2); print $2 }'\'' /etc/nftables.conf 2>/dev/null)
+        if [ -z "$config_files" ]; then printf '\''fail: no include in /etc/nftables.conf\n'\''; printf '\''** FAIL **\n'\''; exit 0; fi
+        missing=0
+        for hook in input forward output; do
+          block=$(awk "/hook $hook/,/}/" $config_files 2>/dev/null)
+          printf '\''%s'\'' "$block" | grep -qF -- "policy drop" || { printf '\''miss-%s: policy drop\n'\'' "$hook"; missing=$((missing+1)); }
+        done
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Changes made to nftables ruleset only affect the live system, you will also need to
         configure the nftables ruleset to apply on boot
