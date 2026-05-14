@@ -406,7 +406,56 @@ function SessionRow({
         </span>
         <span>{percent}%</span>
       </div>
+      <SessionSeverityRow session={session} />
     </button>
+  )
+}
+
+// SessionSeverityRow — terminal session 4 severity별 fail 카운트를 inline pill로 표시.
+//
+// pending/running 세션은 모두 0이므로 출력 생략(noise 회피). >0인 severity는 색상 강조,
+// 0인 severity는 muted. packs.SeverityStats 패턴 일관(D26-4) — 다만 list view라 카드형 X,
+// 작은 pill만. 클릭 토글은 detail 페이지 필터로 충분(D26 §5.6).
+export function SessionSeverityRow({
+  session,
+}: {
+  session: ScanSession
+}): React.ReactElement | null {
+  const t = useT()
+  const counts: Array<[string, number]> = [
+    ['critical', session.severityCriticalFailed],
+    ['high', session.severityHighFailed],
+    ['medium', session.severityMediumFailed],
+    ['low', session.severityLowFailed],
+  ]
+  const total = counts.reduce((sum, [, n]) => sum + n, 0)
+  // terminal(완료/실패/취소) 외 session은 0뿐이라 noise — 출력 생략.
+  if (total === 0) return null
+  const tone: Record<string, string> = {
+    critical: 'border-destructive/40 bg-destructive/10 text-destructive',
+    high: 'border-destructive/40 bg-destructive/10 text-destructive',
+    medium: 'border-primary/40 bg-primary/10 text-primary',
+    low: 'border-border bg-muted text-muted-foreground',
+  }
+  const muted = 'border-border bg-transparent text-muted-foreground/60'
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+      {counts.map(([sev, count]) => (
+        <span
+          key={sev}
+          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase ${
+            count > 0 ? tone[sev] : muted
+          }`}
+          title={t('scans.session.severity.tooltip', {
+            severity: sev,
+            count: count.toString(),
+          })}
+        >
+          <span>{t(`scans.session.severity.${sev}` as 'scans.session.severity.critical')}</span>
+          <span className="text-[11px] tabular-nums">{count}</span>
+        </span>
+      ))}
+    </div>
   )
 }
 

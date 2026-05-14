@@ -662,6 +662,12 @@ export interface ScanSession {
   total: number
   completed: number
   failed: number
+  // B Stage 4 — terminal transition 시 atomic 갱신된 severity별 fail 카운트(D26).
+  // pending/running 세션은 모두 0(server backfill 보장). info severity는 미카운트(D26-1).
+  severityCriticalFailed: number
+  severityHighFailed: number
+  severityMediumFailed: number
+  severityLowFailed: number
   failureReason?: string
   createdAt?: string
   updatedAt?: string
