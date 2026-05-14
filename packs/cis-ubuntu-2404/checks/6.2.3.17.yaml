@@ -10,10 +10,10 @@ metadata:
         familiar with its use from either XFS or IRIX.
     severity: low
 spec:
-    auditCommand: "true"
+    auditCommand: "bash -c '#!/usr/bin/env bash\nset -u\nUID_MIN=${UID_MIN:-1000}\n\nneed_disk=(\n  \"-a always,exit -F path=/usr/bin/chacl -F perm=x -F auid>=__UID_MIN__ -F auid!=unset -F key=perm_chng\"\n)\nneed_run=(\n  \"-a always,exit -S all -F path=/usr/bin/chacl -F perm=x -F auid>=__UID_MIN__ -F\"\n)\n\nnormalize_fn() {\n  while IFS= read -r line; do\n    case \"$line\" in\n      *'\\'' -S '\\''*) \n        sycs=$(printf '\\''%s'\\'' \"$line\" | sed -nE '\\''s/.* -S ([a-zA-Z_][a-zA-Z0-9_,]*).*/\\1/p'\\'' | tr '\\'','\\'' '\\''\\n'\\'' | sort -u | paste -sd '\\'','\\'')\n        line=$(printf '\\''%s'\\'' \"$line\" | sed -E \"s/ -S [a-zA-Z_][a-zA-Z0-9_,]*/ -S $sycs/\")\n        ;;\n    esac\n    line=$(printf '\\''%s'\\'' \"$line\" | sed -E '\\''s/ -k ([!-~]+)/ -F key=\\1/g; s/ -F auid!=-?[0-9]+/ -F auid!=unset/g'\\'')\n    printf '\\''%s\\n'\\'' \"$line\"\n  done\n}\n\ndisk_out=$(cat /etc/audit/rules.d/*.rules 2>/dev/null | normalize_fn)\nrun_out=$(auditctl -l 2>/dev/null | normalize_fn)\nmissing=0\nfor r in \"${need_disk[@]}\"; do\n  r_subst=${r//__UID_MIN__/$UID_MIN}\n  printf '\\''%s\\n'\\'' \"$disk_out\" | grep -qxF -- \"$r_subst\" || { printf '\\''miss-disk: %s\\n'\\'' \"$r_subst\"; missing=$((missing+1)); }\ndone\nfor r in \"${need_run[@]}\"; do\n  r_subst=${r//__UID_MIN__/$UID_MIN}\n  printf '\\''%s\\n'\\'' \"$run_out\" | grep -qxF -- \"$r_subst\" || { printf '\\''miss-run: %s\\n'\\'' \"$r_subst\"; missing=$((missing+1)); }\ndone\nif [ \"$missing\" -eq 0 ]; then printf '\\''** PASS **\\n'\\''; else printf '\\''** FAIL **\\n'\\''; fi\n'"
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         chacl changes the ACL(s) for a file or directory. Without generating audit records that
         are specific to the security and mission needs of the organization, it would be difficult to
