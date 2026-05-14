@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 7.1.13
+spec:
+    cases:
+        - name: "default review verdict (no audit cmd execution)"
+          input:
+              stdout: ""
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "audit input ignored — verdict still review"
+          input:
+              stdout: "/usr/bin/passwd\n/usr/bin/sudo\n/usr/bin/chsh"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE

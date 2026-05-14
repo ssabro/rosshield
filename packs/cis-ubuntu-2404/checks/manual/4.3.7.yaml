@@ -1,0 +1,36 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.3.7
+    title: 4.3.7 Ensure nftables outbound and established connections are configured (Manual)
+    description: |-
+        nftables의 새 outbound 및 established connection rule을 site policy에 맞춰 구성한다.
+        ufw와 달리 nftables는 outbound·established 양 방향 rule을 명시적으로 작성해야 하고,
+        어떤 트래픽을 허용·기록·drop할지는 site network policy에 의존한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 4.3.7 — nftables outbound·established rule 정책 검토.
+
+            확인 절차:
+              1. `nft list ruleset | awk '/hook input/,/}/'` — input chain의 established rule
+              2. `nft list ruleset | awk '/hook output/,/}/'` — output chain의 outbound rule
+              3. site network egress policy + established connection 처리 정책과 대조
+
+            판정 기준:
+              PASS  — input established + output new/related/established rule이 site policy와 일치
+              FAIL  — 필수 rule 누락 또는 정책 외 허용
+              REVIEW — site network policy 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        outbound·established rule이 없으면 default deny에 의해 모든 패킷이 drop되어 네트워크
+        사용이 불가능해진다. 명시적이고 site policy에 부합하는 rule이 안정적 운영의 전제다.
+    fixGuidance: |-
+        site policy에 따라 nftables 설정. 모든 outbound + established 허용 예시:
+            nft add rule inet filter input ip protocol tcp ct state established accept
+            nft add rule inet filter input ip protocol udp ct state established accept
+            nft add rule inet filter output ip protocol tcp ct state new,related,established accept
+            nft add rule inet filter output ip protocol udp ct state new,related,established accept

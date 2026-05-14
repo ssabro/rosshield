@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.2.5
+    title: 4.2.5 Ensure ufw outbound connections are configured (Manual)
+    description: |-
+        ufw의 outbound rule을 site policy에 맞춰 구성한다. 새 outbound rule이 추가되면 ufw는
+        해당 established connection도 자동 처리하므로 별도 established rule이 필요 없다. 어떤
+        outbound가 허용 대상인지(예: package mirror, NTP, DNS, 업무용 외부 API)는 site
+        network policy에 의존한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 4.2.5 — ufw outbound rule 정책 검토.
+
+            확인 절차:
+              1. `ufw status numbered` — 현재 ufw rule 목록 + 번호
+              2. `ufw status verbose` — default policy + per-rule action 확인
+              3. site network egress policy(예: 53/udp DNS, 80·443/tcp HTTP(S), 123/udp NTP)와 대조
+              4. 네트워크 over SSH 변경 시 락아웃 주의 — console·OOB 접근 확보 후 작업
+
+            판정 기준:
+              PASS  — 모든 outbound rule이 site network egress policy와 일치
+              FAIL  — 정책 외 outbound 허용 또는 필수 outbound 누락
+              REVIEW — site network egress policy 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        새 outbound rule이 정의되지 않으면 default deny 정책에 의해 모든 패킷이 drop되어
+        네트워크 사용 자체가 차단된다. 동시에 과도한 allow는 데이터 유출 경로를 만든다.
+    fixGuidance: |-
+        site policy에 따라 ufw 설정. 모든 outbound 허용 예시:
+            ufw allow out on all
+        선택적 outbound 예시:
+            ufw allow out 53/udp
+            ufw allow out 80,443/tcp
+            ufw allow out 123/udp

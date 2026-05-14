@@ -1,7 +1,7 @@
 # CIS Ubuntu 24.04 — Manual fixture 운영자 가이드
 
 > **대상**: rosshield CIS Ubuntu 24.04 pack의 `assessment_status="Manual"` 항목.
-> **상태**: Stage 1 — high 3건만 작성. medium/low는 후속 Stage.
+> **상태**: Stage 1 (high 3건) + Stage 2 (medium 9건) 작성 완료. low 5건은 후속 Stage.
 
 CIS Ubuntu 24.04 baseline의 일부 항목은 site policy·환경 의존이라 자동 변환이 부적절합니다(false PASS 위험). rosshield는 이런 항목을 `op="manual"` evaluation rule로 표현하고, 운영자가 환경별 판정 기준에 따라 직접 검토합니다.
 
@@ -68,19 +68,27 @@ spec:
 
 `go test ./internal/domain/benchmark/ -run ManualFixturesRoundTrip`로 모든 manual fixture가 통과하는지 회귀 가능합니다.
 
-## 4. Stage 1 — high 3건 (작성 완료)
+## 4. Stage 1·2 — high 3건 + medium 9건 (작성 완료)
 
 | ID | 카테고리 | defaultVerdict | 운영자 판정 핵심 |
 |---|---|---|---|
 | 1.1.1.10 | C2 (HW dependent) | review | 12 fs 모듈 중 site workload 미사용분 blacklist 확인 |
 | 5.3.3.2.3 | C1 (Policy) | review | minclass·dcredit·ucredit·lcredit·ocredit 5개 매개변수 site policy 부합 |
 | 5.4.1.2 | C1 (Policy) | review | login.defs PASS_MIN_DAYS + shadow 4번째 필드 ≥1 |
+| 1.2.1.1 | C1 (Policy) | review | trusted.gpg.d·keyrings의 GPG key가 site 신뢰 vendor 목록에 포함 |
+| 2.1.22 | C1 (Policy) | review | `ss -plntu` listening port가 site 승인 서비스 카탈로그에 포함 |
+| 4.2.5 | C1 (Policy) | review | ufw outbound rule이 site network egress policy와 일치 |
+| 4.3.7 | C1 (Policy) | review | nftables input established + output new/related/established rule이 정책 부합 |
+| 4.4.2.3 | C1 (Policy) | review | iptables OUTPUT new/established + INPUT established + 부팅 영구화 |
+| 4.4.3.3 | C1+C3 (Policy/IPv6) | review | IPv6 비활성 N/A 또는 ip6tables가 IPv4와 동일 수준 정책 부합 |
+| 6.1.1.2 | C4 (Script self-emit) | review | journal logfile mode + tmpfiles.d default mode ≤ 0640 |
+| 6.1.1.3 | C5 (Subjective) | review | SystemMaxUse·SystemKeepFree·RuntimeMaxUse·RuntimeKeepFree·MaxFileSec 5개 site retention 부합 |
+| 7.1.13 | C2+C5 (HW/Subjective) | review | SUID/SGID 파일이 site 화이트리스트 + dpkg --verify 체크섬 일치 |
 
-## 5. Stage 2·3 — medium 9건 + low 5건 (후속)
+## 5. Stage 3 — low 5건 (후속)
 
-설계서: `docs/design/notes/cis-manual-21-fixture-design.md` §7.3·7.4.
+설계서: `docs/design/notes/cis-manual-21-fixture-design.md` §7.4.
 
-- Stage 2 medium 9건: 1.2.1.1, 2.1.22, 4.2.5, 4.3.7, 4.4.2.3, 4.4.3.3, 6.1.1.2, 6.1.1.3, 7.1.13
 - Stage 3 low 5건: 1.2.1.2, 6.1.2.1.2, 6.1.3.5, 6.1.3.6, 6.1.3.8 (first paying customer 또는 enterprise 요청 시)
 
 ## 6. 새 manual fixture 추가 절차

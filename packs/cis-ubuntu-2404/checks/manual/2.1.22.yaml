@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 2.1.22
+    title: 2.1.22 Ensure only approved services are listening on a network (Manual)
+    description: |-
+        호스트가 listen 중인 모든 TCP/UDP 포트는 attack surface다. CIS는 운영자가 listening
+        port 목록을 site policy의 승인 서비스 카탈로그와 대조해 미승인 서비스를 중지·제거하도록
+        요구한다. 어떤 포트가 "정당한 업무용"인지는 환경(API gateway·로봇 미들웨어·운영
+        DB 등)에 따라 다르므로 자동 판정 불가.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 2.1.22 — listening port 승인 정책 검토.
+
+            확인 절차:
+              1. `ss -plntu` — 현재 listen 중인 TCP/UDP 포트 + 프로세스
+              2. `systemctl list-units --type=socket --state=listening`
+              3. site의 승인 서비스 카탈로그(예: 22/tcp sshd, 9090/tcp prometheus)와 대조
+              4. 미승인 서비스: `systemctl stop <unit>.socket <unit>.service` + `apt purge <package>` 또는 mask
+
+            판정 기준:
+              PASS  — 모든 listening port가 site 승인 서비스 카탈로그에 포함
+              FAIL  — 미승인 서비스가 1+ listen 중
+              REVIEW — site 승인 서비스 카탈로그 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        listen 중인 서비스는 잠재적 공격 벡터다. 불필요한 서비스는 중지하고 패키지를 제거해야
+        한다. 의존성 때문에 패키지 제거가 불가능한 경우 socket·service 모두 stop+mask로 대응.
+    fixGuidance: |-
+        미승인 서비스 중지·제거:
+            systemctl stop <service_name>.socket <service_name>.service
+            apt purge <package_name>
+        의존성 보존이 필요하면:
+            systemctl stop <service_name>.socket <service_name>.service
+            systemctl mask <service_name>.socket <service_name>.service

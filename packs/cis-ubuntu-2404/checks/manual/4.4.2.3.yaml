@@ -1,0 +1,38 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 4.4.2.3
+    title: 4.4.2.3 Ensure iptables outbound and established connections are configured (Manual)
+    description: |-
+        IPv4 iptables의 새 outbound 및 established connection rule을 site policy에 맞춰 구성한다.
+        runtime 적용 외에 boot 시점 적용을 위한 firewall management(iptables-persistent 등) 설정도
+        함께 검토해야 하며, 어떤 트래픽을 허용할지는 site network policy에 의존한다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 4.4.2.3 — iptables(IPv4) outbound·established rule 정책 검토.
+
+            확인 절차:
+              1. `iptables -L -v -n` — 현재 IPv4 ruleset
+              2. `iptables -L OUTPUT -v -n` + `iptables -L INPUT -v -n` — 방향별 rule 확인
+              3. site network egress policy + 부팅 시 자동 적용 설정(iptables-persistent / netfilter-persistent)과 대조
+              4. 네트워크 over SSH 변경 시 락아웃 주의
+
+            판정 기준:
+              PASS  — OUTPUT new/established + INPUT established rule이 site policy와 일치, 부팅 적용 설정 존재
+              FAIL  — 필수 rule 누락 또는 부팅 시 미적용(runtime only)
+              REVIEW — site network policy 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        outbound·established rule이 없으면 default deny에 의해 모든 패킷이 drop된다. runtime
+        적용만으로는 재부팅 후 사라지므로 firewall management 통한 영구화 필수.
+    fixGuidance: |-
+        site policy에 따라 iptables 설정:
+            iptables -A OUTPUT -p tcp -m state --state NEW,ESTABLISHED -j ACCEPT
+            iptables -A OUTPUT -p udp -m state --state NEW,ESTABLISHED -j ACCEPT
+            iptables -A INPUT  -p tcp -m state --state ESTABLISHED -j ACCEPT
+            iptables -A INPUT  -p udp -m state --state ESTABLISHED -j ACCEPT
+        부팅 시 자동 적용: `apt install iptables-persistent` + `netfilter-persistent save`.

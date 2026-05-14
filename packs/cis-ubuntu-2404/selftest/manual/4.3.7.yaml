@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 4.3.7
+spec:
+    cases:
+        - name: "default review verdict (no audit cmd execution)"
+          input:
+              stdout: ""
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "audit input ignored — verdict still review"
+          input:
+              stdout: "chain output {\n    type filter hook output priority 0; policy drop;\n    ip protocol tcp ct state new,related,established accept\n}"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE

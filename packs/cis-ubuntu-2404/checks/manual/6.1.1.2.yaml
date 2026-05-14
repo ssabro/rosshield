@@ -1,0 +1,36 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.1.2
+    title: 6.1.1.2 Ensure journald log file access is configured (Manual)
+    description: |-
+        journald는 존재하지 않는 logfile을 새로 생성하며, 신규 파일에 부여될 mode는
+        /usr/lib/tmpfiles.d/systemd.conf의 설정으로 결정된다. CIS audit text는 hashbang
+        script 형태로 현재 mode를 점검해 자체적으로 PASS/REVIEW 마커를 emit하지만, 권장 mode
+        0640보다 완화된 site 정책(예: 0644)을 허용하는 환경이 있어 운영자 최종 판정이 필요하다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 6.1.1.2 — journald logfile mode 정책 검토.
+
+            확인 절차:
+              1. `find /var/log/journal -type f -name '*.journal' -exec stat -c '%a %n' {} \;` — 현재 logfile mode
+              2. `cat /usr/lib/tmpfiles.d/systemd.conf /etc/tmpfiles.d/systemd.conf 2>/dev/null | grep -E 'journal'` — 신규 파일 default mode
+              3. site logging policy(권장 0640 이하)와 대조
+
+            판정 기준:
+              PASS  — 모든 journal logfile mode ≤ 0640 + tmpfiles.d 설정도 ≤ 0640
+              FAIL  — 0644 이상 또는 world-readable
+              REVIEW — site logging policy 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        log file에 부적절한 권한이 부여되면 sensitive 정보가 비인가 사용자에게 노출될 수 있다.
+        journal에는 syslog·auth·application 로그가 통합되므로 권한 통제가 필수다.
+    fixGuidance: |-
+        site 요건이 default와 다르면 /usr/lib/tmpfiles.d/systemd.conf를 /etc/tmpfiles.d/systemd.conf
+        로 복사 후 수정. 권장 mode는 0640 또는 더 제한적.
+        기존 파일 일괄 보정:
+            find /var/log/journal -type f -name '*.journal' -exec chmod 0640 {} \;

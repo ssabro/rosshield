@@ -1,0 +1,40 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 7.1.13
+    title: 7.1.13 Ensure SUID and SGID files are reviewed (Manual)
+    description: |-
+        SUID·SGID 비트가 부여된 파일은 실행 시 owner·group 권한을 승계한다(예: passwd, sudo
+        같은 정상 도구). CIS는 fleet의 SUID/SGID 파일 목록을 enumerate해 패키지 출처와
+        체크섬을 검증하고 rogue binary가 없는지 운영자가 직접 review하도록 요구한다. 시스템마다
+        설치 패키지가 달라 결과 목록도 다르므로 자동 판정 불가.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 7.1.13 — SUID/SGID 파일 review.
+
+            확인 절차:
+              1. `find / -xdev \( -perm -4000 -o -perm -2000 \) -type f -print 2>/dev/null` — 전체 SUID/SGID 파일 목록
+              2. `dpkg -S <file>` — 각 파일의 패키지 출처 확인
+              3. `dpkg --verify <package>` 또는 `debsums -c <package>` — 체크섬 무결성 확인
+              4. site의 승인 SUID/SGID 화이트리스트와 대조
+
+            판정 기준:
+              PASS  — 모든 SUID/SGID 파일이 site 화이트리스트에 포함 + 체크섬 일치
+              FAIL  — 미승인 SUID/SGID binary 또는 체크섬 mismatch (binary 교체 의심)
+              REVIEW — site SUID/SGID 화이트리스트 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        SUID·SGID 자체는 정당한 사용 사례(패스워드 변경 등)가 있지만, 공격자가 권한 상승용
+        rogue binary를 심거나 시스템 binary를 교체할 가능성이 있다. enumeration + 패키지
+        출처 검증 + 체크섬 비교가 무결성 확인의 핵심이다.
+    fixGuidance: |-
+        rogue SUID/SGID binary가 검출되면 site 정책에 따라 제거하거나 권한 비트 해제:
+            chmod u-s /path/to/binary    # SUID 제거
+            chmod g-s /path/to/binary    # SGID 제거
+        체크섬 mismatch는 패키지 재설치로 복구:
+            apt install --reinstall <package>
+        승인된 SUID/SGID 사용 사례는 site 화이트리스트로 문서화.

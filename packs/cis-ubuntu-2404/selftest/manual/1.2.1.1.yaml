@@ -1,0 +1,18 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 1.2.1.1
+spec:
+    cases:
+        - name: "default review verdict (no audit cmd execution)"
+          input:
+              stdout: ""
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "audit input ignored — verdict still review"
+          input:
+              stdout: "/etc/apt/trusted.gpg.d/ubuntu-keyring-2018-archive.gpg\npub   rsa4096 2018-09-17 [SC]"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE

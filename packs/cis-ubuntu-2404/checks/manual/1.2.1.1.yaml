@@ -1,0 +1,39 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.2.1.1
+    title: 1.2.1.1 Ensure GPG keys are configured (Manual)
+    description: |-
+        대부분의 패키지 매니저는 패키지 무결성 검증에 GPG key 서명을 사용한다. CIS는 시스템에
+        등록된 GPG key 목록을 운영자가 직접 review해 site policy(예: 신뢰할 수 있는 vendor key
+        목록)에 부합하는지 확인하도록 요구한다. 키 식별·신뢰 판단은 환경별 vendor·distribution
+        조합에 의존하므로 자동 PASS/FAIL 부여가 불가능하다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 1.2.1.1 — apt GPG key 신뢰 정책 검토.
+
+            확인 절차:
+              1. `apt-key list 2>/dev/null` — deprecated, 잔여 keyring 확인용
+              2. `ls -la /etc/apt/trusted.gpg.d/ /etc/apt/keyrings/ 2>/dev/null` — 현재 keyring 파일 목록
+              3. `for k in /etc/apt/trusted.gpg.d/*.gpg /etc/apt/keyrings/*.gpg; do gpg --no-default-keyring --keyring "$k" --list-keys 2>/dev/null; done`
+              4. site의 신뢰 vendor key 목록(예: Ubuntu archive, ROS2, NVIDIA 등)과 대조
+
+            판정 기준:
+              PASS  — 등록된 모든 GPG key가 site policy 신뢰 vendor 목록에 포함
+              FAIL  — 미승인 또는 출처 불명 key가 1+ 등록
+              REVIEW — site의 신뢰 vendor key 목록 미정의(default)
+        defaultVerdict: review
+    rationale: |-
+        업데이트가 신뢰할 수 있는 출처에서만 제공되도록 보장하는 것이 중요하다. spoofing된
+        패키지 저장소를 통한 악성코드 설치를 방지하는 1차 통제다.
+    fixGuidance: |-
+        site policy에 따라 패키지 매니저 GPG key를 갱신한다. 일반 절차:
+            # 신뢰할 키 다운로드 → /etc/apt/keyrings/<vendor>.gpg 로 저장
+            curl -fsSL <key-url> | gpg --dearmor -o /etc/apt/keyrings/<vendor>.gpg
+            # /etc/apt/sources.list.d/<vendor>.list 에 signed-by 명시
+            echo "deb [signed-by=/etc/apt/keyrings/<vendor>.gpg] <repo-url> <suite> <component>" > /etc/apt/sources.list.d/<vendor>.list
+        미승인 key는 `rm /etc/apt/trusted.gpg.d/<file>.gpg` 또는 `apt-key del <id>`로 제거.
