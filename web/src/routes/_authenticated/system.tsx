@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/errors'
 import { API_BASE_PATH } from '@/api/client'
-import { useBackups, useIsAdminOrAuditor, useLicenseInfo, usePacks, useUsageStats } from '@/api/hooks'
+import { useBackups, useIsAdminOrAuditor, useLicenseInfo, usePacks, useScans, useUsageStats } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
@@ -83,6 +83,7 @@ function SystemPage(): React.ReactElement {
       <HACard />
       <LicenseUsageCard />
       <UsageStatsCard />
+      <ScansSeverityCard />
       <PacksCard />
       <BackupsCard />
     </div>
@@ -348,6 +349,91 @@ function UsageStatsCard(): React.ReactElement {
             )}
           </>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ScansSeverityCard — 최근 N=50 terminal 세션의 severity별 fail 카운트 합산.
+//
+// B 후속 — 운영자가 system dashboard에서 tenant 전체 누적 severity 분포를 한 곳에서
+// 확인. 백엔드 endpoint 추가 0 — 기존 useScans 활용한 client-side aggregation. 합산 대상은
+// terminal session(completed/failed/cancelled)만 — pending/running은 모두 0이라 noise.
+// 카드형 표시는 packs.SeverityStats / SessionSeverityCardGrid 패턴 일관(D26-4).
+const SCANS_SEVERITY_LIMIT = 50
+
+function ScansSeverityCard(): React.ReactElement {
+  const t = useT()
+  const q = useScans({ limit: SCANS_SEVERITY_LIMIT })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          {t('system.scansSeverity.section')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {q.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+        {q.isError && (
+          <p className="text-destructive">
+            {q.error instanceof ApiError ? q.error.message : t('system.scansSeverity.error')}
+          </p>
+        )}
+        {q.isSuccess && (() => {
+          const terminal = (q.data ?? []).filter(
+            (s) => s.status === 'completed' || s.status === 'failed' || s.status === 'cancelled',
+          )
+          const totals = {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+          }
+          for (const s of terminal) {
+            totals.critical += s.severityCriticalFailed
+            totals.high += s.severityHighFailed
+            totals.medium += s.severityMediumFailed
+            totals.low += s.severityLowFailed
+          }
+          const totalFails = totals.critical + totals.high + totals.medium + totals.low
+          const order: Array<{ severity: 'critical' | 'high' | 'medium' | 'low'; bg: string; text: string }> = [
+            { severity: 'critical', bg: 'bg-destructive/10', text: 'text-destructive' },
+            { severity: 'high', bg: 'bg-destructive/10', text: 'text-destructive' },
+            { severity: 'medium', bg: 'bg-primary/10', text: 'text-primary' },
+            { severity: 'low', bg: 'bg-muted', text: 'text-muted-foreground' },
+          ]
+          return (
+            <>
+              <p className="text-xs text-muted-foreground">
+                {t('system.scansSeverity.scopeNote', {
+                  count: terminal.length.toString(),
+                  limit: SCANS_SEVERITY_LIMIT.toString(),
+                })}
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {order.map((o) => (
+                  <div
+                    key={o.severity}
+                    className={`flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-1.5 ${o.bg}`}
+                  >
+                    <span className={`text-[10px] font-medium uppercase ${o.text}`}>
+                      {o.severity}
+                    </span>
+                    <span className="text-xl font-bold leading-none tabular-nums">
+                      {totals[o.severity]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {totalFails === 0 && terminal.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {t('system.scansSeverity.allClean')}
+                </p>
+              )}
+            </>
+          )
+        })()}
       </CardContent>
     </Card>
   )

@@ -546,6 +546,10 @@ export const ko = {
   'system.usage.scansCompleted': '완료된 스캔',
   'system.usage.violations': '누적 violation (failed check)',
   'system.usage.violationRate': '평균 violation rate',
+  'system.scansSeverity.section': '심각도별 누적 실패 (최근 terminal 세션)',
+  'system.scansSeverity.error': '세션 목록 조회 실패',
+  'system.scansSeverity.scopeNote': '최근 terminal 세션 {count}개 합산 (조회 한도 {limit})',
+  'system.scansSeverity.allClean': '집계된 모든 세션이 실패 0건 — 운영 양호.',
   'system.backups.intro':
     '서버 실행 중에도 SQLite VACUUM INTO + tar.gz로 일관 스냅샷을 떠낼 수 있습니다.',
   'system.backups.cli.label': 'CLI 명령',
@@ -1375,6 +1379,10 @@ export const en: Record<keyof typeof ko, string> = {
   'system.usage.scansCompleted': 'Scans completed',
   'system.usage.violations': 'Cumulative violations (failed checks)',
   'system.usage.violationRate': 'Avg violation rate',
+  'system.scansSeverity.section': 'Cumulative failed by severity (recent terminal sessions)',
+  'system.scansSeverity.error': 'Failed to load scan sessions',
+  'system.scansSeverity.scopeNote': 'Aggregated across {count} recent terminal session(s) (limit {limit})',
+  'system.scansSeverity.allClean': 'All aggregated sessions have 0 failures — operations healthy.',
   'system.backups.intro':
     'Take consistent snapshots while the server is running using SQLite VACUUM INTO + tar.gz.',
   'system.backups.cli.label': 'CLI command',
