@@ -6,10 +6,15 @@ metadata:
     description: Updated versions of PAM include additional functionality
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(dpkg-query -s libpam-runtime | grep -P -- '\''^(Status|Version)\b'\'' 2>/dev/null)
+        missing=0
+        printf '\''%s'\'' "$out" | grep -qF -- "Status: install ok installed" || { printf '\''miss-0: %s\n'\'' "Status: install ok installed"; missing=$((missing+1)); }
+        printf '\''%s'\'' "$out" | grep -qF -- "Version: 1.5.3-5" || { printf '\''miss-1: %s\n'\'' "Version: 1.5.3-5"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         To ensure the system has full functionality and access to the options covered by this
         Benchmark the latest version of libpam-runtime should be installed on the system

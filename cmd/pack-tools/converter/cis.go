@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 14 (E-3 G9): `# dpkg-query ...` + expected substring 매칭. 1.7.1 (not-installed) +
+	// 5.3.1.1 (Status: install ok installed). 2.1.20 (cmd wrap + Nothing returned)는 별 epic.
+	if isDpkgQueryAuditText(it.Audit) {
+		if synthesized, ok := synthesizeDpkgQuery(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 13 (E-2 G4 부분): 단일 `# iptables -L` + 3+ "Chain X (policy Y)" expected substring 매칭.
 	// 4.4.2.1만 cover. 4.4.2.2(`-v -n` + multi-line table)는 별 epic.
 	if isIptablesChainPolicyAuditText(it.Audit) {

@@ -8,10 +8,14 @@ metadata:
         servers and handles graphical user logins.
     severity: low
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(dpkg-query -W -f='\''${binary:Package}\t${Status}\t${db:Status-Status}\n'\'' gdm3 2>/dev/null)
+        missing=0
+        printf '\''%s'\'' "$out" | grep -qF -- "gdm3 unknown ok not-installed not-installed" || { printf '\''miss-0: %s\n'\'' "gdm3 unknown ok not-installed not-installed"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         If a Graphical User Interface (GUI) is not required, it should be removed to reduce the
         attack surface of the system.
