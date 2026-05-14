@@ -190,6 +190,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		return check, ""
 	}
 
+	// Pattern 9 (E-1 G7-bool): `gsettings get <schema> <key>` boolean 정확 매칭. 1.7.6 + 1.7.8
+	// (true/false). 1.7.4(uint32 N + threshold)는 별 분기 — 본 인식기는 boolean만.
+	if isGsettingsBoolAuditText(it.Audit) {
+		if synthesized, ok := synthesizeGsettingsBool(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 8: 6.2.3.x auditd rules — auditctl -l + Verify the output matches/includes
 	// + audit rule lines. on-disk(/etc/audit/rules.d/*.rules) + running(auditctl -l) 양쪽
 	// expected를 normalize 후 grep 매칭, missing 카운트 0이면 PASS. design doc:

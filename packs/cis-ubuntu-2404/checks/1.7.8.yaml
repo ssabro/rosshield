@@ -8,10 +8,14 @@ metadata:
         autorun through GDM.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'missing=0
+        val=$(gsettings get org.gnome.desktop.media-handling autorun-never 2>/dev/null)
+        [ "$val" = "true" ] || { printf '\''mismatch: org.gnome.desktop.media-handling.autorun-never expected true got %s\n'\'' "$val"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Malware on removable media may taking advantage of Autorun features when the
         media is inserted into a system and execute.

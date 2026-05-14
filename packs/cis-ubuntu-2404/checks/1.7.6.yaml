@@ -8,10 +8,16 @@ metadata:
         convenience to the user.
     severity: low
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'missing=0
+        val=$(gsettings get org.gnome.desktop.media-handling automount 2>/dev/null)
+        [ "$val" = "false" ] || { printf '\''mismatch: org.gnome.desktop.media-handling.automount expected false got %s\n'\'' "$val"; missing=$((missing+1)); }
+        val=$(gsettings get org.gnome.desktop.media-handling automount-open 2>/dev/null)
+        [ "$val" = "false" ] || { printf '\''mismatch: org.gnome.desktop.media-handling.automount-open expected false got %s\n'\'' "$val"; missing=$((missing+1)); }
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         With automounting enabled anyone with physical access could attach a USB drive or
         disc and have its contents available in system even if they lacked permissions to mount
