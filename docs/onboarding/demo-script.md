@@ -13,7 +13,7 @@
 
 1. **결정론적 audit chain** — 모든 변경이 해시 체인으로 기록되고, 외부 검증 SDK로 위변조 탐지 가능
 2. **multi-tenancy 격리** — 같은 인스턴스에서 두 customer가 서로의 데이터를 절대 볼 수 없음
-3. **자동 CIS 변환** — 312 items 중 92.0% 자동 변환된 pack을 즉시 사용 (21 합성 패턴, 잔여 4 NoMarker + 21 Manual은 manual fixture 또는 별 epic)
+3. **자동 CIS 변환** — 312 items 중 **93.3% 자동 변환**된 pack을 즉시 사용 (24 합성 패턴, NoMarker 0건 — 모든 자동 변환 가능 항목 cover 완료, 잔여 21건은 CIS Manual 비대상)
 4. **에어갭 동작** — 인터넷 연결 없이도 모든 기능 동작
 5. **외부 검증** — 감사인이 별 PC에서 release binary + cosign로 무결성 확인 가능
 
