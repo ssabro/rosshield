@@ -200,6 +200,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 17 (G16): passwd/group awk + alternative — 5.4.2.2 + 5.4.2.3 (exact root:N) +
+	// 5.4.2.4 (alternation User: "..." Password is status: P|L). 90% 도달 경로 핵심 epic.
+	if isPasswdAwkAuditText(it.Audit) {
+		if synthesized, ok := synthesizePasswdAwk(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 16 (E-3 G8): `apparmor_status | grep profiles/processes` count 추출 + 비교.
 	// 1.3.1.3 (either) + 1.3.1.4 (strict). mode phrase 자동 판정 (D-E3-2).
 	if isApparmorCountAuditText(it.Audit) {

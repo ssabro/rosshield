@@ -8,10 +8,13 @@ metadata:
         to. This affects permissions of files that are created by the root account.
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(awk -F: '\''($1 !~ /^(sync|shutdown|halt|operator)/ && $4=="0") {print $1":"$4}'\'' /etc/passwd 2>/dev/null)
+        trimmed=$(printf '\''%s'\'' "$out" | awk '\''{$1=$1};1'\'')
+        if [ "$trimmed" = "root:0" ]; then printf '\''** PASS **\n'\''; else printf '\''fail: got=%s\n'\'' "$trimmed"; printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Using GID 0 for the root account helps prevent root -owned files from accidentally
         becoming accessible to non-privileged users.

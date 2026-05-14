@@ -8,10 +8,16 @@ metadata:
         set any user would be able to gain access and thus control over the entire system.
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(passwd -S root | awk '\''$2 ~ /^(P|L)/ {print "User: \"" $1 "\" Password is status: " $2}'\'' 2>/dev/null)
+        found=0
+        for token in "User: \"root\" Password is status: P" "User: \"root\" Password is status: L"; do
+          printf '\''%s'\'' "$out" | grep -qF -- "$token" && { found=1; break; }
+        done
+        if [ "$found" -eq 1 ]; then printf '\''** PASS **\n'\''; else printf '\''fail: %s\n'\'' "$out"; printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Access to root should be secured at all times.
         Impact:
