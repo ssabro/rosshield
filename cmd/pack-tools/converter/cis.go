@@ -210,10 +210,19 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
-	// Pattern 9 (E-1 G7-bool): `gsettings get <schema> <key>` boolean 정확 매칭. 1.7.6 + 1.7.8
-	// (true/false). 1.7.4(uint32 N + threshold)는 별 분기 — 본 인식기는 boolean만.
+	// Pattern 9 (E-1 G7-bool): `gsettings get <schema> <key>` boolean 정확 매칭. 1.7.6 + 1.7.8.
 	if isGsettingsBoolAuditText(it.Audit) {
 		if synthesized, ok := synthesizeGsettingsBool(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 9b (E-1 G7-uint32): `gsettings get` uint32 N + threshold 비교. 1.7.4. audit text의
+	// uint32 N을 baseline threshold로 사용 (CIS "N seconds or less" 의미).
+	if isGsettingsUint32AuditText(it.Audit) {
+		if synthesized, ok := synthesizeGsettingsUint32(it.Audit); ok {
 			check.AuditCommand = wrapBash(synthesized)
 			check.EvaluationRule = cisAutoEvalRuleJSON
 			return check, ""

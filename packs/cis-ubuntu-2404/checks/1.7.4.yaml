@@ -8,10 +8,24 @@ metadata:
         is idle for some amount of time.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'missing=0
+        raw=$(gsettings get org.gnome.desktop.screensaver lock-delay 2>/dev/null)
+        val=${raw#uint32 }
+        case "$val" in
+          '\'''\''|*[!0-9]*) printf '\''invalid: org.gnome.desktop.screensaver.lock-delay got %s\n'\'' "$raw"; missing=$((missing+1)) ;;
+          *) [ "$val" -le 5 ] || { printf '\''over: org.gnome.desktop.screensaver.lock-delay got %s want le 5\n'\'' "$val"; missing=$((missing+1)); } ;;
+        esac
+        raw=$(gsettings get org.gnome.desktop.session idle-delay 2>/dev/null)
+        val=${raw#uint32 }
+        case "$val" in
+          '\'''\''|*[!0-9]*) printf '\''invalid: org.gnome.desktop.session.idle-delay got %s\n'\'' "$raw"; missing=$((missing+1)) ;;
+          *) [ "$val" -le 900 ] || { printf '\''over: org.gnome.desktop.session.idle-delay got %s want le 900\n'\'' "$val"; missing=$((missing+1)); } ;;
+        esac
+        if [ "$missing" -eq 0 ]; then printf '\''** PASS **\n'\''; else printf '\''** FAIL **\n'\''; fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Setting a lock-out value reduces the window of opportunity for unauthorized user access
         to another user's session that has been left unattended.
