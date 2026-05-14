@@ -411,6 +411,50 @@ function SessionRow({
   )
 }
 
+// SessionSeverityCardGrid — single session detail card에 4 severity 카드형 분포 표시.
+//
+// SessionProgressCard 안에서 terminal 도달 후만 렌더(전 단계는 0으로 의미 없음). list view의
+// SessionSeverityRow가 inline pill compact 표현이라면, 본 카드는 packs.SeverityStats 패턴
+// 재사용한 풍부한 표시 — severity 라벨 + 카운트 + 색상 톤. 클릭 토글은 미제공(D26 §5.6,
+// 본 카드는 read-only summary).
+function SessionSeverityCardGrid({
+  session,
+}: {
+  session: ScanSession
+}): React.ReactElement {
+  const t = useT()
+  const order: Array<{ severity: string; count: number; bg: string; text: string }> = [
+    { severity: 'critical', count: session.severityCriticalFailed, bg: 'bg-destructive/10', text: 'text-destructive' },
+    { severity: 'high', count: session.severityHighFailed, bg: 'bg-destructive/10', text: 'text-destructive' },
+    { severity: 'medium', count: session.severityMediumFailed, bg: 'bg-primary/10', text: 'text-primary' },
+    { severity: 'low', count: session.severityLowFailed, bg: 'bg-muted', text: 'text-muted-foreground' },
+  ]
+  return (
+    <div>
+      <div className="mb-1.5 text-xs text-muted-foreground">
+        {t('scans.session.severity.title')}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {order.map((o) => (
+          <div
+            key={o.severity}
+            className={`flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-1.5 ${o.bg}`}
+            aria-label={t('scans.session.severity.tooltip', {
+              severity: o.severity,
+              count: o.count.toString(),
+            })}
+          >
+            <span className={`text-[10px] font-medium uppercase ${o.text}`}>
+              {o.severity}
+            </span>
+            <span className="text-xl font-bold leading-none tabular-nums">{o.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // SessionSeverityRow — terminal session 4 severity별 fail 카운트를 inline pill로 표시.
 //
 // pending/running 세션은 모두 0이므로 출력 생략(noise 회피). >0인 severity는 색상 강조,
@@ -566,6 +610,7 @@ function SessionProgressCard({
             ) : null
           })()}
         </div>
+        {isTerminal && <SessionSeverityCardGrid session={session} />}
         {ws.error && <p className="text-xs text-destructive">{ws.error}</p>}
         {!isTerminal && (
           <div className="flex items-center justify-between pt-2">
