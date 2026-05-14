@@ -18,6 +18,37 @@ import (
 	"strings"
 )
 
+// regexpAugenrulesCheckCmd는 `# augenrules --check` 명령 감지 (6.2.3.21).
+var regexpAugenrulesCheckCmd = regexp.MustCompile(`(?m)^\s*#\s+augenrules\s+--check\s*$`)
+
+// regexpAugenrulesNoChange는 expected "augenrules: No change" 라인 감지.
+var regexpAugenrulesNoChange = regexp.MustCompile(`augenrules:\s+No\s+change`)
+
+// isAugenrulesCheckAuditText는 6.2.3.21 합성 대상 판정.
+//
+// 인식 조건: `# augenrules --check` cmd + "augenrules: No change" expected 둘 다.
+func isAugenrulesCheckAuditText(audit string) bool {
+	return regexpAugenrulesCheckCmd.MatchString(audit) &&
+		regexpAugenrulesNoChange.MatchString(audit)
+}
+
+// synthesizeAugenrulesCheck는 6.2.3.21 합성 — augenrules --check 출력에 "No change" substring이면 PASS.
+//
+// "Should there be any drift, run augenrules --load" — drift 있으면 FAIL.
+func synthesizeAugenrulesCheck(audit string) (string, bool) {
+	if !isAugenrulesCheckAuditText(audit) {
+		return "", false
+	}
+	const body = `out=$(augenrules --check 2>/dev/null)
+if printf '%s' "$out" | grep -qF -- "No change"; then
+  printf '** PASS **\n'
+else
+  printf 'fail: %s\n' "$out"
+  printf '** FAIL **\n'
+fi`
+	return body, true
+}
+
 // regexpAuditctlList는 audit text 어디든 `auditctl -l` 명령이 포함되어 있는지 감지합니다.
 // 6.2.3.x running 검증의 시그니처 — 합성 대상 1차 게이트. 7.2.x 등 다른 grep verify
 // 패턴(auditctl 미사용)을 negative로 거름. prefix 다양(`# auditctl -l`, `{`, `&& auditctl -l`,

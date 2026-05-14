@@ -8,10 +8,17 @@ metadata:
         include additional functionality.
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'count=$(apt -s upgrade 2>/dev/null | grep -cE '\''^Inst\s+'\'')
+        if [ "$count" -eq 0 ]; then
+          printf '\''** PASS **\n'\''
+        else
+          printf '\''fail: %s package(s) pending update\n'\'' "$count"
+          printf '\''** FAIL **\n'\''
+        fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Newer patches may contain security enhancements that would not be available through
         the latest full update. As a result, it is recommended that the latest software patches be

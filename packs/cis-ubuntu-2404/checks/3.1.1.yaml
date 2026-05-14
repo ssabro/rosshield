@@ -16,10 +16,17 @@ metadata:
         • An ideal protocol for neighboring node interaction
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(printf '\''%s'\'' "IyEvdXNyL2Jpbi9lbnYgYmFzaAp7Cmxfb3V0cHV0PSIiCiEgZ3JlcCAtUHFzIC0tICdeXGgqMFxiJyAvc3lzL21vZHVsZS9pcHY2L3BhcmFtZXRlcnMvZGlzYWJsZSAmJgpsX291dHB1dD0iLSBJUHY2IGlzIG5vdCBlbmFibGVkIgppZiBzeXNjdGwgbmV0LmlwdjYuY29uZi5hbGwuZGlzYWJsZV9pcHY2IHwgZ3JlcCAtUHFzIC0tCiJeXGgqbmV0XC5pcHY2XC5jb25mXC5hbGxcLmRpc2FibGVfaXB2NlxoKj1caCoxXGIiICYmIFwKc3lzY3RsIG5ldC5pcHY2LmNvbmYuZGVmYXVsdC5kaXNhYmxlX2lwdjYgfCBncmVwIC1QcXMgLS0KIl5caCpuZXRcLmlwdjZcLmNvbmZcLmRlZmF1bHRcLmRpc2FibGVfaXB2NlxoKj1caCoxXGIiOyB0aGVuCmxfb3V0cHV0PSItIElQdjYgaXMgbm90IGVuYWJsZWQiCmZpClsgLXogIiRsX291dHB1dCIgXSAmJiBsX291dHB1dD0iLSBJUHY2IGlzIGVuYWJsZWQiCmVjaG8gLWUgIlxuJGxfb3V0cHV0XG4iCn0=" | base64 -d | bash 2>/dev/null)
+        if printf '\''%s'\'' "$out" | grep -qiE '\''is not enabled'\''; then
+          printf '\''** PASS **\n'\''
+        else
+          printf '\''fail: %s\n'\'' "$out"
+          printf '\''** FAIL **\n'\''
+        fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         IETF RFC 4038 recommends that applications are built with an assumption of dual
         stack. It is recommended that IPv6 be enabled and configured in accordance with

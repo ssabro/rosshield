@@ -56,6 +56,65 @@ func TestIsHashbangPassFailEmitAuditText_Negative(t *testing.T) {
 	}
 }
 
+// === 3.1.1 IPv6 hashbang body emit (E-4) ===
+
+const audit_3_1_1 = `Run the following script to identify if IPv6 is enabled on the system:
+#!/usr/bin/env bash
+{
+l_output=""
+! grep -Pqs -- '^\h*0\b' /sys/module/ipv6/parameters/disable && l_output="- IPv6 is not enabled"
+if sysctl net.ipv6.conf.all.disable_ipv6 | grep -Pqs -- "^\h*net\.ipv6\.conf\.all\.disable_ipv6\h*=\h*1\b"; then
+l_output="- IPv6 is not enabled"
+fi
+[ -z "$l_output" ] && l_output="- IPv6 is enabled"
+echo -e "\n$l_output\n"
+}`
+
+func TestIsHashbangIPv6DisabledAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isHashbangIPv6DisabledAuditText(audit_3_1_1) {
+		t.Errorf("isHashbangIPv6DisabledAuditText(3.1.1) = false, want true")
+	}
+}
+
+func TestIsHashbangIPv6DisabledAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"5.4.3.2 (PASSED/FAILED 다른 mode)", audit_5_4_3_2},
+		{"non-IPv6 (sshd)", audit_nonGsettings},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isHashbangIPv6DisabledAuditText(tc.audit) {
+				t.Errorf("isHashbangIPv6DisabledAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestSynthesizeHashbangIPv6Disabled_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeHashbangIPv6Disabled(audit_3_1_1)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		`out=$(printf '%s'`,
+		`base64 -d | bash`,
+		`grep -qiE 'is not enabled'`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 // === 6.2.3.6 hashbang body all OK / Warning emit ===
 
 const audit_6_2_3_6 = `On disk configuration

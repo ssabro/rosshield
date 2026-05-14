@@ -40,6 +40,12 @@ var regexpAuditFailEmit = regexp.MustCompile(`\*\*\s*FAIL\s*\*\*`)
 // regexpAllOutputIsOK는 "all output is OK" / "Verify that all output is OK" phrase 감지 (6.2.3.6).
 var regexpAllOutputIsOK = regexp.MustCompile(`(?i)all\s+output\s+is\s+OK`)
 
+// regexpIPv6NotEnabledEmit는 body 안 "is not enabled" emit 감지 (3.1.1).
+var regexpIPv6NotEnabledEmit = regexp.MustCompile(`(?i)is\s+not\s+enabled`)
+
+// regexpIPv6EnabledEmit는 body 안 "is enabled" emit 감지 (3.1.1).
+var regexpIPv6EnabledEmit = regexp.MustCompile(`(?i)is\s+enabled`)
+
 // regexpHashbangBodyOKEmit는 body 안 `OK:` printf emit 감지 (6.2.3.6 시그니처).
 var regexpHashbangBodyOKEmit = regexp.MustCompile(`printf\s+"OK:`)
 
@@ -120,6 +126,47 @@ func synthesizeHashbangAllOK(audit string) (string, bool) {
 	sb.WriteString("  printf 'fail: %s\\n' \"$out\"; printf '** FAIL **\\n'\n")
 	sb.WriteString("else\n")
 	sb.WriteString("  printf '** PASS **\\n'\n")
+	sb.WriteString("fi")
+	return sb.String(), true
+}
+
+// isHashbangIPv6DisabledAuditText는 3.1.1 합성 대상 판정.
+//
+// 인식 조건:
+//   - extractCISBashBody hashbang body 추출
+//   - body 안 "is not enabled" + "is enabled" 둘 다 substring 포함 (자체 emit)
+//   - audit text에 "ipv6" 키워드 (case insensitive) 포함
+func isHashbangIPv6DisabledAuditText(audit string) bool {
+	body, ok := extractCISBashBody(audit)
+	if !ok {
+		return false
+	}
+	if !regexpIPv6NotEnabledEmit.MatchString(body) || !regexpIPv6EnabledEmit.MatchString(body) {
+		return false
+	}
+	// audit text 또는 body에 IPv6 키워드 (false trigger 회피).
+	combined := audit + body
+	return regexp.MustCompile(`(?i)\bIPv6\b`).MatchString(combined)
+}
+
+// synthesizeHashbangIPv6Disabled는 3.1.1 합성 — IPv6 disabled가 PASS, enabled가 FAIL.
+//
+// audit text body는 "- IPv6 is not enabled" 또는 "- IPv6 is enabled" emit. CIS 보안 권장은
+// IPv6 disabled (또는 운영자 정책에 따라). 본 합성은 disabled stance — 출력에 "is not enabled"
+// substring이면 PASS, "is enabled"이면 FAIL. 운영자가 IPv6 enabled 정책이면 FAIL → manual 확인.
+func synthesizeHashbangIPv6Disabled(audit string) (string, bool) {
+	if !isHashbangIPv6DisabledAuditText(audit) {
+		return "", false
+	}
+	body, _ := extractCISBashBody(audit)
+	encoded := base64.StdEncoding.EncodeToString([]byte(body))
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "out=$(printf '%%s' %q | base64 -d | bash 2>/dev/null)\n", encoded)
+	sb.WriteString("if printf '%s' \"$out\" | grep -qiE 'is not enabled'; then\n")
+	sb.WriteString("  printf '** PASS **\\n'\n")
+	sb.WriteString("else\n")
+	sb.WriteString("  printf 'fail: %s\\n' \"$out\"\n")
+	sb.WriteString("  printf '** FAIL **\\n'\n")
 	sb.WriteString("fi")
 	return sb.String(), true
 }

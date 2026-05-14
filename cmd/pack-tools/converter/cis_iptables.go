@@ -27,6 +27,12 @@ var regexpIptablesListCmd = regexp.MustCompile(`^#\s+(iptables\s+-L)\s*$`)
 // regexpIptablesListVerboseCmd는 `# iptables -L <CHAIN> -v -n` 명령 감지 (4.4.2.2).
 var regexpIptablesListVerboseCmd = regexp.MustCompile(`^#\s+(iptables\s+-L\s+\w+\s+-v\s+-n)\s*$`)
 
+// regexpIptablesEmptyCmd는 `# iptables -L` + `# ip6tables -L` 조합 감지 (4.3.3).
+var regexpIp6tablesListCmd = regexp.MustCompile(`(?m)^\s*#\s+ip6tables\s+-L\s*$`)
+
+// regexpNoRulesShouldBeReturned는 "No rules should be returned" phrase 감지 (4.3.3).
+var regexpNoRulesShouldBeReturned = regexp.MustCompile(`(?i)No\s+rules\s+should\s+be\s+returned`)
+
 // regexpIptablesAcceptDropLine는 multi-line table의 핵심 ACCEPT/DROP 라인 감지.
 // (pkts) (bytes) (target ACCEPT|DROP) all -- (in) (out) (src) (dst) [추가]
 var regexpIptablesAcceptDropLine = regexp.MustCompile(`^\d+\s+\d+\s+(ACCEPT|DROP)\s+\w+\s+--\s+\S+\s+\S+\s+\S+\s+\S+`)
@@ -81,6 +87,43 @@ func extractIptablesChainExpecteds(audit string) (cmd string, expecteds []string
 func isIptablesChainPolicyAuditText(audit string) bool {
 	_, _, ok := extractIptablesChainExpecteds(audit)
 	return ok
+}
+
+// isIptablesEmptyAuditText는 4.3.3 합성 대상 판정.
+//
+// 인식 조건: `iptables -L` + `ip6tables -L` cmd 둘 다 + "No rules should be returned" phrase.
+// regexpIptablesListCmd는 multi-line context에서 line 단위 매칭 필요(line 단위 loop).
+func isIptablesEmptyAuditText(audit string) bool {
+	if !regexpIp6tablesListCmd.MatchString(audit) {
+		return false
+	}
+	if !regexpNoRulesShouldBeReturned.MatchString(audit) {
+		return false
+	}
+	for _, raw := range strings.Split(audit, "\n") {
+		if regexpIptablesListCmd.MatchString(strings.TrimSpace(raw)) {
+			return true
+		}
+	}
+	return false
+}
+
+// synthesizeIptablesEmpty는 4.3.3 합성 — iptables/ip6tables 출력에 ACCEPT/DROP/REJECT 라인 0건 검증.
+//
+// `iptables -L` 출력은 default Chain header(`Chain INPUT (policy ACCEPT)`)만 있으면 PASS.
+// User rule(`ACCEPT/DROP/REJECT prot opt ...`)이 1+ 라인 있으면 FAIL.
+// `ip6tables -L`도 동일 검증 둘 다 통과해야 최종 PASS.
+func synthesizeIptablesEmpty(audit string) (string, bool) {
+	if !isIptablesEmptyAuditText(audit) {
+		return "", false
+	}
+	const body = `missing=0
+out4=$(iptables -L 2>/dev/null)
+out6=$(ip6tables -L 2>/dev/null)
+printf '%s' "$out4" | grep -qE '^(ACCEPT|DROP|REJECT)\s+\S+\s+--' && { printf 'fail: iptables has user rules\n'; missing=$((missing+1)); }
+printf '%s' "$out6" | grep -qE '^(ACCEPT|DROP|REJECT)\s+\S+\s+--' && { printf 'fail: ip6tables has user rules\n'; missing=$((missing+1)); }
+if [ "$missing" -eq 0 ]; then printf '** PASS **\n'; else printf '** FAIL **\n'; fi`
+	return body, true
 }
 
 // iptablesVerboseCheck는 단일 cmd × 핵심 expected token 슬라이스.

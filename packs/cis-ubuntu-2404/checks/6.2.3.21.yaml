@@ -12,10 +12,17 @@ metadata:
         rules.
     severity: low
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(augenrules --check 2>/dev/null)
+        if printf '\''%s'\'' "$out" | grep -qF -- "No change"; then
+          printf '\''** PASS **\n'\''
+        else
+          printf '\''fail: %s\n'\'' "$out"
+          printf '\''** FAIL **\n'\''
+        fi'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Configuration differences between what is currently running and what is on disk could
         cause unexpected problems or may give a false impression of compliance

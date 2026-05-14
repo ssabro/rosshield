@@ -6,10 +6,17 @@ metadata:
     description: nftables is a replacement for iptables, ip6tables, ebtables and arptables
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out="$(ip6tables -L 2>/dev/null)"
+        if [ -z "$out" ]; then
+          printf '\''%s\n'\'' "** PASS **"
+        else
+          printf '\''%s\n'\'' "** FAIL **"
+        fi
+        '
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         It is possible to mix iptables and nftables. However, this increases complexity and also
         the chance to introduce errors. For simplicity flush out all iptables rules, and ensure it is

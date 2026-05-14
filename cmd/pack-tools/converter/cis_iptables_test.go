@@ -70,6 +70,61 @@ func TestExtractIptablesChainExpecteds(t *testing.T) {
 	}
 }
 
+// === 4.3.3 iptables/ip6tables empty (E-4) ===
+
+const audit_4_3_3 = `Run the following commands to ensure no iptables rules exist
+For iptables:
+# iptables -L
+No rules should be returned
+For ip6tables:
+# ip6tables -L
+No rules should be returned`
+
+func TestIsIptablesEmptyAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isIptablesEmptyAuditText(audit_4_3_3) {
+		t.Errorf("isIptablesEmptyAuditText(4.3.3) = false, want true")
+	}
+}
+
+func TestIsIptablesEmptyAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"4.4.2.1 (chain policy 다른 패턴)", audit_4_4_2_1},
+		{"non-iptables (sshd)", audit_nonGsettings},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isIptablesEmptyAuditText(tc.audit) {
+				t.Errorf("isIptablesEmptyAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestSynthesizeIptablesEmpty_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeIptablesEmpty(audit_4_3_3)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		`out4=$(iptables -L`,
+		`out6=$(ip6tables -L`,
+		`grep -qE '^(ACCEPT|DROP|REJECT)\s+\S+\s+--'`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 // === 4.4.2.2 iptables -L X -v -n + multi-line table ===
 
 const audit_4_4_2_2_full = `Run the following commands and verify output includes the listed rules in order (pkts and bytes counts may differ, prot may be all or 0):

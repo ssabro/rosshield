@@ -10,7 +10,10 @@
 
 package converter
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // 6.2.3.1 — 단일 awk + sudoers watch (단순). expected: on-disk 2 / running 2.
 const audit_6_2_3_1 = `On disk configuration
@@ -216,6 +219,52 @@ func TestExtractAuditctlExpectedRules(t *testing.T) {
 				t.Errorf("running lines = %d, want %d (lines: %#v)", len(run), tc.wantRunning, run)
 			}
 		})
+	}
+}
+
+// === 6.2.3.21 augenrules --check (E-4) — audit_6_2_3_21 const는 line 128 재사용 ===
+
+func TestIsAugenrulesCheckAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isAugenrulesCheckAuditText(audit_6_2_3_21) {
+		t.Errorf("isAugenrulesCheckAuditText(6.2.3.21) = false, want true")
+	}
+}
+
+func TestIsAugenrulesCheckAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"phrase 없음", `# augenrules --check`},
+		{"non-augenrules (sshd)", audit_nonGsettings},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isAugenrulesCheckAuditText(tc.audit) {
+				t.Errorf("isAugenrulesCheckAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestSynthesizeAugenrulesCheck_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeAugenrulesCheck(audit_6_2_3_21)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		`out=$(augenrules --check`,
+		`grep -qF -- "No change"`,
+		`** PASS **`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
 	}
 }
 

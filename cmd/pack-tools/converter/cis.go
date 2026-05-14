@@ -158,9 +158,17 @@ func convertCISItem(it cisItem) (Check, string) {
 	}
 
 	if it.AssessmentStatus == "Manual" {
-		check.AuditCommand = "true"
-		check.EvaluationRule = degradedEvalRuleJSON
-		return check, "assessment_status=Manual (manual review required)"
+		// E-4 자동 후보 4건 — assessment_status=Manual이지만 audit text가
+		// deterministic 합성 가능한 패턴 (1.2.2.1 / 3.1.1 / 4.3.3 / 6.2.3.21).
+		// 본 분기를 우회해 아래 합성 로직(Pattern 26~29)에 도달.
+		if !(isAptNoUpdatesAuditText(it.Audit) ||
+			isHashbangIPv6DisabledAuditText(it.Audit) ||
+			isIptablesEmptyAuditText(it.Audit) ||
+			isAugenrulesCheckAuditText(it.Audit)) {
+			check.AuditCommand = "true"
+			check.EvaluationRule = degradedEvalRuleJSON
+			return check, "assessment_status=Manual (manual review required)"
+		}
 	}
 
 	// 자동 변환 우선순위:
@@ -203,6 +211,42 @@ func convertCISItem(it cisItem) (Check, string) {
 	// Pattern 22 (G13 5.2.6): sudo cache timeout — `timestamp_timeout` 추출 + ≤15 비교.
 	if isSudoTimestampTimeoutAuditText(it.Audit) {
 		if synthesized, ok := synthesizeSudoTimestampTimeout(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 26 (E-4 1.2.2.1): apt -s upgrade Inst line count == 0 검증.
+	if isAptNoUpdatesAuditText(it.Audit) {
+		if synthesized, ok := synthesizeAptNoUpdates(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 27 (E-4 3.1.1): IPv6 hashbang body emit "is not enabled"이면 PASS.
+	if isHashbangIPv6DisabledAuditText(it.Audit) {
+		if synthesized, ok := synthesizeHashbangIPv6Disabled(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 28 (E-4 4.3.3): iptables/ip6tables -L empty (user rule 0건) 검증.
+	if isIptablesEmptyAuditText(it.Audit) {
+		if synthesized, ok := synthesizeIptablesEmpty(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
+	// Pattern 29 (E-4 6.2.3.21): augenrules --check 출력 "No change" substring이면 PASS.
+	if isAugenrulesCheckAuditText(it.Audit) {
+		if synthesized, ok := synthesizeAugenrulesCheck(it.Audit); ok {
 			check.AuditCommand = wrapBash(synthesized)
 			check.EvaluationRule = cisAutoEvalRuleJSON
 			return check, ""
