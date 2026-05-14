@@ -10,10 +10,16 @@ metadata:
         This default is distribution specific. See audit section for further information.
     severity: high
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'val=$(grep -roP "timestamp_timeout=\K[0-9-]+" /etc/sudoers* 2>/dev/null | head -1)
+        [ -z "$val" ] && val=15
+        case "$val" in
+          -*|*[!0-9-]*) printf '\''invalid: %s\n'\'' "$val"; printf '\''** FAIL **\n'\'' ;;
+          *) if [ "$val" -le 15 ]; then printf '\''** PASS **\n'\''; else printf '\''too high: %s\n'\'' "$val"; printf '\''** FAIL **\n'\''; fi ;;
+        esac'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         Setting a timeout value reduces the window of opportunity for unauthorized privileged
         access to another user.

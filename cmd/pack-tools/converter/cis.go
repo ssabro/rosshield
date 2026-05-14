@@ -200,6 +200,15 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 22 (G13 5.2.6): sudo cache timeout — `timestamp_timeout` 추출 + ≤15 비교.
+	if isSudoTimestampTimeoutAuditText(it.Audit) {
+		if synthesized, ok := synthesizeSudoTimestampTimeout(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 21 (G6 부분): `ufw status verbose | grep Default:` + alternation 매칭 (4.2.7).
 	// 4.2.4 (multi-line table + 2 cmd)는 별 epic.
 	if isUfwStatusDefaultAuditText(it.Audit) {
