@@ -239,6 +239,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		}
 	}
 
+	// Pattern 20c (G5 부분 — 4.2.6): hashbang body + "Audit Passed"/"** FAIL **" emit. body
+	// base64 wrap → 실행 → "Audit Passed" substring → PASS. 4.4.2.4는 narrative manual fixture.
+	if isAuditResultEmitAuditText(it.Audit) {
+		if synthesized, ok := synthesizeAuditResultEmit(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 19 (G3): nftables include + awk hook block scan (4.3.10) — 90% 도달 마지막 epic.
 	// hardcoded 3 hook (input/forward/output) + policy drop substring 검증.
 	if isNftIncludeAuditText(it.Audit) {

@@ -31,6 +31,12 @@ var regexpHashbangBodyFailedEmit = regexp.MustCompile(`FAILED`)
 // regexpVerifyNothingReturned는 "verify nothing is returned" phrase 감지 (5.4.1.6).
 var regexpVerifyNothingReturned = regexp.MustCompile(`(?i)verify\s+nothing\s+is\s+returned`)
 
+// regexpAuditPassed는 body 안 "Audit Passed" / "Audit Result: ** PASS **" emit 감지 (4.2.6).
+var regexpAuditPassedEmit = regexp.MustCompile(`(?i)Audit\s+Passed`)
+
+// regexpAuditFailEmit는 body 안 "** FAIL **" / "Audit Result:" 키워드 감지 (4.2.6).
+var regexpAuditFailEmit = regexp.MustCompile(`\*\*\s*FAIL\s*\*\*`)
+
 // regexpBraceBlockStart는 `{` 단독 라인(블록 시작) 감지.
 var regexpBraceBlockStart = regexp.MustCompile(`^\s*\{\s*$`)
 
@@ -107,6 +113,40 @@ func isBraceBlockEmptyAuditText(audit string) bool {
 	}
 	_, ok := extractBraceBlock(audit)
 	return ok
+}
+
+// isAuditResultEmitAuditText는 G5 4.2.6 합성 대상인지 판정.
+//
+// 인식 조건:
+//   - extractCISBashBody가 hashbang body 추출 가능
+//   - body 안 "Audit Passed" + "** FAIL **" 둘 다 substring 포함 (자체 emit 시그니처)
+func isAuditResultEmitAuditText(audit string) bool {
+	body, ok := extractCISBashBody(audit)
+	if !ok {
+		return false
+	}
+	return regexpAuditPassedEmit.MatchString(body) &&
+		regexpAuditFailEmit.MatchString(body)
+}
+
+// synthesizeAuditResultEmit는 hashbang body를 base64 wrap → 실행 → "Audit Passed" substring
+// 매칭 합성 bash 생성 (4.2.6 specific).
+//
+// "Audit Passed" 출력이면 PASS, 그 외(`** FAIL **` 또는 출력 부재)이면 FAIL.
+// G10의 synthesizeHashbangPassFailEmit과 동일 base64 wrap + case 분기 패턴.
+func synthesizeAuditResultEmit(audit string) (string, bool) {
+	if !isAuditResultEmitAuditText(audit) {
+		return "", false
+	}
+	body, _ := extractCISBashBody(audit)
+	encoded := base64.StdEncoding.EncodeToString([]byte(body))
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "out=$(printf '%%s' %q | base64 -d | bash 2>/dev/null)\n", encoded)
+	sb.WriteString("case \"$out\" in\n")
+	sb.WriteString("  *Audit?Passed*) printf '** PASS **\\n' ;;\n")
+	sb.WriteString("  *) printf 'fail: %s\\n' \"$out\"; printf '** FAIL **\\n' ;;\n")
+	sb.WriteString("esac")
+	return sb.String(), true
 }
 
 // synthesizeBraceBlockEmpty는 `{}` block을 base64 wrap → 실행 → 출력 비어있으면 PASS 합성.

@@ -12,10 +12,15 @@ metadata:
         ufw documentation and set any restrictions in compliance with site policy
     severity: medium
 spec:
-    auditCommand: "true"
+    auditCommand: |-
+        bash -c 'out=$(printf '\''%s'\'' "IyEvdXNyL2Jpbi9lbnYgYmFzaAp7CnVuc2V0IGFfdWZ3b3V0O3Vuc2V0IGFfb3BlbnBvcnRzCndoaWxlIHJlYWQgLXIgbF91Zndwb3J0OyBkbwpbIC1uICIkbF91Zndwb3J0IiBdICYmIGFfdWZ3b3V0Kz0oIiRsX3Vmd3BvcnQiKQpkb25lIDwgPCh1Zncgc3RhdHVzIHZlcmJvc2UgfCBncmVwIC1QbyAnXlxoKlxkK1xiJyB8IHNvcnQgLXUpCndoaWxlIHJlYWQgLXIgbF9vcGVucG9ydDsgZG8KWyAtbiAiJGxfb3BlbnBvcnQiIF0gJiYgYV9vcGVucG9ydHMrPSgiJGxfb3BlbnBvcnQiKQpkb25lIDwgPChzcyAtdHVsbiB8IGF3ayAnKCQ1IX4vJWxvOi8gJiYgJDUhfi8xMjcuMC4wLjE6LyAmJgokNSF+L1xbPzo6MVxdPzovKSB7c3BsaXQoJDUsIGEsICI6Iik7IHByaW50IGFbMl19JyB8IHNvcnQgLXUpCmFfZGlmZj0oIiQocHJpbnRmICclc1xuJyAiJHthX29wZW5wb3J0c1tAXX0iICIke2FfdWZ3b3V0W0BdfSIKIiR7YV91ZndvdXRbQF19IiB8IHNvcnQgfCB1bmlxIC11KSIpCmlmIFtbIC1uICIke2FfZGlmZlsqXX0iIF1dOyB0aGVuCmVjaG8gLWUgIlxuLSBBdWRpdCBSZXN1bHQ6XG4gKiogRkFJTCAqKlxuLSBUaGUgZm9sbG93aW5nIHBvcnQocykgZG9uJ3QKaGF2ZSBhIHJ1bGUgaW4gVUZXOiAkKHByaW50ZiAnJXNcbicgXFxuIiR7YV9kaWZmWypdfSIpXG4tIEVuZCBMaXN0IgplbHNlCmVjaG8gLWUgIlxuIC0gQXVkaXQgUGFzc2VkIC1cbi0gQWxsIG9wZW4gcG9ydHMgaGF2ZSBhIHJ1bGUgaW4gVUZXXG4iCmZpCn0=" | base64 -d | bash 2>/dev/null)
+        case "$out" in
+          *Audit?Passed*) printf '\''** PASS **\n'\'' ;;
+          *) printf '\''fail: %s\n'\'' "$out"; printf '\''** FAIL **\n'\'' ;;
+        esac'
     evaluationRule:
         op: contains
-        value: <degraded — Phase 2 fixture required>
+        value: '** PASS **'
     rationale: |-
         To reduce the attack surface of a system, all services and ports should be blocked
         unless required.

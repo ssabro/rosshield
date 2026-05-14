@@ -56,6 +56,73 @@ func TestIsHashbangPassFailEmitAuditText_Negative(t *testing.T) {
 	}
 }
 
+// === 4.2.6 Audit Result emit (G5 부분 cover) ===
+
+const audit_4_2_6 = `Run the following script to verify a firewall rule exists for all open ports:
+#!/usr/bin/env bash
+{
+unset a_ufwout;unset a_openports
+while read -r l_ufwport; do
+[ -n "$l_ufwport" ] && a_ufwout+=("$l_ufwport")
+done < <(ufw status verbose | grep -Po '^\h*\d+\b' | sort -u)
+while read -r l_openport; do
+[ -n "$l_openport" ] && a_openports+=("$l_openport")
+done < <(ss -tuln | awk '($5!~/%lo:/) {split($5, a, ":"); print a[2]}' | sort -u)
+a_diff=("$(printf '%s\n' "${a_openports[@]}" "${a_ufwout[@]}" "${a_ufwout[@]}" | sort | uniq -u)")
+if [[ -n "${a_diff[*]}" ]]; then
+echo -e "\n- Audit Result:\n ** FAIL **\n- ports without rule\n"
+else
+echo -e "\n - Audit Passed -\n- All open ports have a rule\n"
+fi
+}`
+
+func TestIsAuditResultEmitAuditText_Positive(t *testing.T) {
+	t.Parallel()
+	if !isAuditResultEmitAuditText(audit_4_2_6) {
+		t.Errorf("isAuditResultEmitAuditText(4.2.6) = false, want true")
+	}
+}
+
+func TestIsAuditResultEmitAuditText_Negative(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, audit string }{
+		{"5.4.3.2 (PASSED/FAILED, 다른 키워드)", audit_5_4_3_2},
+		{"non-hashbang (sshd)", audit_nonGsettings},
+		{"hashbang body but no Audit Passed", `#!/usr/bin/env bash
+echo "** FAIL **"`},
+		{"empty", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if isAuditResultEmitAuditText(tc.audit) {
+				t.Errorf("isAuditResultEmitAuditText = true, want false")
+			}
+		})
+	}
+}
+
+func TestSynthesizeAuditResultEmit_Output(t *testing.T) {
+	t.Parallel()
+	bash, ok := synthesizeAuditResultEmit(audit_4_2_6)
+	if !ok {
+		t.Fatal("ok = false")
+	}
+	want := []string{
+		`out=$(printf '%s'`,
+		`base64 -d | bash 2>/dev/null)`,
+		`case "$out" in`,
+		`*Audit?Passed*) printf '** PASS **\n'`,
+		`** FAIL **`,
+	}
+	for _, w := range want {
+		if !strings.Contains(bash, w) {
+			t.Errorf("output missing %q\n  bash=%s", w, bash)
+		}
+	}
+}
+
 // === 5.4.1.6 brace block + expect-empty ===
 
 func TestIsBraceBlockEmptyAuditText_Positive(t *testing.T) {
