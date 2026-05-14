@@ -2256,22 +2256,39 @@ components:
 
     ScanSession:
       type: object
-      required: [sessionId, tenantId, fleetId, packId, trigger, status, total, completed, failed]
+      required:
+        - sessionId
+        - tenantId
+        - fleetId
+        - packId
+        - trigger
+        - status
+        - total
+        - completed
+        - failed
+        - severityCriticalFailed
+        - severityHighFailed
+        - severityMediumFailed
+        - severityLowFailed
       properties:
-        sessionId:     { type: string }
-        tenantId:      { type: string }
-        fleetId:       { type: string }
-        packId:        { type: string }
-        trigger:       { type: string }
-        status:        { type: string }
-        total:         { type: integer }
-        completed:     { type: integer }
-        failed:        { type: integer }
-        failureReason: { type: string }
-        createdAt:     { type: string, format: date-time }
-        updatedAt:     { type: string, format: date-time }
-        startedAt:     { type: string, format: date-time, nullable: true }
-        completedAt:   { type: string, format: date-time, nullable: true }
+        sessionId:              { type: string }
+        tenantId:               { type: string }
+        fleetId:                { type: string }
+        packId:                 { type: string }
+        trigger:                { type: string }
+        status:                 { type: string }
+        total:                  { type: integer }
+        completed:              { type: integer }
+        failed:                 { type: integer }
+        severityCriticalFailed: { type: integer, description: "scan_results.outcome='fail' × pack_checks.severity='critical' 카운트 (terminal transition 시 atomic 갱신, D26-1)" }
+        severityHighFailed:     { type: integer, description: "severity='high' fail 카운트" }
+        severityMediumFailed:   { type: integer, description: "severity='medium' fail 카운트" }
+        severityLowFailed:      { type: integer, description: "severity='low' fail 카운트 — info severity는 별 도메인이라 미카운트(D26-1)" }
+        failureReason:          { type: string }
+        createdAt:              { type: string, format: date-time }
+        updatedAt:              { type: string, format: date-time }
+        startedAt:              { type: string, format: date-time, nullable: true }
+        completedAt:            { type: string, format: date-time, nullable: true }
 
     # ─── Scan progress (WebSocket frame) ─────────────────────────────────
     ScanProgressMessage:

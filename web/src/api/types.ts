@@ -1386,6 +1386,14 @@ export interface components {
             total: number;
             completed: number;
             failed: number;
+            /** @description scan_results.outcome='fail' × pack_checks.severity='critical' 카운트 (terminal transition 시 atomic 갱신, D26-1) */
+            severityCriticalFailed: number;
+            /** @description severity='high' fail 카운트 */
+            severityHighFailed: number;
+            /** @description severity='medium' fail 카운트 */
+            severityMediumFailed: number;
+            /** @description severity='low' fail 카운트 — info severity는 별 도메인이라 미카운트(D26-1) */
+            severityLowFailed: number;
             failureReason?: string;
             /** Format: date-time */
             createdAt?: string;
