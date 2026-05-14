@@ -190,6 +190,16 @@ func convertCISItem(it cisItem) (Check, string) {
 		return check, ""
 	}
 
+	// Pattern 10 (E-1 G15): multi-cmd `grep -Pi -- '...'` /etc/audit/auditd.conf — 6.2.2.3.
+	// 2+ grep 명령 모두 non-empty이면 PASS. narrow(auditd.conf 경로 명시)로 false trigger 0.
+	if isMultiGrepAuditdAuditText(it.Audit) {
+		if synthesized, ok := synthesizeMultiGrepAuditd(it.Audit); ok {
+			check.AuditCommand = wrapBash(synthesized)
+			check.EvaluationRule = cisAutoEvalRuleJSON
+			return check, ""
+		}
+	}
+
 	// Pattern 9 (E-1 G7-bool): `gsettings get <schema> <key>` boolean 정확 매칭. 1.7.6 + 1.7.8
 	// (true/false). 1.7.4(uint32 N + threshold)는 별 분기 — 본 인식기는 boolean만.
 	if isGsettingsBoolAuditText(it.Audit) {
