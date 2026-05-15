@@ -38,6 +38,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/scan"
 	"github.com/ssabro/rosshield/internal/domain/tenant"
 	"github.com/ssabro/rosshield/internal/domain/tenant/sso"
+	"github.com/ssabro/rosshield/internal/platform/authz"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/license"
@@ -232,91 +233,119 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.Get("/api/v1/webhooks/{endpointId}", h.getWebhookEndpointFromChi)
 		r.Get("/api/v1/webhooks/{endpointId}/deliveries", h.listWebhookDeliveriesFromChi)
 
-		// RBAC Stage 1+2 — admin role 전용 mutation 그룹.
-		// Phase 5 1차는 admin/operator 2-tier 단순화. auditor 별 read-only 그룹은 후속.
-		r.Group(func(r chi.Router) {
-			r.Use(h.RequireRole("admin"))
+		// === 세분 RBAC Stage 4 — endpoint별 RequirePermission 게이트 ===
+		//
+		// design doc `docs/design/notes/rbac-fine-grained-design.md` §7 Stage 4 산출.
+		// 기존 admin 단일 그룹 → endpoint별 (resource, action) 권한으로 분해. 24 mutation
+		// 모두 RequirePermission(authz.Resource, authz.Action) middleware로 게이트합니다.
+		//
+		// fleet scope 평가는 path에 fleetId가 직접 등장하는 endpoint(2건: PATCH /fleets/{id},
+		// /fleets/{id}/insights:run)만 fleet binding의 ScopeID와 일치 검증. 다른 mutation은
+		// 빈 FleetID로 평가 — tenant scope binding(owner/admin/auditor 등)만 통과.
+		//
+		// 매핑 근거: design doc §3.3 매트릭스 + §2.2 endpoint 매핑 + permission_matrix.go의
+		// SystemRolePermissions. 회귀 시 rbac_integration_test.go의 매트릭스 테스트가 차단합니다.
 
-			// === Stage 1 (E21·E20-D·E23-C) ===
-
-			// Invitation mutation
-			r.Post("/api/v1/invitations", h.CreateInvitation)
-			r.Delete("/api/v1/invitations/{invitationId}", func(w http.ResponseWriter, req *http.Request) {
+		// === Invitation mutation (2건) — tenant 글로벌 admin ===
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/invitations", h.CreateInvitation)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Delete("/api/v1/invitations/{invitationId}", func(w http.ResponseWriter, req *http.Request) {
 				h.RevokeInvitation(w, req, chi.URLParam(req, "invitationId"))
 			})
 
-			// SSO Provider mutation
-			r.Post("/api/v1/sso/providers", h.CreateSSOProvider)
-			r.Put("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
+		// === SSO Provider mutation (3건) — tenant 글로벌 admin ===
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/sso/providers", h.CreateSSOProvider)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Put("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
 				h.UpdateSSOProvider(w, req, chi.URLParam(req, "providerId"))
 			})
-			r.Delete("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Delete("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
 				h.DeleteSSOProvider(w, req, chi.URLParam(req, "providerId"))
 			})
 
-			// Webhook mutation + test (E29)
-			r.Post("/api/v1/webhooks", h.CreateWebhookEndpoint)
-			r.Put("/api/v1/webhooks/{endpointId}", h.updateWebhookEndpointFromChi)
-			r.Delete("/api/v1/webhooks/{endpointId}", h.deleteWebhookEndpointFromChi)
-			r.Post("/api/v1/webhooks/{endpointId}/test", h.testWebhookEndpointFromChi)
+		// === Webhook mutation + test (4건) — tenant 글로벌 admin ===
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/webhooks", h.CreateWebhookEndpoint)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Put("/api/v1/webhooks/{endpointId}", h.updateWebhookEndpointFromChi)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Delete("/api/v1/webhooks/{endpointId}", h.deleteWebhookEndpointFromChi)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/webhooks/{endpointId}/test", h.testWebhookEndpointFromChi)
 
-			// === Stage 2 (Robot·Scan·Audit·Report·Insight·Compliance mutation) ===
-
-			// Robot 등록 (시스템 자산 추가)
-			r.Post("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
+		// === Robot mutation (4건) ===
+		// Robot 등록 — body fleetId 기반(path 추출 X), tenant scope binding 보유자만 통과.
+		// 정밀 fleet scope 결정은 후속 stage에서 body 추출 hook 추가.
+		r.With(h.RequirePermission(authz.ResourceRobot, authz.ActionWrite)).
+			Post("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
 				h.CreateRobot(w, req, gen.CreateRobotParams{})
 			})
-			// Robot 삭제 (soft delete, R3-5).
-			r.Delete("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
+		// Robot 삭제(soft delete, R3-5). path는 robotId만 — fleet 추출 미가능, tenant 평가.
+		r.With(h.RequirePermission(authz.ResourceRobot, authz.ActionWrite)).
+			Delete("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
 				h.DeleteRobot(w, req, chi.URLParam(req, "robotId"))
 			})
-			// Robot credential 회전 (R3-3, audit emit).
-			r.Post("/api/v1/robots/{robotId}/credential:rotate", func(w http.ResponseWriter, req *http.Request) {
+		// Robot credential 회전(R3-3, audit emit). admin 권한.
+		r.With(h.RequirePermission(authz.ResourceRobot, authz.ActionAdmin)).
+			Post("/api/v1/robots/{robotId}/credential:rotate", func(w http.ResponseWriter, req *http.Request) {
 				h.RotateCredential(w, req, chi.URLParam(req, "robotId"))
 			})
-			// SSH fingerprint 미리보기 (admin, ephemeral 계산만 — 영속 X).
-			r.Post("/api/v1/utils/ssh-fingerprint", h.SSHFingerprint)
+		// SSH fingerprint 미리보기 — admin 유틸. tenant 글로벌.
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/utils/ssh-fingerprint", h.SSHFingerprint)
 
-			// Scan 실행 (시스템 자원 소비)
-			r.Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
+		// === Scan mutation (2건) — body 또는 sessionId path만, tenant 평가 ===
+		r.With(h.RequirePermission(authz.ResourceScan, authz.ActionExecute)).
+			Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
 				h.CreateScan(w, req, gen.CreateScanParams{})
 			})
-			// Scan cancel (running/pending 세션 강제 종료)
-			r.Post("/api/v1/scans/{sessionId}:cancel", func(w http.ResponseWriter, req *http.Request) {
+		r.With(h.RequirePermission(authz.ResourceScan, authz.ActionExecute)).
+			Post("/api/v1/scans/{sessionId}:cancel", func(w http.ResponseWriter, req *http.Request) {
 				h.CancelScan(w, req, chi.URLParam(req, "sessionId"))
 			})
 
-			// Audit verify (감사 작업)
-			r.Post("/api/v1/audit/verify", h.VerifyAuditChain)
+		// === Audit verify (1건) — admin/auditor 통과 ===
+		r.With(h.RequirePermission(authz.ResourceAudit, authz.ActionVerify)).
+			Post("/api/v1/audit/verify", h.VerifyAuditChain)
 
-			// Report verify (감사 작업)
-			r.Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
+		// === Report verify (1건) — admin/auditor 통과 ===
+		r.With(h.RequirePermission(authz.ResourceReport, authz.ActionVerify)).
+			Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
 				h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
 			})
 
-			// Insight mutation
-			r.Post("/api/v1/insights/{insightId}:dismiss", func(w http.ResponseWriter, req *http.Request) {
+		// === Insight mutation (2건) — fleets/{fleetId}/insights:run는 fleet scope 평가 ===
+		r.With(h.RequirePermission(authz.ResourceInsight, authz.ActionWrite)).
+			Post("/api/v1/insights/{insightId}:dismiss", func(w http.ResponseWriter, req *http.Request) {
 				h.DismissInsight(w, req, chi.URLParam(req, "insightId"))
 			})
-			r.Post("/api/v1/fleets/{fleetId}/insights:run", func(w http.ResponseWriter, req *http.Request) {
+		r.With(h.RequirePermission(authz.ResourceInsight, authz.ActionExecute)).
+			Post("/api/v1/fleets/{fleetId}/insights:run", func(w http.ResponseWriter, req *http.Request) {
 				h.RunFleetInsights(w, req, chi.URLParam(req, "fleetId"))
 			})
 
-			// Fleet mutation
-			r.Post("/api/v1/fleets", h.CreateFleet)
-			r.Patch("/api/v1/fleets/{fleetId}", func(w http.ResponseWriter, req *http.Request) {
+		// === Fleet mutation (3건) — PATCH는 fleet scope, POST/DELETE는 tenant ===
+		r.With(h.RequirePermission(authz.ResourceFleet, authz.ActionAdmin)).
+			Post("/api/v1/fleets", h.CreateFleet)
+		r.With(h.RequirePermission(authz.ResourceFleet, authz.ActionWrite)).
+			Patch("/api/v1/fleets/{fleetId}", func(w http.ResponseWriter, req *http.Request) {
 				h.UpdateFleet(w, req, chi.URLParam(req, "fleetId"))
 			})
-			r.Delete("/api/v1/fleets/{fleetId}", func(w http.ResponseWriter, req *http.Request) {
+		r.With(h.RequirePermission(authz.ResourceFleet, authz.ActionAdmin)).
+			Delete("/api/v1/fleets/{fleetId}", func(w http.ResponseWriter, req *http.Request) {
 				h.DeleteFleet(w, req, chi.URLParam(req, "fleetId"))
 			})
 
-			// Compliance mutation
-			r.Post("/api/v1/compliance/profiles", h.CreateComplianceProfile)
-			r.Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
+		// === Compliance mutation (2건) — profile은 admin, snapshot은 execute ===
+		r.With(h.RequirePermission(authz.ResourceCompliance, authz.ActionAdmin)).
+			Post("/api/v1/compliance/profiles", h.CreateComplianceProfile)
+		r.With(h.RequirePermission(authz.ResourceCompliance, authz.ActionExecute)).
+			Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
 				h.GenerateComplianceSnapshot(w, req, chi.URLParam(req, "profileId"))
 			})
-		})
 	})
 }
 

@@ -91,7 +91,7 @@ func (h *Handlers) RequirePermission(resource authz.Resource, action authz.Actio
 
 			sub := authz.Subject{
 				Bindings: bindingsForSubject(claims),
-				FleetID:  chi.URLParam(r, "fleetID"),
+				FleetID:  fleetIDFromRequest(r),
 			}
 
 			d := authz.Decide(sub, resource, action)
@@ -109,6 +109,22 @@ func (h *Handlers) RequirePermission(resource authz.Resource, action authz.Actio
 			})
 		})
 	}
+}
+
+// fleetIDFromRequest는 chi URL param에서 fleet ID를 추출합니다.
+//
+// 본 미들웨어는 다양한 endpoint에 mount되므로 path param 이름이 endpoint마다 다릅니다 —
+// 우선 design doc 표기 fleetID(대문자 D)를 시도하고, 실패 시 handlers.go의 실 path 정의
+// fleetId(소문자 d)를 fallback 추출합니다. 둘 다 부재 시 빈 문자열 (tenant 글로벌 요청).
+//
+// 본 stage 4는 path에 fleetId가 직접 등장하는 endpoint(`/fleets/{fleetId}/insights:run`,
+// `PATCH /fleets/{fleetId}`)만 fleet scope 평가. 나머지 mutation은 path 추출 없이 빈
+// FleetID — tenant scope binding(admin/owner/auditor 등)만 통과.
+func fleetIDFromRequest(r *http.Request) string {
+	if v := chi.URLParam(r, "fleetID"); v != "" {
+		return v
+	}
+	return chi.URLParam(r, "fleetId")
 }
 
 // bindingsForSubject는 claims에서 authz용 RoleBinding 슬라이스를 빌드합니다.
