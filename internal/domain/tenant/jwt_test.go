@@ -123,6 +123,91 @@ func TestParseAccessTokenRejectsAlgNone(t *testing.T) {
 	}
 }
 
+// TestSignAndParseAccessTokenBindingsRoundtrip는 세분 RBAC Stage 3 — Bindings claim
+// 직렬화·역직렬화가 보존되는지 검증합니다.
+//
+// AccessClaims.Bindings 슬라이스(tenant + fleet 2건 혼합)를 Sign → Parse 라운드트립한 후
+// 동일한 binding 셋이 복원되는지 확인합니다.
+func TestSignAndParseAccessTokenBindingsRoundtrip(t *testing.T) {
+	t.Parallel()
+	pub, priv := newJWTKeyPair(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	in := tenant.AccessClaims{
+		Subject:  "us_abc",
+		TenantID: "tn_acme",
+		Roles:    []string{"admin", "operator"}, // 호환 보존 — 옵션
+		Bindings: []tenant.RoleBindingClaim{
+			{Role: "admin", ScopeType: "tenant", ScopeID: ""},
+			{Role: "operator", ScopeType: "fleet", ScopeID: "flt_a"},
+		},
+		IssuedAt:  now,
+		ExpiresAt: now.Add(15 * time.Minute),
+		JTI:       "at_xyz",
+	}
+	token, err := tenant.SignAccessToken(priv, in)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+
+	out, err := tenant.ParseAccessToken(pub, token)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(out.Bindings) != 2 {
+		t.Fatalf("Bindings len = %d, want 2 (got %+v)", len(out.Bindings), out.Bindings)
+	}
+	want := map[string]tenant.RoleBindingClaim{
+		"admin":    {Role: "admin", ScopeType: "tenant", ScopeID: ""},
+		"operator": {Role: "operator", ScopeType: "fleet", ScopeID: "flt_a"},
+	}
+	for _, b := range out.Bindings {
+		w, ok := want[b.Role]
+		if !ok {
+			t.Errorf("unexpected binding: %+v", b)
+			continue
+		}
+		if b.ScopeType != w.ScopeType || b.ScopeID != w.ScopeID {
+			t.Errorf("binding %s: got %+v, want %+v", b.Role, b, w)
+		}
+	}
+}
+
+// TestSignAndParseAccessTokenBindingsOmitted는 Bindings가 비어 있을 때 JSON에 키가
+// 포함되지 않고(omitempty), Parse 후에도 nil 또는 빈 슬라이스로 복원됨을 검증합니다.
+//
+// 이는 D-RBAC-7 호환 정책의 기반 — 옛 토큰(bindings 부재)도 정상 복원되어야 합니다.
+func TestSignAndParseAccessTokenBindingsOmitted(t *testing.T) {
+	t.Parallel()
+	pub, priv := newJWTKeyPair(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	in := tenant.AccessClaims{
+		Subject:   "us_legacy",
+		TenantID:  "tn_acme",
+		Roles:     []string{"admin"},
+		IssuedAt:  now,
+		ExpiresAt: now.Add(15 * time.Minute),
+		JTI:       "at_legacy",
+		// Bindings 없음 — 옛 토큰 시뮬레이션
+	}
+	token, err := tenant.SignAccessToken(priv, in)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+
+	out, err := tenant.ParseAccessToken(pub, token)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(out.Bindings) != 0 {
+		t.Errorf("Bindings = %+v, want empty (legacy token has no bindings)", out.Bindings)
+	}
+	if len(out.Roles) != 1 || out.Roles[0] != "admin" {
+		t.Errorf("Roles = %v, want [admin]", out.Roles)
+	}
+}
+
 func TestSignAndParseRefreshToken(t *testing.T) {
 	t.Parallel()
 	pub, priv := newJWTKeyPair(t)

@@ -24,11 +24,28 @@ const (
 	JWTLeeway         = 30 * time.Second // clock skew 허용 폭
 )
 
+// RoleBindingClaim은 JWT bindings 클레임의 단일 항목입니다 (세분 RBAC Stage 3).
+//
+// design doc §7 Stage 3 — JWT 직렬화 한정 형식. tenant.RoleBinding 도메인 타입과 의미
+// 일치하지만, JWT 크기를 제한하기 위해 Role 이름만 직렬화합니다 (Permission 슬라이스는
+// 서버측 SystemRolePermissions에서 조회). authz.RoleBinding과도 동일 의미 — 호출자가
+// 도메인·PDP 타입 변환을 수행합니다 (DDD 경계 §5).
+//
+// 예시:
+//   - {Role:"admin", ScopeType:"tenant", ScopeID:""} — 모든 fleet implicit.
+//   - {Role:"operator", ScopeType:"fleet", ScopeID:"flt_a"} — fleet_a 한정.
+type RoleBindingClaim struct {
+	Role      string `json:"role"`
+	ScopeType string `json:"scope_type"`         // "tenant" | "fleet"
+	ScopeID   string `json:"scope_id,omitempty"` // ScopeType="fleet"일 때만 fleet ID.
+}
+
 // AccessClaims는 access 토큰의 디코딩 결과입니다.
 type AccessClaims struct {
-	Subject   string           // user ID (us_...)
-	TenantID  storage.TenantID // tid claim
-	Roles     []string         // role 이름 슬라이스
+	Subject   string             // user ID (us_...)
+	TenantID  storage.TenantID   // tid claim
+	Roles     []string           // role 이름 슬라이스 (D-RBAC-7 호환 보존)
+	Bindings  []RoleBindingClaim // 세분 RBAC Stage 3 — fleet scope 포함 binding 셋. 옛 토큰은 빈 슬라이스.
 	ExpiresAt time.Time
 	IssuedAt  time.Time
 	JTI       string
@@ -44,9 +61,13 @@ type RefreshClaims struct {
 }
 
 // internal — JWT 라이브러리에 넘기는 claim struct.
+//
+// `bindings` 클레임은 세분 RBAC Stage 3에서 추가됐습니다. omitempty로 옛 토큰 호환 보존
+// (D-RBAC-7) — bindings 부재 토큰은 ParseAccessToken에서 빈 슬라이스로 복원됩니다.
 type accessJWT struct {
-	TenantID string   `json:"tid"`
-	Roles    []string `json:"roles"`
+	TenantID string             `json:"tid"`
+	Roles    []string           `json:"roles"`
+	Bindings []RoleBindingClaim `json:"bindings,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -63,6 +84,7 @@ func SignAccessToken(privKey ed25519.PrivateKey, c AccessClaims) (string, error)
 	tok := jwt.NewWithClaims(jwt.SigningMethodEdDSA, accessJWT{
 		TenantID: string(c.TenantID),
 		Roles:    c.Roles,
+		Bindings: c.Bindings,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   c.Subject,
 			Issuer:    JWTIssuer,
@@ -136,6 +158,7 @@ func ParseAccessToken(pubKey ed25519.PublicKey, token string) (AccessClaims, err
 		Subject:   c.Subject,
 		TenantID:  storage.TenantID(c.TenantID),
 		Roles:     c.Roles,
+		Bindings:  c.Bindings,
 		ExpiresAt: exp,
 		IssuedAt:  iat,
 		JTI:       c.ID,
