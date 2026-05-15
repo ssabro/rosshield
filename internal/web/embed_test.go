@@ -3,6 +3,7 @@ package web
 // embed_test.go — Web Console 정적 자산 embed + Handler 동작 검증 (E10 Stage D).
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -110,5 +111,86 @@ func TestHandlerErrorWhenDistMissing(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected ErrIndexMissing when dist absent")
 		}
+	}
+}
+
+// TestEmbedIncludesPWAManifest는 PWA Stage 1 산출물이 Go 바이너리에 임베드되어
+// embedded FS로 접근 가능한지 회귀 차단합니다 (design doc §6.1, §9.1).
+//
+// `web/public/*` 정적 자산은 Vite가 build 시 dist 루트로 그대로 복사 — Go
+// `//go:embed dist`가 자동 흡수합니다. 회귀 시나리오: outDir 변경 또는
+// vite-plugin-pwa 도입(Stage 2) 시 manifest 파일명이 바뀌어 본 테스트가
+// 즉시 알람 역할을 합니다.
+func TestEmbedIncludesPWAManifest(t *testing.T) {
+	if !HasAssets() {
+		t.Skip("dist missing — run `make web-build` first")
+	}
+
+	raw, err := dist.ReadFile("dist/manifest.webmanifest")
+	if err != nil {
+		t.Fatalf("manifest.webmanifest missing in embed: %v", err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("manifest.webmanifest empty")
+	}
+
+	// 유효 JSON + 필수 키 확인.
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("manifest.webmanifest invalid JSON: %v", err)
+	}
+	for _, key := range []string{"name", "short_name", "start_url", "display", "theme_color", "icons"} {
+		if _, ok := manifest[key]; !ok {
+			t.Errorf("manifest.webmanifest missing required key %q", key)
+		}
+	}
+}
+
+// TestEmbedIncludesPWAIcons는 manifest가 참조하는 아이콘 파일들이 함께
+// 임베드되어 있는지 확인합니다.
+func TestEmbedIncludesPWAIcons(t *testing.T) {
+	if !HasAssets() {
+		t.Skip("dist missing")
+	}
+
+	for _, name := range []string{
+		"dist/icon-192.png",
+		"dist/icon-512.png",
+		"dist/apple-touch-icon.png",
+		"dist/favicon.svg",
+	} {
+		info, err := dist.ReadFile(name)
+		if err != nil {
+			t.Errorf("missing %s: %v", name, err)
+			continue
+		}
+		if len(info) == 0 {
+			t.Errorf("%s empty", name)
+		}
+	}
+}
+
+// TestHandlerServesManifestWithoutCache는 manifest를 Handler가 정상 서빙하는지
+// + /assets/* immutable cache 정책 적용 대상이 아님(루트 자산)을 확인합니다.
+func TestHandlerServesManifest(t *testing.T) {
+	if !HasAssets() {
+		t.Skip("dist missing")
+	}
+	h, _ := Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200", rec.Code)
+	}
+	body, _ := io.ReadAll(rec.Body)
+	if !strings.Contains(string(body), "rosshield") {
+		t.Fatalf("manifest body missing brand name: %s", string(body)[:min(200, len(body))])
+	}
+	// /assets/*가 아닌 루트 자산 → immutable cache header 없어야 함 (Workbox SW가 차후 관리).
+	if cache := rec.Header().Get("Cache-Control"); strings.Contains(cache, "immutable") {
+		t.Errorf("manifest unexpectedly immutable: Cache-Control=%q", cache)
 	}
 }
