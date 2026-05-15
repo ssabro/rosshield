@@ -4,6 +4,10 @@
 //   - TestAssignRoleScoped_FleetBinding
 //   - TestExistingTenantBindingPreserved
 //   - TestCrossTenantScopeIsolation
+//
+// RBAC fleet 정밀화 Stage 5 추가:
+//   - TestRevokeUserRoleBindingsBySource_OnlyMatchingSourceDeleted
+//     (D-RBACEX-7 권장 default — manual 보존, sso만 revoke)
 package sqliterepo_test
 
 import (
@@ -304,5 +308,129 @@ func TestCrossTenantScopeIsolation(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatalf("tenant A GetUserRoleBindings: %v", err)
+	}
+}
+
+// TestRevokeUserRoleBindingsBySource_OnlyMatchingSourceDeleted는 SSO callback sync 흐름의
+// 핵심 D-RBACEX-7 권장 default (manual 보존 + sso만 revoke)를 검증합니다 — RBAC fleet
+// 정밀화 Stage 5.
+//
+// 시나리오:
+//
+//  1. tenant + admin 시드 (admin은 manual binding 1건).
+//  2. operator(manual tenant) + auditor(sso fleet) 추가 할당 — 3건 binding.
+//  3. RevokeUserRoleBindingsBySource(userID, BindingSourceSSO) — sso 1건 revoke.
+//  4. 사후 검증 — manual 2건 보존.
+//  5. 두 번째 호출 — 멱등 (0건 삭제).
+//  6. 빈 userID — 안전 noop.
+func TestRevokeUserRoleBindingsBySource_OnlyMatchingSourceDeleted(t *testing.T) {
+	t.Parallel()
+	repo, _, store := newTestRepo(t)
+
+	var result tenant.CreateResult
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		r, err := repo.Create(ctx, tx, sampleCreate())
+		result = r
+		return err
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	tenantCtx := storage.WithTenantID(context.Background(), result.Tenant.ID)
+
+	const ssoFleetID = "flt_sso_warehouse"
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		operatorRole, err := repo.GetRole(ctx, tx, result.Tenant.ID, tenant.RoleOperator)
+		if err != nil {
+			return err
+		}
+		auditorRole, err := repo.GetRole(ctx, tx, result.Tenant.ID, tenant.RoleAuditor)
+		if err != nil {
+			return err
+		}
+		if err := repo.AssignRoleScoped(ctx, tx, result.Admin.ID, operatorRole.ID,
+			tenant.ScopeTenant, "", tenant.BindingSourceManual); err != nil {
+			return err
+		}
+		if err := repo.AssignRoleScoped(ctx, tx, result.Admin.ID, auditorRole.ID,
+			tenant.ScopeFleet, ssoFleetID, tenant.BindingSourceSSO); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed bindings: %v", err)
+	}
+
+	// 사전 — 3건 binding.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		bindings, err := repo.GetUserRoleBindings(ctx, tx, result.Admin.ID)
+		if err != nil {
+			return err
+		}
+		if len(bindings) != 3 {
+			t.Fatalf("pre-revoke len=%d want 3", len(bindings))
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("pre-revoke GetUserRoleBindings: %v", err)
+	}
+
+	// SSO sync 시뮬레이션.
+	var revoked int
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		n, err := repo.RevokeUserRoleBindingsBySource(ctx, tx, result.Admin.ID, tenant.BindingSourceSSO)
+		revoked = n
+		return err
+	}); err != nil {
+		t.Fatalf("RevokeUserRoleBindingsBySource: %v", err)
+	}
+	if revoked != 1 {
+		t.Errorf("revoked=%d want=1 (only auditor sso)", revoked)
+	}
+
+	// 사후 — manual 2건만 보존.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		bindings, err := repo.GetUserRoleBindings(ctx, tx, result.Admin.ID)
+		if err != nil {
+			return err
+		}
+		if len(bindings) != 2 {
+			t.Fatalf("post-revoke len=%d want 2", len(bindings))
+		}
+		for _, b := range bindings {
+			if b.Source != tenant.BindingSourceManual {
+				t.Errorf("post-revoke binding %q Source=%q want manual", b.Role.Name, b.Source)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("post-revoke GetUserRoleBindings: %v", err)
+	}
+
+	// 멱등 검증.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		n, err := repo.RevokeUserRoleBindingsBySource(ctx, tx, result.Admin.ID, tenant.BindingSourceSSO)
+		if err != nil {
+			return err
+		}
+		if n != 0 {
+			t.Errorf("second revoke n=%d want=0 (idempotent)", n)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("second revoke: %v", err)
+	}
+
+	// 빈 userID는 안전 noop.
+	if err := store.Tx(tenantCtx, func(ctx context.Context, tx storage.Tx) error {
+		n, err := repo.RevokeUserRoleBindingsBySource(ctx, tx, "", tenant.BindingSourceSSO)
+		if err != nil {
+			return err
+		}
+		if n != 0 {
+			t.Errorf("empty userID n=%d want=0", n)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("empty userID: %v", err)
 	}
 }

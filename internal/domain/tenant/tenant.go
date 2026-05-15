@@ -342,6 +342,19 @@ type Service interface {
 	// row만 갱신, source='manual' 수동 binding은 보존.
 	AssignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType ScopeType, scopeID string, source BindingSource) error
 
+	// RevokeUserRoleBindingsBySource는 user의 특정 source(예: 'sso') binding을 모두 삭제합니다
+	// (멱등) — RBAC fleet 정밀화 Stage 5 SSO callback sync 흐름.
+	//
+	// 사용 패턴 (D-RBACEX-7 권장 default):
+	//
+	//   1. SSO callback에서 IdP group claim → ResolvedBinding 셋 계산.
+	//   2. RevokeUserRoleBindingsBySource(userID, BindingSourceSSO) — 기존 자동 binding 모두 revoke.
+	//   3. for _, rb := range resolved: AssignRoleScoped(userID, rb.RoleID, rb.ScopeType, rb.ScopeID, BindingSourceSSO).
+	//
+	// source='manual' (admin 수동 할당)은 영향 없음 — 두 운영 패턴(자동 + 수동) 공존.
+	// 반환 int은 실제 삭제된 row count — audit payload용.
+	RevokeUserRoleBindingsBySource(ctx context.Context, tx storage.Tx, userID string, source BindingSource) (int, error)
+
 	// GetUserRoles는 user에게 할당된 모든 role을 반환합니다 (scope 정보 없는 평탄 슬라이스).
 	//
 	// 본 메서드는 기존 호출 site 호환 — 새 코드는 GetUserRoleBindings 권장.

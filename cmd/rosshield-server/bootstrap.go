@@ -226,6 +226,7 @@ type Platform struct {
 	WebhookDispatcher *webhookrun.Dispatcher   // E23-B — Process worker
 	WebhookBridge     *webhookrun.EventBridge  // E23-D — EventBus → webhook.Enqueue bridge
 	SSO               sso.Service              // E20-D — SSO Provider CRUD + IdP 호출
+	SSOGroupMapping   sso.GroupMappingService  // RBAC fleet 정밀화 Stage 5 — group → role 자동 매핑 CRUD + resolve
 	Invitation        tenant.InvitationService // E21 — 초대·역할 관리
 	Metrics           *metrics.Registry        // E27 — Prometheus exposition (옵트인)
 	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
@@ -1289,6 +1290,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		WebhookDispatcher: webhookDispatcher,
 		WebhookBridge:     webhookBridge,
 		SSO:               ssoSvc,
+		SSOGroupMapping:   ssoSvc, // RBAC fleet 정밀화 Stage 5 — *ssorepo.Repo가 GroupMappingService도 구현.
 		Invitation:        invitationSvc,
 		Metrics:           metricsReg,
 		MetricsBridge:     metricsBridge,

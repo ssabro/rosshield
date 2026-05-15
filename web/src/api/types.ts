@@ -973,6 +973,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sso/providers/{providerId}/group-mappings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        /** List SSO group → role mappings for a provider */
+        get: operations["listSSOGroupMappings"];
+        put?: never;
+        /**
+         * Create a new SSO group → role mapping
+         * @description Maps an IdP claim group value (e.g. `fleet-admin-warehouse-a`) to an internal
+         *     `(role, scope)` binding. SSO callback applies these mappings to user_roles
+         *     rows with `source='sso'` on every login. `scopeType=tenant` ignores `scopeId`;
+         *     `scopeType=fleet` requires `scopeId`. Returns 409 if the same 5-tuple
+         *     `(provider, group, role, scope_type, scope_id)` already exists.
+         */
+        post: operations["createSSOGroupMapping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sso/providers/{providerId}/group-mappings/{mappingId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+                mappingId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an SSO group → role mapping */
+        delete: operations["deleteSSOGroupMapping"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/sso/{providerId}/login": {
         parameters: {
             query?: never;
@@ -1869,6 +1916,45 @@ export interface components {
             userId?: string;
             /** @description True when no IdP client/SAML adapter is configured */
             stub?: boolean;
+        };
+        /**
+         * @description Maps an IdP claim group value to an internal (role, scope) binding. Applied
+         *     by the SSO callback flow on every login (source='sso' rows are revoked then
+         *     re-inserted from the resolved set). Manual admin bindings (source='manual')
+         *     are unaffected (D-RBACEX-7).
+         */
+        SSOGroupMapping: {
+            /** @description sgm_<ULID> */
+            id: string;
+            /** @description Owning SSO provider ID */
+            providerId: string;
+            /** @description IdP claim group string (e.g. 'fleet-admin-warehouse-a') */
+            groupValue: string;
+            /** @description Internal role ID to grant */
+            roleId: string;
+            /**
+             * @description Scope dimension of the granted binding
+             * @enum {string}
+             */
+            scopeType: "tenant" | "fleet";
+            /** @description Fleet ID when scopeType=fleet; empty for tenant scope */
+            scopeId?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SSOGroupMappingCreate: {
+            groupValue: string;
+            roleId: string;
+            /**
+             * @description Default 'tenant' when omitted
+             * @enum {string}
+             */
+            scopeType?: "tenant" | "fleet";
+            /** @description Required when scopeType=fleet; ignored otherwise */
+            scopeId?: string;
+        };
+        ListSSOGroupMappingsResponse: {
+            mappings: components["schemas"]["SSOGroupMapping"][];
         };
         /**
          * @description Invitation metadata. The token itself is **never** returned by list/get —
@@ -3615,6 +3701,145 @@ export interface operations {
             401: components["responses"]["ErrorResponse"];
             /** @description Provider not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listSSOGroupMappings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListSSOGroupMappingsResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description SSO group mapping service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createSSOGroupMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSOGroupMappingCreate"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSOGroupMapping"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            /** @description Provider not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Mapping already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description SSO group mapping service not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteSSOGroupMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerId: string;
+                mappingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["ErrorResponse"];
+            /** @description Mapping not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description SSO group mapping service not configured */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

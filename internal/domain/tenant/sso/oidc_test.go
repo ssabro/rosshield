@@ -563,3 +563,125 @@ func TestPKCEDeterminism(t *testing.T) {
 }
 
 // (no extra helpers — keep oidc_test.go scoped to public surface checks.)
+
+// === RBAC fleet 정밀화 Stage 5 — IDTokenClaims.Groups 추출 + ExtractSAMLGroups ===
+
+// TestVerifyIDToken_GroupsClaim_Extracted는 id_token에 "groups" claim 포함 시
+// Groups 슬라이스가 채워지는지 검증합니다.
+func TestVerifyIDToken_GroupsClaim_Extracted(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC)
+	idp := newMockIdP(t, fixedClock(now))
+	idp.overrideClaims = func(c jwt.MapClaims) {
+		c["groups"] = []any{"fleet-admin-warehouse-a", "operator-warehouse-b", ""}
+	}
+	c := mkClient(fixedClock(now))
+	cfg := sso.OIDCConfig{Issuer: idp.issuer(), ClientID: "test-client", RedirectURI: "https://app/cb", Scopes: []string{"openid"}}
+
+	idt, _, err := c.ExchangeCode(context.Background(), cfg, "code-x", "verifier-x")
+	if err != nil {
+		t.Fatalf("ExchangeCode: %v", err)
+	}
+	claims, err := c.VerifyIDToken(context.Background(), cfg, idt, "expected-nonce-abcdef")
+	if err != nil {
+		t.Fatalf("VerifyIDToken: %v", err)
+	}
+	// 빈 문자열은 skip — 2건만 추출.
+	if len(claims.Groups) != 2 {
+		t.Fatalf("Groups len=%d want=2: %v", len(claims.Groups), claims.Groups)
+	}
+	if claims.Groups[0] != "fleet-admin-warehouse-a" || claims.Groups[1] != "operator-warehouse-b" {
+		t.Errorf("Groups order unexpected: %v", claims.Groups)
+	}
+}
+
+// TestVerifyIDToken_NoGroupsClaim_Empty는 groups claim이 없을 때 빈 슬라이스 반환을 검증합니다.
+func TestVerifyIDToken_NoGroupsClaim_Empty(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC)
+	idp := newMockIdP(t, fixedClock(now))
+	c := mkClient(fixedClock(now))
+	cfg := sso.OIDCConfig{Issuer: idp.issuer(), ClientID: "test-client", RedirectURI: "https://app/cb", Scopes: []string{"openid"}}
+
+	idt, _, err := c.ExchangeCode(context.Background(), cfg, "code-x", "verifier-x")
+	if err != nil {
+		t.Fatalf("ExchangeCode: %v", err)
+	}
+	claims, err := c.VerifyIDToken(context.Background(), cfg, idt, "expected-nonce-abcdef")
+	if err != nil {
+		t.Fatalf("VerifyIDToken: %v", err)
+	}
+	if len(claims.Groups) != 0 {
+		t.Errorf("Groups want empty got %v", claims.Groups)
+	}
+}
+
+// TestExtractSAMLGroups_StandardAttributes는 SAML attribute에서 group 추출 우선순위·정규화를 검증합니다.
+func TestExtractSAMLGroups_StandardAttributes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		attrs map[string][]string
+		want  []string
+	}{
+		{
+			name:  "nil attrs",
+			attrs: nil,
+			want:  nil,
+		},
+		{
+			name:  "empty attrs",
+			attrs: map[string][]string{},
+			want:  nil,
+		},
+		{
+			name: "groups standard key",
+			attrs: map[string][]string{
+				"groups": {"fleet-a-admin", "fleet-b-operator"},
+			},
+			want: []string{"fleet-a-admin", "fleet-b-operator"},
+		},
+		{
+			name: "MemberOf takes precedence after groups/Groups absent",
+			attrs: map[string][]string{
+				"MemberOf": {"role-x"},
+			},
+			want: []string{"role-x"},
+		},
+		{
+			name: "blank entries filtered",
+			attrs: map[string][]string{
+				"Groups": {"keep-me", "  ", ""},
+			},
+			want: []string{"keep-me"},
+		},
+		{
+			name: "groups wins over MemberOf when both present",
+			attrs: map[string][]string{
+				"groups":   {"primary"},
+				"MemberOf": {"secondary"},
+			},
+			want: []string{"primary"},
+		},
+		{
+			name: "unknown attribute → nil",
+			attrs: map[string][]string{
+				"customClaim": {"val"},
+			},
+			want: nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sso.ExtractSAMLGroups(tc.attrs)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len got=%d want=%d (got=%v want=%v)", len(got), len(tc.want), got, tc.want)
+			}
+			for i, v := range got {
+				if v != tc.want[i] {
+					t.Errorf("[%d] got=%q want=%q", i, v, tc.want[i])
+				}
+			}
+		})
+	}
+}

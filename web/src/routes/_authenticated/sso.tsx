@@ -5,9 +5,13 @@ import { KeyRound } from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
 import {
+  useCreateSSOGroupMapping,
   useCreateSSOProvider,
+  useDeleteSSOGroupMapping,
   useDeleteSSOProvider,
+  useFleets,
   useHasPermission,
+  useSSOGroupMappings,
   useSSOProviders,
   useUpdateSSOProvider,
 } from '@/api/hooks'
@@ -40,6 +44,8 @@ import { Textarea } from '@/components/ui/textarea'
 
 import type {
   CreateSSOProviderVars,
+  SSOGroupMapping,
+  SSOGroupMappingScopeType,
   SSOProvider,
   SSOProviderType,
   UpdateSSOProviderVars,
@@ -211,6 +217,8 @@ function ProviderRow({
 }): React.ReactElement {
   const t = useT()
   const del = useDeleteSSOProvider()
+  // RBAC fleet 정밀화 Stage 5 — Group → Role 매핑 섹션 토글.
+  const [showMappings, setShowMappings] = useState(false)
   const handleDelete = (): void => {
     if (typeof window !== 'undefined' &&
         !window.confirm(t('sso.action.delete.confirm'))) {
@@ -224,62 +232,392 @@ function ProviderRow({
     fallback: !canMutate ? t('common.role.required.admin') : undefined,
   })
   return (
-    <TableRow>
-      <TableCell className="font-mono text-xs text-muted-foreground" title={provider.id}>
-        {provider.id}
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant={providerTypeBadgeVariant(provider.type)}
-          className="text-[10px] uppercase"
-        >
-          {provider.type}
-        </Badge>
-      </TableCell>
-      <TableCell className="font-medium">
-        {displayProviderName(provider)}
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant={provider.enabled ? 'default' : 'outline'}
-          className="text-[10px]"
-        >
-          {provider.enabled
-            ? t('sso.table.enabled.on')
-            : t('sso.table.enabled.off')}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
-        {provider.createdAt
-          ? new Date(provider.createdAt).toLocaleString()
-          : '—'}
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="inline-flex gap-1">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onEdit}
-            disabled={!canMutate || isOffline}
-            title={guardTitle}
+    <>
+      <TableRow>
+        <TableCell className="font-mono text-xs text-muted-foreground" title={provider.id}>
+          {provider.id}
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant={providerTypeBadgeVariant(provider.type)}
+            className="text-[10px] uppercase"
           >
-            {t('sso.action.edit')}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleDelete}
-            disabled={del.isPending || !canMutate || isOffline}
-            title={guardTitle}
+            {provider.type}
+          </Badge>
+        </TableCell>
+        <TableCell className="font-medium">
+          {displayProviderName(provider)}
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant={provider.enabled ? 'default' : 'outline'}
+            className="text-[10px]"
           >
-            {del.isPending
-              ? t('sso.action.deleting')
-              : t('sso.action.delete')}
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
+            {provider.enabled
+              ? t('sso.table.enabled.on')
+              : t('sso.table.enabled.off')}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {provider.createdAt
+            ? new Date(provider.createdAt).toLocaleString()
+            : '—'}
+        </TableCell>
+        <TableCell className="text-right">
+          <div className="inline-flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowMappings((s) => !s)}
+              aria-expanded={showMappings}
+            >
+              {showMappings
+                ? t('sso.groupmap.toggle.hide')
+                : t('sso.groupmap.toggle.show')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onEdit}
+              disabled={!canMutate || isOffline}
+              title={guardTitle}
+            >
+              {t('sso.action.edit')}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDelete}
+              disabled={del.isPending || !canMutate || isOffline}
+              title={guardTitle}
+            >
+              {del.isPending
+                ? t('sso.action.deleting')
+                : t('sso.action.delete')}
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+      {showMappings && (
+        <TableRow>
+          <TableCell colSpan={6} className="bg-muted/30 p-0">
+            <GroupMappingsSection
+              providerId={provider.id}
+              canMutate={canMutate}
+              isOffline={isOffline}
+            />
+          </TableCell>
+        </TableRow>
+      )}
+    </>
   )
+}
+
+// === RBAC fleet 정밀화 Stage 5 — Group → Role 매핑 섹션 ===
+
+function GroupMappingsSection({
+  providerId,
+  canMutate,
+  isOffline,
+}: {
+  providerId: string
+  canMutate: boolean
+  isOffline: boolean
+}): React.ReactElement {
+  const t = useT()
+  const mappings = useSSOGroupMappings(providerId)
+  const fleets = useFleets()
+  return (
+    <div className="space-y-3 p-4">
+      <div>
+        <h4 className="text-sm font-semibold">{t('sso.groupmap.section')}</h4>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t('sso.groupmap.description')}
+        </p>
+      </div>
+      {canMutate && (
+        <GroupMappingForm
+          providerId={providerId}
+          isOffline={isOffline}
+          fleets={(fleets.data ?? []).map((f) => ({ id: f.id, name: f.name }))}
+        />
+      )}
+      <GroupMappingsTable
+        mappings={mappings.data ?? []}
+        isPending={mappings.isPending}
+        isError={mappings.isError}
+        error={mappings.error}
+        canMutate={canMutate}
+        isOffline={isOffline}
+        providerId={providerId}
+      />
+    </div>
+  )
+}
+
+interface FleetOption {
+  id: string
+  name: string
+}
+
+function GroupMappingForm({
+  providerId,
+  isOffline,
+  fleets,
+}: {
+  providerId: string
+  isOffline: boolean
+  fleets: FleetOption[]
+}): React.ReactElement {
+  const t = useT()
+  const create = useCreateSSOGroupMapping()
+  const [groupValue, setGroupValue] = useState('')
+  const [roleId, setRoleId] = useState('')
+  const [scopeType, setScopeType] = useState<SSOGroupMappingScopeType>('tenant')
+  const [scopeId, setScopeId] = useState('')
+  const [errs, setErrs] = useState<string[]>([])
+
+  const handleSubmit = (e: React.FormEvent): void => {
+    e.preventDefault()
+    const newErrs: string[] = []
+    if (!groupValue.trim()) newErrs.push('group')
+    if (!roleId.trim()) newErrs.push('role')
+    if (scopeType === 'fleet' && !scopeId.trim()) newErrs.push('fleet')
+    if (newErrs.length > 0) {
+      setErrs(newErrs)
+      return
+    }
+    setErrs([])
+    create.mutate(
+      {
+        providerId,
+        groupValue: groupValue.trim(),
+        roleId: roleId.trim(),
+        scopeType,
+        scopeId: scopeType === 'fleet' ? scopeId.trim() : undefined,
+      },
+      {
+        onSuccess: () => {
+          setGroupValue('')
+          setRoleId('')
+          setScopeId('')
+        },
+      },
+    )
+  }
+
+  const lastErr = create.error instanceof ApiError ? create.error : null
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="grid grid-cols-1 gap-2 rounded-md border bg-background p-3 md:grid-cols-4"
+      aria-label={t('sso.groupmap.section')}
+    >
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`gm-group-${providerId}`}>{t('sso.groupmap.form.group')}</Label>
+        <Input
+          id={`gm-group-${providerId}`}
+          placeholder={t('sso.groupmap.form.group.placeholder')}
+          value={groupValue}
+          onChange={(ev) => setGroupValue(ev.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`gm-role-${providerId}`}>{t('sso.groupmap.form.role')}</Label>
+        <Input
+          id={`gm-role-${providerId}`}
+          placeholder={t('sso.groupmap.form.role.placeholder')}
+          value={roleId}
+          onChange={(ev) => setRoleId(ev.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`gm-scope-${providerId}`}>Scope</Label>
+        <Select
+          value={scopeType}
+          onValueChange={(v) => setScopeType(v as SSOGroupMappingScopeType)}
+        >
+          <SelectTrigger id={`gm-scope-${providerId}`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="tenant">{t('sso.groupmap.form.scope.tenant')}</SelectItem>
+            <SelectItem value="fleet">{t('sso.groupmap.form.scope.fleet')}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {scopeType === 'fleet' ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`gm-fleet-${providerId}`}>{t('sso.groupmap.form.fleetId')}</Label>
+          <Select
+            value={scopeId}
+            onValueChange={(v) => setScopeId(v)}
+          >
+            <SelectTrigger id={`gm-fleet-${providerId}`}>
+              <SelectValue placeholder="—" />
+            </SelectTrigger>
+            <SelectContent>
+              {fleets.map((f) => (
+                <SelectItem key={f.id} value={f.id}>
+                  {f.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <div />
+      )}
+      {errs.length > 0 && (
+        <ul
+          className="md:col-span-4 list-disc rounded-md border border-destructive/40 bg-destructive/5 px-5 py-2 text-xs text-destructive"
+          role="alert"
+        >
+          {errs.map((k) => (
+            <li key={k}>{t(groupMappingErrLabel(k))}</li>
+          ))}
+        </ul>
+      )}
+      {create.isError && (
+        <p
+          className="md:col-span-4 text-xs text-destructive"
+          role="alert"
+        >
+          {lastErr && lastErr.status === 409
+            ? t('sso.groupmap.error.duplicate')
+            : (lastErr?.message ?? t('sso.groupmap.error.fallback'))}
+        </p>
+      )}
+      <div className="md:col-span-4 flex justify-end">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={create.isPending || isOffline}
+          title={mutationGuardTitle({
+            isOffline,
+            offlineLabel: t('pwa.offline.mutationBlocked'),
+          })}
+        >
+          {create.isPending
+            ? t('sso.groupmap.form.submitting')
+            : t('sso.groupmap.form.submit')}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function GroupMappingsTable({
+  mappings,
+  isPending,
+  isError,
+  error: _error,
+  canMutate,
+  isOffline,
+  providerId,
+}: {
+  mappings: SSOGroupMapping[]
+  isPending: boolean
+  isError: boolean
+  error: unknown
+  canMutate: boolean
+  isOffline: boolean
+  providerId: string
+}): React.ReactElement {
+  const t = useT()
+  const del = useDeleteSSOGroupMapping()
+  return (
+    <div className="rounded-md border bg-background">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('sso.groupmap.table.group')}</TableHead>
+            <TableHead>{t('sso.groupmap.table.role')}</TableHead>
+            <TableHead>{t('sso.groupmap.table.scope')}</TableHead>
+            <TableHead>{t('sso.groupmap.table.created')}</TableHead>
+            <TableHead className="text-right">
+              {t('sso.groupmap.table.actions')}
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {isPending && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-xs text-muted-foreground">
+                {t('common.loading')}
+              </TableCell>
+            </TableRow>
+          )}
+          {isError && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-xs text-destructive">
+                {t('sso.groupmap.error.fallback')}
+              </TableCell>
+            </TableRow>
+          )}
+          {!isPending && !isError && mappings.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-xs text-muted-foreground">
+                {t('sso.groupmap.empty')}
+              </TableCell>
+            </TableRow>
+          )}
+          {mappings.map((m) => (
+            <TableRow key={m.id}>
+              <TableCell className="font-mono text-xs">{m.groupValue}</TableCell>
+              <TableCell className="font-mono text-xs">{m.roleId}</TableCell>
+              <TableCell className="text-xs">
+                {m.scopeType}
+                {m.scopeType === 'fleet' && m.scopeId ? ` / ${m.scopeId}` : ''}
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
+                {m.createdAt
+                  ? new Date(m.createdAt).toLocaleString()
+                  : '—'}
+              </TableCell>
+              <TableCell className="text-right">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={del.isPending || !canMutate || isOffline}
+                  onClick={() => {
+                    if (
+                      typeof window !== 'undefined' &&
+                      !window.confirm(t('sso.groupmap.action.delete.confirm'))
+                    ) {
+                      return
+                    }
+                    del.mutate({ providerId, mappingId: m.id })
+                  }}
+                  title={mutationGuardTitle({
+                    isOffline,
+                    offlineLabel: t('pwa.offline.mutationBlocked'),
+                    fallback: !canMutate ? t('common.role.required.admin') : undefined,
+                  })}
+                >
+                  {t('sso.groupmap.action.delete')}
+                </Button>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function groupMappingErrLabel(k: string): DictKey {
+  switch (k) {
+    case 'group':
+      return 'sso.groupmap.validation.group'
+    case 'role':
+      return 'sso.groupmap.validation.role'
+    case 'fleet':
+      return 'sso.groupmap.validation.fleet'
+    default:
+      return 'sso.groupmap.error.fallback'
+  }
 }
 
 // ProviderForm — 신규/수정 통합 폼. editing!=null이면 수정 모드.

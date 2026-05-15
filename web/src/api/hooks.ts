@@ -2034,6 +2034,115 @@ export const useSSOProvider = (providerId?: string) => {
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// 7-bis) SSO Group Mappings (RBAC fleet 정밀화 Stage 5)
+//
+// IdP claim group → 내부 (role, scope) 매핑 CRUD. SSO callback이 매 login에서
+// source='sso' user_roles row를 IdP 응답 기준 sync. source='manual' 보존.
+// ────────────────────────────────────────────────────────────────────────
+
+export type SSOGroupMappingScopeType = 'tenant' | 'fleet'
+
+export interface SSOGroupMapping {
+  id: string
+  providerId: string
+  groupValue: string
+  roleId: string
+  scopeType: SSOGroupMappingScopeType
+  scopeId?: string
+  createdAt: string
+}
+
+export interface CreateSSOGroupMappingVars {
+  providerId: string
+  groupValue: string
+  roleId: string
+  scopeType?: SSOGroupMappingScopeType
+  scopeId?: string
+}
+
+export const useSSOGroupMappings = (providerId: string | undefined) => {
+  return useQuery({
+    queryKey: ['sso', 'group-mappings', providerId ?? null],
+    enabled: !!providerId,
+    queryFn: async (): Promise<SSOGroupMapping[]> => {
+      if (!providerId) return []
+      const { data, error, response } = await apiClient.GET(
+        '/api/v1/sso/providers/{providerId}/group-mappings',
+        { params: { path: { providerId } } },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      const body = data as unknown as { mappings: SSOGroupMapping[] }
+      return body.mappings ?? []
+    },
+  })
+}
+
+export const useCreateSSOGroupMapping = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (
+      vars: CreateSSOGroupMappingVars,
+    ): Promise<SSOGroupMapping> => {
+      const { providerId, ...body } = vars
+      const { data, error, response } = await apiClient.POST(
+        '/api/v1/sso/providers/{providerId}/group-mappings',
+        {
+          params: { path: { providerId } },
+          body: body as unknown as never,
+        },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+      return data as unknown as SSOGroupMapping
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({
+        queryKey: ['sso', 'group-mappings', vars.providerId],
+      })
+    },
+  })
+}
+
+export const useDeleteSSOGroupMapping = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: {
+      providerId: string
+      mappingId: string
+    }): Promise<void> => {
+      const { error, response } = await apiClient.DELETE(
+        '/api/v1/sso/providers/{providerId}/group-mappings/{mappingId}',
+        {
+          params: {
+            path: { providerId: vars.providerId, mappingId: vars.mappingId },
+          },
+        },
+      )
+      if (error) {
+        throw new ApiError(
+          response.status,
+          extractErrorMessage(error, response.statusText),
+        )
+      }
+    },
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({
+        queryKey: ['sso', 'group-mappings', vars.providerId],
+      })
+    },
+  })
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // 8) Invitations (E21 / B2) — 사용자 초대·수락.
 //
 // Backend 응답 schema (handlers/invitation.go invitationView):

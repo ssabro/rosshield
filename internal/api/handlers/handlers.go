@@ -68,6 +68,7 @@ type Deps struct {
 	EventBus          eventbus.Bus             // C1 carryover — WebSocket scan progress 구독
 	License           *license.Enforcer        // E24-C — Open-core enterprise feature 게이트
 	SSO               sso.Service              // E20-A Phase 3 — SSO scaffold (옵트인, nil이면 503)
+	SSOGroupMapping   sso.GroupMappingService  // RBAC fleet 정밀화 Stage 5 — group → role 자동 sync (옵트인, nil이면 SSO callback에서 sync skip)
 	Webhook           webhook.Service          // E23-C Phase 3 — Webhook CRUD HTTP 표면
 	WebhookDispatcher *webhookrun.Dispatcher   // E29 — POST /webhooks/{id}/test (옵트인, nil이면 503)
 	Invitation        tenant.InvitationService // E21 — 초대·역할 (옵트인, nil이면 503)
@@ -266,6 +267,20 @@ func (h *Handlers) Mount(r chi.Router) {
 			Delete("/api/v1/sso/providers/{providerId}", func(w http.ResponseWriter, req *http.Request) {
 				h.DeleteSSOProvider(w, req, chi.URLParam(req, "providerId"))
 			})
+
+		// === SSO Group Mapping CRUD (3건) — RBAC fleet 정밀화 Stage 5 ===
+		// design doc `docs/design/notes/rbac-fleet-scope-precision-design.md` §7 Stage 5.
+		// admin이 IdP group → role 매핑을 web UI로 관리. read는 모든 인증 사용자 노출
+		// (UI에서 mapping 표시), mutation은 tenant_admin.admin 권한.
+		r.Get("/api/v1/sso/providers/{providerId}/group-mappings", func(w http.ResponseWriter, req *http.Request) {
+			h.ListSSOGroupMappings(w, req, chi.URLParam(req, "providerId"))
+		})
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/sso/providers/{providerId}/group-mappings", func(w http.ResponseWriter, req *http.Request) {
+				h.CreateSSOGroupMapping(w, req, chi.URLParam(req, "providerId"))
+			})
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Delete("/api/v1/sso/providers/{providerId}/group-mappings/{mappingId}", h.DeleteSSOGroupMapping)
 
 		// === Webhook mutation + test (4건) — tenant 글로벌 admin ===
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).

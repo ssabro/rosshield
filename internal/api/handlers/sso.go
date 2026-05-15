@@ -21,8 +21,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
+	"strings"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/ssabro/rosshield/internal/domain/audit"
+	"github.com/ssabro/rosshield/internal/domain/tenant"
 	"github.com/ssabro/rosshield/internal/domain/tenant/sso"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
@@ -115,12 +122,15 @@ func (h *Handlers) StartSSOLogin(w http.ResponseWriter, r *http.Request, provide
 //
 //  1. query string에서 state·code 추출.
 //  2. sso.Service.CompleteLogin 호출 — state 검증 + 만료/재사용 체크 + completed_at 마킹.
-//  3. token 교환·user 매핑·access/refresh 발급은 본 stage 범위 외 → 200 stub.
+//  3. RBAC fleet 정밀화 Stage 5 — IdP groups claim → ResolvedBinding 셋 →
+//     user_roles.source='sso' sync (revoke + INSERT) + audit 'user_role.synced' emit.
+//  4. token 교환·user 매핑·access/refresh 발급은 본 stage 범위 외 → 200 stub.
 //
-// 후속 stage(E20-B):
+// SSO group sync (Stage 5 — design doc §6.3 + §7 Stage 5):
 //
-//	IdP token endpoint POST → id_token 검증 → external_subject·email 추출 →
-//	UpsertExternalIdentity → tenant.Service.IssueTokensForExternal(가칭) → cookie set.
+//	Identity.UserID 채워졌고(ProvisionExternalUser 성공) deps.SSOGroupMapping 주입돼 있으면
+//	동일 Tx에서 group sync 수행 — IdP 응답 source가 진실의 원천. source='manual' 보존
+//	(D-RBACEX-7).
 func (h *Handlers) CompleteSSOLoginOIDC(w http.ResponseWriter, r *http.Request, providerID string) {
 	if storage.TenantIDFromContext(r.Context()) == "" {
 		writeError(w, http.StatusUnauthorized, "no tenant in context")
@@ -132,7 +142,8 @@ func (h *Handlers) CompleteSSOLoginOIDC(w http.ResponseWriter, r *http.Request, 
 	}
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-	_ = providerID // path scope는 sso.Service가 state로 attempt를 lookup하므로 직접 미사용.
+
+	_ = providerID // path scope는 sso.Service가 state로 attempt를 lookup하므로 직접 미사용 (result.ProviderID 사용).
 
 	var result sso.CompleteLoginResult
 	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
@@ -144,6 +155,13 @@ func (h *Handlers) CompleteSSOLoginOIDC(w http.ResponseWriter, r *http.Request, 
 			return e
 		}
 		result = out
+		// RBAC fleet 정밀화 Stage 5 — IdP groups → user_roles.source='sso' sync.
+		// Identity.UserID 채워져야(ProvisionExternalUser 성공) sync 진입 — 빈 UserID는 stub 흐름.
+		if h.deps.SSOGroupMapping != nil && result.Identity.UserID != "" && result.ProviderID != "" {
+			if err := h.syncSSOGroupBindings(ctx, tx, result.Identity.UserID, result.ProviderID, result.Groups); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -188,20 +206,40 @@ func (h *Handlers) CompleteSSOLoginSAML(w http.ResponseWriter, r *http.Request, 
 	}
 	samlResp := r.PostForm.Get("SAMLResponse")
 	relayState := r.PostForm.Get("RelayState")
-	_ = providerID
+	_ = providerID // result.ProviderID 사용 — RBAC fleet 정밀화 Stage 5.
 
+	var result sso.CompleteLoginResult
 	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
-		_, e := h.deps.SSO.CompleteLogin(ctx, tx, sso.CompleteLoginRequest{
+		out, e := h.deps.SSO.CompleteLogin(ctx, tx, sso.CompleteLoginRequest{
 			State:        relayState, // SAML은 state를 RelayState로 운반
 			SAMLResponse: samlResp,
 		})
-		return e
+		if e != nil {
+			return e
+		}
+		result = out
+		// RBAC fleet 정밀화 Stage 5 — SAML attribute groups → user_roles.source='sso' sync.
+		if h.deps.SSOGroupMapping != nil && result.Identity.UserID != "" && result.ProviderID != "" {
+			if err := h.syncSSOGroupBindings(ctx, tx, result.Identity.UserID, result.ProviderID, result.Groups); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		writeError(w, ssoErrorStatus(err), err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ssoCallbackResponse{State: relayState, Stub: true})
+	resp := ssoCallbackResponse{
+		State:   relayState,
+		Subject: result.Identity.ExternalSubject,
+		Email:   result.Identity.Email,
+		UserID:  result.Identity.UserID,
+	}
+	if result.Identity.ExternalSubject == "" {
+		resp.Stub = true
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // === E20-D — Provider CRUD HTTP 표면 ===
@@ -453,9 +491,275 @@ func ssoErrorStatus(err error) int {
 		errors.Is(err, sso.ErrInvalidOIDCArgs),
 		errors.Is(err, sso.ErrIDTokenInvalid),
 		errors.Is(err, sso.ErrNonceMismatch),
-		errors.Is(err, sso.ErrUnsupportedAlg):
+		errors.Is(err, sso.ErrUnsupportedAlg),
+		errors.Is(err, sso.ErrEmptyGroupValue),
+		errors.Is(err, sso.ErrEmptyRoleID),
+		errors.Is(err, sso.ErrInvalidScopeType),
+		errors.Is(err, sso.ErrEmptyScopeIDForFleet):
+		return http.StatusBadRequest
+	case errors.Is(err, sso.ErrGroupMappingNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, sso.ErrGroupMappingExists):
+		return http.StatusConflict
+	case errors.Is(err, sso.ErrRoleNotFoundForTenant):
 		return http.StatusBadRequest
 	default:
 		return errorStatusFor(err)
 	}
+}
+
+// === RBAC fleet 정밀화 Stage 5 — SSO group → role 자동 매핑 결선 ===
+
+// syncSSOGroupBindings는 SSO callback 흐름의 핵심 sync 알고리즘입니다 (D-RBACEX-7 권장 default).
+//
+// 절차:
+//
+//  1. GroupMappingService.ResolveBindingsForGroups(providerID, groups) → ResolvedBinding 셋.
+//  2. tenant.Service.RevokeUserRoleBindingsBySource(userID, BindingSourceSSO) — 기존 자동
+//     binding 모두 revoke (IdP가 진실의 원천).
+//  3. for _, rb := range resolved: tenant.Service.AssignRoleScoped(..., BindingSourceSSO).
+//  4. audit.Service.Append('user_role.synced') — provider/groups/before/after 명세.
+//
+// source='manual' admin 수동 binding은 영향 없음 (D-RBACEX-7 분리 정책).
+// 빈 groups는 "이 사용자는 어떤 자동 binding도 받지 않음" — sso 모두 revoke 후 INSERT 0건.
+//
+// 본 sync는 SSO callback Tx 안에서 호출 — IdP 응답 검증 + user 매핑 + role sync 원자적.
+func (h *Handlers) syncSSOGroupBindings(ctx context.Context, tx storage.Tx, userID, providerID string, groups []string) error {
+	// 1. group → ResolvedBinding 셋 (도메인 layer에서 dedupe 보장).
+	resolved, err := h.deps.SSOGroupMapping.ResolveBindingsForGroups(ctx, tx, providerID, groups)
+	if err != nil {
+		return fmt.Errorf("sso: resolve group bindings: %w", err)
+	}
+
+	// 2. 기존 source='sso' 모두 revoke.
+	revokedCount, err := h.deps.Tenant.RevokeUserRoleBindingsBySource(ctx, tx, userID, tenant.BindingSourceSSO)
+	if err != nil {
+		return fmt.Errorf("sso: revoke prior sso bindings: %w", err)
+	}
+
+	// 3. 새 binding INSERT (source='sso').
+	addedCount := 0
+	for _, rb := range resolved {
+		scopeType := tenant.ScopeType(rb.ScopeType)
+		if scopeType == "" {
+			scopeType = tenant.ScopeTenant
+		}
+		if err := h.deps.Tenant.AssignRoleScoped(ctx, tx, userID, rb.RoleID,
+			scopeType, rb.ScopeID, tenant.BindingSourceSSO); err != nil {
+			return fmt.Errorf("sso: assign sso binding role=%s: %w", rb.RoleID, err)
+		}
+		addedCount++
+	}
+
+	// 4. audit emit ('user_role.synced' — design doc §6 권장 단일 kind).
+	if h.deps.Audit != nil {
+		payload := buildSSOSyncAuditPayload(providerID, groups, resolved, revokedCount, addedCount)
+		_, err := h.deps.Audit.Append(ctx, tx, audit.AppendRequest{
+			TenantID: tx.TenantID(),
+			Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+			Action:   "user_role.synced",
+			Target:   audit.Target{Type: "user", ID: userID},
+			Payload:  payload,
+			Outcome:  audit.OutcomeSuccess,
+		})
+		if err != nil {
+			return fmt.Errorf("sso: audit append user_role.synced: %w", err)
+		}
+	}
+	return nil
+}
+
+// buildSSOSyncAuditPayload는 user_role.synced audit payload(canonical JSON)를 빌드합니다.
+//
+// payload 형식:
+//
+//	{
+//	  "providerId":  "...",
+//	  "groups":      ["g1","g2"],   // IdP claim 추출값 (sorted, dedup)
+//	  "bindings":    [{"roleId":"...","scopeType":"...","scopeId":"..."}],
+//	  "revokedCount": N,             // 매 sync에서 삭제된 source='sso' row 수
+//	  "addedCount":   M              // 매 sync에서 INSERT된 source='sso' row 수 (멱등 PK 충돌 시 같은 수치)
+//	}
+//
+// 감사인 explainability 친화 — 각 sync에서 어떤 group/role/scope가 적용됐는지 audit chain에 보존.
+func buildSSOSyncAuditPayload(providerID string, groups []string, bindings []sso.ResolvedBinding, revokedCount, addedCount int) []byte {
+	// groups dedup + sort — 결정론 audit payload.
+	gset := make(map[string]struct{}, len(groups))
+	for _, g := range groups {
+		s := strings.TrimSpace(g)
+		if s != "" {
+			gset[s] = struct{}{}
+		}
+	}
+	gsorted := make([]string, 0, len(gset))
+	for g := range gset {
+		gsorted = append(gsorted, g)
+	}
+	sort.Strings(gsorted)
+
+	// bindings → 직렬화 (sort by roleId/scopeId for 결정론).
+	type bv struct {
+		RoleID    string `json:"roleId"`
+		ScopeType string `json:"scopeType"`
+		ScopeID   string `json:"scopeId"`
+	}
+	bvs := make([]bv, 0, len(bindings))
+	for _, rb := range bindings {
+		bvs = append(bvs, bv{RoleID: rb.RoleID, ScopeType: rb.ScopeType, ScopeID: rb.ScopeID})
+	}
+	sort.Slice(bvs, func(i, j int) bool {
+		if bvs[i].RoleID != bvs[j].RoleID {
+			return bvs[i].RoleID < bvs[j].RoleID
+		}
+		if bvs[i].ScopeType != bvs[j].ScopeType {
+			return bvs[i].ScopeType < bvs[j].ScopeType
+		}
+		return bvs[i].ScopeID < bvs[j].ScopeID
+	})
+
+	out := struct {
+		ProviderID   string   `json:"providerId"`
+		Groups       []string `json:"groups"`
+		Bindings     []bv     `json:"bindings"`
+		RevokedCount int      `json:"revokedCount"`
+		AddedCount   int      `json:"addedCount"`
+	}{
+		ProviderID:   providerID,
+		Groups:       gsorted,
+		Bindings:     bvs,
+		RevokedCount: revokedCount,
+		AddedCount:   addedCount,
+	}
+	b, _ := json.Marshal(out)
+	return b
+}
+
+// === RBAC fleet 정밀화 Stage 5 — Group Mapping CRUD HTTP 핸들러 ===
+
+// groupMappingView는 GroupRoleMapping의 클라이언트 응답 형태입니다.
+type groupMappingView struct {
+	ID         string `json:"id"`
+	ProviderID string `json:"providerId"`
+	GroupValue string `json:"groupValue"`
+	RoleID     string `json:"roleId"`
+	ScopeType  string `json:"scopeType"`
+	ScopeID    string `json:"scopeId,omitempty"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+func toGroupMappingView(m sso.GroupRoleMapping) groupMappingView {
+	return groupMappingView{
+		ID:         m.ID,
+		ProviderID: m.ProviderID,
+		GroupValue: m.GroupValue,
+		RoleID:     m.RoleID,
+		ScopeType:  m.ScopeType,
+		ScopeID:    m.ScopeID,
+		CreatedAt:  m.CreatedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
+	}
+}
+
+// listGroupMappingsResponse는 GET /sso/providers/{providerId}/group-mappings 응답입니다.
+type listGroupMappingsResponse struct {
+	Mappings []groupMappingView `json:"mappings"`
+}
+
+// ListSSOGroupMappings는 GET /api/v1/sso/providers/{providerId}/group-mappings 핸들러입니다.
+//
+// provider tenant 격리 — cross-tenant lookup은 404로 마스킹.
+func (h *Handlers) ListSSOGroupMappings(w http.ResponseWriter, r *http.Request, providerID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSOGroupMapping == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: group mapping service not configured")
+		return
+	}
+	var mappings []sso.GroupRoleMapping
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		out, e := h.deps.SSOGroupMapping.ListGroupMappings(ctx, tx, providerID)
+		if e != nil {
+			return e
+		}
+		mappings = out
+		return nil
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	views := make([]groupMappingView, 0, len(mappings))
+	for _, m := range mappings {
+		views = append(views, toGroupMappingView(m))
+	}
+	writeJSON(w, http.StatusOK, listGroupMappingsResponse{Mappings: views})
+}
+
+// CreateSSOGroupMapping은 POST /api/v1/sso/providers/{providerId}/group-mappings 핸들러입니다.
+//
+// body: {"groupValue":"...","roleId":"...","scopeType":"tenant"|"fleet","scopeId":"..."}
+// scopeType 빈 값 → 'tenant' default. scopeType='fleet'이면 scopeId 필수.
+func (h *Handlers) CreateSSOGroupMapping(w http.ResponseWriter, r *http.Request, providerID string) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSOGroupMapping == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: group mapping service not configured")
+		return
+	}
+	var body struct {
+		GroupValue string `json:"groupValue"`
+		RoleID     string `json:"roleId"`
+		ScopeType  string `json:"scopeType"`
+		ScopeID    string `json:"scopeId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	var created sso.GroupRoleMapping
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		out, e := h.deps.SSOGroupMapping.CreateGroupMapping(ctx, tx, sso.CreateGroupMappingRequest{
+			ProviderID: providerID,
+			GroupValue: body.GroupValue,
+			RoleID:     body.RoleID,
+			ScopeType:  body.ScopeType,
+			ScopeID:    body.ScopeID,
+		})
+		if e != nil {
+			return e
+		}
+		created = out
+		return nil
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, toGroupMappingView(created))
+}
+
+// DeleteSSOGroupMapping은 DELETE /api/v1/sso/providers/{providerId}/group-mappings/{mappingId} 핸들러입니다.
+//
+// providerId path는 라우팅 일관성용 — 실 격리는 mappingId + tenant scope.
+func (h *Handlers) DeleteSSOGroupMapping(w http.ResponseWriter, r *http.Request) {
+	if storage.TenantIDFromContext(r.Context()) == "" {
+		writeError(w, http.StatusUnauthorized, "no tenant in context")
+		return
+	}
+	if h.deps.SSOGroupMapping == nil {
+		writeError(w, http.StatusServiceUnavailable, "sso: group mapping service not configured")
+		return
+	}
+	mappingID := chi.URLParam(r, "mappingId")
+	err := h.deps.Storage.Tx(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		return h.deps.SSOGroupMapping.DeleteGroupMapping(ctx, tx, mappingID)
+	})
+	if err != nil {
+		writeError(w, ssoErrorStatus(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

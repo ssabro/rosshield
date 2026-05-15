@@ -89,6 +89,17 @@ func ParseOIDCConfig(raw json.RawMessage) (OIDCConfig, error) {
 //
 // 호출자(application)는 Subject·Email을 ExternalIdentity 매핑에 사용.
 // EmailVerified=false면 호출자가 email 매칭을 거부할지 결정.
+//
+// Groups (RBAC fleet 정밀화 Stage 5):
+//
+//	OIDC 표준 외 확장 claim — Auth0/Okta/Azure AD/Google Workspace 등 대부분 IdP가
+//	'groups' claim에 사용자 group 슬라이스를 포함합니다 (string 슬라이스). 본 stage는
+//	기본 claim 이름 'groups'만 추출 — provider별 custom claim 이름(예: Azure AD의
+//	'roles' / Auth0의 'https://example.com/groups')은 향후 OIDCConfig.GroupsClaim
+//	필드 도입 시 확장 (Phase 6+).
+//
+//	빈 슬라이스 또는 nil은 "이 사용자는 group 미할당" 의미 — Stage 5 SSO sync는 이 경우
+//	source='sso' 기존 binding 모두 revoke (IdP에서 group 회수된 사용자는 자동 권한 회수).
 type IDTokenClaims struct {
 	Subject       string
 	Email         string
@@ -99,6 +110,7 @@ type IDTokenClaims struct {
 	IssuedAt      time.Time
 	ExpiresAt     time.Time
 	Nonce         string
+	Groups        []string // RBAC fleet 정밀화 Stage 5 — IdP 'groups' claim (옵션).
 }
 
 // OIDCDiscovery는 RFC 8414 .well-known/openid-configuration 응답의 부분집합입니다.
@@ -529,7 +541,51 @@ func claimsFromMap(mc jwt.MapClaims) (IDTokenClaims, error) {
 	if v, ok := mc["exp"].(float64); ok {
 		out.ExpiresAt = time.Unix(int64(v), 0).UTC()
 	}
+	// RBAC fleet 정밀화 Stage 5 — 'groups' claim (string 슬라이스) 추출.
+	// JSON unmarshal은 array를 []any로 디코딩 — element별 string 캐스팅.
+	if v, ok := mc["groups"].([]any); ok {
+		for _, x := range v {
+			if s, ok := x.(string); ok && strings.TrimSpace(s) != "" {
+				out.Groups = append(out.Groups, s)
+			}
+		}
+	}
 	return out, nil
+}
+
+// ExtractSAMLGroups는 SAMLAssertion.Attributes에서 group 값을 추출합니다 (RBAC fleet
+// 정밀화 Stage 5).
+//
+// 표준 attribute 이름 후보 — IdP 별로 다양:
+//
+//   - "groups" / "Groups"
+//   - "MemberOf" / "memberOf"
+//   - 그 외 customer가 SAMLConfig.GroupAttribute로 명시한 키 (없으면 위 순서로 lookup)
+//
+// 본 stage는 기본 "groups"·"Groups"·"MemberOf"·"memberOf" 4종을 순회 — 추가 attribute
+// 이름 매핑은 향후 SAMLConfig.GroupAttribute 필드로 명시 가능하지만, 본 stage는 단순화.
+//
+// 빈 슬라이스 또는 nil 반환은 "사용자 group 미할당" 의미.
+func ExtractSAMLGroups(attrs map[string][]string) []string {
+	if len(attrs) == 0 {
+		return nil
+	}
+	// 우선순위 candidate 순 lookup — 첫 매칭 attr 사용.
+	candidates := []string{"groups", "Groups", "MemberOf", "memberOf"}
+	for _, key := range candidates {
+		if vals, ok := attrs[key]; ok && len(vals) > 0 {
+			out := make([]string, 0, len(vals))
+			for _, v := range vals {
+				if strings.TrimSpace(v) != "" {
+					out = append(out, v)
+				}
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+	}
+	return nil
 }
 
 // === sentinels (sso 패키지 추가) ===

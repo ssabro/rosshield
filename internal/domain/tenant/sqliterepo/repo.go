@@ -187,6 +187,28 @@ func (r *Repo) AssignRoleScoped(ctx context.Context, tx storage.Tx, userID, role
 	return assignRoleScoped(ctx, tx, userID, roleID, scopeType, scopeID, source)
 }
 
+// RevokeUserRoleBindingsBySource는 tenant.Service.RevokeUserRoleBindingsBySource 구현입니다 —
+// RBAC fleet 정밀화 Stage 5 SSO callback sync 흐름.
+//
+// 정확히 source 일치 row만 DELETE — 'manual' 수동 binding은 보존 (D-RBACEX-7 권장 default).
+// source 빈 값 → BindingSourceManual default (호환 보존). 빈 userID는 0건 삭제 (안전 noop).
+func (r *Repo) RevokeUserRoleBindingsBySource(ctx context.Context, tx storage.Tx, userID string, source tenant.BindingSource) (int, error) {
+	if strings.TrimSpace(userID) == "" {
+		return 0, nil
+	}
+	if source == "" {
+		source = tenant.BindingSourceManual
+	}
+	res, err := tx.Exec(ctx,
+		`DELETE FROM user_roles WHERE user_id = ? AND source = ?`,
+		userID, string(source))
+	if err != nil {
+		return 0, fmt.Errorf("tenant: revoke user_roles by source: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // IssueApiKey는 tenant.Service.IssueApiKey 구현입니다.
 func (r *Repo) IssueApiKey(ctx context.Context, tx storage.Tx, req tenant.IssueApiKeyRequest) (tenant.IssueApiKeyResult, error) {
 	if req.TenantID == "" {

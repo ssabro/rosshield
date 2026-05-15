@@ -157,8 +157,22 @@ type CompleteLoginRequest struct {
 //
 // 본 E20-A 단계는 stub — Identity·UserID는 빈 값. E20-B/C에서 IdP 토큰 교환 + claim 추출 후 채움.
 // 실제로 access·refresh 토큰을 발급하는 책임은 후속 stage에서 tenant.Service에 위임.
+//
+// Groups (RBAC fleet 정밀화 Stage 5):
+//
+//	OIDC id_token 'groups' claim 또는 SAML attribute(groups/Groups/MemberOf/memberOf)에서
+//	추출된 사용자 group 슬라이스. application layer(SSO callback handler)가 GroupMappingService
+//	에 전달하여 user_roles.source='sso' 자동 sync 결정에 사용. 빈 슬라이스나 nil이면 매 login
+//	에서 source='sso' 기존 binding 모두 revoke (IdP가 진실의 원천).
+//
+// ProviderID (RBAC fleet 정밀화 Stage 5):
+//
+//	SSO sync 호출자가 GroupMappingService.ResolveBindingsForGroups(providerID, groups) 호출
+//	시 사용. CompleteLogin 흐름의 attempt에서 추출한 사실값.
 type CompleteLoginResult struct {
-	Identity ExternalIdentity
+	Identity   ExternalIdentity
+	Groups     []string // RBAC fleet 정밀화 Stage 5 — IdP group claim/attribute 추출 결과.
+	ProviderID string   // RBAC fleet 정밀화 Stage 5 — sync 호출자에 전달.
 }
 
 // AuditEmitter는 SSO 도메인 변경을 audit chain에 기록하는 콜백입니다 (P5).

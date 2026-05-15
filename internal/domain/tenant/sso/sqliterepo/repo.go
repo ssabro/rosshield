@@ -462,6 +462,20 @@ WHERE id = ? AND tenant_id = ? AND completed_at IS NULL`,
 			}
 			identity = persisted
 		}
+		// RBAC fleet 정밀화 Stage 5 — 추출한 IdP groups + providerID를 결과에 노출.
+		// 호출자(SSO callback handler)가 GroupMappingService.ResolveBindingsForGroups에 전달.
+		oidcResultGroups := claims.Groups
+		oidcResultProviderID := p.ID
+		_ = oidcResultGroups
+		_ = oidcResultProviderID
+		if err := r.deps.Audit.EmitLoginCompleted(ctx, tx, attempt, identity, true); err != nil {
+			return sso.CompleteLoginResult{}, fmt.Errorf("sso: emit login.completed: %w", err)
+		}
+		return sso.CompleteLoginResult{
+			Identity:   identity,
+			Groups:     oidcResultGroups,
+			ProviderID: oidcResultProviderID,
+		}, nil
 	}
 
 	// E20-C — SAML client + provider type SAML + SAMLResponse 입력 → assertion 검증.
@@ -511,6 +525,16 @@ WHERE id = ? AND tenant_id = ? AND completed_at IS NULL`,
 			}
 			identity = persisted
 		}
+		// RBAC fleet 정밀화 Stage 5 — SAML attribute에서 group 추출 + 결과 노출.
+		samlGroups := sso.ExtractSAMLGroups(assertion.Attributes)
+		if err := r.deps.Audit.EmitLoginCompleted(ctx, tx, attempt, identity, true); err != nil {
+			return sso.CompleteLoginResult{}, fmt.Errorf("sso: emit login.completed: %w", err)
+		}
+		return sso.CompleteLoginResult{
+			Identity:   identity,
+			Groups:     samlGroups,
+			ProviderID: p.ID,
+		}, nil
 	}
 
 	if err := r.deps.Audit.EmitLoginCompleted(ctx, tx, attempt, identity, true); err != nil {

@@ -1570,6 +1570,119 @@ paths:
         default:
           $ref: "#/components/responses/ErrorResponse"
 
+  # ─── RBAC fleet 정밀화 Stage 5 — SSO group → role 매핑 CRUD ──────────
+  # admin이 IdP claim group → 내부 (role, scope) 매핑을 web UI로 관리.
+  # SSO callback이 매 login에서 source='sso' user_roles row를 IdP 응답 기준 sync —
+  # source='manual' admin 수동 binding은 영향 없음 (D-RBACEX-7).
+  /api/v1/sso/providers/{providerId}/group-mappings:
+    parameters:
+      - { in: path, name: providerId, required: true, schema: { type: string } }
+    get:
+      tags: [sso]
+      operationId: listSSOGroupMappings
+      summary: List SSO group → role mappings for a provider
+      x-status: phase5
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListSSOGroupMappingsResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: SSO group mapping service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [sso]
+      operationId: createSSOGroupMapping
+      summary: Create a new SSO group → role mapping
+      description: |
+        Maps an IdP claim group value (e.g. `fleet-admin-warehouse-a`) to an internal
+        `(role, scope)` binding. SSO callback applies these mappings to user_roles
+        rows with `source='sso'` on every login. `scopeType=tenant` ignores `scopeId`;
+        `scopeType=fleet` requires `scopeId`. Returns 409 if the same 5-tuple
+        `(provider, group, role, scope_type, scope_id)` already exists.
+      x-status: phase5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SSOGroupMappingCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSOGroupMapping"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Mapping already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: SSO group mapping service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
+  /api/v1/sso/providers/{providerId}/group-mappings/{mappingId}:
+    parameters:
+      - { in: path, name: providerId, required: true, schema: { type: string } }
+      - { in: path, name: mappingId,  required: true, schema: { type: string } }
+    delete:
+      tags: [sso]
+      operationId: deleteSSOGroupMapping
+      summary: Delete an SSO group → role mapping
+      x-status: phase5
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          description: Mapping not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: SSO group mapping service not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+
   /api/v1/auth/sso/{providerId}/login:
     get:
       tags: [sso]
@@ -2834,6 +2947,41 @@ components:
         email:   { type: string, format: email }
         userId:  { type: string, description: "Mapped local user ID (empty if mapping not yet performed)" }
         stub:    { type: boolean, description: "True when no IdP client/SAML adapter is configured" }
+
+    # ─── RBAC fleet 정밀화 Stage 5 — SSO group → role 매핑 ────────────
+    SSOGroupMapping:
+      type: object
+      required: [id, providerId, groupValue, roleId, scopeType, createdAt]
+      description: |
+        Maps an IdP claim group value to an internal (role, scope) binding. Applied
+        by the SSO callback flow on every login (source='sso' rows are revoked then
+        re-inserted from the resolved set). Manual admin bindings (source='manual')
+        are unaffected (D-RBACEX-7).
+      properties:
+        id:         { type: string, description: "sgm_<ULID>" }
+        providerId: { type: string, description: "Owning SSO provider ID" }
+        groupValue: { type: string, description: "IdP claim group string (e.g. 'fleet-admin-warehouse-a')" }
+        roleId:     { type: string, description: "Internal role ID to grant" }
+        scopeType:  { type: string, enum: [tenant, fleet], description: "Scope dimension of the granted binding" }
+        scopeId:    { type: string, description: "Fleet ID when scopeType=fleet; empty for tenant scope" }
+        createdAt:  { type: string, format: date-time }
+
+    SSOGroupMappingCreate:
+      type: object
+      required: [groupValue, roleId]
+      properties:
+        groupValue: { type: string, minLength: 1 }
+        roleId:     { type: string, minLength: 1 }
+        scopeType:  { type: string, enum: [tenant, fleet], description: "Default 'tenant' when omitted" }
+        scopeId:    { type: string, description: "Required when scopeType=fleet; ignored otherwise" }
+
+    ListSSOGroupMappingsResponse:
+      type: object
+      required: [mappings]
+      properties:
+        mappings:
+          type: array
+          items: { $ref: "#/components/schemas/SSOGroupMapping" }
 
     # ─── Invitation (E21) ────────────────────────────────────────────────
     Invitation:
