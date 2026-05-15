@@ -15,6 +15,7 @@ import {
 } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,6 +50,7 @@ function ScansPage(): React.ReactElement {
   const [error, setError] = useState('')
   const t = useT()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
   const packsQuery = usePacks()
   const navigate = useNavigate()
   // URL ?session=<id>로 마지막 세션 보존 (페이지 reload 후에도 진행 카드 복원).
@@ -190,8 +192,14 @@ function ScansPage(): React.ReactElement {
             )}
             <Button
               type="submit"
-              disabled={startScan.isPending || !isAdmin}
-              title={!isAdmin ? t('common.role.required.admin') : undefined}
+              disabled={startScan.isPending || !isAdmin || isOffline}
+              title={mutationGuardTitle({
+                isOffline,
+                offlineLabel: t('pwa.offline.mutationBlocked'),
+                fallback: !isAdmin
+                  ? t('common.role.required.admin')
+                  : undefined,
+              })}
             >
               {startScan.isPending
                 ? t('scans.form.submitting')
@@ -559,6 +567,7 @@ function SessionProgressCard({
   const ws = useScanProgress(session.sessionId)
   const t = useT()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
   const cancelScan = useCancelScan()
   // terminal 도달 후 progress 카드 자체가 fresh fetch가 필요할 수 있으므로
   // 백스톱 polling 별도(useScan)는 안 둔다 — useScanProgress의 polling fallback이 처리.
@@ -569,7 +578,7 @@ function SessionProgressCard({
   const status = ws.latest?.status ?? session.status
   const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
   const isTerminal = isTerminalScanStatus(status)
-  const canCancel = !isTerminal && isAdmin
+  const canCancel = !isTerminal && isAdmin && !isOffline
 
   const handleCancel = (): void => {
     if (!canCancel) return
@@ -620,11 +629,13 @@ function SessionProgressCard({
               onClick={handleCancel}
               disabled={!canCancel || cancelScan.isPending}
               title={
-                !isAdmin
-                  ? t('common.role.required.admin')
-                  : cancelScan.isPending
-                    ? t('scans.session.cancel.pending')
-                    : undefined
+                isOffline
+                  ? t('pwa.offline.mutationBlocked')
+                  : !isAdmin
+                    ? t('common.role.required.admin')
+                    : cancelScan.isPending
+                      ? t('scans.session.cancel.pending')
+                      : undefined
               }
             >
               {cancelScan.isPending

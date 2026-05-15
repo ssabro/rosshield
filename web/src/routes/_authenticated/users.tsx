@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
+import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -53,6 +54,7 @@ function UsersPage(): React.ReactElement {
   const t = useT()
   const invitations = useInvitations()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
   const [created, setCreated] = useState<CreateInvitationResponse | null>(null)
 
   return (
@@ -65,6 +67,7 @@ function UsersPage(): React.ReactElement {
       <CreateInvitationForm
         onCreated={(res) => setCreated(res)}
         canCreate={isAdmin}
+        isOffline={isOffline}
       />
 
       {created && (
@@ -80,6 +83,7 @@ function UsersPage(): React.ReactElement {
         isError={invitations.isError}
         error={invitations.error}
         canRevoke={isAdmin}
+        isOffline={isOffline}
       />
     </div>
   )
@@ -89,9 +93,11 @@ function UsersPage(): React.ReactElement {
 function CreateInvitationForm({
   onCreated,
   canCreate,
+  isOffline,
 }: {
   onCreated: (res: CreateInvitationResponse) => void
   canCreate: boolean
+  isOffline: boolean
 }): React.ReactElement {
   const t = useT()
   const create = useCreateInvitation()
@@ -179,8 +185,12 @@ function CreateInvitationForm({
       <div className="md:col-span-4 flex justify-end">
         <Button
           type="submit"
-          disabled={create.isPending || !canCreate}
-          title={!canCreate ? t('common.role.required.admin') : undefined}
+          disabled={create.isPending || !canCreate || isOffline}
+          title={mutationGuardTitle({
+            isOffline,
+            offlineLabel: t('pwa.offline.mutationBlocked'),
+            fallback: !canCreate ? t('common.role.required.admin') : undefined,
+          })}
         >
           {create.isPending
             ? t('users.invite.submitting')
@@ -262,12 +272,14 @@ function InvitationsTable({
   isError,
   error,
   canRevoke,
+  isOffline,
 }: {
   invitations: InvitationView[]
   isPending: boolean
   isError: boolean
   error: unknown
   canRevoke: boolean
+  isOffline: boolean
 }): React.ReactElement {
   const t = useT()
   return (
@@ -323,6 +335,7 @@ function InvitationsTable({
                 key={inv.id}
                 invitation={inv}
                 canRevoke={canRevoke}
+                isOffline={isOffline}
               />
             ))}
         </TableBody>
@@ -334,9 +347,11 @@ function InvitationsTable({
 function InvitationRow({
   invitation,
   canRevoke,
+  isOffline,
 }: {
   invitation: InvitationView
   canRevoke: boolean
+  isOffline: boolean
 }): React.ReactElement {
   const t = useT()
   const del = useDeleteInvitation()
@@ -353,7 +368,11 @@ function InvitationRow({
   }
 
   const isTerminal = status === 'accepted' || status === 'expired'
-  const adminTooltip = !canRevoke ? t('common.role.required.admin') : undefined
+  const guardTitle = mutationGuardTitle({
+    isOffline,
+    offlineLabel: t('pwa.offline.mutationBlocked'),
+    fallback: !canRevoke ? t('common.role.required.admin') : undefined,
+  })
 
   return (
     <TableRow>
@@ -388,8 +407,8 @@ function InvitationRow({
           size="sm"
           variant="outline"
           onClick={handleDelete}
-          disabled={del.isPending || isTerminal || !canRevoke}
-          title={adminTooltip}
+          disabled={del.isPending || isTerminal || !canRevoke || isOffline}
+          title={guardTitle}
         >
           {del.isPending
             ? t('users.action.deleting')

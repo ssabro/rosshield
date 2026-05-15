@@ -48,3 +48,36 @@ function readInitialOffline(): boolean {
   }
   return !navigator.onLine
 }
+
+// PWA Stage 4 — mutation 버튼 가드 tooltip 우선순위 헬퍼 (design doc §7 Stage 4 + D-PWA-4).
+//
+// 같은 mutation 버튼이 다중 사유로 비활성될 수 있어(role 미보유 + 오프라인 등),
+// 사용자에게 보여줄 단일 tooltip 문자열을 우선순위 고정으로 결정합니다.
+// 우선순위: offline > 그 외 사유. 차단력이 가장 강하고 즉시 회복 가능한 사유를 우선.
+//
+// 사용 예:
+//   <Button
+//     disabled={create.isPending || !isAdmin || isOffline}
+//     title={mutationGuardTitle({
+//       isOffline,
+//       offlineLabel: t('pwa.offline.mutationBlocked'),
+//       fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+//     })}
+//   />
+//
+// fallback가 undefined이고 isOffline=false면 undefined 반환(=tooltip 비표시).
+export interface MutationGuardTitleOpts {
+  isOffline: boolean
+  offlineLabel: string
+  /** offline이 아닐 때 사용할 보조 사유 tooltip (예: role 미보유). */
+  fallback?: string | undefined
+}
+
+export function mutationGuardTitle(
+  opts: MutationGuardTitleOpts,
+): string | undefined {
+  if (opts.isOffline) {
+    return opts.offlineLabel
+  }
+  return opts.fallback
+}

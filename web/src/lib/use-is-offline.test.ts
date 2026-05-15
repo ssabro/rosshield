@@ -5,7 +5,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { useIsOffline } from './use-is-offline'
+import { mutationGuardTitle, useIsOffline } from './use-is-offline'
 
 describe('useIsOffline', () => {
   // navigator.onLine은 read-only이지만 jsdom에서 Object.defineProperty로 mock 가능.
@@ -78,5 +78,46 @@ describe('useIsOffline', () => {
     })
     // result.current는 unmount 시점 값(false)을 유지.
     expect(result.current).toBe(false)
+  })
+})
+
+describe('mutationGuardTitle (PWA Stage 4 — D-PWA-4 우선순위)', () => {
+  it('isOffline=true이면 offlineLabel 반환 (fallback 무시)', () => {
+    expect(
+      mutationGuardTitle({
+        isOffline: true,
+        offlineLabel: '오프라인 — 변경 불가',
+        fallback: 'admin 권한 필요',
+      }),
+    ).toBe('오프라인 — 변경 불가')
+  })
+
+  it('isOffline=false + fallback 정의되면 fallback 반환', () => {
+    expect(
+      mutationGuardTitle({
+        isOffline: false,
+        offlineLabel: '오프라인 — 변경 불가',
+        fallback: 'admin 권한 필요',
+      }),
+    ).toBe('admin 권한 필요')
+  })
+
+  it('isOffline=false + fallback=undefined이면 undefined (tooltip 비표시)', () => {
+    expect(
+      mutationGuardTitle({
+        isOffline: false,
+        offlineLabel: '오프라인 — 변경 불가',
+        fallback: undefined,
+      }),
+    ).toBeUndefined()
+  })
+
+  it('isOffline=true + fallback=undefined이어도 offlineLabel 반환 (offline 우선)', () => {
+    expect(
+      mutationGuardTitle({
+        isOffline: true,
+        offlineLabel: '오프라인 — 변경 불가',
+      }),
+    ).toBe('오프라인 — 변경 불가')
   })
 })

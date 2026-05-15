@@ -14,6 +14,7 @@ import {
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -184,6 +185,7 @@ function CreateProfileForm(): React.ReactElement {
   const create = useCreateComplianceProfile()
   const t = useT()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
 
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
@@ -235,8 +237,18 @@ function CreateProfileForm(): React.ReactElement {
       </div>
       <Button
         type="submit"
-        disabled={!framework || !version.trim() || create.isPending || !isAdmin}
-        title={!isAdmin ? t('common.role.required.admin') : undefined}
+        disabled={
+          !framework ||
+          !version.trim() ||
+          create.isPending ||
+          !isAdmin ||
+          isOffline
+        }
+        title={mutationGuardTitle({
+          isOffline,
+          offlineLabel: t('pwa.offline.mutationBlocked'),
+          fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+        })}
       >
         {create.isPending
           ? t('compliance.profile.adding')
@@ -375,6 +387,7 @@ function GenerateSnapshotForm({
   const generate = useGenerateSnapshot()
   const t = useT()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
 
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
@@ -401,8 +414,14 @@ function GenerateSnapshotForm({
       </div>
       <Button
         type="submit"
-        disabled={!sessionId.trim() || generate.isPending || !isAdmin}
-        title={!isAdmin ? t('common.role.required.admin') : undefined}
+        disabled={
+          !sessionId.trim() || generate.isPending || !isAdmin || isOffline
+        }
+        title={mutationGuardTitle({
+          isOffline,
+          offlineLabel: t('pwa.offline.mutationBlocked'),
+          fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+        })}
       >
         {generate.isPending
           ? t('compliance.snapshot.generating')

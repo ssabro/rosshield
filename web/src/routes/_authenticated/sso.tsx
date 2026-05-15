@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requireRole } from '@/lib/route-guards'
+import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +55,7 @@ function SSOPage(): React.ReactElement {
   const t = useT()
   const providers = useSSOProviders()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<SSOProvider | null>(null)
 
@@ -83,8 +85,12 @@ function SSOPage(): React.ReactElement {
                 setShowForm(true)
               }
             }}
-            disabled={!isAdmin}
-            title={!isAdmin ? t('common.role.required.admin') : undefined}
+            disabled={!isAdmin || isOffline}
+            title={mutationGuardTitle({
+              isOffline,
+              offlineLabel: t('pwa.offline.mutationBlocked'),
+              fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+            })}
           >
             {showForm
               ? t('sso.form.toggle.hide')
@@ -107,6 +113,7 @@ function SSOPage(): React.ReactElement {
         error={providers.error}
         onEdit={handleEdit}
         canMutate={isAdmin}
+        isOffline={isOffline}
       />
     </div>
   )
@@ -120,6 +127,7 @@ function ProvidersTable({
   error,
   onEdit,
   canMutate,
+  isOffline,
 }: {
   providers: SSOProvider[]
   isPending: boolean
@@ -127,6 +135,7 @@ function ProvidersTable({
   error: unknown
   onEdit: (p: SSOProvider) => void
   canMutate: boolean
+  isOffline: boolean
 }): React.ReactElement {
   const t = useT()
   return (
@@ -179,6 +188,7 @@ function ProvidersTable({
                 provider={p}
                 onEdit={() => onEdit(p)}
                 canMutate={canMutate}
+                isOffline={isOffline}
               />
             ))}
         </TableBody>
@@ -191,10 +201,12 @@ function ProviderRow({
   provider,
   onEdit,
   canMutate,
+  isOffline,
 }: {
   provider: SSOProvider
   onEdit: () => void
   canMutate: boolean
+  isOffline: boolean
 }): React.ReactElement {
   const t = useT()
   const del = useDeleteSSOProvider()
@@ -205,7 +217,11 @@ function ProviderRow({
     }
     del.mutate(provider.id)
   }
-  const adminTooltip = !canMutate ? t('common.role.required.admin') : undefined
+  const guardTitle = mutationGuardTitle({
+    isOffline,
+    offlineLabel: t('pwa.offline.mutationBlocked'),
+    fallback: !canMutate ? t('common.role.required.admin') : undefined,
+  })
   return (
     <TableRow>
       <TableCell className="font-mono text-xs text-muted-foreground" title={provider.id}>
@@ -243,8 +259,8 @@ function ProviderRow({
             size="sm"
             variant="outline"
             onClick={onEdit}
-            disabled={!canMutate}
-            title={adminTooltip}
+            disabled={!canMutate || isOffline}
+            title={guardTitle}
           >
             {t('sso.action.edit')}
           </Button>
@@ -252,8 +268,8 @@ function ProviderRow({
             size="sm"
             variant="outline"
             onClick={handleDelete}
-            disabled={del.isPending || !canMutate}
-            title={adminTooltip}
+            disabled={del.isPending || !canMutate || isOffline}
+            title={guardTitle}
           >
             {del.isPending
               ? t('sso.action.deleting')
@@ -276,6 +292,7 @@ function ProviderForm({
   const t = useT()
   const create = useCreateSSOProvider()
   const update = useUpdateSSOProvider()
+  const isOffline = useIsOffline()
 
   // 수정 모드는 type 변경 불가 (백엔드도 type 변경 미지원).
   const initialType: SSOProviderType = editing?.type ?? 'oidc'
@@ -516,7 +533,14 @@ function ProviderForm({
       )}
 
       <div className="md:col-span-2 flex justify-end gap-2">
-        <Button type="submit" disabled={mutating}>
+        <Button
+          type="submit"
+          disabled={mutating || isOffline}
+          title={mutationGuardTitle({
+            isOffline,
+            offlineLabel: t('pwa.offline.mutationBlocked'),
+          })}
+        >
           {mutating
             ? t('sso.form.submitting')
             : isUpdate

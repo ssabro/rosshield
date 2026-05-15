@@ -8,6 +8,7 @@ import { useDismissInsight, useInsights, useIsAdmin } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -159,6 +160,7 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
   const dismiss = useDismissInsight()
   const t = useT()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
 
   const onDismiss = (): void => {
     const reason = window.prompt(
@@ -196,8 +198,12 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
           size="sm"
           variant="outline"
           onClick={onDismiss}
-          disabled={dismiss.isPending || !isAdmin}
-          title={!isAdmin ? t('common.role.required.admin') : undefined}
+          disabled={dismiss.isPending || !isAdmin || isOffline}
+          title={mutationGuardTitle({
+            isOffline,
+            offlineLabel: t('pwa.offline.mutationBlocked'),
+            fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+          })}
         >
           {dismiss.isPending
             ? t('findings.action.dismissing')

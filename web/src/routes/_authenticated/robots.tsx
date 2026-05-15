@@ -8,6 +8,7 @@ import { useCreateRobot, useIsAdmin, useRobots } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,6 +43,7 @@ function RobotsPage(): React.ReactElement {
   const robots = useRobots(trimmed.length > 0 ? trimmed : undefined)
   const t = useT()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
 
   return (
     <div className="space-y-4">
@@ -53,8 +55,12 @@ function RobotsPage(): React.ReactElement {
             variant={showForm ? 'outline' : 'default'}
             size="sm"
             onClick={() => setShowForm((v) => !v)}
-            disabled={!isAdmin}
-            title={!isAdmin ? t('common.role.required.admin') : undefined}
+            disabled={!isAdmin || isOffline}
+            title={mutationGuardTitle({
+              isOffline,
+              offlineLabel: t('pwa.offline.mutationBlocked'),
+              fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+            })}
           >
             {showForm ? t('robots.form.toggle.hide') : t('robots.form.toggle.show')}
           </Button>
@@ -175,6 +181,7 @@ function CreateRobotForm({
   const t = useT()
   const create = useCreateRobot()
   const isAdmin = useIsAdmin()
+  const isOffline = useIsOffline()
   const [vars, setVars] = useState<CreateRobotVars>({
     fleetId: '',
     name: '',
@@ -367,8 +374,12 @@ function CreateRobotForm({
       <div className="md:col-span-2 flex justify-end">
         <Button
           type="submit"
-          disabled={create.isPending || !isAdmin}
-          title={!isAdmin ? t('common.role.required.admin') : undefined}
+          disabled={create.isPending || !isAdmin || isOffline}
+          title={mutationGuardTitle({
+            isOffline,
+            offlineLabel: t('pwa.offline.mutationBlocked'),
+            fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+          })}
         >
           {create.isPending ? t('robots.form.submitting') : t('robots.form.submit')}
         </Button>
