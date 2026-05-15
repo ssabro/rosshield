@@ -34,6 +34,11 @@ type Deps struct {
 	IDGen idgen.IDGen
 	Audit robot.AuditEmitter // bootstrap이 audit.Service를 어댑팅한 구현체 주입.
 
+	// HostKeyAudit는 host_key 변경 audit emit 표면입니다 (scanrun SSH 통합 Stage 1).
+	// nil 허용 — 미주입 시 RecordFirstTouch·ResetTrust는 audit emit 없이 동작 (단위 테스트 격리용).
+	// bootstrap 결선은 Stage 2 이후.
+	HostKeyAudit robot.HostKeyAuditEmitter
+
 	// KEK는 Credential wrap/unwrap에 사용 (Stage B 도입).
 	// bootstrap이 부팅 시 LoadOrCreate해 주입.
 	KEK *robot.KEK

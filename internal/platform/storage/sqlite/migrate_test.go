@@ -64,7 +64,7 @@ func TestStorageMigrateIdempotent(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		const wantVersion = 26 // 0001~0025 + 0026 scan_severity_aggregate (severity별 failed count 4 컬럼)
+		const wantVersion = 27 // 0001~0026 + 0027 robot_host_keys (TOFU host key trust, scanrun SSH 통합 Stage 1)
 		if maxVersion != wantVersion {
 			t.Errorf("max version_id = %d, want %d", maxVersion, wantVersion)
 		}
