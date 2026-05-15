@@ -15,6 +15,8 @@ createRoot(rootEl).render(
   </StrictMode>,
 )
 
-// PWA Stage 2 — service worker 등록 (design doc D-PWA-1 generateSW + D-PWA-6 prompt).
-// 갱신 알림 UX(`useRegisterSW` hook 결선)는 Stage 3에서 추가됩니다.
+// PWA Stage 2/3 — service worker 등록 + 갱신 알림 결선 (design doc D-PWA-1
+// generateSW + D-PWA-6 prompt). registerServiceWorker는 onNeedRefresh /
+// onOfflineReady 콜백을 module-level state에 기록하고, _authenticated/route.tsx의
+// `OfflineIndicator` + `UpdatePrompt` 컴포넌트가 `usePwaUpdate` hook으로 구독합니다.
 registerServiceWorker()

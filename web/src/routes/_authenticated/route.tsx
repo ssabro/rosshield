@@ -2,6 +2,8 @@ import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { OfflineIndicator } from '@/components/OfflineIndicator'
+import { UpdatePrompt } from '@/components/UpdatePrompt'
 import { useAuthStore } from '@/stores/auth'
 
 // `_authenticated` pathless layout — 인증 가드 + Sidebar/Header 셸.
@@ -23,6 +25,9 @@ export const Route = createFileRoute('/_authenticated')({
 function AuthenticatedLayout(): React.ReactElement {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
+      {/* PWA Stage 3 — top fixed banner / 우하단 toast (오프라인 + 갱신 알림). */}
+      <OfflineIndicator />
+      <UpdatePrompt />
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <Header />

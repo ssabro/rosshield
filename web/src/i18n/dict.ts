@@ -57,6 +57,13 @@ export const ko = {
   'common.role.required.adminOrAuditor': '관리자 또는 감사인 권한이 필요합니다',
   'common.role.disabled.tooltip': '권한이 부족합니다',
 
+  // PWA Stage 3 (Phase 5) — offline indicator + update prompt UX.
+  // mutationBlocked는 Stage 4 mutation 가드용으로 미리 정의 (design doc §7 Stage 3).
+  'pwa.offline.banner': '오프라인 — 마지막 데이터를 표시 중입니다',
+  'pwa.update.available': '새 버전을 사용할 수 있습니다',
+  'pwa.update.reload': '새로고침',
+  'pwa.offline.mutationBlocked': '오프라인 모드에서는 변경 작업을 수행할 수 없습니다',
+
   'pages.robots.title': '로봇',
   'pages.robots.description': '테넌트에 등록된 로봇 목록입니다.',
   'robots.detail.metaTitle': '메타',
@@ -886,6 +893,13 @@ export const en: Record<keyof typeof ko, string> = {
   'common.role.required.admin': 'admin role required',
   'common.role.required.adminOrAuditor': 'admin or auditor role required',
   'common.role.disabled.tooltip': 'insufficient permission',
+
+  // PWA Stage 3 (Phase 5) — offline indicator + update prompt UX.
+  // mutationBlocked is reserved for the Stage 4 mutation guard (design doc §7 Stage 3).
+  'pwa.offline.banner': 'Offline — showing last available data',
+  'pwa.update.available': 'A new version is available',
+  'pwa.update.reload': 'Reload',
+  'pwa.offline.mutationBlocked': 'Offline mode — changes cannot be saved right now',
 
   'pages.robots.title': 'Robots',
   'pages.robots.description': 'Robots registered to your tenant.',
