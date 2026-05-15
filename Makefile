@@ -3,7 +3,7 @@ BIN_DIR := bin
 SERVER_BIN := $(BIN_DIR)/rosshield-server
 AUDIT_VERIFY_BIN := $(BIN_DIR)/rosshield-audit-verify
 
-.PHONY: all build build-enterprise audit-verify-build pack-tools-build pack-archive test test-enterprise vet vet-enterprise fmt tidy lint ci ci-enterprise clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
+.PHONY: all build build-enterprise audit-verify-build pack-tools-build pack-archive test test-enterprise test-ssh-e2e vet vet-enterprise fmt tidy lint ci ci-enterprise clean openapi web-install web-dev web-build web-test web-types web-e2e web-e2e-install compose-build compose-up compose-down compose-smoke pg-migrate-up pg-migrate-down pg-migrate-status pg-migrate-create
 
 all: ci
 
@@ -64,6 +64,26 @@ test-race:
 # E31 — enterprise build tag 적용 테스트 (코어 테스트 + enterprise 표면 sanity).
 test-enterprise:
 	$(GO) test -tags rosshield_enterprise -count=1 ./...
+
+# scanrun SSH 통합 Stage 5c — 실 SSHD 컨테이너(linuxserver/openssh-server) 5 phase e2e.
+# design doc: docs/design/notes/scanrun-ssh-integration-design.md §5.4 + §6 Stage 5.
+#
+# docker compose up → go test -tags integration → docker compose down 자동.
+# 일반 `make test`는 build tag integration이라 본 파일 skip.
+#
+# Phase 1 single robot · Phase 2 fleet × WorkerLimit · Phase 3 degraded health window ·
+# Phase 4 host key change · Phase 5 goroutine leak.
+SSH_E2E_COMPOSE := test/integration/docker-compose.ssh.yml
+test-ssh-e2e:
+	@command -v docker >/dev/null 2>&1 || { echo "ERROR: docker not in PATH"; exit 1; }
+	@echo ">>> docker compose up (linuxserver/openssh-server × 3) ..."
+	docker compose -f $(SSH_E2E_COMPOSE) up -d
+	@echo ">>> go test -tags integration ./test/integration/... ..."
+	$(GO) test -tags integration -count=1 -v ./test/integration/... ; \
+	  status=$$? ; \
+	  echo ">>> docker compose down ..." ; \
+	  docker compose -f $(SSH_E2E_COMPOSE) down -v ; \
+	  exit $$status
 
 vet:
 	$(GO) vet ./...

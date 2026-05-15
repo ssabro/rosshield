@@ -1,0 +1,89 @@
+# test/integration/docker-compose.ssh.yml — scanrun SSH e2e fixture (Stage 5c).
+#
+# design doc: docs/design/notes/scanrun-ssh-integration-design.md §5.4 + §6 Stage 5.
+# 3 컨테이너 (robot 시뮬레이션) — linuxserver/openssh-server image (multi-arch: amd64/arm64).
+# password 인증 + sudo 가능(SUDO_ACCESS=true) — D-SCAN-3 옵션 (1) `sudo -n` 검증 가능.
+#
+# 운영:
+#   docker compose -f docker-compose.ssh.yml up -d
+#   docker compose -f docker-compose.ssh.yml down
+#
+# 검증 (docker 가용 시):
+#   docker compose -f docker-compose.ssh.yml config
+#
+# 결정 — linuxserver/openssh-server vs alternatives:
+#   - linuxserver/openssh-server: ★ 채택. 환경 변수만으로 user·password·sudo 시드 가능.
+#     multi-arch, 정기 업데이트, 광범위한 운영자 친숙도.
+#   - sickp/alpine-sshd: lightweight 그러나 sudo 미포함 — Phase 4 host key change 시나리오는
+#     OK이지만 D-SCAN-3 검증 cover 불가.
+#   - 자체 Dockerfile: 유지보수 비용 + image registry 부담. 별 phase에 reconsider.
+#
+# 외부 의존: gliderlabs/testcontainers 미사용(R4 결정 C 일관). 운영자가 docker compose
+# 명령으로 직접 기동·정리 — host port 노출 12222·12223·12224.
+
+services:
+  robot-1:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: rosshield-e2e-robot-1
+    hostname: rosshield-robot-1
+    ports:
+      # host 12222 → container 2222 (linuxserver image 기본 sshd 포트는 2222).
+      - "12222:2222"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - PASSWORD_ACCESS=true
+      - USER_NAME=rosshield
+      - USER_PASSWORD=e2e-test-password
+      - SUDO_ACCESS=true
+      # PUBLIC_KEY를 미리 내려받지 않음 — Phase 1·2는 password 경로로 검증.
+      # Phase 4(host key change)는 컨테이너 재기동 시 자동 새 host key 생성 활용.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  robot-2:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: rosshield-e2e-robot-2
+    hostname: rosshield-robot-2
+    ports:
+      - "12223:2222"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - PASSWORD_ACCESS=true
+      - USER_NAME=rosshield
+      - USER_PASSWORD=e2e-test-password
+      - SUDO_ACCESS=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  robot-3:
+    image: lscr.io/linuxserver/openssh-server:latest
+    container_name: rosshield-e2e-robot-3
+    hostname: rosshield-robot-3
+    ports:
+      - "12224:2222"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - PASSWORD_ACCESS=true
+      - USER_NAME=rosshield
+      - USER_PASSWORD=e2e-test-password
+      - SUDO_ACCESS=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
