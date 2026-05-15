@@ -736,3 +736,180 @@ func TestCancelRecomputesSeverityAggregate(t *testing.T) {
 		t.Errorf("reload SeverityFailed = %+v, want %+v", reloaded.SeverityFailed, want)
 	}
 }
+
+// === Stage 5 — per-robot health window ===
+//
+// 한 robot에 대해 SSH exec가 연속 N회 실패하면 잔여 check는 OutcomeSkipped(robot_offline).
+// 다른 robot은 영향 없음 — health은 robot 별로 격리.
+
+func TestRunHealthWindow_SkipsRemainingChecksAfterConsecutiveFailures(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 4)
+	// HealthFailureThreshold default(3) 사용. checks 5건, 모두 SSH error.
+	h.seedFleetAndPack("tn_HW1", "fl_HW1", "pk_HW1")
+	h.seedRobots(1)
+	h.seedChecks(5)
+	sessionID := h.startSession(5)
+
+	h.executor.exec = func(_ context.Context, _ scan.RobotTarget, _ []string, _ time.Duration) (scan.ExecResult, error) {
+		return scan.ExecResult{}, errors.New("connection refused")
+	}
+
+	if err := h.orch.Run(context.Background(), h.tenantID, sessionID, h.makeTargets(), h.makeChecks()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	results := h.listResults(sessionID)
+	if len(results) != 5 {
+		t.Fatalf("results len = %d, want 5", len(results))
+	}
+
+	var errCount, skipCount int
+	for _, r := range results {
+		switch r.Outcome {
+		case scan.OutcomeError:
+			errCount++
+		case scan.OutcomeSkipped:
+			skipCount++
+		}
+	}
+	// 정확한 분포는 worker 동시 실행 순서에 따라 변동 가능 — 하지만 threshold 도달 후
+	// 잔여 check는 즉시 skip되어야 함. 최소 1건은 skipped.
+	if skipCount < 1 {
+		t.Errorf("skipCount = %d, want >= 1 (health window 발동 후 잔여 skip)", skipCount)
+	}
+	// 첫 N=3개는 실 SSH 시도 → error.
+	if errCount < 3 {
+		t.Errorf("errCount = %d, want >= 3 (threshold 도달 전 시도)", errCount)
+	}
+	// 모든 result는 error 또는 skipped.
+	if errCount+skipCount != 5 {
+		t.Errorf("errCount(%d) + skipCount(%d) = %d, want 5", errCount, skipCount, errCount+skipCount)
+	}
+}
+
+func TestRunHealthWindow_SkippedReasonIsRobotOffline(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1) // worker 1로 직렬화 — skip 분포 결정성.
+	h.seedFleetAndPack("tn_HW2", "fl_HW2", "pk_HW2")
+	h.seedRobots(1)
+	h.seedChecks(5)
+	sessionID := h.startSession(5)
+
+	h.executor.exec = func(_ context.Context, _ scan.RobotTarget, _ []string, _ time.Duration) (scan.ExecResult, error) {
+		return scan.ExecResult{}, errors.New("dial timeout")
+	}
+
+	if err := h.orch.Run(context.Background(), h.tenantID, sessionID, h.makeTargets(), h.makeChecks()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	results := h.listResults(sessionID)
+	for _, r := range results {
+		if r.Outcome == scan.OutcomeSkipped && r.EvalReason != "robot_offline" {
+			t.Errorf("skipped reason = %q, want robot_offline", r.EvalReason)
+		}
+	}
+}
+
+func TestRunHealthWindow_OtherRobotNotAffected(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 2)
+	h.seedFleetAndPack("tn_HW3", "fl_HW3", "pk_HW3")
+	h.seedRobots(2) // robot 0(unreachable) + robot 1(alive)
+	h.seedChecks(5)
+	sessionID := h.startSession(2 * 5)
+
+	// robot 0(첫 번째)은 모두 error, robot 1은 모두 success.
+	h.executor.exec = func(_ context.Context, target scan.RobotTarget, _ []string, _ time.Duration) (scan.ExecResult, error) {
+		if target.RobotID == h.robotIDs[0] {
+			return scan.ExecResult{}, errors.New("unreachable")
+		}
+		return scan.ExecResult{Stdout: []byte("ok")}, nil
+	}
+
+	if err := h.orch.Run(context.Background(), h.tenantID, sessionID, h.makeTargets(), h.makeChecks()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	results := h.listResults(sessionID)
+	if len(results) != 10 {
+		t.Fatalf("results len = %d, want 10", len(results))
+	}
+
+	// robot 1 결과는 모두 pass (health window 영향 없음).
+	robot1Pass := 0
+	for _, r := range results {
+		if r.RobotID == h.robotIDs[1] {
+			if r.Outcome == scan.OutcomePass {
+				robot1Pass++
+			}
+		}
+	}
+	if robot1Pass != 5 {
+		t.Errorf("robot 1 pass count = %d, want 5 (health window는 robot 별 격리)", robot1Pass)
+	}
+}
+
+func TestRunHealthWindow_SuccessKeepsCounterAtZero(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1)
+	h.seedFleetAndPack("tn_HW4", "fl_HW4", "pk_HW4")
+	h.seedRobots(1)
+	h.seedChecks(6)
+	sessionID := h.startSession(6)
+
+	h.executor.exec = func(_ context.Context, _ scan.RobotTarget, _ []string, _ time.Duration) (scan.ExecResult, error) {
+		return scan.ExecResult{Stdout: []byte("ok")}, nil
+	}
+
+	if err := h.orch.Run(context.Background(), h.tenantID, sessionID, h.makeTargets(), h.makeChecks()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	results := h.listResults(sessionID)
+	for _, r := range results {
+		if r.Outcome == scan.OutcomeSkipped {
+			t.Errorf("found skipped result %+v, want all pass (success는 counter 0 유지)", r)
+		}
+	}
+}
+
+func TestRunHealthWindow_ConfiguredThreshold(t *testing.T) {
+	t.Parallel()
+	// HealthFailureThreshold=1 — 첫 실패 직후 잔여 모두 skip.
+	h := newHarness(t, 1) // 직렬 보장.
+	h.seedFleetAndPack("tn_HW5", "fl_HW5", "pk_HW5")
+	h.seedRobots(1)
+	h.seedChecks(4)
+	sessionID := h.startSession(4)
+
+	// orch 재생성 — Deps에 HealthFailureThreshold=1.
+	h.orch = scanrun.New(scanrun.Deps{
+		Scan: h.scanSvc, Storage: h.store, Executor: h.executor,
+		Evaluator: h.evaluator, Bus: h.bus, Clock: clock.System(),
+		WorkerLimit:            1,
+		HealthFailureThreshold: 1,
+	})
+
+	h.executor.exec = func(_ context.Context, _ scan.RobotTarget, _ []string, _ time.Duration) (scan.ExecResult, error) {
+		return scan.ExecResult{}, errors.New("dial fail")
+	}
+
+	if err := h.orch.Run(context.Background(), h.tenantID, sessionID, h.makeTargets(), h.makeChecks()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	results := h.listResults(sessionID)
+	var errCount, skipCount int
+	for _, r := range results {
+		switch r.Outcome {
+		case scan.OutcomeError:
+			errCount++
+		case scan.OutcomeSkipped:
+			skipCount++
+		}
+	}
+	// threshold=1 — 첫 1건만 error, 나머지 3건 skip.
+	if errCount != 1 {
+		t.Errorf("errCount = %d, want 1 (threshold=1, 첫 시도만 error)", errCount)
+	}
+	if skipCount != 3 {
+		t.Errorf("skipCount = %d, want 3", skipCount)
+	}
+}

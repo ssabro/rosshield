@@ -36,6 +36,14 @@ import (
 // DefaultWorkerLimit는 동시 실행 worker 수 기본값입니다 (R4-4·R6-4 — Phase 1 고정 10).
 const DefaultWorkerLimit = 10
 
+// DefaultHealthFailureThreshold는 per-robot health window가 발동하는 연속 실패 횟수입니다
+// (scanrun SSH 통합 Stage 5 — D-SCAN-7 + e6 deepdive §5.6 패턴).
+//
+// 한 robot에 대해 SSH exec가 연속 N회 실패하면 잔여 check는 즉시 OutcomeSkipped
+// (reason="robot_offline")로 처리 — robot 부재 시 timeout × check 수만큼 대기 회피.
+// 본 robot에 한 번이라도 success가 들어오면 카운터 reset (false-positive 회피).
+const DefaultHealthFailureThreshold = 3
+
 // Deps는 Orchestrator의 의존성입니다.
 type Deps struct {
 	Scan      scan.Service
@@ -56,6 +64,11 @@ type Deps struct {
 	// scan.DefaultCheckTimeoutSec(10초). 운영자가 customer 환경에 맞춰 조정 가능
 	// (긴 합성 bash 또는 빠른 fail-fast 정책). per-check TimeoutSec은 항상 우선.
 	CheckTimeoutDefaultSec int
+
+	// HealthFailureThreshold는 per-robot health window 발동 임계값입니다
+	// (scanrun SSH 통합 Stage 5). 0이면 DefaultHealthFailureThreshold(3).
+	// 한 robot의 SSH exec가 연속 N회 실패하면 잔여 check OutcomeSkipped(robot_offline).
+	HealthFailureThreshold int
 }
 
 // Orchestrator는 scan session의 fan-out 실행 + 결과 기록 + 이벤트 publish를 관장합니다.
@@ -68,10 +81,41 @@ type Orchestrator struct {
 	cancels map[string]context.CancelFunc
 }
 
+// healthState는 한 robot의 연속 실패 카운터입니다 (Stage 5 per-robot health window).
+//
+// scope는 Run 단일 호출 — Run 종료 시 Orchestrator.healthFor 맵에서 GC.
+// 같은 session 내 robots × checks fan-out에서 robot 별로 누적.
+type healthState struct {
+	mu                  sync.Mutex
+	consecutiveFailures int
+}
+
+func (h *healthState) recordFailure() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.consecutiveFailures++
+	return h.consecutiveFailures
+}
+
+func (h *healthState) recordSuccess() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.consecutiveFailures = 0
+}
+
+func (h *healthState) shouldSkip(threshold int) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.consecutiveFailures >= threshold
+}
+
 // New는 새 Orchestrator를 반환합니다.
 func New(deps Deps) *Orchestrator {
 	if deps.WorkerLimit <= 0 {
 		deps.WorkerLimit = DefaultWorkerLimit
+	}
+	if deps.HealthFailureThreshold <= 0 {
+		deps.HealthFailureThreshold = DefaultHealthFailureThreshold
 	}
 	return &Orchestrator{
 		deps:    deps,
@@ -124,6 +168,10 @@ func (o *Orchestrator) Run(ctx context.Context, tenantID storage.TenantID, sessi
 	sem := semaphore.NewWeighted(int64(o.deps.WorkerLimit))
 	var wg sync.WaitGroup
 
+	// Stage 5 — per-robot health window. Run scope 격리 (다음 Run은 새 map).
+	// robotID → *healthState. sync.Map은 robot 별 LoadOrStore + 동시 worker write 안전.
+	var healthMap sync.Map
+
 outer:
 	for ri := range robots {
 		for ci := range checks {
@@ -137,7 +185,7 @@ outer:
 			go func() {
 				defer wg.Done()
 				defer sem.Release(1)
-				o.executeOne(workerCtx, tenantID, sessionID, r, c)
+				o.executeOne(workerCtx, tenantID, sessionID, r, c, &healthMap)
 			}()
 		}
 	}
@@ -193,7 +241,7 @@ func (o *Orchestrator) runEmpty(ctx context.Context, tenantID storage.TenantID, 
 	return nil
 }
 
-func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID, sessionID string, robot scan.RobotTarget, check scan.CheckDef) {
+func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID, sessionID string, robot scan.RobotTarget, check scan.CheckDef, healthMap *sync.Map) {
 	timeout := time.Duration(check.TimeoutSec) * time.Second
 	if timeout <= 0 {
 		// CheckDef.TimeoutSec 미설정 — Deps.CheckTimeoutDefaultSec 또는 const fallback.
@@ -205,25 +253,41 @@ func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID
 		timeout = time.Duration(defaultSec) * time.Second
 	}
 
+	// Stage 5 — per-robot health window 체크.
+	// robot이 이미 N회 연속 실패면 SSH dial 회피 + 즉시 OutcomeSkipped record.
+	hsRaw, _ := healthMap.LoadOrStore(robot.RobotID, &healthState{})
+	health := hsRaw.(*healthState)
+
 	var (
 		outcome  scan.Outcome
 		reason   string
 		duration time.Duration
+		exec     scan.ExecResult
 	)
 
-	exec, err := o.deps.Executor.Exec(ctx, robot, check.AuditCommand, timeout, scan.ExecOpts{RequiresSudo: check.RequiresSudo})
-	duration = exec.Duration
-	if err != nil {
-		outcome = scan.OutcomeError
-		reason = fmt.Sprintf("ssh: %v", err)
+	if health.shouldSkip(o.deps.HealthFailureThreshold) {
+		outcome = scan.OutcomeSkipped
+		reason = "robot_offline"
 	} else {
-		eval, evalErr := o.deps.Evaluator.Evaluate(check.EvalRuleJSON, exec)
-		if evalErr != nil {
+		var err error
+		exec, err = o.deps.Executor.Exec(ctx, robot, check.AuditCommand, timeout, scan.ExecOpts{RequiresSudo: check.RequiresSudo})
+		duration = exec.Duration
+		if err != nil {
 			outcome = scan.OutcomeError
-			reason = fmt.Sprintf("eval: %v", evalErr)
+			reason = fmt.Sprintf("ssh: %v", err)
+			health.recordFailure()
 		} else {
-			outcome = eval.Outcome
-			reason = eval.Reason
+			eval, evalErr := o.deps.Evaluator.Evaluate(check.EvalRuleJSON, exec)
+			if evalErr != nil {
+				outcome = scan.OutcomeError
+				reason = fmt.Sprintf("eval: %v", evalErr)
+				// evaluator 실패는 robot 헬스 무관 — 카운터 변경 X.
+			} else {
+				outcome = eval.Outcome
+				reason = eval.Reason
+				// SSH 자체는 success — robot alive로 간주, 카운터 reset.
+				health.recordSuccess()
+			}
 		}
 	}
 
