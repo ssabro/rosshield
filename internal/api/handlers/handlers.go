@@ -277,33 +277,41 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
 			Post("/api/v1/webhooks/{endpointId}/test", h.testWebhookEndpointFromChi)
 
-		// === Robot mutation (4건) ===
-		// Robot 등록 — body fleetId 기반(path 추출 X), tenant scope binding 보유자만 통과.
-		// 정밀 fleet scope 결정은 후속 stage에서 body 추출 hook 추가.
-		r.With(h.RequirePermission(authz.ResourceRobot, authz.ActionWrite)).
+		// === Robot mutation (4건) — Stage 3 fleet 정밀화 적용 (3건) ===
+		// Robot 등록 — request body의 fleetId를 peek (10KB 제한, body 복원). fleet binding
+		// 보유자(operator/fleet-admin@flt_X)는 본인 fleet만 통과 — cross-fleet 자동 deny.
+		// RBAC fleet 정밀화 Stage 3 — design doc §3.1.1 body lookup.
+		r.With(h.RequirePermissionWithFleet(authz.ResourceRobot, authz.ActionWrite, WithFleetFromBody("fleetId"))).
 			Post("/api/v1/robots", func(w http.ResponseWriter, req *http.Request) {
 				h.CreateRobot(w, req, gen.CreateRobotParams{})
 			})
-		// Robot 삭제(soft delete, R3-5). path는 robotId만 — fleet 추출 미가능, tenant 평가.
-		r.With(h.RequirePermission(authz.ResourceRobot, authz.ActionWrite)).
+		// Robot 삭제(soft delete, R3-5). path는 robotID만 — ScopeResolver가 robot.GetRobot
+		// 으로 fleet_id lookup → fleet binding 정밀 평가 (cross-fleet 격리).
+		// RBAC fleet 정밀화 Stage 3 — design doc §3.1.2 cross-resource lookup.
+		r.With(h.RequirePermissionWithFleet(authz.ResourceRobot, authz.ActionWrite, WithFleetFromResource("robot", "robotId"))).
 			Delete("/api/v1/robots/{robotId}", func(w http.ResponseWriter, req *http.Request) {
 				h.DeleteRobot(w, req, chi.URLParam(req, "robotId"))
 			})
-		// Robot credential 회전(R3-3, audit emit). admin 권한.
-		r.With(h.RequirePermission(authz.ResourceRobot, authz.ActionAdmin)).
+		// Robot credential 회전(R3-3, audit emit). admin 권한 + ScopeResolver fleet 평가.
+		// RBAC fleet 정밀화 Stage 3 — design doc §3.1.2 cross-resource lookup.
+		r.With(h.RequirePermissionWithFleet(authz.ResourceRobot, authz.ActionAdmin, WithFleetFromResource("robot", "robotId"))).
 			Post("/api/v1/robots/{robotId}/credential:rotate", func(w http.ResponseWriter, req *http.Request) {
 				h.RotateCredential(w, req, chi.URLParam(req, "robotId"))
 			})
-		// SSH fingerprint 미리보기 — admin 유틸. tenant 글로벌.
+		// SSH fingerprint 미리보기 — admin 유틸. tenant 글로벌 (fleet 무관).
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
 			Post("/api/v1/utils/ssh-fingerprint", h.SSHFingerprint)
 
-		// === Scan mutation (2건) — body 또는 sessionId path만, tenant 평가 ===
-		r.With(h.RequirePermission(authz.ResourceScan, authz.ActionExecute)).
+		// === Scan mutation (2건) — Stage 3 fleet 정밀화 적용 (2건) ===
+		// Scan 시작 — request body의 fleetId peek + fleet 정밀 평가.
+		// RBAC fleet 정밀화 Stage 3 — design doc §3.1.1 body lookup.
+		r.With(h.RequirePermissionWithFleet(authz.ResourceScan, authz.ActionExecute, WithFleetFromBody("fleetId"))).
 			Post("/api/v1/scans", func(w http.ResponseWriter, req *http.Request) {
 				h.CreateScan(w, req, gen.CreateScanParams{})
 			})
-		r.With(h.RequirePermission(authz.ResourceScan, authz.ActionExecute)).
+		// Scan cancel — sessionId path만, ScopeResolver가 scan.GetSession으로 fleet_id lookup.
+		// RBAC fleet 정밀화 Stage 3 — design doc §3.1.2 cross-resource lookup.
+		r.With(h.RequirePermissionWithFleet(authz.ResourceScan, authz.ActionExecute, WithFleetFromResource("scan", "sessionId"))).
 			Post("/api/v1/scans/{sessionId}:cancel", func(w http.ResponseWriter, req *http.Request) {
 				h.CancelScan(w, req, chi.URLParam(req, "sessionId"))
 			})
@@ -313,12 +321,18 @@ func (h *Handlers) Mount(r chi.Router) {
 			Post("/api/v1/audit/verify", h.VerifyAuditChain)
 
 		// === Report verify (1건) — admin/auditor 통과 ===
+		// Stage 3 fleet 정밀화 비대상 — reporting.Service에 GetReport는 있으나 Report.FleetID
+		// 미노출(SessionID만 보유, 2-hop JOIN 필요). 후속 stage에서 reporting service에
+		// fleet_id 노출 후 cross-resource lookup 추가 예정. 본 stage는 RequirePermission 유지.
 		r.With(h.RequirePermission(authz.ResourceReport, authz.ActionVerify)).
 			Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
 				h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
 			})
 
 		// === Insight mutation (2건) — fleets/{fleetId}/insights:run는 fleet scope 평가 ===
+		// Stage 3 fleet 정밀화 비대상 — insight.Service에 GetByID 미노출(ListActive만 보유).
+		// 후속 stage에서 insight service에 GetInsight 추가 후 cross-resource lookup. 본 stage는
+		// RequirePermission 유지 — fleet 무관 통과(insight.write 보유자만).
 		r.With(h.RequirePermission(authz.ResourceInsight, authz.ActionWrite)).
 			Post("/api/v1/insights/{insightId}:dismiss", func(w http.ResponseWriter, req *http.Request) {
 				h.DismissInsight(w, req, chi.URLParam(req, "insightId"))

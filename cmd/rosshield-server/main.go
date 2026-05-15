@@ -175,6 +175,11 @@ func newMux(p *Platform) http.Handler {
 		Invitation:        p.Invitation,
 		Metrics:           p.Metrics,
 		ReportSigner:      p.ReportSigner,
+		// RBAC fleet 정밀화 Stage 3 — robot/scan service 위임 ScopeResolver.
+		// cross-resource fleet lookup이 필요한 5 mutation endpoint(DELETE /robots/{id},
+		// POST /robots/{id}/credential:rotate, POST /scans/{id}:cancel 등)에서 사용.
+		// tenant scope 격리는 storage.Tx 진입에서 자동 적용 (ctx의 TenantID).
+		ScopeResolver: newScopeResolver(p.Storage, p.Robot, p.Scan),
 	})
 	h.Mount(apiRouter)
 
