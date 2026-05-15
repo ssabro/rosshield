@@ -228,6 +228,27 @@ UPDATE insights
 	return current, nil
 }
 
+// GetInsight는 ID로 Insight 1건을 반환합니다 (RBAC fleet 정밀화 Stage 6).
+//
+// 활성/비활성 모두 조회 — POST /insights/{id}:dismiss의 fleet scope 정밀 평가가 ScopeResolver
+// 단계에서 호출하기 위해 도입. tenant 격리는 storage.Tx의 tenant_id로 자동 — cross-tenant
+// lookup은 sql.ErrNoRows → storage.ErrNotFound → ErrInsightNotFound로 차단합니다.
+func (r *Repo) GetInsight(ctx context.Context, tx storage.Tx, insightID string) (insight.Insight, error) {
+	tenantID := tx.TenantID()
+	if tenantID == "" {
+		return insight.Insight{}, storage.ErrTenantMissing
+	}
+	row := tx.QueryRow(ctx, insightSelectColumns+`
+  FROM insights
+ WHERE id = ? AND tenant_id = ?`,
+		insightID, string(tenantID))
+	in, err := scanInsightRow(row.Scan)
+	if errors.Is(err, storage.ErrNotFound) {
+		return insight.Insight{}, insight.ErrInsightNotFound
+	}
+	return in, err
+}
+
 // --- helpers ---
 
 const insightSelectColumns = `

@@ -461,3 +461,114 @@ func TestListActiveFilterByKindAndRobot(t *testing.T) {
 		t.Fatalf("ListActive robot filter match: %v", err)
 	}
 }
+
+// TestGetInsightReturnsActiveAndDismissed는 GetInsight가 활성/비활성 모두 조회됨을
+// 검증합니다 (RBAC fleet 정밀화 Stage 6 — ScopeResolver 호출용).
+func TestGetInsightReturnsActiveAndDismissed(t *testing.T) {
+	t.Parallel()
+	const tenantID, fleetID = "tn_GET_1", "fl_GET_1"
+	scanFake := makeDriftScenario(tenantID, fleetID, "ro_GI1", "ck_GI1")
+	repo, _, store := newTestRepo(t, scanFake)
+	seedTenant(t, store, tenantID)
+
+	var firstID string
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		ins, err := repo.RunForFleet(ctx, tx, fleetID)
+		if err != nil {
+			return err
+		}
+		firstID = ins[0].ID
+		return nil
+	}); err != nil {
+		t.Fatalf("RunForFleet: %v", err)
+	}
+
+	// 활성 상태 — GetInsight 통과.
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		got, err := repo.GetInsight(ctx, tx, firstID)
+		if err != nil {
+			return err
+		}
+		if got.ID != firstID {
+			t.Errorf("ID = %q, want %q", got.ID, firstID)
+		}
+		if got.Scope.RobotID != "ro_GI1" {
+			t.Errorf("Scope.RobotID = %q, want ro_GI1", got.Scope.RobotID)
+		}
+		if got.DismissedAt != nil {
+			t.Errorf("DismissedAt should be nil for active")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("GetInsight active: %v", err)
+	}
+
+	// dismiss 후 — GetInsight는 여전히 통과 (활성 필터 없음).
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		_, err := repo.Dismiss(ctx, tx, firstID, "user_GI", "ack")
+		return err
+	}); err != nil {
+		t.Fatalf("Dismiss: %v", err)
+	}
+	if err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		got, err := repo.GetInsight(ctx, tx, firstID)
+		if err != nil {
+			return err
+		}
+		if got.DismissedAt == nil {
+			t.Errorf("DismissedAt should be set after dismiss")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("GetInsight dismissed: %v", err)
+	}
+}
+
+// TestGetInsightNotFoundReturnsSentinel은 미존재 ID에 ErrInsightNotFound 반환을 검증합니다.
+func TestGetInsightNotFoundReturnsSentinel(t *testing.T) {
+	t.Parallel()
+	const tenantID, fleetID = "tn_GET_2", "fl_GET_2"
+	scanFake := makeDriftScenario(tenantID, fleetID, "ro_GI2", "ck_GI2")
+	repo, _, store := newTestRepo(t, scanFake)
+	seedTenant(t, store, tenantID)
+
+	err := store.Tx(tenantCtx(tenantID), func(ctx context.Context, tx storage.Tx) error {
+		_, err := repo.GetInsight(ctx, tx, "ins_no_such_id")
+		return err
+	})
+	if !errors.Is(err, insight.ErrInsightNotFound) {
+		t.Errorf("err = %v, want ErrInsightNotFound", err)
+	}
+}
+
+// TestGetInsightCrossTenantIsolated는 다른 tenant 컨텍스트에서 조회 시 not-found를 검증합니다.
+func TestGetInsightCrossTenantIsolated(t *testing.T) {
+	t.Parallel()
+	const tenantA, tenantB = "tn_GET_XA", "tn_GET_XB"
+	const fleetA = "fl_GET_XA"
+	scanA := makeDriftScenario(tenantA, fleetA, "ro_GXA", "ck_GXA")
+	repo, _, store := newTestRepo(t, scanA)
+	seedTenant(t, store, tenantA)
+	seedTenant(t, store, tenantB)
+
+	var aID string
+	if err := store.Tx(tenantCtx(tenantA), func(ctx context.Context, tx storage.Tx) error {
+		ins, err := repo.RunForFleet(ctx, tx, fleetA)
+		if err != nil {
+			return err
+		}
+		aID = ins[0].ID
+		return nil
+	}); err != nil {
+		t.Fatalf("RunForFleet A: %v", err)
+	}
+
+	// tenant B 컨텍스트에서 A의 ID로 GetInsight → ErrInsightNotFound.
+	err := store.Tx(tenantCtx(tenantB), func(ctx context.Context, tx storage.Tx) error {
+		_, err := repo.GetInsight(ctx, tx, aID)
+		return err
+	})
+	if !errors.Is(err, insight.ErrInsightNotFound) {
+		t.Errorf("cross-tenant: err = %v, want ErrInsightNotFound", err)
+	}
+}

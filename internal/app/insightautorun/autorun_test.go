@@ -136,6 +136,9 @@ func (f *fakeInsight) ListActive(_ context.Context, _ storage.Tx, _ insight.List
 func (f *fakeInsight) Dismiss(_ context.Context, _ storage.Tx, _, _, _ string) (insight.Insight, error) {
 	panic("not used")
 }
+func (f *fakeInsight) GetInsight(_ context.Context, _ storage.Tx, _ string) (insight.Insight, error) {
+	panic("not used")
+}
 
 func (f *fakeInsight) callCount() int {
 	f.mu.Lock()

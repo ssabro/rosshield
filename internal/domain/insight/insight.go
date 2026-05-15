@@ -155,6 +155,17 @@ type Service interface {
 	// Dismiss는 Insight를 dismissed로 마킹 + audit emit합니다.
 	// 이미 dismissed 상태면 ErrInsightNotFound (활성 인덱스 미스).
 	Dismiss(ctx context.Context, tx storage.Tx, insightID string, dismissedBy string, reason string) (Insight, error)
+
+	// GetInsight는 ID로 Insight 1건을 반환합니다 (RBAC fleet 정밀화 Stage 6).
+	//
+	// 활성/비활성 모두 조회 — DismissInsight 호출 전 fleet scope 정밀 평가 시 cross-resource
+	// lookup을 위해 추가했습니다 (POST /insights/{id}:dismiss). dismissed_at 필터를 두지 않는
+	// 이유는 이미 dismiss된 Insight를 다시 dismiss 시도해도 핸들러가 Dismiss로 not-found
+	// 처리하므로, 본 메서드는 fleet scope 추출 단계에서 활성/비활성 구분을 두지 않습니다.
+	//
+	// 없으면 ErrInsightNotFound. tenant 격리는 storage.Tx의 tenant_id로 자동 적용 —
+	// cross-tenant lookup은 ErrNotFound→ErrInsightNotFound로 차단됩니다.
+	GetInsight(ctx context.Context, tx storage.Tx, insightID string) (Insight, error)
 }
 
 // 공통 에러.

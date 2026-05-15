@@ -335,20 +335,22 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.With(h.RequirePermission(authz.ResourceAudit, authz.ActionVerify)).
 			Post("/api/v1/audit/verify", h.VerifyAuditChain)
 
-		// === Report verify (1건) — admin/auditor 통과 ===
-		// Stage 3 fleet 정밀화 비대상 — reporting.Service에 GetReport는 있으나 Report.FleetID
-		// 미노출(SessionID만 보유, 2-hop JOIN 필요). 후속 stage에서 reporting service에
-		// fleet_id 노출 후 cross-resource lookup 추가 예정. 본 stage는 RequirePermission 유지.
-		r.With(h.RequirePermission(authz.ResourceReport, authz.ActionVerify)).
+		// === Report verify (1건) — admin/auditor + fleet scope 정밀 평가 ===
+		// RBAC fleet 정밀화 Stage 6 closing — ScopeResolver가 reporting.GetReport.SessionID →
+		// scan.GetSession.FleetID로 2-hop 위임하여 fleet binding 보유자(operator/fleet-admin)는
+		// 자기 fleet의 리포트만 verify 가능. tenant 글로벌 admin/auditor는 회귀(모든 fleet 통과).
+		// design doc §3.1.2 cross-resource lookup.
+		r.With(h.RequirePermissionWithFleet(authz.ResourceReport, authz.ActionVerify, WithFleetFromResource("report", "reportId"))).
 			Post("/api/v1/reports/{reportId}:verify", func(w http.ResponseWriter, req *http.Request) {
 				h.VerifyReport(w, req, chi.URLParam(req, "reportId"))
 			})
 
 		// === Insight mutation (2건) — fleets/{fleetId}/insights:run는 fleet scope 평가 ===
-		// Stage 3 fleet 정밀화 비대상 — insight.Service에 GetByID 미노출(ListActive만 보유).
-		// 후속 stage에서 insight service에 GetInsight 추가 후 cross-resource lookup. 본 stage는
-		// RequirePermission 유지 — fleet 무관 통과(insight.write 보유자만).
-		r.With(h.RequirePermission(authz.ResourceInsight, authz.ActionWrite)).
+		// RBAC fleet 정밀화 Stage 6 closing — ScopeResolver가 insight.GetInsight →
+		// Scope.FleetID(peer detector) 우선, 없으면 Scope.RobotID → robot.GetRobot.FleetID
+		// 위임(drift/anomaly). fleet binding 보유자는 자기 fleet의 Insight만 dismiss 가능.
+		// design doc §3.1.2 cross-resource lookup.
+		r.With(h.RequirePermissionWithFleet(authz.ResourceInsight, authz.ActionWrite, WithFleetFromResource("insight", "insightId"))).
 			Post("/api/v1/insights/{insightId}:dismiss", func(w http.ResponseWriter, req *http.Request) {
 				h.DismissInsight(w, req, chi.URLParam(req, "insightId"))
 			})

@@ -1,26 +1,29 @@
 package handlers
 
-// rbac_fleet_integration_test.go — RBAC fleet 정밀화 Stage 3 통합 매트릭스.
+// rbac_fleet_integration_test.go — RBAC fleet 정밀화 Stage 3 + Stage 6 통합 매트릭스.
 //
-// design doc `docs/design/notes/rbac-fleet-scope-precision-design.md` §7 Stage 3 산출 검증:
-//   - 5 mutation endpoint × {path/body/cross-resource fleet pass + cross-fleet deny + 권한 미달}
+// design doc `docs/design/notes/rbac-fleet-scope-precision-design.md` §7 Stage 3 + Stage 6
+// closing 산출 검증:
+//   - 7 mutation endpoint × {path/body/cross-resource fleet pass + cross-fleet deny + 권한 미달}
 //   - ScopeResolver 호출 검증 (LastType / LastID / CallCount)
 //   - admin tenant scope cross-fleet 통과 (회귀)
 //   - operator/fleet-admin 페르소나 fleet 격리
 //
-// 본 stage 3가 RequirePermissionWithFleet으로 교체한 5건 endpoint:
+// Stage 3가 RequirePermissionWithFleet으로 교체한 5건:
 //   1. POST /robots — body fleetId
 //   2. POST /scans — body fleetId
 //   3. DELETE /robots/{robotID} — ScopeResolver("robot", robotID)
 //   4. POST /robots/{robotID}/credential:rotate — ScopeResolver("robot", robotID)
 //   5. POST /scans/{sessionID}:cancel — ScopeResolver("scan", sessionID)
 //
-// 본 task에서 비교체 2건 (Insight/Report Service에 GetByID + FleetID 미노출):
-//   - POST /reports/{id}:verify — RequirePermission(report.verify) 유지 (fleet 무관 통과)
-//   - POST /insights/{id}:dismiss — RequirePermission(insight.write) 유지 (fleet 무관 통과)
+// Stage 6 closing이 추가 교체한 2건 (RBAC fleet epic 5/5 마감 직후 마무리):
+//   6. POST /reports/{reportID}:verify — ScopeResolver("report", reportID) → 2-hop SessionID
+//      → scan.GetSession.FleetID 위임
+//   7. POST /insights/{insightID}:dismiss — ScopeResolver("insight", insightID) → Scope.FleetID
+//      또는 RobotID → robot.GetRobot.FleetID 위임
 //
-// 본 테스트는 5 endpoint × 5 페르소나 × 2 fleet = 50 case + 추가 ScopeResolver 검증
-// + 권한 미달 deny 별도 = 약 60+ sub-test.
+// 본 테스트는 7 endpoint × 5 페르소나 × 2 fleet = 70 case + 추가 ScopeResolver 검증
+// + 권한 미달 deny 별도 = 약 90+ sub-test.
 
 import (
 	"context"
@@ -51,9 +54,11 @@ type fleetMutationEndpoint struct {
 	paramName    string // "robotID" | "sessionID" (extractor=resource 시)
 }
 
-// allFleetMutationEndpoints는 Stage 3에서 fleet 정밀화 적용한 5건 정의입니다.
+// allFleetMutationEndpoints는 Stage 3 + Stage 6에서 fleet 정밀화 적용한 7건 정의입니다.
 //
-// design doc §3.1 매트릭스 + §7 Stage 3 정확 일치.
+// design doc §3.1 매트릭스 + §7 Stage 3/6 정확 일치. Stage 6 closing(report/insight 2건)
+// 추가 시점에 매트릭스가 자연스럽게 7 endpoint로 확장 — RBAC fleet epic 7 endpoint 모두
+// fleet scope 정밀 평가 cover.
 func allFleetMutationEndpoints() []fleetMutationEndpoint {
 	return []fleetMutationEndpoint{
 		{
@@ -93,6 +98,23 @@ func allFleetMutationEndpoints() []fleetMutationEndpoint {
 			extractor:    "resource",
 			resourceType: "scan",
 			paramName:    "sessionID",
+		},
+		// Stage 6 closing — RBAC fleet epic 5/5 마감 직후 비교체 2건 마무리.
+		{
+			name:         "POST /reports/{reportID}:verify",
+			resource:     authz.ResourceReport,
+			action:       authz.ActionVerify,
+			extractor:    "resource",
+			resourceType: "report",
+			paramName:    "reportID",
+		},
+		{
+			name:         "POST /insights/{insightID}:dismiss",
+			resource:     authz.ResourceInsight,
+			action:       authz.ActionWrite,
+			extractor:    "resource",
+			resourceType: "insight",
+			paramName:    "insightID",
 		},
 	}
 }
@@ -187,8 +209,8 @@ func TestFleetMatrix_AllPersonasAllEndpointsAllFleets(t *testing.T) {
 	t.Parallel()
 
 	endpoints := allFleetMutationEndpoints()
-	if got, want := len(endpoints), 5; got != want {
-		t.Fatalf("endpoint count = %d, want %d (Stage 3 fleet 정밀화 5건)", got, want)
+	if got, want := len(endpoints), 7; got != want {
+		t.Fatalf("endpoint count = %d, want %d (Stage 3 5건 + Stage 6 closing 2건)", got, want)
 	}
 	personas := allFleetPersonas()
 	if got, want := len(personas), 5; got != want {
@@ -313,9 +335,17 @@ func TestFleetMatrix_OperatorCrossFleetDeny(t *testing.T) {
 
 	for _, e := range allFleetMutationEndpoints() {
 		e := e
-		// operator는 robot.admin 미보유 — credential:rotate(admin)는 fleet 무관 거부 → skip.
+		// operator는 (robot.admin, report.verify, insight.write) 미보유 — same-fleet에서도
+		// 거부되므로 cross-fleet 검증 의미 없음. skip.
+		// Stage 6 closing — report.verify와 insight.write가 추가됐으므로 명시 skip 보강.
 		if e.action == authz.ActionAdmin {
 			continue
+		}
+		if e.resource == authz.ResourceReport && e.action == authz.ActionVerify {
+			continue // operator는 report.verify 미보유.
+		}
+		if e.resource == authz.ResourceInsight && e.action == authz.ActionWrite {
+			continue // operator는 insight.write 미보유.
 		}
 		t.Run(e.name, func(t *testing.T) {
 			t.Parallel()
@@ -355,6 +385,12 @@ func TestFleetMatrix_FleetAdminSameFleetAllow(t *testing.T) {
 
 	for _, e := range allFleetMutationEndpoints() {
 		e := e
+		// fleet-admin은 report.verify 미보유 — 7번째 endpoint(report verify)는 fleet 통과
+		// 자체가 안 되므로 same-fleet allow 검증에서 skip. (decision_test.go matrix에 따라
+		// fleet-admin의 report 권한은 read/admin만 보유, verify는 admin/auditor만.)
+		if e.resource == authz.ResourceReport && e.action == authz.ActionVerify {
+			continue
+		}
 		t.Run(e.name, func(t *testing.T) {
 			t.Parallel()
 			resolver := &mockScopeResolver{
@@ -541,5 +577,198 @@ func TestFleetMatrix_FactoryEquivalentToRequirePermissionWhenNoOpts(t *testing.T
 	}
 	if called1 != called2 {
 		t.Errorf("downstream call count mismatch: %d vs %d", called1, called2)
+	}
+}
+
+// === Stage 6 closing — report/insight 전용 매트릭스 검증 ===
+
+// TestStage6_ReportVerifyResolverInvocation은 POST /reports/{reportID}:verify가
+// ScopeResolver를 ("report", reportID)로 호출함을 검증합니다.
+//
+// admin 페르소나 — 항상 통과. resolver mock이 호출 인자를 기록하여 검증.
+// design doc §3.1.2 cross-resource lookup + 본 task의 reporting service 위임 패턴.
+func TestStage6_ReportVerifyResolverInvocation(t *testing.T) {
+	t.Parallel()
+
+	resolver := &mockScopeResolver{
+		ResolveFleetFn: func(_ context.Context, _, _ string) (string, error) {
+			return "flt_x", nil
+		},
+	}
+	h := &Handlers{deps: Deps{ScopeResolver: resolver}}
+	mw := h.RequirePermissionWithFleet(authz.ResourceReport, authz.ActionVerify, WithFleetFromResource("report", "reportID"))
+	wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	admin := tenant.AccessClaims{
+		Subject: "us_admin",
+		Bindings: []tenant.RoleBindingClaim{
+			{Role: authz.RoleAdmin, ScopeType: string(authz.ScopeTenant)},
+		},
+	}
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, newWithFleetReq(withClaims(context.Background(), admin),
+		http.MethodPost, "", map[string]string{"reportID": "rep_abc"}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin must pass: code = %d", rec.Code)
+	}
+	if resolver.CallCount != 1 {
+		t.Errorf("resolver call count = %d, want 1", resolver.CallCount)
+	}
+	if resolver.LastType != "report" {
+		t.Errorf("LastType = %q, want 'report'", resolver.LastType)
+	}
+	if resolver.LastID != "rep_abc" {
+		t.Errorf("LastID = %q, want 'rep_abc'", resolver.LastID)
+	}
+}
+
+// TestStage6_InsightDismissResolverInvocation은 POST /insights/{insightID}:dismiss가
+// ScopeResolver를 ("insight", insightID)로 호출함을 검증합니다.
+func TestStage6_InsightDismissResolverInvocation(t *testing.T) {
+	t.Parallel()
+
+	resolver := &mockScopeResolver{
+		ResolveFleetFn: func(_ context.Context, _, _ string) (string, error) {
+			return "flt_y", nil
+		},
+	}
+	h := &Handlers{deps: Deps{ScopeResolver: resolver}}
+	mw := h.RequirePermissionWithFleet(authz.ResourceInsight, authz.ActionWrite, WithFleetFromResource("insight", "insightID"))
+	wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// admin은 insight.write 보유.
+	admin := tenant.AccessClaims{
+		Subject: "us_admin",
+		Bindings: []tenant.RoleBindingClaim{
+			{Role: authz.RoleAdmin, ScopeType: string(authz.ScopeTenant)},
+		},
+	}
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, newWithFleetReq(withClaims(context.Background(), admin),
+		http.MethodPost, "", map[string]string{"insightID": "ins_xyz"}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin must pass: code = %d", rec.Code)
+	}
+	if resolver.CallCount != 1 {
+		t.Errorf("resolver call count = %d, want 1", resolver.CallCount)
+	}
+	if resolver.LastType != "insight" {
+		t.Errorf("LastType = %q, want 'insight'", resolver.LastType)
+	}
+	if resolver.LastID != "ins_xyz" {
+		t.Errorf("LastID = %q, want 'ins_xyz'", resolver.LastID)
+	}
+}
+
+// TestStage6_FleetAdminInsightSameFleetAllow는 fleet-admin@flt_a가 본인 fleet의 insight를
+// dismiss할 때 통과함을 검증합니다 (fleet 격리 + insight.write 보유).
+func TestStage6_FleetAdminInsightSameFleetAllow(t *testing.T) {
+	t.Parallel()
+
+	fleetAdmin := tenant.AccessClaims{
+		Subject: "us_fadm",
+		Bindings: []tenant.RoleBindingClaim{
+			{Role: authz.RoleFleetAdmin, ScopeType: string(authz.ScopeFleet), ScopeID: "flt_a"},
+		},
+	}
+
+	resolver := &mockScopeResolver{
+		ResolveFleetFn: func(_ context.Context, _, _ string) (string, error) {
+			return "flt_a", nil // same fleet
+		},
+	}
+	h := &Handlers{deps: Deps{ScopeResolver: resolver}}
+	mw := h.RequirePermissionWithFleet(authz.ResourceInsight, authz.ActionWrite, WithFleetFromResource("insight", "insightID"))
+	called := 0
+	wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called++
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, newWithFleetReq(withClaims(context.Background(), fleetAdmin),
+		http.MethodPost, "", map[string]string{"insightID": "ins_aa"}))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("fleet-admin same fleet: code = %d, want 200", rec.Code)
+	}
+	if called != 1 {
+		t.Errorf("downstream called = %d, want 1", called)
+	}
+}
+
+// TestStage6_FleetAdminInsightCrossFleetDeny는 fleet-admin@flt_a가 flt_b의 insight를
+// dismiss하려 할 때 거부됨을 검증합니다 (cross-fleet 격리).
+func TestStage6_FleetAdminInsightCrossFleetDeny(t *testing.T) {
+	t.Parallel()
+
+	fleetAdmin := tenant.AccessClaims{
+		Subject: "us_fadm",
+		Bindings: []tenant.RoleBindingClaim{
+			{Role: authz.RoleFleetAdmin, ScopeType: string(authz.ScopeFleet), ScopeID: "flt_a"},
+		},
+	}
+
+	resolver := &mockScopeResolver{
+		ResolveFleetFn: func(_ context.Context, _, _ string) (string, error) {
+			return "flt_b", nil // 다른 fleet
+		},
+	}
+	h := &Handlers{deps: Deps{ScopeResolver: resolver}}
+	mw := h.RequirePermissionWithFleet(authz.ResourceInsight, authz.ActionWrite, WithFleetFromResource("insight", "insightID"))
+	wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Errorf("downstream must not run for cross-fleet")
+	}))
+
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, newWithFleetReq(withClaims(context.Background(), fleetAdmin),
+		http.MethodPost, "", map[string]string{"insightID": "ins_bb"}))
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("cross-fleet deny: code = %d, want 403", rec.Code)
+	}
+}
+
+// TestStage6_AuditorReportVerifyAcrossFleets는 auditor(tenant scope)가 모든 fleet의 report를
+// verify할 수 있음을 검증합니다 (회귀 — tenant 글로벌 binding은 fleet 격리 무관).
+func TestStage6_AuditorReportVerifyAcrossFleets(t *testing.T) {
+	t.Parallel()
+
+	auditor := tenant.AccessClaims{
+		Subject: "us_aud",
+		Bindings: []tenant.RoleBindingClaim{
+			{Role: authz.RoleAuditor, ScopeType: string(authz.ScopeTenant)},
+		},
+	}
+
+	for _, fleet := range []string{"flt_a", "flt_b", "flt_c"} {
+		fleet := fleet
+		t.Run(fleet, func(t *testing.T) {
+			t.Parallel()
+			resolver := &mockScopeResolver{
+				ResolveFleetFn: func(_ context.Context, _, _ string) (string, error) {
+					return fleet, nil
+				},
+			}
+			h := &Handlers{deps: Deps{ScopeResolver: resolver}}
+			mw := h.RequirePermissionWithFleet(authz.ResourceReport, authz.ActionVerify, WithFleetFromResource("report", "reportID"))
+			wrapped := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			rec := httptest.NewRecorder()
+			wrapped.ServeHTTP(rec, newWithFleetReq(withClaims(context.Background(), auditor),
+				http.MethodPost, "", map[string]string{"reportID": "rep_x"}))
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("auditor tenant cross-fleet: code = %d, want 200", rec.Code)
+			}
+		})
 	}
 }
