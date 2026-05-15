@@ -174,14 +174,17 @@ func (r *Repo) AssignRole(ctx context.Context, tx storage.Tx, userID, roleID str
 	return assignRole(ctx, tx, userID, roleID)
 }
 
-// AssignRoleScoped는 tenant.Service.AssignRoleScoped 구현입니다 (멱등 — 세분 RBAC Stage 2).
+// AssignRoleScoped는 tenant.Service.AssignRoleScoped 구현입니다 (멱등 — 세분 RBAC Stage 2
+// + RBAC fleet 정밀화 Stage 4 source 매개변수).
 //
 // scopeType=ScopeFleet이면 scopeID(fleet ID) 필수. scopeType=ScopeTenant이면 scopeID는
 // 보수적으로 빈 문자열로 정규화 — DB 일관성 보존.
+// source 빈 값 → BindingSourceManual default (호환 보존). source='sso'는 Stage 5 SSO callback
+// sync 흐름에서 사용 — manual binding과 별 lifecycle.
 // 같은 (user, role) PK는 ON CONFLICT DO NOTHING으로 멱등 — 같은 user에 같은 role을 다른
 // scope으로 두 번 할당하는 패턴은 본 Stage 범위 밖(Phase 6+ role binding multi-scope 개선).
-func (r *Repo) AssignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType tenant.ScopeType, scopeID string) error {
-	return assignRoleScoped(ctx, tx, userID, roleID, scopeType, scopeID)
+func (r *Repo) AssignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType tenant.ScopeType, scopeID string, source tenant.BindingSource) error {
+	return assignRoleScoped(ctx, tx, userID, roleID, scopeType, scopeID, source)
 }
 
 // IssueApiKey는 tenant.Service.IssueApiKey 구현입니다.
@@ -665,16 +668,18 @@ SELECT r.id, r.tenant_id, r.name, r.permissions, r.is_system, r.created_at
 	return out, nil
 }
 
-// GetUserRoleBindings는 tenant.Service.GetUserRoleBindings 구현입니다 — 세분 RBAC Stage 2.
+// GetUserRoleBindings는 tenant.Service.GetUserRoleBindings 구현입니다 — 세분 RBAC Stage 2
+// + RBAC fleet 정밀화 Stage 4 (Source 필드).
 //
-// user_roles JOIN roles → 각 row에서 (Role, scope_type, scope_id)를 RoleBinding 으로 복원.
+// user_roles JOIN roles → 각 row에서 (Role, scope_type, scope_id, source)를 RoleBinding 으로 복원.
 // 0028 이전 INSERT된 row는 DEFAULT 'tenant'/” — 자동으로 tenant scope binding으로 분류됩니다.
+// 0029 이전 INSERT된 row는 DEFAULT 'manual' — admin 수동 binding 의미 보존.
 //
 // scope_id의 빈 문자열은 ScopeID="" 그대로 — fleet scope binding은 scope_id가 fleet ID.
 func (r *Repo) GetUserRoleBindings(ctx context.Context, tx storage.Tx, userID string) ([]tenant.RoleBinding, error) {
 	rows, err := tx.Query(ctx, `
 SELECT r.id, r.tenant_id, r.name, r.permissions, r.is_system, r.created_at,
-       ur.scope_type, ur.scope_id
+       ur.scope_type, ur.scope_id, ur.source
   FROM roles r
   JOIN user_roles ur ON ur.role_id = r.id
  WHERE ur.user_id = ?`,
@@ -689,10 +694,10 @@ SELECT r.id, r.tenant_id, r.name, r.permissions, r.is_system, r.created_at,
 		var (
 			id, tid, name, permsJSON, createdStr string
 			isSystem                             int
-			scopeType, scopeID                   string
+			scopeType, scopeID, source           string
 		)
 		if err := rows.Scan(&id, &tid, &name, &permsJSON, &isSystem, &createdStr,
-			&scopeType, &scopeID); err != nil {
+			&scopeType, &scopeID, &source); err != nil {
 			return nil, fmt.Errorf("tenant: scan role binding row: %w", err)
 		}
 		role, err := assembleRole(id, tid, name, permsJSON, isSystem, createdStr)
@@ -703,6 +708,7 @@ SELECT r.id, r.tenant_id, r.name, r.permissions, r.is_system, r.created_at,
 			Role:      role,
 			ScopeType: tenant.ScopeType(scopeType),
 			ScopeID:   scopeID,
+			Source:    tenant.BindingSource(source),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -915,28 +921,34 @@ VALUES (?, ?, ?, ?, ?, ?)`,
 	return nil
 }
 
-// assignRole은 멱등 INSERT (동일 (user, role)이 있으면 무시) — tenant scope.
+// assignRole은 멱등 INSERT (동일 (user, role)이 있으면 무시) — tenant scope + manual source.
 //
 // 0028 마이그레이션 이후 user_roles는 scope_type/scope_id 컬럼을 가집니다 — DEFAULT 'tenant'/”
 // 로 자동 채움이 보장되지만, 명시적으로 'tenant'/” 를 INSERT하여 코드 의도를 분명히 합니다.
+// 0029 마이그레이션 이후 source 컬럼도 — 본 헬퍼는 항상 manual (관리자/시드 흐름 일관).
 func assignRole(ctx context.Context, tx storage.Tx, userID, roleID string) error {
-	return assignRoleScoped(ctx, tx, userID, roleID, tenant.ScopeTenant, "")
+	return assignRoleScoped(ctx, tx, userID, roleID, tenant.ScopeTenant, "", tenant.BindingSourceManual)
 }
 
-// assignRoleScoped는 멱등 INSERT (동일 (user, role) PK가 있으면 무시) — 세분 RBAC Stage 2.
+// assignRoleScoped는 멱등 INSERT (동일 (user, role) PK가 있으면 무시) — 세분 RBAC Stage 2
+// + RBAC fleet 정밀화 Stage 4 (source 매개변수).
 //
 // scopeType=ScopeTenant이면 scopeID는 빈 문자열로 정규화 — DB 일관성 + INDEX cover 보존.
-func assignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType tenant.ScopeType, scopeID string) error {
+// source 빈 값 → BindingSourceManual default — 옛 호출 site 호환.
+func assignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType tenant.ScopeType, scopeID string, source tenant.BindingSource) error {
 	if scopeType == "" {
 		scopeType = tenant.ScopeTenant
 	}
 	if scopeType == tenant.ScopeTenant {
 		scopeID = "" // tenant scope는 scope_id 무의미 — 빈 값 강제.
 	}
+	if source == "" {
+		source = tenant.BindingSourceManual
+	}
 	_, err := tx.Exec(ctx,
-		`INSERT INTO user_roles (user_id, role_id, scope_type, scope_id) VALUES (?, ?, ?, ?)
+		`INSERT INTO user_roles (user_id, role_id, scope_type, scope_id, source) VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT (user_id, role_id) DO NOTHING`,
-		userID, roleID, string(scopeType), scopeID)
+		userID, roleID, string(scopeType), scopeID, string(source))
 	if err != nil {
 		return fmt.Errorf("tenant: assign role scoped: %w", err)
 	}

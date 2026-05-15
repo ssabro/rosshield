@@ -43,9 +43,9 @@ func TestAssignRoleScoped_FleetBinding(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		// fleet scope binding 할당.
+		// fleet scope binding 할당 (manual source — admin 수동 의미).
 		if err := repo.AssignRoleScoped(ctx, tx, result.Admin.ID, operatorRole.ID,
-			tenant.ScopeFleet, targetFleetID); err != nil {
+			tenant.ScopeFleet, targetFleetID, tenant.BindingSourceManual); err != nil {
 			return err
 		}
 		return nil
@@ -232,7 +232,7 @@ func TestCrossTenantScopeIsolation(t *testing.T) {
 			return err
 		}
 		return repo.AssignRoleScoped(ctx, tx, tenantA.Admin.ID, operatorA.ID,
-			tenant.ScopeFleet, sharedFleetID)
+			tenant.ScopeFleet, sharedFleetID, tenant.BindingSourceManual)
 	}); err != nil {
 		t.Fatalf("AssignRoleScoped tenant A: %v", err)
 	}

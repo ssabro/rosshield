@@ -139,10 +139,42 @@ const (
 //
 // 본 Stage 2는 RoleBinding을 DB에서 복원하는 GetUserRoleBindings 와 fleet scope을
 // 명시 할당하는 AssignRoleScoped 만 추가합니다 — JWT claim 변경은 Stage 3.
+//
+// Source 필드는 RBAC fleet 정밀화 Stage 4에서 추가 — user_roles.source 컬럼 (manual|sso).
+// 기존 row(0029 이전 INSERT)는 모두 BindingSourceManual로 자동 분류 (DEFAULT 'manual').
 type RoleBinding struct {
 	Role      Role
 	ScopeType ScopeType
-	ScopeID   string // ScopeType=ScopeFleet일 때만 fleet ID, ScopeTenant이면 빈 문자열.
+	ScopeID   string        // ScopeType=ScopeFleet일 때만 fleet ID, ScopeTenant이면 빈 문자열.
+	Source    BindingSource // 'manual' (admin 수동) | 'sso' (group 매핑 자동). 기본값 'manual'.
+}
+
+// BindingSource는 user_roles row의 origin 추적 값입니다 (RBAC fleet 정밀화 Stage 4).
+//
+//   - BindingSourceManual: 운영자가 admin UI / API로 명시 할당 (기본값).
+//   - BindingSourceSSO:    SSO group 매핑 흐름이 자동 생성 — 매 login마다 sync 대상.
+//
+// 본 enum은 internal/domain/tenant/sso.BindingSource와 의미·값이 같습니다 — 도메인 경계 보존
+// 위해 별 타입 (sso 패키지의 enum은 sso 도메인 안에서, tenant 패키지의 본 enum은 user_roles
+// 컬럼 표면).
+//
+// DB 컬럼 user_roles.source는 마이그레이션 0029에서 추가 — TEXT NOT NULL DEFAULT 'manual'.
+// 기존 row(0029 이전 INSERT)는 모두 'manual' — admin 수동 할당 의미 보존.
+type BindingSource string
+
+const (
+	BindingSourceManual BindingSource = "manual"
+	BindingSourceSSO    BindingSource = "sso"
+)
+
+// IsValidBindingSource는 s가 알려진 BindingSource enum인지 반환합니다.
+func IsValidBindingSource(s BindingSource) bool {
+	switch s {
+	case BindingSourceManual, BindingSourceSSO:
+		return true
+	default:
+		return false
+	}
 }
 
 // SystemRolePermissions는 부팅 시 시드되는 3개 시스템 역할의 기본 permission 셋입니다.
@@ -298,24 +330,31 @@ type Service interface {
 	// fleet scope binding은 AssignRoleScoped를 사용합니다.
 	AssignRole(ctx context.Context, tx storage.Tx, userID, roleID string) error
 
-	// AssignRoleScoped는 user에게 (role, scope_type, scope_id) binding을 할당합니다 (멱등) —
-	// 세분 RBAC Stage 2.
+	// AssignRoleScoped는 user에게 (role, scope_type, scope_id, source) binding을 할당합니다
+	// (멱등) — 세분 RBAC Stage 2 + RBAC fleet 정밀화 Stage 4 (source 매개변수).
 	//
 	// scopeType이 ScopeFleet이면 scopeID는 fleet ID(비공백) 필수.
 	// scopeType이 ScopeTenant이면 scopeID는 빈 문자열 권장 — 비어 있지 않은 값은 무시(보수적).
+	// source 빈 값 → BindingSourceManual default (호환 보존).
 	// 같은 (user, role) 조합은 PK 충돌 — ON CONFLICT DO NOTHING으로 멱등 보존.
-	AssignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType ScopeType, scopeID string) error
+	//
+	// D-RBACEX-9 권장 default: source 매개변수로 origin 분리 — Stage 5 SSO sync는 source='sso'
+	// row만 갱신, source='manual' 수동 binding은 보존.
+	AssignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType ScopeType, scopeID string, source BindingSource) error
 
 	// GetUserRoles는 user에게 할당된 모든 role을 반환합니다 (scope 정보 없는 평탄 슬라이스).
 	//
 	// 본 메서드는 기존 호출 site 호환 — 새 코드는 GetUserRoleBindings 권장.
 	GetUserRoles(ctx context.Context, tx storage.Tx, userID string) ([]Role, error)
 
-	// GetUserRoleBindings는 user에게 할당된 모든 RoleBinding을 반환합니다 — 세분 RBAC Stage 2.
+	// GetUserRoleBindings는 user에게 할당된 모든 RoleBinding을 반환합니다 — 세분 RBAC Stage 2
+	// + RBAC fleet 정밀화 Stage 4 (Source 필드).
 	//
-	// 각 binding은 Role + ScopeType + ScopeID 셋으로 구성. tenant scope binding은 ScopeID=''.
+	// 각 binding은 Role + ScopeType + ScopeID + Source 셋으로 구성. tenant scope binding은 ScopeID=''.
 	// 기존 row(0028 마이그레이션 이전 INSERT)는 모두 ScopeType=ScopeTenant / ScopeID='' 으로
 	// 자동 분류됩니다 (DEFAULT 'tenant' / '').
+	// 기존 row(0029 마이그레이션 이전 INSERT)는 모두 Source=BindingSourceManual 으로 자동 분류
+	// (DEFAULT 'manual') — admin 수동 할당 의미 보존.
 	GetUserRoleBindings(ctx context.Context, tx storage.Tx, userID string) ([]RoleBinding, error)
 
 	// IssueApiKey는 새 API key를 발급합니다.
