@@ -64,7 +64,7 @@ func TestStorageMigrateIdempotent(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		const wantVersion = 27 // 0001~0026 + 0027 robot_host_keys (TOFU host key trust, scanrun SSH 통합 Stage 1)
+		const wantVersion = 28 // 0001~0026 + 0027 robot_host_keys + 0028 user_roles_scope (세분 RBAC Stage 2)
 		if maxVersion != wantVersion {
 			t.Errorf("max version_id = %d, want %d", maxVersion, wantVersion)
 		}

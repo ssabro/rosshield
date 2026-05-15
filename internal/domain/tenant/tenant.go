@@ -114,6 +114,37 @@ const (
 	RoleOperator = "operator"
 )
 
+// ScopeType은 RoleBinding 범위 차원입니다 (세분 RBAC Stage 2 — design doc §3.2).
+//
+//   - ScopeTenant: tenant 전체 — 모든 fleet에 implicit 적용 (기본값).
+//   - ScopeFleet: 특정 fleet ID 한정 — ScopeID 가 fleet ID.
+//
+// 본 ScopeType은 internal/platform/authz.ScopeType 과 의미가 같습니다 — 도메인 → PDP
+// 변환은 호출자(handlers·middleware)가 수행합니다 (DDD 경계 §5).
+type ScopeType string
+
+const (
+	ScopeTenant ScopeType = "tenant"
+	ScopeFleet  ScopeType = "fleet"
+)
+
+// RoleBinding은 한 사용자가 가진 단일 role 할당과 그 scope입니다 (Stage 2).
+//
+// Role은 role 메타데이터(이름·permissions·is_system) 그대로 보존, ScopeType/ScopeID는
+// user_roles row에서 채워집니다. tenant scope이면 ScopeID는 빈 문자열입니다.
+//
+// 예시:
+//   - {Role:admin, ScopeType:ScopeTenant, ScopeID:""} — 모든 fleet implicit.
+//   - {Role:fleet-admin, ScopeType:ScopeFleet, ScopeID:"flt_a"} — fleet_a 한정.
+//
+// 본 Stage 2는 RoleBinding을 DB에서 복원하는 GetUserRoleBindings 와 fleet scope을
+// 명시 할당하는 AssignRoleScoped 만 추가합니다 — JWT claim 변경은 Stage 3.
+type RoleBinding struct {
+	Role      Role
+	ScopeType ScopeType
+	ScopeID   string // ScopeType=ScopeFleet일 때만 fleet ID, ScopeTenant이면 빈 문자열.
+}
+
 // SystemRolePermissions는 부팅 시 시드되는 3개 시스템 역할의 기본 permission 셋입니다.
 //
 // admin은 와일드카드("*")로 모든 권한 — Phase 1 단순화.
@@ -262,10 +293,30 @@ type Service interface {
 	GetRole(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, name string) (Role, error)
 
 	// AssignRole은 user에게 role을 할당합니다 (멱등 — 이미 할당돼 있어도 에러 없음).
+	//
+	// 본 메서드는 tenant scope binding을 INSERT — scope_type='tenant' / scope_id='' default.
+	// fleet scope binding은 AssignRoleScoped를 사용합니다.
 	AssignRole(ctx context.Context, tx storage.Tx, userID, roleID string) error
 
-	// GetUserRoles는 user에게 할당된 모든 role을 반환합니다.
+	// AssignRoleScoped는 user에게 (role, scope_type, scope_id) binding을 할당합니다 (멱등) —
+	// 세분 RBAC Stage 2.
+	//
+	// scopeType이 ScopeFleet이면 scopeID는 fleet ID(비공백) 필수.
+	// scopeType이 ScopeTenant이면 scopeID는 빈 문자열 권장 — 비어 있지 않은 값은 무시(보수적).
+	// 같은 (user, role) 조합은 PK 충돌 — ON CONFLICT DO NOTHING으로 멱등 보존.
+	AssignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string, scopeType ScopeType, scopeID string) error
+
+	// GetUserRoles는 user에게 할당된 모든 role을 반환합니다 (scope 정보 없는 평탄 슬라이스).
+	//
+	// 본 메서드는 기존 호출 site 호환 — 새 코드는 GetUserRoleBindings 권장.
 	GetUserRoles(ctx context.Context, tx storage.Tx, userID string) ([]Role, error)
+
+	// GetUserRoleBindings는 user에게 할당된 모든 RoleBinding을 반환합니다 — 세분 RBAC Stage 2.
+	//
+	// 각 binding은 Role + ScopeType + ScopeID 셋으로 구성. tenant scope binding은 ScopeID=''.
+	// 기존 row(0028 마이그레이션 이전 INSERT)는 모두 ScopeType=ScopeTenant / ScopeID='' 으로
+	// 자동 분류됩니다 (DEFAULT 'tenant' / '').
+	GetUserRoleBindings(ctx context.Context, tx storage.Tx, userID string) ([]RoleBinding, error)
 
 	// IssueApiKey는 새 API key를 발급합니다.
 	// raw token은 결과의 RawToken에 한 번만 반환됩니다 — 호출자가 사용자에게 표시 후 즉시 폐기.
