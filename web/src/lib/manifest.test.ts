@@ -1,20 +1,26 @@
-// PWA manifest 검증 테스트입니다 (Phase 5 PWA Stage 1, design doc §7).
+// PWA manifest 회귀 테스트입니다 (Phase 5 PWA Stage 2, design doc §7).
 //
-// `web/public/manifest.webmanifest` 정적 JSON이 W3C App Manifest 표준 필수
-// 키를 갖추는지 회귀 차단합니다. Stage 2에서 vite-plugin-pwa가 plugin 인라인
-// 정의로 덮어쓸 예정이나, 그 이전까지 본 테스트가 staticfile 무결성을
-// 보장합니다.
+// Stage 1에서는 `web/public/manifest.webmanifest` 정적 파일을 직접 검증했으나
+// Stage 2에서 vite-plugin-pwa가 vite.config.ts의 plugin 인라인 정의로
+// manifest를 자동 생성 → dist/manifest.webmanifest를 새로 만듭니다(D-PWA-2).
+//
+// 본 테스트는 build 산출물(dist/manifest.webmanifest)이 design doc §6.2 인라인
+// 정의와 일치하는지 검증합니다. dist 미생성 시 skip — `pnpm build` 후 실행 대상.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-// __dirname은 ESM 환경에선 부재 — vitest는 src 기준 cwd를 보장하지 않으므로
-// process.cwd() (web/) 기준 상대 경로로 접근합니다.
-const MANIFEST_PATH = resolve(process.cwd(), 'public', 'manifest.webmanifest')
+// build outDir은 vite.config.ts에서 ../internal/web/dist로 지정. vitest의 cwd는
+// web/이므로 그 기준 상대 경로로 접근합니다.
+const MANIFEST_PATH = resolve(process.cwd(), '..', 'internal', 'web', 'dist', 'manifest.webmanifest')
 
-describe('manifest.webmanifest', () => {
+describe('dist/manifest.webmanifest (vite-plugin-pwa 생성)', () => {
+  if (!existsSync(MANIFEST_PATH)) {
+    it.skip('dist 미생성 — `pnpm build` 선행 필요', () => {})
+    return
+  }
   const raw = readFileSync(MANIFEST_PATH, 'utf-8')
 
   it('유효 JSON 입니다', () => {

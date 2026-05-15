@@ -194,3 +194,71 @@ func TestHandlerServesManifest(t *testing.T) {
 		t.Errorf("manifest unexpectedly immutable: Cache-Control=%q", cache)
 	}
 }
+
+// TestEmbedIncludesServiceWorker는 PWA Stage 2에서 vite-plugin-pwa generateSW가
+// 생성하는 sw.js가 Go 바이너리에 임베드되어 있는지 회귀 차단합니다 (design doc
+// §6.2, §9.1). 회귀 시나리오: vite.config.ts에서 VitePWA plugin 누락 또는
+// outDir 변경으로 sw.js가 dist에서 사라지는 경우 즉시 알람.
+func TestEmbedIncludesServiceWorker(t *testing.T) {
+	if !HasAssets() {
+		t.Skip("dist missing — run `make web-build` first")
+	}
+
+	raw, err := dist.ReadFile("dist/sw.js")
+	if err != nil {
+		t.Fatalf("sw.js missing in embed: %v", err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("sw.js empty")
+	}
+
+	// vite-plugin-pwa 1.0+ 의 generateSW는 AMD `define([...])` 패턴으로 workbox
+	// 청크 로드 + precacheAndRoute + NavigationRoute(denylist:/api) 호출.
+	sw := string(raw)
+	if !strings.Contains(sw, "precacheAndRoute") {
+		t.Errorf("sw.js missing precacheAndRoute (Workbox generateSW pattern broken)")
+	}
+	if !strings.Contains(sw, "NavigationRoute") {
+		t.Errorf("sw.js missing NavigationRoute (SPA fallback config 누락)")
+	}
+	// /api/* 우회(D-PWA-7) 회귀 차단 — 본 정책이 사라지면 SW가 API 응답 캐싱 시작
+	// 위험. 정규식 이스케이프 형태(`\/api\/`)로 sw.js에 직렬화됨.
+	if !strings.Contains(sw, `\/api\/`) {
+		t.Errorf("sw.js missing /api/ denylist (D-PWA-7 멀티테넌시 가드 누락)")
+	}
+}
+
+// TestEmbedIncludesWorkboxRuntime은 Workbox 런타임 청크(workbox-*.js)가 dist에
+// 함께 임베드되어 있는지 확인합니다.
+func TestEmbedIncludesWorkboxRuntime(t *testing.T) {
+	if !HasAssets() {
+		t.Skip("dist missing")
+	}
+
+	entries, err := dist.ReadDir("dist")
+	if err != nil {
+		t.Fatalf("ReadDir dist: %v", err)
+	}
+	var workboxFound bool
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		// workbox-{hash}.js 패턴.
+		if strings.HasPrefix(name, "workbox-") && strings.HasSuffix(name, ".js") {
+			workboxFound = true
+			info, err := dist.ReadFile("dist/" + name)
+			if err != nil {
+				t.Errorf("workbox chunk read fail %s: %v", name, err)
+				continue
+			}
+			if len(info) == 0 {
+				t.Errorf("workbox chunk %s empty", name)
+			}
+		}
+	}
+	if !workboxFound {
+		t.Errorf("no workbox-*.js chunk found in dist (vite-plugin-pwa generateSW 미작동?)")
+	}
+}
