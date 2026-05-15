@@ -6,13 +6,13 @@ import {
   useCreateFleet,
   useDeleteFleet,
   useFleets,
-  useIsAdmin,
+  useHasPermission,
   usePacks,
   useUpdateFleet,
 } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
-import { requireRole } from '@/lib/route-guards'
+import { requirePermission } from '@/lib/route-guards'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -38,9 +38,13 @@ const LEVEL_VALUES = ['', 'L1', 'L2'] as const
 const CRITICALITY_VALUES = ['', 'low', 'medium', 'high', 'critical'] as const
 
 // `/fleets` — fleet 등록·이름 변경·삭제 페이지 (admin).
+//
+// RBAC Stage 5 — 매트릭스 매핑:
+//   - 생성/삭제: tenant `fleet.admin` (§2.2 ID 14, 16)
+//   - 단건 PATCH (FleetRow.canEdit): `fleet[X].fleet.write` (§2.2 ID 15)
 function FleetsPage(): React.ReactElement {
   const t = useT()
-  const isAdmin = useIsAdmin()
+  const canCreate = useHasPermission('fleet', 'admin')
   const fleetsQuery = useFleets()
 
   return (
@@ -50,7 +54,7 @@ function FleetsPage(): React.ReactElement {
         description={t('pages.fleets.description')}
       />
 
-      {isAdmin && <CreateFleetCard />}
+      {canCreate && <CreateFleetCard />}
 
       <Card>
         <CardHeader>
@@ -74,7 +78,7 @@ function FleetsPage(): React.ReactElement {
           ) : (
             <div className="space-y-2">
               {fleetsQuery.data?.map((f) => (
-                <FleetRow key={f.id} fleet={f} canEdit={isAdmin} />
+                <FleetRow key={f.id} fleet={f} />
               ))}
             </div>
           )}
@@ -283,12 +287,13 @@ function PolicyFormFields({
 
 function FleetRow({
   fleet,
-  canEdit,
 }: {
   fleet: Fleet
-  canEdit: boolean
 }): React.ReactElement {
   const t = useT()
+  // RBAC Stage 5 — fleet 단건 PATCH는 fleet[X].fleet.write (§2.2 ID 15).
+  //   admin tenant scope는 무관 통과 — fleet-admin은 fleet 일치 시만.
+  const canEdit = useHasPermission('fleet', 'write', fleet.id)
   const [editing, setEditing] = useState(false)
   if (editing) {
     return (
@@ -447,5 +452,6 @@ function DeleteFleetButton({ fleet }: { fleet: Fleet }): React.ReactElement {
 
 export const Route = createFileRoute('/_authenticated/fleets')({
   component: FleetsPage,
-  beforeLoad: () => requireRole('admin', 'auditor'),
+  // RBAC Stage 5 — sidebar `system.read` 매핑과 일관 (admin/auditor 묶음).
+  beforeLoad: () => requirePermission('system', 'read'),
 })

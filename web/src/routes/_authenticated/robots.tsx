@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Server } from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
-import { useCreateRobot, useIsAdmin, useRobots } from '@/api/hooks'
+import { useCreateRobot, useHasPermission, useRobots } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -42,7 +42,10 @@ function RobotsPage(): React.ReactElement {
   const trimmed = fleetId.trim()
   const robots = useRobots(trimmed.length > 0 ? trimmed : undefined)
   const t = useT()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — server `RequirePermission(robot, write)` 매트릭스와 일관 (§3.3).
+  //   admin tenant binding은 fleetId 무관 통과 — 회귀 0. fleet-admin/operator는
+  //   fleetId 일치 시만 통과 (filter 입력 fleetId 또는 빈 문자열).
+  const canCreate = useHasPermission('robot', 'write', trimmed.length > 0 ? trimmed : undefined)
   const isOffline = useIsOffline()
 
   return (
@@ -55,11 +58,11 @@ function RobotsPage(): React.ReactElement {
             variant={showForm ? 'outline' : 'default'}
             size="sm"
             onClick={() => setShowForm((v) => !v)}
-            disabled={!isAdmin || isOffline}
+            disabled={!canCreate || isOffline}
             title={mutationGuardTitle({
               isOffline,
               offlineLabel: t('pwa.offline.mutationBlocked'),
-              fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+              fallback: !canCreate ? t('common.role.required.admin') : undefined,
             })}
           >
             {showForm ? t('robots.form.toggle.hide') : t('robots.form.toggle.show')}
@@ -67,7 +70,7 @@ function RobotsPage(): React.ReactElement {
         }
       />
 
-      {showForm && isAdmin && <CreateRobotForm onCreated={() => setShowForm(false)} />}
+      {showForm && canCreate && <CreateRobotForm onCreated={() => setShowForm(false)} />}
 
       <div className="flex max-w-sm flex-col gap-2">
         <Label htmlFor="fleet-filter">{t('robots.filter.fleet')}</Label>
@@ -180,7 +183,6 @@ function CreateRobotForm({
 }): React.ReactElement {
   const t = useT()
   const create = useCreateRobot()
-  const isAdmin = useIsAdmin()
   const isOffline = useIsOffline()
   const [vars, setVars] = useState<CreateRobotVars>({
     fleetId: '',
@@ -192,6 +194,13 @@ function CreateRobotForm({
     password: '',
     criticality: 'medium',
   })
+  // RBAC Stage 5 — fleet 컨텍스트는 form 입력 fleetId. 빈 문자열 시 fleet scope role
+  // 은 통과 0, admin tenant scope만 통과 (회귀 0).
+  const canCreate = useHasPermission(
+    'robot',
+    'write',
+    vars.fleetId.trim().length > 0 ? vars.fleetId.trim() : undefined,
+  )
   const [tagsRaw, setTagsRaw] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -374,11 +383,11 @@ function CreateRobotForm({
       <div className="md:col-span-2 flex justify-end">
         <Button
           type="submit"
-          disabled={create.isPending || !isAdmin || isOffline}
+          disabled={create.isPending || !canCreate || isOffline}
           title={mutationGuardTitle({
             isOffline,
             offlineLabel: t('pwa.offline.mutationBlocked'),
-            fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+            fallback: !canCreate ? t('common.role.required.admin') : undefined,
           })}
         >
           {create.isPending ? t('robots.form.submitting') : t('robots.form.submit')}

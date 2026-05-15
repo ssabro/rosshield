@@ -6,7 +6,7 @@ import {
   isTerminalScanStatus,
   useCancelScan,
   useFleets,
-  useIsAdmin,
+  useHasPermission,
   usePacks,
   useScan,
   useScanProgress,
@@ -49,7 +49,13 @@ function ScansPage(): React.ReactElement {
   const [trigger, setTrigger] = useState<'manual' | 'schedule' | 'event'>('manual')
   const [error, setError] = useState('')
   const t = useT()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — server `RequirePermission(scan, execute)` 매트릭스 (§2.2 ID 8).
+  //   form fleetId 입력에 따라 fleet scope 평가. admin tenant scope는 무관 통과.
+  const canStart = useHasPermission(
+    'scan',
+    'execute',
+    fleetId.trim().length > 0 ? fleetId.trim() : undefined,
+  )
   const isOffline = useIsOffline()
   const packsQuery = usePacks()
   const navigate = useNavigate()
@@ -192,11 +198,11 @@ function ScansPage(): React.ReactElement {
             )}
             <Button
               type="submit"
-              disabled={startScan.isPending || !isAdmin || isOffline}
+              disabled={startScan.isPending || !canStart || isOffline}
               title={mutationGuardTitle({
                 isOffline,
                 offlineLabel: t('pwa.offline.mutationBlocked'),
-                fallback: !isAdmin
+                fallback: !canStart
                   ? t('common.role.required.admin')
                   : undefined,
               })}
@@ -566,7 +572,9 @@ function SessionProgressCard({
   // 초기 세션 값을 backstop으로 두고 latest 메시지가 도착하면 갱신.
   const ws = useScanProgress(session.sessionId)
   const t = useT()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — cancel은 scan.execute 권한 (§2.2 ID 9).
+  //   세션 자체에 fleetId 있음 — fleet 컨텍스트로 정확 평가.
+  const canExecute = useHasPermission('scan', 'execute', session.fleetId)
   const isOffline = useIsOffline()
   const cancelScan = useCancelScan()
   // terminal 도달 후 progress 카드 자체가 fresh fetch가 필요할 수 있으므로
@@ -578,7 +586,7 @@ function SessionProgressCard({
   const status = ws.latest?.status ?? session.status
   const percent = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
   const isTerminal = isTerminalScanStatus(status)
-  const canCancel = !isTerminal && isAdmin && !isOffline
+  const canCancel = !isTerminal && canExecute && !isOffline
 
   const handleCancel = (): void => {
     if (!canCancel) return
@@ -631,7 +639,7 @@ function SessionProgressCard({
               title={
                 isOffline
                   ? t('pwa.offline.mutationBlocked')
-                  : !isAdmin
+                  : !canExecute
                     ? t('common.role.required.admin')
                     : cancelScan.isPending
                       ? t('scans.session.cancel.pending')

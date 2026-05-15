@@ -10,7 +10,7 @@ import {
   summarizeDeliveries,
   useCreateWebhook,
   useDeleteWebhook,
-  useIsAdmin,
+  useHasPermission,
   useTestWebhookEndpoint,
   useWebhookDeliveries,
   useWebhookEndpoints,
@@ -58,7 +58,8 @@ import type { DictKey } from '@/i18n/dict'
 function IntegrationsPage(): React.ReactElement {
   const t = useT()
   const endpoints = useWebhookEndpoints()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — webhook은 tenant_admin.admin (§2.2 ID 3 — sso/webhook/users 통합).
+  const isAdmin = useHasPermission('tenant_admin', 'admin')
   const isOffline = useIsOffline()
   const [showForm, setShowForm] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)

@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 
+import { bindingsFromUser, decide } from '@/lib/authz/policy'
 import { useAuthStore } from '@/stores/auth'
 
 import { API_BASE_PATH, apiClient } from './client'
 import { ApiError, extractErrorMessage } from './errors'
 
+import type { Action, Resource } from '@/lib/authz/policy'
 import type { User } from '@/stores/auth'
 
 // rosshield Web Console TanStack Query 훅.
@@ -138,19 +140,75 @@ export function hasAnyRole(
 
 // useHasRole — 현재 사용자가 allowed role 중 하나라도 가지면 true.
 //   useMe 캐시를 그대로 사용 — 추가 네트워크 호출 없음.
+//
+// @deprecated RBAC Stage 5 — role 이름 직접 매칭은 fleet scope·6 시스템 role 확장
+//   매트릭스를 표현 못 합니다. 신규 코드는 `useHasPermission(resource, action, fleetId?)`
+//   사용. 본 helper는 점진 마이그레이션 동안 보존됩니다 (design doc §7 Stage 5).
 export const useHasRole = (...allowed: string[]): boolean => {
   const me = useMe()
   return hasAnyRole(me.data?.roles, allowed)
 }
 
 // useIsAdmin — 현재 사용자가 admin role을 가지면 true.
+//
+// @deprecated RBAC Stage 5 — role 이름 단일 매칭. 신규 코드는 다음 패턴 권장:
+//   - mutation gate: `useHasPermission('<resource>', '<action>', fleetId?)`
+//   - tenant 글로벌 admin 셸: `useHasPermission('tenant_admin', 'admin')`
+//
+// 본 helper는 호환 보존 — 기존 button gate 회귀 0. 점진 교체 (design doc §7 Stage 5).
 export const useIsAdmin = (): boolean => useHasRole('admin')
 
 // useIsAuditor — 현재 사용자가 auditor role을 가지면 true.
+//
+// @deprecated RBAC Stage 5 — `useHasPermission('audit', 'read')` 또는 verify/export
+//   action 직접 평가 권장.
 export const useIsAuditor = (): boolean => useHasRole('auditor')
 
 // useIsAdminOrAuditor — admin 또는 auditor (예: backup download — 시스템 다운로드).
+//
+// @deprecated RBAC Stage 5 — `useHasPermission('system', 'read')` 권장 — system
+//   resource read 권한이 admin/auditor 묶음과 매트릭스 일치 (§3.3).
 export const useIsAdminOrAuditor = (): boolean => useHasRole('admin', 'auditor')
+
+// ────────────────────────────────────────────────────────────────────────
+// 2-RBAC-Stage5) useHasPermission — 세분 RBAC client mirror.
+//
+// design doc `docs/design/notes/rbac-fine-grained-design.md` §7 Stage 5 산출.
+//
+// 시그니처:
+//   useHasPermission(resource, action, fleetId?) → boolean
+//
+// 동작:
+//   1. useMe 캐시에서 user(roles + 향후 bindings) 추출.
+//   2. lib/authz/policy::bindingsFromUser 로 RoleBinding[] 빌드 — server middleware
+//      `bindingsForSubject` 와 동일한 D-RBAC-7 호환 정책 (bindings 부재 → roles를
+//      tenant scope로 fallback).
+//   3. lib/authz/policy::decide 로 server `authz.Decide` 와 동일한 결정 평가.
+//
+// 보안 경계:
+//   - 실 보안 경계는 server `RequirePermission` middleware — 본 hook은 UX 선차단.
+//   - server 매트릭스가 변경되면 lib/authz/policy.ts 도 동기화 필요.
+//
+// 사용 예:
+//   const canCreateRobot = useHasPermission('robot', 'write', currentFleetId)
+//   <Button disabled={!canCreateRobot || isOffline}>...</Button>
+// ────────────────────────────────────────────────────────────────────────
+export const useHasPermission = (
+  resource: Resource,
+  action: Action,
+  fleetId?: string,
+): boolean => {
+  const me = useMe()
+  if (!me.data) return false
+  const subject = {
+    bindings: bindingsFromUser({
+      roles: me.data.roles,
+      bindings: me.data.bindings,
+    }),
+    fleetId,
+  }
+  return decide(subject, resource, action)
+}
 
 // ────────────────────────────────────────────────────────────────────────
 // 2-Packs) Benchmark Packs (E12 Stage 3)

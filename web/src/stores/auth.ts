@@ -8,6 +8,16 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 // 호환 메모: 이전 버전(C5 이전)에서 localStorage에 저장됐던 refreshToken 키는 hydration
 // 시점에 무시되고 다음 setSession에서 사라진다.
 
+// RBAC Stage 5 — RoleBindingDTO: server `tenant.RoleBindingClaim` 의 web mirror.
+// 서버 `/me` 응답에 bindings 필드가 추가되면 자동 사용 (Stage 5 시점은 응답 미포함 →
+// roles 슬라이스를 tenant scope로 fallback. lib/authz/policy.ts::bindingsFromUser 참조).
+// 향후 server 응답 형식 변경 시 본 인터페이스만 호환 유지하면 web 측 자동 적용.
+export interface RoleBindingDTO {
+  role: string
+  scopeType: 'tenant' | 'fleet'
+  scopeId?: string
+}
+
 export interface User {
   id: string
   email: string
@@ -18,6 +28,10 @@ export interface User {
   // gate는 RBAC Stage 1+2-A에서 이미 강제 — 본 필드는 UX 선차단 용도.
   // 백엔드 호환을 위해 optional — 구버전 응답은 빈 셋으로 취급.
   roles?: string[]
+  // RBAC Stage 5 (Phase 5) — fleet scope 포함 binding 셋 (D-RBAC-8).
+  // 현 server `/me` 응답에는 미포함이지만 향후 추가 시 자동 사용. 부재 시 web은
+  // roles 슬라이스를 tenant scope binding으로 fallback (D-RBAC-7 호환 정책).
+  bindings?: RoleBindingDTO[]
 }
 
 interface AuthState {

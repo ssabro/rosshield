@@ -7,13 +7,13 @@ import { ApiError } from '@/api/errors'
 import {
   useCreateInvitation,
   useDeleteInvitation,
+  useHasPermission,
   useInvitations,
-  useIsAdmin,
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
-import { requireRole } from '@/lib/route-guards'
+import { requirePermission } from '@/lib/route-guards'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,7 +53,8 @@ import type { DictKey } from '@/i18n/dict'
 function UsersPage(): React.ReactElement {
   const t = useT()
   const invitations = useInvitations()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — invitation 관리는 tenant_admin.admin (§2.2 ID 1).
+  const isAdmin = useHasPermission('tenant_admin', 'admin')
   const isOffline = useIsOffline()
   const [created, setCreated] = useState<CreateInvitationResponse | null>(null)
 
@@ -502,6 +503,6 @@ function createInvitationErrorMessage(
 }
 
 export const Route = createFileRoute('/_authenticated/users')({
-  beforeLoad: () => requireRole('admin'),
+  beforeLoad: () => requirePermission('tenant_admin', 'admin'),
   component: UsersPage,
 })

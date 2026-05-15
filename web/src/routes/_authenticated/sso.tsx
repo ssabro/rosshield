@@ -7,14 +7,14 @@ import { ApiError } from '@/api/errors'
 import {
   useCreateSSOProvider,
   useDeleteSSOProvider,
-  useIsAdmin,
+  useHasPermission,
   useSSOProviders,
   useUpdateSSOProvider,
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
-import { requireRole } from '@/lib/route-guards'
+import { requirePermission } from '@/lib/route-guards'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -54,7 +54,8 @@ import type { DictKey } from '@/i18n/dict'
 function SSOPage(): React.ReactElement {
   const t = useT()
   const providers = useSSOProviders()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — sso provider 관리는 tenant_admin.admin (§2.2 ID 2).
+  const isAdmin = useHasPermission('tenant_admin', 'admin')
   const isOffline = useIsOffline()
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<SSOProvider | null>(null)
@@ -706,6 +707,6 @@ function samlFromConfig(cfg: Record<string, unknown> | undefined): {
 }
 
 export const Route = createFileRoute('/_authenticated/sso')({
-  beforeLoad: () => requireRole('admin'),
+  beforeLoad: () => requirePermission('tenant_admin', 'admin'),
   component: SSOPage,
 })

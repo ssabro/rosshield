@@ -8,7 +8,7 @@ import { extractErrorMessage } from '@/api/errors'
 import {
   useDeleteRobot,
   useFleet,
-  useIsAdmin,
+  useHasPermission,
   usePacks,
   useRobot,
   useRobotResults,
@@ -158,7 +158,7 @@ function RobotDetailPage(): React.ReactElement {
 
       <RobotResultsCard robotId={robot.id} />
 
-      <RotateCredentialCard robotId={robot.id} />
+      <RotateCredentialCard robotId={robot.id} fleetId={robot.fleetId} />
 
       <DeleteRobotCard robot={robot} />
 
@@ -171,16 +171,19 @@ function RobotDetailPage(): React.ReactElement {
   )
 }
 
-// DeleteRobotCard — admin only, 2-step confirm. 성공 시 /robots로 navigate.
+// DeleteRobotCard — admin/fleet-admin only, 2-step confirm. 성공 시 /robots로 navigate.
+//
+// RBAC Stage 5 — server `RequirePermission(robot, write)` 매핑 (§2.2 ID 5).
+// fleet 컨텍스트는 robot.fleetId. admin tenant scope는 fleetId 무관 통과 (회귀 0).
 function DeleteRobotCard({ robot }: { robot: Robot }): React.ReactElement | null {
   const t = useT()
-  const isAdmin = useIsAdmin()
+  const canDelete = useHasPermission('robot', 'write', robot.fleetId)
   const navigate = useNavigate()
   const del = useDeleteRobot()
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState('')
 
-  if (!isAdmin) return null
+  if (!canDelete) return null
 
   if (confirming) {
     return (
@@ -677,14 +680,20 @@ function formatTotalDuration(start?: string, end?: string): string {
   return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`
 }
 
-// RotateCredentialCard — admin only. 평문 자격증명 입력 → 도메인 KEK 재wrap. 성공 시 성공 메시지 + 폼 초기화.
+// RotateCredentialCard — admin/fleet-admin only. 평문 자격증명 입력 → 도메인 KEK 재wrap.
+//
+// RBAC Stage 5 — server `RequirePermission(robot, admin)` 매핑 (§2.2 ID 6 — sensitive
+// rotate 권한). fleet 컨텍스트는 robot.fleetId. admin/owner tenant scope는 fleetId
+// 무관 통과 — fleet-admin은 fleet 일치 시만 (operator는 robot.admin 미보유).
 function RotateCredentialCard({
   robotId,
+  fleetId,
 }: {
   robotId: string
+  fleetId: string
 }): React.ReactElement | null {
   const t = useT()
-  const isAdmin = useIsAdmin()
+  const canRotate = useHasPermission('robot', 'admin', fleetId)
   const rotate = useRotateCredential()
   const [open, setOpen] = useState(false)
   const [authType, setAuthType] = useState<'password' | 'privateKey'>('password')
@@ -695,7 +704,7 @@ function RotateCredentialCard({
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  if (!isAdmin) return null
+  if (!canRotate) return null
 
   const reset = () => {
     setAuthType('password')

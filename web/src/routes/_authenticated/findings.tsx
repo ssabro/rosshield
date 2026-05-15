@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Inbox } from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
-import { useDismissInsight, useInsights, useIsAdmin } from '@/api/hooks'
+import { useDismissInsight, useHasPermission, useInsights } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -159,7 +159,9 @@ function FindingsPage(): React.ReactElement {
 function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
   const dismiss = useDismissInsight()
   const t = useT()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — insight dismiss는 fleet[X].insight.write (§2.2 ID 12).
+  //   insight.fleetId가 있으면 fleet scope, 없으면 tenant 글로벌 — admin만 통과.
+  const canDismiss = useHasPermission('insight', 'write', insight.fleetId ?? undefined)
   const isOffline = useIsOffline()
 
   const onDismiss = (): void => {
@@ -198,11 +200,11 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
           size="sm"
           variant="outline"
           onClick={onDismiss}
-          disabled={dismiss.isPending || !isAdmin || isOffline}
+          disabled={dismiss.isPending || !canDismiss || isOffline}
           title={mutationGuardTitle({
             isOffline,
             offlineLabel: t('pwa.offline.mutationBlocked'),
-            fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+            fallback: !canDismiss ? t('common.role.required.admin') : undefined,
           })}
         >
           {dismiss.isPending

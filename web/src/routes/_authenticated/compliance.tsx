@@ -9,7 +9,7 @@ import {
   useComplianceSnapshots,
   useCreateComplianceProfile,
   useGenerateSnapshot,
-  useIsAdmin,
+  useHasPermission,
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -184,7 +184,8 @@ function CreateProfileForm(): React.ReactElement {
   const [version, setVersion] = useState('')
   const create = useCreateComplianceProfile()
   const t = useT()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — compliance profile 생성은 tenant compliance.admin (§2.2 ID 17).
+  const canCreate = useHasPermission('compliance', 'admin')
   const isOffline = useIsOffline()
 
   const onSubmit = (e: React.FormEvent): void => {
@@ -241,13 +242,13 @@ function CreateProfileForm(): React.ReactElement {
           !framework ||
           !version.trim() ||
           create.isPending ||
-          !isAdmin ||
+          !canCreate ||
           isOffline
         }
         title={mutationGuardTitle({
           isOffline,
           offlineLabel: t('pwa.offline.mutationBlocked'),
-          fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+          fallback: !canCreate ? t('common.role.required.admin') : undefined,
         })}
       >
         {create.isPending
@@ -386,7 +387,11 @@ function GenerateSnapshotForm({
   const [sessionId, setSessionId] = useState('')
   const generate = useGenerateSnapshot()
   const t = useT()
-  const isAdmin = useIsAdmin()
+  // RBAC Stage 5 — snapshot 생성은 D-RBAC-4 권장 default = fleet[X].compliance.execute
+  // (§2.2 ID 18). web에서 sessionId만 알고 fleet ID 매핑이 없으므로 보수적으로
+  // tenant scope (admin/owner) 평가만 — fleet-admin은 server에서 fleet 일치 시 통과.
+  // 향후 sessionId → fleetId resolve hook 추가 시 본 호출에 fleetId 전달.
+  const canGenerate = useHasPermission('compliance', 'execute')
   const isOffline = useIsOffline()
 
   const onSubmit = (e: React.FormEvent): void => {
@@ -415,12 +420,12 @@ function GenerateSnapshotForm({
       <Button
         type="submit"
         disabled={
-          !sessionId.trim() || generate.isPending || !isAdmin || isOffline
+          !sessionId.trim() || generate.isPending || !canGenerate || isOffline
         }
         title={mutationGuardTitle({
           isOffline,
           offlineLabel: t('pwa.offline.mutationBlocked'),
-          fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+          fallback: !canGenerate ? t('common.role.required.admin') : undefined,
         })}
       >
         {generate.isPending

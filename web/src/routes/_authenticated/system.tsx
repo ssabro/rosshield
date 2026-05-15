@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ApiError } from '@/api/errors'
 import { API_BASE_PATH } from '@/api/client'
-import { useBackups, useIsAdminOrAuditor, useLicenseInfo, usePacks, useScans, useUsageStats } from '@/api/hooks'
+import { useBackups, useHasPermission, useLicenseInfo, usePacks, useScans, useUsageStats } from '@/api/hooks'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
-import { requireRole } from '@/lib/route-guards'
+import { requirePermission } from '@/lib/route-guards'
 import { formatBytes } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -442,7 +442,8 @@ function ScansSeverityCard(): React.ReactElement {
 function BackupsCard(): React.ReactElement {
   const t = useT()
   const q = useBackups()
-  const canDownload = useIsAdminOrAuditor()
+  // RBAC Stage 5 — backup download은 system.read (§2.2 ID 19, admin/auditor 묶음).
+  const canDownload = useHasPermission('system', 'read')
   // 최근 5개만 표시 (생성 시각 desc) — 더 많이 보고 싶으면 Stage 2-C에서 페이지네이션 추가.
   const recent = q.data
     ? [...q.data]
@@ -616,6 +617,6 @@ function Row({
 }
 
 export const Route = createFileRoute('/_authenticated/system')({
-  beforeLoad: () => requireRole('admin', 'auditor'),
+  beforeLoad: () => requirePermission('system', 'read'),
   component: SystemPage,
 })
