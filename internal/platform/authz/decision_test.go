@@ -1,10 +1,12 @@
-// decision_test.go — design doc §7 Stage 1의 단위 테스트 3종.
+// decision_test.go — design doc §7 Stage 1의 단위 테스트.
 //
 //   - TestDecisionTable_AllRoleResourceActionMatrix: §3.3 결정 테이블 전체 매트릭스
 //     (6 role × 9 resource × 6 action = 324 case) 검증.
 //   - TestPermissionImpliesWildcard: owner의 단일 와일드카드 permission이 모든 칸 통과.
 //   - TestFleetScopeBeatsTenantDeny: fleet[A] operator + tenant scope read-only 동시 보유 →
 //     fleet[A] write 가능.
+//   - TestDecisionMatchedBindings_*: RBAC fleet 정밀화 design doc §7 Stage 1 — Decision에
+//     MatchedBindings 슬라이스 추가 + 다중 binding 일치 결정 (D-RBACEX-4 권장 default B).
 
 package authz
 
@@ -339,4 +341,127 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+// TestDecisionMatchedBindings_SingleAllow는 단일 binding이 매치할 때 MatchedBindings에
+// 정확히 1건만 들어가는지 검증합니다 (RBAC fleet 정밀화 design doc §7 Stage 1).
+//
+// 단일 admin tenant binding으로 robot.write 요청 → ALLOW + MatchedBindings 길이 1.
+func TestDecisionMatchedBindings_SingleAllow(t *testing.T) {
+	binding := RoleBinding{RoleName: RoleAdmin, ScopeType: ScopeTenant, ScopeID: ""}
+	sub := Subject{
+		Bindings: []RoleBinding{binding},
+		FleetID:  "flt_a",
+	}
+	got := Decide(sub, ResourceRobot, ActionWrite)
+	if !got.Allow {
+		t.Fatalf("expected ALLOW for admin robot.write, got DENY reason=%q", got.Reason)
+	}
+	if len(got.MatchedBindings) != 1 {
+		t.Fatalf("expected MatchedBindings length=1, got %d (%v)", len(got.MatchedBindings), got.MatchedBindings)
+	}
+	if got.MatchedBindings[0] != binding {
+		t.Errorf("expected MatchedBindings[0]=%+v, got %+v", binding, got.MatchedBindings[0])
+	}
+	// MatchedRole backwards-compat — 첫 일치 binding의 role.
+	if got.MatchedRole != RoleAdmin {
+		t.Errorf("expected MatchedRole=admin, got %q", got.MatchedRole)
+	}
+}
+
+// TestDecisionMatchedBindings_MultipleAllow는 design doc §7 Stage 1의 핵심 케이스입니다:
+//
+// 사용자가 다음 binding을 동시에 보유:
+//   - {owner, tenant, ""} — 모든 fleet implicit
+//   - {operator, fleet, "flt_a"}
+//   - {operator, fleet, "flt_b"}
+//
+// fleet_A 컨텍스트에서 robot.write 요청 시 → ALLOW + MatchedBindings에 owner + operator@flt_a 2건 포함.
+// operator@flt_b는 fleet 미일치로 제외. wildcard role(owner)도 매트릭스 항목 정확 추적.
+func TestDecisionMatchedBindings_MultipleAllow(t *testing.T) {
+	ownerBinding := RoleBinding{RoleName: RoleOwner, ScopeType: ScopeTenant, ScopeID: ""}
+	opABinding := RoleBinding{RoleName: RoleOperator, ScopeType: ScopeFleet, ScopeID: "flt_a"}
+	opBBinding := RoleBinding{RoleName: RoleOperator, ScopeType: ScopeFleet, ScopeID: "flt_b"}
+	sub := Subject{
+		Bindings: []RoleBinding{ownerBinding, opABinding, opBBinding},
+		FleetID:  "flt_a",
+	}
+	got := Decide(sub, ResourceRobot, ActionWrite)
+	if !got.Allow {
+		t.Fatalf("expected ALLOW for owner+operator@flt_a robot.write, got DENY reason=%q", got.Reason)
+	}
+	if len(got.MatchedBindings) != 2 {
+		t.Fatalf("expected MatchedBindings length=2 (owner + operator@flt_a), got %d (%v)",
+			len(got.MatchedBindings), got.MatchedBindings)
+	}
+	// 순서 보존 — Bindings 슬라이스의 원본 순서대로 일치 binding이 들어가야 함.
+	if got.MatchedBindings[0] != ownerBinding {
+		t.Errorf("expected MatchedBindings[0]=owner, got %+v", got.MatchedBindings[0])
+	}
+	if got.MatchedBindings[1] != opABinding {
+		t.Errorf("expected MatchedBindings[1]=operator@flt_a, got %+v", got.MatchedBindings[1])
+	}
+	// MatchedRole은 첫 일치 binding (호환 보존).
+	if got.MatchedRole != RoleOwner {
+		t.Errorf("expected MatchedRole=owner (first match), got %q", got.MatchedRole)
+	}
+}
+
+// TestDecisionMatchedBindings_DenyEmpty는 DENY 시 MatchedBindings가 빈 슬라이스인지 검증합니다.
+//
+// read-only가 robot.write 요청 → DENY + MatchedBindings 길이 0 (nil 또는 빈 슬라이스 모두 허용).
+func TestDecisionMatchedBindings_DenyEmpty(t *testing.T) {
+	sub := Subject{
+		Bindings: []RoleBinding{
+			{RoleName: RoleReadOnly, ScopeType: ScopeTenant, ScopeID: ""},
+		},
+		FleetID: "flt_a",
+	}
+	got := Decide(sub, ResourceRobot, ActionWrite)
+	if got.Allow {
+		t.Fatalf("expected DENY for read-only robot.write, got ALLOW")
+	}
+	if len(got.MatchedBindings) != 0 {
+		t.Errorf("expected MatchedBindings empty on DENY, got len=%d (%v)",
+			len(got.MatchedBindings), got.MatchedBindings)
+	}
+
+	// 빈 bindings 케이스 — "no bindings" DENY.
+	got2 := Decide(Subject{}, ResourceRobot, ActionRead)
+	if got2.Allow {
+		t.Fatalf("expected DENY for empty bindings, got ALLOW")
+	}
+	if len(got2.MatchedBindings) != 0 {
+		t.Errorf("expected MatchedBindings empty on no-bindings DENY, got len=%d", len(got2.MatchedBindings))
+	}
+}
+
+// TestDecisionMatchedBindings_WildcardRoleTracked는 wildcard role(owner)이 MatchedBindings에
+// 정확히 한 번만 추적되는지 검증합니다 (단일 wildcard permission으로 다중 매치 risk 0).
+//
+// owner 단일 보유 + 임의 (resource, action) 요청 → MatchedBindings 길이 1.
+func TestDecisionMatchedBindings_WildcardRoleTracked(t *testing.T) {
+	ownerBinding := RoleBinding{RoleName: RoleOwner, ScopeType: ScopeTenant, ScopeID: ""}
+	sub := Subject{
+		Bindings: []RoleBinding{ownerBinding},
+		FleetID:  "flt_x",
+	}
+	for _, resource := range AllResources() {
+		for _, action := range AllActions() {
+			got := Decide(sub, resource, action)
+			if !got.Allow {
+				t.Errorf("owner should ALLOW %s.%s, got DENY", resource, action)
+				continue
+			}
+			if len(got.MatchedBindings) != 1 {
+				t.Errorf("owner %s.%s: expected MatchedBindings length=1, got %d",
+					resource, action, len(got.MatchedBindings))
+				continue
+			}
+			if got.MatchedBindings[0] != ownerBinding {
+				t.Errorf("owner %s.%s: expected MatchedBindings[0]=owner, got %+v",
+					resource, action, got.MatchedBindings[0])
+			}
+		}
+	}
 }

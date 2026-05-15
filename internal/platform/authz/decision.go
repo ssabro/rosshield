@@ -14,10 +14,17 @@ import (
 //
 // Allow는 허용/거부, Reason은 결정 근거(감사 로그·디버깅용 사람 읽기 문자열).
 // MatchedRole은 ALLOW를 발생시킨 첫 binding의 role 이름 (DENY면 빈 문자열).
+// MatchedBindings는 ALLOW를 정당화한 모든 일치 binding (RBAC fleet 정밀화 design doc §7
+// Stage 1 + D-RBACEX-4 권장 default B). DENY 시 nil/빈 슬라이스.
+//
+// MatchedRole은 backwards-compat을 위해 보존 — `MatchedBindings[0].RoleName`과 동일.
+// Stage 2 RequirePermissionWithFleet body·cross-resource lookup의 진단 응답에서
+// MatchedBindings 전체를 활용 예정 (explainability — "왜 통과했는지" 명시).
 type Decision struct {
-	Allow       bool
-	Reason      string
-	MatchedRole string
+	Allow           bool
+	Reason          string
+	MatchedRole     string
+	MatchedBindings []RoleBinding
 }
 
 // Decide는 Subject가 (resource, action) 권한을 가지는지 평가합니다.
@@ -25,18 +32,23 @@ type Decision struct {
 // 평가 순서:
 //
 //  1. Subject.Bindings 빈 슬라이스 → DENY ("no bindings").
-//  2. 각 binding을 순회 — 다음 모두 만족하면 ALLOW:
+//  2. 각 binding을 순회 — 다음 모두 만족하면 ALLOW 후보로 수집:
 //     a. binding.RoleName 이 SystemRolePermissions에 있고 그 permission 셋이 (resource, action) 매치.
 //     b. binding이 fleet scope면 Subject.FleetID 가 binding.ScopeID와 일치.
 //     binding이 tenant scope면 fleet 매칭 무시 (모든 fleet implicit 통과).
-//  3. 어떤 binding도 매치 안 하면 DENY ("no matching binding").
+//  3. 일치 binding이 1건 이상이면 ALLOW + MatchedBindings 전체 + MatchedRole=첫 일치 role.
+//  4. 어떤 binding도 매치 안 하면 DENY ("no binding allows ...").
 //
 // 본 함수는 Subject 입력을 mutation하지 않습니다 (불변성).
+//
+// 모든 binding을 순회하여 일치 셋을 수집합니다 — 직전 단일-반환 방식과 달리 다중 binding
+// 동시 보유 시 explainability 노출 (D-RBACEX-4). 평가 순서는 Bindings 슬라이스 순서대로.
 func Decide(sub Subject, resource Resource, action Action) Decision {
 	if len(sub.Bindings) == 0 {
 		return Decision{Allow: false, Reason: "no bindings"}
 	}
 
+	matched := make([]RoleBinding, 0, len(sub.Bindings))
 	for _, b := range sub.Bindings {
 		perms, ok := SystemRolePermissions[b.RoleName]
 		if !ok {
@@ -61,10 +73,15 @@ func Decide(sub Subject, resource Resource, action Action) Decision {
 			}
 		}
 
+		matched = append(matched, b)
+	}
+
+	if len(matched) > 0 {
 		return Decision{
-			Allow:       true,
-			Reason:      decisionReason(b, resource, action),
-			MatchedRole: b.RoleName,
+			Allow:           true,
+			Reason:          decisionReason(matched[0], resource, action),
+			MatchedRole:     matched[0].RoleName,
+			MatchedBindings: matched,
 		}
 	}
 
