@@ -73,6 +73,7 @@ type Deps struct {
 	Invitation        tenant.InvitationService // E21 — 초대·역할 (옵트인, nil이면 503)
 	Metrics           *metrics.Registry        // GET /api/v1/usage/stats — usage 통계 카운트 read (nil이면 503)
 	ReportSigner      signer.Signer            // POST /api/v1/reports/{id}/verify — public key 추출용 (R10-7 ReportSigner, nil이면 503)
+	ScopeResolver     ScopeResolver            // RBAC fleet 정밀화 Stage 2 — cross-resource fleet lookup (nil 허용; Stage 3에서 robot/scan/insight/report repo wrap 주입)
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
