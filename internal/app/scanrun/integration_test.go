@@ -61,7 +61,7 @@ type integrationSSHAdapter struct {
 	pool sshpool.Executor
 }
 
-func (a *integrationSSHAdapter) Exec(ctx context.Context, target scan.RobotTarget, argv []string, timeout time.Duration) (scan.ExecResult, error) {
+func (a *integrationSSHAdapter) Exec(ctx context.Context, target scan.RobotTarget, argv []string, timeout time.Duration, _ scan.ExecOpts) (scan.ExecResult, error) {
 	res, err := a.pool.Exec(ctx, sshpool.Target{
 		Host:            target.Host,
 		Port:            target.Port,

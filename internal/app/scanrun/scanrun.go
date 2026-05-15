@@ -211,7 +211,7 @@ func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID
 		duration time.Duration
 	)
 
-	exec, err := o.deps.Executor.Exec(ctx, robot, check.AuditCommand, timeout)
+	exec, err := o.deps.Executor.Exec(ctx, robot, check.AuditCommand, timeout, scan.ExecOpts{RequiresSudo: check.RequiresSudo})
 	duration = exec.Duration
 	if err != nil {
 		outcome = scan.OutcomeError

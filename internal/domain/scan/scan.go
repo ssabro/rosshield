@@ -211,11 +211,13 @@ type RobotTarget struct {
 // pack_checks의 부분 복제 — scan 패키지가 benchmark 도메인을 import하지 않도록 하기 위함(P5 + R6-2).
 // 호출자(application service)가 pack 자료에서 채움.
 type CheckDef struct {
-	PackCheckID  string   // pack_checks.id ("ck_<ULID>")
-	Code         string   // "CIS-1.1.1.1" — 팩 내 식별자
-	AuditCommand []string // SSH exec argv
-	TimeoutSec   int      // SSH exec timeout. 0이면 DefaultCheckTimeoutSec.
-	EvalRuleJSON []byte   // 평가 규칙 AST JSON — CheckEvaluator에 위임
+	PackCheckID    string   // pack_checks.id ("ck_<ULID>")
+	Code           string   // "CIS-1.1.1.1" — 팩 내 식별자
+	AuditCommand   []string // SSH exec argv
+	TimeoutSec     int      // SSH exec timeout. 0이면 DefaultCheckTimeoutSec.
+	EvalRuleJSON   []byte   // 평가 규칙 AST JSON — CheckEvaluator에 위임
+	RequiresSudo   bool     // scanrun SSH 통합 Stage 3 — true 시 SSHExecutor가 sudo wrap (D-SCAN-3 non-interactive)
+	SudoTimeoutSec int      // 0이면 TimeoutSec 그대로 사용. sudo prompt 차단 fallback 용 별 timeout (옵션).
 }
 
 // DefaultCheckTimeoutSec는 CheckDef.TimeoutSec=0일 때 기본 SSH exec timeout (§07.7).
@@ -239,6 +241,14 @@ type EvalResult struct {
 	Reason  string
 }
 
+// ExecOpts는 SSHExecutor.Exec 부가 옵션입니다 (scanrun SSH 통합 Stage 3 — D-SCAN-3).
+//
+// zero-value면 기존 동작과 동일 — 회귀 위험 0.
+// 미래 확장(retry policy, env vars 등)도 본 struct에 추가 가능.
+type ExecOpts struct {
+	RequiresSudo bool // true 시 어댑터가 sudo non-interactive wrap (sshpool.Target.SudoMode = SudoNonInteractive).
+}
+
 // SSHExecutor는 Orchestrator가 호출하는 SSH 실행 표면입니다 (R6-3).
 //
 // bootstrap이 sshpool.Executor를 어댑팅해 주입(robot 도메인의 GetCredentialMaterial 호출 결합 포함).
@@ -246,7 +256,7 @@ type EvalResult struct {
 //
 // 호출자는 ctx 취소 시 timeout보다 일찍 끝나야 함(R4-5는 진행 중 작업은 timeout까지 대기).
 type SSHExecutor interface {
-	Exec(ctx context.Context, target RobotTarget, argv []string, timeout time.Duration) (ExecResult, error)
+	Exec(ctx context.Context, target RobotTarget, argv []string, timeout time.Duration, opts ExecOpts) (ExecResult, error)
 }
 
 // CheckEvaluator는 Orchestrator가 호출하는 평가 규칙 실행 표면입니다 (R6-3).

@@ -6,7 +6,8 @@
 //     · 매 Exec마다 별도 Tx로 robot.Service.GetCredentialMaterial 호출 → unwrap material
 //     · CredentialMaterial → ssh.AuthMethod 변환
 //     · sshpool.Target 구성 → sshpool.Executor.Exec 호출 → scan.ExecResult 반환
-//     · host key는 임시 InsecureIgnoreHostKey() + warning 로그 (R4-2 first-touch trust는 후속)
+//     · host key는 KnownHostsManager가 robot 별 callback 생성 (scanrun SSH 통합 Stage 3)
+//     · scan.ExecOpts.RequiresSudo → sshpool.Target.SudoMode = SudoNonInteractive 매핑
 //
 //   - benchmarkEvaluatorAdapter: scan.CheckEvaluator → benchmark.ParseEvalRule + EvalNode.Eval
 //     · ruleJSON을 매번 parse — Phase 1 단순화 (cache는 후속)
@@ -35,7 +36,8 @@ type sshExecutorAdapter struct {
 	pool      sshpool.Executor
 	robot     robot.Service
 	storage   storage.Storage
-	hostKeyCB ssh.HostKeyCallback // R4-2 — bootstrap이 정책에 따라 주입
+	khMgr     *sshpool.KnownHostsManager // scanrun Stage 3 — TOFU host key callback 팩토리. nil 허용(테스트 시 hostKeyCB fallback).
+	hostKeyCB ssh.HostKeyCallback        // 호환 fallback (Stage 3 이전 결선·테스트). khMgr 우선.
 	logger    *slog.Logger
 }
 
@@ -44,11 +46,13 @@ type sshExecutorAdapter struct {
 // 절차:
 //  1. ctx의 TenantID로 별도 Tx 시작 → robot.Service.GetCredentialMaterial → CredentialMaterial unwrap
 //  2. CredentialMaterial → ssh.AuthMethod 변환
-//  3. sshpool.Target 구성 → sshpool.Executor.Exec 호출
-//  4. sshpool.ExecResult → scan.ExecResult 변환 후 반환
+//  3. host key callback 결정 — khMgr 우선(robot 별 TOFU), fallback hostKeyCB
+//  4. opts.RequiresSudo → sshpool.Target.SudoMode 매핑
+//  5. sshpool.Target 구성 → sshpool.Executor.Exec 호출
+//  6. sshpool.ExecResult → scan.ExecResult 변환 후 반환
 //
 // material은 함수 종료 시 GC — 평문 자격증명을 Orchestrator로 노출하지 않음 (보안 측면).
-func (a *sshExecutorAdapter) Exec(ctx context.Context, target scan.RobotTarget, argv []string, timeout time.Duration) (scan.ExecResult, error) {
+func (a *sshExecutorAdapter) Exec(ctx context.Context, target scan.RobotTarget, argv []string, timeout time.Duration, opts scan.ExecOpts) (scan.ExecResult, error) {
 	// 1. material unwrap.
 	var mat robot.CredentialMaterial
 	if err := a.storage.Tx(ctx, func(c context.Context, tx storage.Tx) error {
@@ -65,13 +69,29 @@ func (a *sshExecutorAdapter) Exec(ctx context.Context, target scan.RobotTarget, 
 		return scan.ExecResult{}, fmt.Errorf("scanexec: %w", err)
 	}
 
-	// 3. sshpool.Target 구성.
+	// 3. host key callback — khMgr 우선(robot 별 TOFU), fallback hostKeyCB.
+	var hostKeyCB ssh.HostKeyCallback
+	if a.khMgr != nil {
+		tenantID := storage.TenantIDFromContext(ctx)
+		hostKeyCB = a.khMgr.HostKeyCallback(ctx, tenantID, target.RobotID)
+	} else {
+		hostKeyCB = a.hostKeyCB
+	}
+
+	// 4. opts.RequiresSudo → SudoMode 매핑 (D-SCAN-3 — non-interactive 고정).
+	sudoMode := sshpool.SudoNone
+	if opts.RequiresSudo {
+		sudoMode = sshpool.SudoNonInteractive
+	}
+
+	// 5. sshpool.Target 구성.
 	sshTarget := sshpool.Target{
 		Host:            target.Host,
 		Port:            target.Port,
 		Username:        mat.Username,
 		Auth:            authMethod,
-		HostKeyCallback: a.hostKeyCB,
+		HostKeyCallback: hostKeyCB,
+		SudoMode:        sudoMode,
 	}
 
 	res, err := a.pool.Exec(ctx, sshTarget, argv, timeout)

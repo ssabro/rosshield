@@ -68,7 +68,7 @@ type mockExecutor struct {
 	totalCalls int64
 }
 
-func (m *mockExecutor) Exec(ctx context.Context, target scan.RobotTarget, argv []string, timeout time.Duration) (scan.ExecResult, error) {
+func (m *mockExecutor) Exec(ctx context.Context, target scan.RobotTarget, argv []string, timeout time.Duration, _ scan.ExecOpts) (scan.ExecResult, error) {
 	cur := atomic.AddInt64(&m.active, 1)
 	defer atomic.AddInt64(&m.active, -1)
 	for {

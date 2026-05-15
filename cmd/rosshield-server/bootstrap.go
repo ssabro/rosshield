@@ -68,7 +68,6 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	"github.com/ssabro/rosshield/internal/platform/storage/postgres"
 	"github.com/ssabro/rosshield/internal/platform/storage/sqlite"
-	xssh "golang.org/x/crypto/ssh"
 )
 
 // openStorage는 cfg.StorageDriver 기반으로 storage 어댑터를 엽니다 (E22-D).
@@ -1070,20 +1069,22 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	})
 
 	// E6 Stage D.2 — scan Orchestrator 결선 (R6-1~R6-8) + E7 evidence 결선.
-	// host key callback은 임시 InsecureIgnoreHostKey + warning 로그.
-	// R4-2 first-touch trust + DB 기록은 후속 stage(D.3 또는 별도)에서.
-	logger.Warn("ScanRun host-key check disabled (Phase 1 placeholder) — R4-2 first-touch trust pending",
-		"todo", "implement known_hosts file + first-touch DB record")
+	// scanrun SSH 통합 Stage 3 — KnownHostsManager로 robot 별 TOFU host key callback 결선.
+	// 부팅 실패 시 server start abort (data dir 권한·생성 실패 등은 운영자 즉시 수정 필요).
+	khMgr, err := sshpool.NewKnownHostsManager(robotSvc, store, cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("bootstrap: KnownHostsManager: %w", err)
+	}
 	sshExec := sshpool.New(sshpool.Deps{Logger: logger})
 	scanRun := scanrun.New(scanrun.Deps{
 		Scan:    scanSvc,
 		Storage: store,
 		Executor: &sshExecutorAdapter{
-			pool:      sshExec,
-			robot:     robotSvc,
-			storage:   store,
-			hostKeyCB: xssh.InsecureIgnoreHostKey(), //nolint:gosec // Phase 1 placeholder; R4-2 후속 결선
-			logger:    logger,
+			pool:    sshExec,
+			robot:   robotSvc,
+			storage: store,
+			khMgr:   khMgr, // robot 별 TOFU callback (D-SCAN-2 권장 default)
+			logger:  logger,
 		},
 		Evaluator: &benchmarkEvaluatorAdapter{},
 		Bus:       bus,

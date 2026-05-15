@@ -37,16 +37,34 @@ const (
 	DefaultMaxStderrBytes = 10 << 20
 )
 
+// SudoMode는 sudo wrap 정책입니다 (scanrun SSH 통합 Stage 3 — D-SCAN-3).
+//
+// SudoNone:           sudo 없이 argv 직접 실행 (기본값, 기존 동작 호환).
+// SudoNonInteractive: argv 앞에 ["sudo", "-n", "--"] prefix wrap. -n은 password prompt
+//
+//	발생 시 즉시 fail — passwordless sudo 운영자 책임.
+//	password 메모리 보존 회피(보안). enterprise customer 대부분
+//	ansible/ssh key 기반 passwordless sudo 정책 보유.
+type SudoMode int
+
+const (
+	SudoNone SudoMode = iota
+	SudoNonInteractive
+)
+
 // Target은 SSH exec 대상 호스트와 인증 정보입니다.
 //
 // Auth와 HostKeyCallback은 ssh 패키지 타입을 그대로 노출 — robot 도메인에 무지(P5).
 // 호출자가 robot.CredentialMaterial → ssh.AuthMethod 변환을 담당.
+//
+// SudoMode는 zero-value(SudoNone)면 기존 동작 — 회귀 위험 0.
 type Target struct {
 	Host            string
 	Port            int
 	Username        string
 	Auth            ssh.AuthMethod
 	HostKeyCallback ssh.HostKeyCallback
+	SudoMode        SudoMode // zero-value = SudoNone (기존 동작)
 }
 
 // ExecResult는 Exec 결과입니다.
@@ -163,7 +181,14 @@ func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeo
 	session.Stdout = &stdout
 	session.Stderr = &stderr
 
-	cmd := JoinArgv(argv)
+	// D-SCAN-3 — SudoNonInteractive 시 ["sudo", "-n", "--"] prefix wrap.
+	// `-n`은 password prompt 발생 시 즉시 fail (stdin·tty 미사용).
+	// `--`는 argv 시작 보호 (옵션 파싱 종료 마커).
+	finalArgv := argv
+	if target.SudoMode == SudoNonInteractive {
+		finalArgv = append([]string{"sudo", "-n", "--"}, argv...)
+	}
+	cmd := JoinArgv(finalArgv)
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
