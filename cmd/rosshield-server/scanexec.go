@@ -31,14 +31,20 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
-// sshExecutorAdapter는 scan.SSHExecutor를 sshpool.Executor + robot 자격증명 unwrap으로 결선합니다.
+// sshExecutorAdapter는 scan.SSHExecutor를 sshpool.Pool + robot 자격증명 unwrap으로 결선합니다.
+//
+// scanrun SSH 통합 Stage 5b — Pool.Acquire → ExecOnClient → release 패턴.
+// IdleTimeout > 0이면 Pool이 idle conn 재사용(같은 robot 다음 check가 새 dial 회피).
+// pool 또는 executor 둘 다 nil이면 ErrAdapterNotConfigured. 둘 다 set이면 pool 우선.
 type sshExecutorAdapter struct {
-	pool      sshpool.Executor
+	pool      sshpool.Pool     // scanrun Stage 5b — 결선 우선. nil이면 executor fallback.
+	executor  sshpool.Executor // 호환 fallback (Stage 5b 이전 결선·단위 테스트).
 	robot     robot.Service
 	storage   storage.Storage
-	khMgr     *sshpool.KnownHostsManager // scanrun Stage 3 — TOFU host key callback 팩토리. nil 허용(테스트 시 hostKeyCB fallback).
+	khMgr     *sshpool.KnownHostsManager // scanrun Stage 3 — TOFU host key callback 팩토리. nil 허용.
 	hostKeyCB ssh.HostKeyCallback        // 호환 fallback (Stage 3 이전 결선·테스트). khMgr 우선.
 	logger    *slog.Logger
+	execMetr  sshpool.ExecMetrics // ExecOnClient에 위임 (Pool 경로). executor 경로는 Deps.Metrics 자체 결선.
 }
 
 // Exec은 scan.SSHExecutor 구현입니다.
@@ -48,7 +54,7 @@ type sshExecutorAdapter struct {
 //  2. CredentialMaterial → ssh.AuthMethod 변환
 //  3. host key callback 결정 — khMgr 우선(robot 별 TOFU), fallback hostKeyCB
 //  4. opts.RequiresSudo → sshpool.Target.SudoMode 매핑
-//  5. sshpool.Target 구성 → sshpool.Executor.Exec 호출
+//  5. Pool 결선 시 — Pool.Acquire → ExecOnClient → release. Executor fallback 시 — sshpool.Executor.Exec.
 //  6. sshpool.ExecResult → scan.ExecResult 변환 후 반환
 //
 // material은 함수 종료 시 GC — 평문 자격증명을 Orchestrator로 노출하지 않음 (보안 측면).
@@ -70,9 +76,9 @@ func (a *sshExecutorAdapter) Exec(ctx context.Context, target scan.RobotTarget, 
 	}
 
 	// 3. host key callback — khMgr 우선(robot 별 TOFU), fallback hostKeyCB.
+	tenantID := storage.TenantIDFromContext(ctx)
 	var hostKeyCB ssh.HostKeyCallback
 	if a.khMgr != nil {
-		tenantID := storage.TenantIDFromContext(ctx)
 		hostKeyCB = a.khMgr.HostKeyCallback(ctx, tenantID, target.RobotID)
 	} else {
 		hostKeyCB = a.hostKeyCB
@@ -94,9 +100,41 @@ func (a *sshExecutorAdapter) Exec(ctx context.Context, target scan.RobotTarget, 
 		SudoMode:        sudoMode,
 	}
 
-	res, err := a.pool.Exec(ctx, sshTarget, argv, timeout)
+	// Stage 5b — Pool 결선 우선. Pool.Acquire → ExecOnClient → release.
+	if a.pool != nil {
+		// PoolKey는 (TenantID, KeyID, Host, Port) 4-tuple. KeyID는 credential ID 사용
+		// (자격증명 변경 시 stale conn 회피). KEK 식별자는 별도 정보 부재 — credential ID로 대체.
+		key := sshpool.PoolKey{
+			TenantID: string(tenantID),
+			KeyID:    target.CredentialID,
+			Host:     target.Host,
+			Port:     target.Port,
+		}
+		client, release, err := a.pool.Acquire(ctx, key, sshTarget)
+		if err != nil {
+			return scan.ExecResult{}, fmt.Errorf("scanexec: pool acquire: %w", err)
+		}
+		defer release()
+
+		res, err := sshpool.ExecOnClient(ctx, client, sshpool.ExecOnClientOpts{
+			Argv:     argv,
+			Timeout:  timeout,
+			SudoMode: sudoMode,
+			Logger:   a.logger,
+			Metrics:  a.execMetr,
+			LogHost:  target.Host,
+		})
+		return scan.ExecResult{
+			Stdout:   res.Stdout,
+			Stderr:   res.Stderr,
+			ExitCode: res.ExitCode,
+			Duration: res.Duration,
+		}, err
+	}
+
+	// Fallback: 기존 executor 경로 (호환).
+	res, err := a.executor.Exec(ctx, sshTarget, argv, timeout)
 	if err != nil {
-		// 부분 결과도 그대로 전달 — Orchestrator가 OutcomeError로 매핑하면서 reason에 포함.
 		return scan.ExecResult{
 			Stdout:   res.Stdout,
 			Stderr:   res.Stderr,

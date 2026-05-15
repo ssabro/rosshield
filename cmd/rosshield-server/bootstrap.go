@@ -233,6 +233,7 @@ type Platform struct {
 	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
 	BackupDir         string                   // B7 후속 — 자동 백업 디렉터리 (handlers/backup이 list 시 사용)
 	FleetScanSched    *FleetScanScheduler      // dynamic cron re-registration on fleet mutation
+	SSHPool           sshpool.Pool             // scanrun Stage 5b — idle 재사용 + keepalive (Shutdown 시 Close)
 
 	systemTenant storage.TenantID
 
@@ -1079,17 +1080,25 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: KnownHostsManager: %w", err)
 	}
-	// scanrun SSH 통합 Stage 4 — Executor에 metrics 주입 (exec_total/exec_duration emit).
-	sshExec := sshpool.New(sshpool.Deps{Logger: logger, Metrics: &sshExecMetricsAdapter{reg: metricsReg}})
+	// scanrun SSH 통합 Stage 5b — sshpool.Pool 결선(idle 재사용 활성화).
+	// Stage 4 idle 인프라(IdleTimeout > 0이면 release된 conn 재사용)를 본 결선으로 활성화.
+	// IdleTimeout default 5min — customer 부하 측정 후 cfg로 조정 가능(향후).
+	sshExecMetricsAdapt := &sshExecMetricsAdapter{reg: metricsReg}
+	sshPool := sshpool.NewPool(sshpool.PoolConfig{
+		IdleTimeout:       5 * time.Minute,
+		KeepaliveInterval: 30 * time.Second,
+		Metrics:           &sshPoolMetricsAdapter{reg: metricsReg},
+	})
 	scanRun := scanrun.New(scanrun.Deps{
 		Scan:    scanSvc,
 		Storage: store,
 		Executor: &sshExecutorAdapter{
-			pool:    sshExec,
-			robot:   robotSvc,
-			storage: store,
-			khMgr:   khMgr, // robot 별 TOFU callback (D-SCAN-2 권장 default)
-			logger:  logger,
+			pool:     sshPool,
+			robot:    robotSvc,
+			storage:  store,
+			khMgr:    khMgr, // robot 별 TOFU callback (D-SCAN-2 권장 default)
+			logger:   logger,
+			execMetr: sshExecMetricsAdapt,
 		},
 		Evaluator: &benchmarkEvaluatorAdapter{},
 		Bus:       bus,
@@ -1286,6 +1295,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Keystore:          ks,
 		BackupDir:         resolvedBackupDir,
 		FleetScanSched:    fleetScanSch,
+		SSHPool:           sshPool,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
 	}
@@ -1482,6 +1492,13 @@ func (p *Platform) Shutdown(ctx context.Context) error {
 
 		if err := p.Scheduler.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("scheduler close: %w", err))
+		}
+
+		// scanrun Stage 5b — sshpool.Pool 종료(keepalive goroutine + idle conn 모두 close).
+		if p.SSHPool != nil {
+			if err := p.SSHPool.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("sshpool close: %w", err))
+			}
 		}
 		if err := p.EventBus.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("eventbus close: %w", err))

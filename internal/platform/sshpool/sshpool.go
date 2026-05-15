@@ -145,12 +145,11 @@ func New(deps Deps) Executor {
 //
 // 절차:
 //  1. Target 검증 + argv 검증.
-//  2. ctx에 DialTimeout 적용해 TCP dial.
-//  3. SSH handshake.
-//  4. session.NewSession() → 1회용 (R4-* — 매 명령마다 새 session).
-//  5. argv를 POSIX single-quote escape로 단일 string 직렬화.
-//  6. session.Run을 goroutine으로 분리, ctx/timeout select.
-//  7. cancel/timeout 시 session+client close + 부분 결과 반환.
+//  2. ctx에 DialTimeout 적용해 TCP dial + SSH handshake.
+//  3. ExecOnClient에 위임 (session + timeout + sudo wrap + metrics).
+//
+// scanrun SSH 통합 Stage 5b — session/timeout 로직은 ExecOnClient 헬퍼로 추출.
+// Pool.Acquire 후 동일 헬퍼를 호출하면 idle 재사용 + 동일 sudo·timeout 보존.
 func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeout time.Duration) (ExecResult, error) {
 	if err := validateTarget(target); err != nil {
 		return ExecResult{}, err
@@ -184,6 +183,68 @@ func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeo
 	client := ssh.NewClient(sshConn, chans, reqs)
 	defer func() { _ = client.Close() }()
 
+	return ExecOnClient(ctx, client, ExecOnClientOpts{
+		Argv:           argv,
+		Timeout:        timeout,
+		SudoMode:       target.SudoMode,
+		Logger:         e.deps.Logger,
+		Metrics:        e.deps.Metrics,
+		MaxStdoutBytes: e.deps.MaxStdoutBytes,
+		MaxStderrBytes: e.deps.MaxStderrBytes,
+		LogHost:        target.Host,
+	})
+}
+
+// ExecOnClientOpts는 ExecOnClient의 옵션입니다 (scanrun SSH 통합 Stage 5b).
+//
+// MaxStdoutBytes/MaxStderrBytes가 0이면 Default 사용. Logger nil이면 slog.Default.
+// Metrics nil이면 emit 없이 동작.
+type ExecOnClientOpts struct {
+	Argv           []string
+	Timeout        time.Duration
+	SudoMode       SudoMode
+	Logger         *slog.Logger
+	Metrics        ExecMetrics
+	MaxStdoutBytes int
+	MaxStderrBytes int
+	LogHost        string // 로그 식별용 (host:port 또는 robot ID)
+}
+
+// ExecOnClient는 이미 acquired된 *ssh.Client에서 단일 명령을 실행합니다.
+//
+// 절차:
+//  1. session.NewSession() — 1회용 (매 명령마다 새 session).
+//  2. SudoNonInteractive 시 argv에 ["sudo", "-n", "--"] prefix wrap.
+//  3. argv를 POSIX single-quote escape로 단일 string 직렬화.
+//  4. session.Run을 goroutine으로 분리, ctx/timeout select.
+//  5. cancel/timeout 시 session close + 부분 결과 + metrics emit.
+//
+// client는 호출자가 release 책임 — 본 함수는 client를 close하지 않습니다.
+// scanrun Stage 5b — Pool.Acquire → ExecOnClient → release 패턴.
+func ExecOnClient(ctx context.Context, client *ssh.Client, opts ExecOnClientOpts) (ExecResult, error) {
+	if client == nil {
+		return ExecResult{}, errors.New("sshpool: ExecOnClient: client is nil")
+	}
+	if len(opts.Argv) == 0 {
+		return ExecResult{}, ErrEmptyArgv
+	}
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	maxStdout := opts.MaxStdoutBytes
+	if maxStdout == 0 {
+		maxStdout = DefaultMaxStdoutBytes
+	}
+	maxStderr := opts.MaxStderrBytes
+	if maxStderr == 0 {
+		maxStderr = DefaultMaxStderrBytes
+	}
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = DefaultExecTimeout
+	}
+
 	session, err := client.NewSession()
 	if err != nil {
 		return ExecResult{}, fmt.Errorf("sshpool: NewSession: %w", err)
@@ -195,11 +256,9 @@ func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeo
 	session.Stderr = &stderr
 
 	// D-SCAN-3 — SudoNonInteractive 시 ["sudo", "-n", "--"] prefix wrap.
-	// `-n`은 password prompt 발생 시 즉시 fail (stdin·tty 미사용).
-	// `--`는 argv 시작 보호 (옵션 파싱 종료 마커).
-	finalArgv := argv
-	if target.SudoMode == SudoNonInteractive {
-		finalArgv = append([]string{"sudo", "-n", "--"}, argv...)
+	finalArgv := opts.Argv
+	if opts.SudoMode == SudoNonInteractive {
+		finalArgv = append([]string{"sudo", "-n", "--"}, opts.Argv...)
 	}
 	cmd := JoinArgv(finalArgv)
 
@@ -212,17 +271,26 @@ func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeo
 		done <- session.Run(cmd)
 	}()
 
+	assemble := func(exit int, dur time.Duration) ExecResult {
+		res := ExecResult{ExitCode: exit, Duration: dur}
+		res.Stdout, res.Truncated = trim(stdout.Bytes(), maxStdout)
+		if stderrTrimmed, t2 := trim(stderr.Bytes(), maxStderr); true {
+			res.Stderr = stderrTrimmed
+			res.Truncated = res.Truncated || t2
+		}
+		return res
+	}
+
 	select {
 	case <-timeoutCtx.Done():
 		_ = session.Close()
-		_ = client.Close()
 		// goroutine 누수 방지: session.Close 이후 done 채널 비움.
 		<-done
 		dur := time.Since(start)
-		if e.deps.Metrics != nil {
-			e.deps.Metrics.ObserveExec("timeout", dur)
+		if opts.Metrics != nil {
+			opts.Metrics.ObserveExec("timeout", dur)
 		}
-		return e.assemble(stdout.Bytes(), stderr.Bytes(), 0, dur), timeoutCtx.Err()
+		return assemble(0, dur), timeoutCtx.Err()
 	case runErr := <-done:
 		dur := time.Since(start)
 		exit := 0
@@ -234,18 +302,17 @@ func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeo
 		case errors.As(runErr, &execErr):
 			exit = execErr.ExitStatus()
 		case errors.As(runErr, &missingErr):
-			// exit-status request 못 받음 — 명령은 끝났으나 status unclear. 0으로 간주 + 로그.
-			e.deps.Logger.Warn("sshpool: exit-status missing", "host", target.Host, "argv", argv)
+			logger.Warn("sshpool: exit-status missing", "host", opts.LogHost, "argv", opts.Argv)
 		default:
-			if e.deps.Metrics != nil {
-				e.deps.Metrics.ObserveExec("error", dur)
+			if opts.Metrics != nil {
+				opts.Metrics.ObserveExec("error", dur)
 			}
-			return e.assemble(stdout.Bytes(), stderr.Bytes(), 0, dur), fmt.Errorf("sshpool: run: %w", runErr)
+			return assemble(0, dur), fmt.Errorf("sshpool: run: %w", runErr)
 		}
-		if e.deps.Metrics != nil {
-			e.deps.Metrics.ObserveExec("success", dur)
+		if opts.Metrics != nil {
+			opts.Metrics.ObserveExec("success", dur)
 		}
-		return e.assemble(stdout.Bytes(), stderr.Bytes(), exit, dur), nil
+		return assemble(exit, dur), nil
 	}
 }
 
