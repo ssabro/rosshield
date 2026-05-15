@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 
 import { bindingsFromUser, decide } from '@/lib/authz/policy'
+import { runLogoutClear } from '@/lib/persist/clear'
 import { useAuthStore } from '@/stores/auth'
 
 import { API_BASE_PATH, apiClient } from './client'
@@ -70,10 +71,23 @@ export const useLogin = () => {
 
 // useLogout은 /auth/logout을 호출해 서버 측 refresh를 revoke + cookie를 만료시킵니다.
 //   네트워크 실패에도 클라이언트 세션은 항상 비움 (UX — 사용자 의도는 로그아웃).
+//
+// PWA persist Stage 3 (`pwa-persist-design.md` §6.4 + §7 Stage 3 + D-PWAPER-4):
+//   logout API 호출 후 `runLogoutClear`로 다음 3단계 clear:
+//     1. queryClient.clear()        — 메모리 캐시 즉시 비움.
+//     2. clearPersistedTenant()     — IndexedDB 영속 캐시 비움(tenant 별 key).
+//     3. clearSession()             — accessToken + user 비움(zustand persist).
+//   순서는 보안 + UX 정합 — clearSession이 가장 마지막이라 router redirect 직전에
+//   영속 캐시까지 정리되어 다음 로그인 시 빈 상태 보장.
 export const useLogout = () => {
   const clearSession = useAuthStore((s) => s.clearSession)
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (): Promise<void> => {
+      // 현재 tenant ID — clear 대상 IndexedDB key 결정용.
+      // logout 시점의 user를 캡처(clearSession 후 user는 null이 되므로 사전 캡처).
+      const tenantId = useAuthStore.getState().user?.tenantId
+
       try {
         await fetch(`${API_BASE_PATH}/auth/logout`, {
           method: 'POST',
@@ -81,9 +95,15 @@ export const useLogout = () => {
           headers: { 'X-Cookie-Auth': 'true' },
         })
       } catch {
-        // ignore — 클라이언트 세션은 항상 클리어.
+        // ignore — 클라이언트 측 clear는 항상 진행.
       }
-      clearSession()
+
+      // 메모리 + IndexedDB + session 3단계 clear (D-PWAPER-4 권장 default).
+      await runLogoutClear({
+        queryClient,
+        tenantId,
+        clearSession,
+      })
     },
   })
 }

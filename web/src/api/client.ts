@@ -1,5 +1,6 @@
 import createClient, { type Middleware } from 'openapi-fetch'
 
+import { clearPersistedTenant } from '@/lib/persist/clear'
 import { useAuthStore } from '@/stores/auth'
 
 import type { paths } from './types'
@@ -69,17 +70,17 @@ const authMiddleware: Middleware = {
     if (response.status !== 401) return response
     // 무한 재귀 방지 — refresh 자체가 401이면 세션 클리어로 끝.
     if (request.url.includes('/auth/refresh') || request.url.includes('/auth/login')) {
-      useAuthStore.getState().clearSession()
+      await clearSessionWithPersist()
       return response
     }
     // X-Retry로 재시도 표시 — 두 번째 401에서 멈춤.
     if (request.headers.get('X-Retry') === '1') {
-      useAuthStore.getState().clearSession()
+      await clearSessionWithPersist()
       return response
     }
     const newToken = await dedupedRefresh()
     if (!newToken) {
-      useAuthStore.getState().clearSession()
+      await clearSessionWithPersist()
       return response
     }
     // 원 요청 재시도 — 새 토큰으로 헤더 갱신.
@@ -91,6 +92,26 @@ const authMiddleware: Middleware = {
     })
     return retried
   },
+}
+
+// PWA persist Stage 3 (`pwa-persist-design.md` §6.4 + D-PWAPER-4):
+//   401 + refresh 실패 시 zustand session clear + IndexedDB persist clear.
+//   queryClient는 본 모듈에서 접근 불가(React Provider 외부) → 메모리 캐시 clear는
+//   useLogout(`hooks.ts`)이 담당. 본 경로는 router/UI가 useAuthStore 변경을 감지해
+//   로그인 페이지로 redirect → 다음 로그인 시 anon → tenant key 전환으로
+//   stale 캐시 노출 0.
+//
+//   IndexedDB clear가 throw해도 session clear는 항상 진행 — UX 우선(사용자가
+//   401 루프에 갇히지 않게).
+async function clearSessionWithPersist(): Promise<void> {
+  // 세션 clear 전 tenantId 캡처 — clearSession 후 user는 null이 되므로.
+  const tenantId = useAuthStore.getState().user?.tenantId
+  try {
+    await clearPersistedTenant(tenantId)
+  } catch (err) {
+    console.warn('[rosshield] persist clear 실패 (401 처리 진행):', err)
+  }
+  useAuthStore.getState().clearSession()
 }
 
 function appendRetryHeader(headers: Headers, token: string): Headers {
