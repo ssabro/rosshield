@@ -1068,6 +1068,10 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		// PackReader/RobotReader는 Phase 1 미주입 — 표시 메타는 빈 string으로 노출.
 	})
 
+	// E27 — metrics.Registry 사전 생성 (scanrun SSH 통합 Stage 4 — sshExec metrics
+	// 결선 위해 일찍 만듦). EventBus bridge 결선은 후속 line에서.
+	metricsReg := metrics.New()
+
 	// E6 Stage D.2 — scan Orchestrator 결선 (R6-1~R6-8) + E7 evidence 결선.
 	// scanrun SSH 통합 Stage 3 — KnownHostsManager로 robot 별 TOFU host key callback 결선.
 	// 부팅 실패 시 server start abort (data dir 권한·생성 실패 등은 운영자 즉시 수정 필요).
@@ -1075,7 +1079,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: KnownHostsManager: %w", err)
 	}
-	sshExec := sshpool.New(sshpool.Deps{Logger: logger})
+	// scanrun SSH 통합 Stage 4 — Executor에 metrics 주입 (exec_total/exec_duration emit).
+	sshExec := sshpool.New(sshpool.Deps{Logger: logger, Metrics: &sshExecMetricsAdapter{reg: metricsReg}})
 	scanRun := scanrun.New(scanrun.Deps{
 		Scan:    scanSvc,
 		Storage: store,
@@ -1219,9 +1224,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	})
 	webhookBridge.Start(ctx, bus)
 
-	// E27 — Prometheus metrics Registry + EventBus bridge 결선.
+	// E27 — Prometheus EventBus bridge 결선 (metricsReg는 위에서 생성됨).
 	// /metrics endpoint mount는 main.go --metrics-addr 옵트인 시점에 별 mux로.
-	metricsReg := metrics.New()
 	metricsBridge := metrics.NewBridge(logger, metricsReg)
 	metricsBridge.Start(ctx, bus)
 

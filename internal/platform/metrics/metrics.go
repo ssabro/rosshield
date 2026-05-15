@@ -56,6 +56,17 @@ type Registry struct {
 	HARole          prometheus.Gauge
 	HALeaderEpoch   prometheus.Gauge
 	HAFailoverTotal prometheus.Counter
+
+	// === SSH pool (scanrun SSH 통합 Stage 4) ===
+	//
+	// SSHExecTotal: SSH exec 호출 누적, label outcome=success|error|timeout.
+	// SSHExecDuration: SSH exec 응답 시간 histogram, label outcome.
+	// SSHDialTotal: dial 시도 누적, label result=ok|fail.
+	// SSHIdleConnsGauge: 현재 idle pool 안 conn 수 (모든 PoolKey 합).
+	SSHExecTotal      *prometheus.CounterVec
+	SSHExecDuration   *prometheus.HistogramVec
+	SSHDialTotal      *prometheus.CounterVec
+	SSHIdleConnsGauge prometheus.Gauge
 }
 
 // New는 새 Registry를 만듭니다.
@@ -148,6 +159,35 @@ func New() *Registry {
 		Help:      "Cumulative number of leader promotions on this instance (process scope, resets on restart).",
 	})
 
+	r.SSHExecTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "rosshield",
+		Subsystem: "ssh",
+		Name:      "exec_total",
+		Help:      "Cumulative SSH exec calls, partitioned by outcome (success|error|timeout).",
+	}, []string{"outcome"})
+
+	r.SSHExecDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: "rosshield",
+		Subsystem: "ssh",
+		Name:      "exec_duration_seconds",
+		Help:      "Duration of SSH exec calls, partitioned by outcome.",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"outcome"})
+
+	r.SSHDialTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "rosshield",
+		Subsystem: "ssh",
+		Name:      "dial_total",
+		Help:      "Cumulative SSH dial attempts, partitioned by result (ok|fail).",
+	}, []string{"result"})
+
+	r.SSHIdleConnsGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "rosshield",
+		Subsystem: "ssh",
+		Name:      "idle_conns",
+		Help:      "Current number of idle pooled SSH connections (sum across all PoolKeys).",
+	})
+
 	reg.MustRegister(
 		r.ScansStartedTotal,
 		r.ScansCompletedTotal,
@@ -160,6 +200,10 @@ func New() *Registry {
 		r.HARole,
 		r.HALeaderEpoch,
 		r.HAFailoverTotal,
+		r.SSHExecTotal,
+		r.SSHExecDuration,
+		r.SSHDialTotal,
+		r.SSHIdleConnsGauge,
 	)
 
 	return r

@@ -95,6 +95,19 @@ type Deps struct {
 	DialTimeout    time.Duration // 0 → DefaultDialTimeout
 	MaxStdoutBytes int           // 0 → DefaultMaxStdoutBytes
 	MaxStderrBytes int           // 0 → DefaultMaxStderrBytes
+
+	// Metrics는 nil 허용 — emit 없이 동작 (단위 테스트 격리).
+	// scanrun SSH 통합 Stage 4 — exec_total/exec_duration_seconds outcome 분류 emit.
+	Metrics ExecMetrics
+}
+
+// ExecMetrics는 Executor가 emit하는 metric 표면입니다 (P5 — metrics 패키지 직접 import 회피).
+//
+// bootstrap이 metrics.Registry → ExecMetrics 어댑터로 주입.
+type ExecMetrics interface {
+	// ObserveExec는 Exec 호출 outcome + 응답 시간을 기록합니다.
+	// outcome = "success" | "error" | "timeout".
+	ObserveExec(outcome string, duration time.Duration)
 }
 
 // 공통 에러.
@@ -205,7 +218,11 @@ func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeo
 		_ = client.Close()
 		// goroutine 누수 방지: session.Close 이후 done 채널 비움.
 		<-done
-		return e.assemble(stdout.Bytes(), stderr.Bytes(), 0, time.Since(start)), timeoutCtx.Err()
+		dur := time.Since(start)
+		if e.deps.Metrics != nil {
+			e.deps.Metrics.ObserveExec("timeout", dur)
+		}
+		return e.assemble(stdout.Bytes(), stderr.Bytes(), 0, dur), timeoutCtx.Err()
 	case runErr := <-done:
 		dur := time.Since(start)
 		exit := 0
@@ -220,7 +237,13 @@ func (e *executor) Exec(ctx context.Context, target Target, argv []string, timeo
 			// exit-status request 못 받음 — 명령은 끝났으나 status unclear. 0으로 간주 + 로그.
 			e.deps.Logger.Warn("sshpool: exit-status missing", "host", target.Host, "argv", argv)
 		default:
+			if e.deps.Metrics != nil {
+				e.deps.Metrics.ObserveExec("error", dur)
+			}
 			return e.assemble(stdout.Bytes(), stderr.Bytes(), 0, dur), fmt.Errorf("sshpool: run: %w", runErr)
+		}
+		if e.deps.Metrics != nil {
+			e.deps.Metrics.ObserveExec("success", dur)
 		}
 		return e.assemble(stdout.Bytes(), stderr.Bytes(), exit, dur), nil
 	}
