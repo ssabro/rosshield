@@ -32,6 +32,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	"github.com/ssabro/rosshield/internal/domain/insight"
+	"github.com/ssabro/rosshield/internal/domain/intake"
 	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
 	"github.com/ssabro/rosshield/internal/domain/robot"
@@ -75,6 +76,7 @@ type Deps struct {
 	Metrics           *metrics.Registry        // GET /api/v1/usage/stats — usage 통계 카운트 read (nil이면 503)
 	ReportSigner      signer.Signer            // POST /api/v1/reports/{id}/verify — public key 추출용 (R10-7 ReportSigner, nil이면 503)
 	ScopeResolver     ScopeResolver            // RBAC fleet 정밀화 Stage 2 — cross-resource fleet lookup (nil 허용; Stage 3에서 robot/scan/insight/report repo wrap 주입)
+	Intake            intake.Service           // Phase 6 후보 1 R1 Stage 2 — customer intake CRUD (nil이면 503)
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
