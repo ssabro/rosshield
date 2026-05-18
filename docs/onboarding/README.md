@@ -2,7 +2,7 @@
 
 > **대상**: rosshield Phase 5(E38) 첫 paying customer 또는 PoC 파트너.
 > **상태**: v0.2.0 release(`2026-05-08`) 기준. 자료는 best-effort, 정식 SLA는 첫 enterprise 계약과 함께 확정.
-> **제품 브랜드**: 미확정(D1 연기). 본 문서의 `<ProductName>` placeholder는 코드네임 `rosshield`로 대체해 읽으세요.
+> **제품 브랜드**: **Lodestar** 확정(2026-05-18, D-P7-1). 코드 네임스페이스는 `rosshield`(Go 모듈·CLI) 유지.
 
 이 디렉터리는 첫 customer가 **다운로드 → 첫 로그인 → 첫 스캔 → 첫 리포트**까지 30분 내 도달하도록 돕는 자료 모음입니다.
 

@@ -72,7 +72,7 @@ fg import nrobotcheck <path-to-nrobotcheck.db> \
 ```
 pack-tools convert \
     --input rawdata/ros2_jazzy_robot_benchmark.csv \
-    --vendor "<ProductName>" \
+    --vendor "Lodestar" \
     --output packs/ros2-jazzy-1.0.0
 ```
 

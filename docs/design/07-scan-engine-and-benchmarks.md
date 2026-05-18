@@ -81,7 +81,7 @@ metadata:
     os: ["ubuntu-24.04"]
     rosDistro: ["jazzy", "any"]
   license: "CC-BY-NC-ND-4.0"
-  publisher: "<ProductName>, Inc."
+  publisher: "Lodestar, Inc."
   publishedAt: "2026-03-01T00:00:00Z"
 signature:
   algorithm: "ed25519"

@@ -1,6 +1,6 @@
 # D1 — 제품 브랜드 후보 어휘 풀
 
-> 코드 네임스페이스 `rosshield`는 확정(2026-04-23, D2와 함께). 이 문서는 **사용자 대면 제품 브랜드(`<ProductName>`)** 확정을 위한 후보 어휘 풀과 1차 상표/도메인 점검 결과.
+> 코드 네임스페이스 `rosshield`는 확정(2026-04-23, D2와 함께). 이 문서는 **사용자 대면 제품 브랜드** 확정을 위한 후보 어휘 풀과 1차 상표/도메인 점검 결과. **최종 결정: Lodestar** (2026-05-18, D-P7-1).
 > 작성일: 2026-05-11. 상태: **D1 보류 중 (출원 잠금 D8-4 해제 후 확정 예정)**.
 
 ---
@@ -339,7 +339,7 @@
 
 - D8-4(출원 잠금) 해제 = 변리사 정밀 검색 + 출원 동시 시작 시점.
 - 출원 후 **6~8개월** 심사. 그 사이 GitHub public 전환 보류.
-- 출원 완료 = 우선권 확보 → public 전환 가능 → README/모든 docs `<ProductName>` placeholder를 일괄 치환.
+- 출원 완료 = 우선권 확보 → public 전환 가능 → README/모든 docs placeholder를 일괄 치환 (2026-05-18 Lodestar로 완료, Phase 7 R-BRAND Stage 1).
 
 ### 5.5 D1 확정 후 일괄 갱신 대상 파일 (참고)
 
@@ -349,6 +349,28 @@
 - `CLAUDE.md` (placeholder 표기 정리)
 - `SESSION_HANDOFF.md` (D1 확정 일자·근거 결정 로그)
 - 이 문서(`d1-brand-candidates.md`)에 "최종 결정: <Name>" append.
+
+### 5.6 최종 결정 — Lodestar (2026-05-18, D-P7-1)
+
+**확정 브랜드**: **Lodestar** (단독형)
+
+**확정 일자**: 2026-05-18
+
+**결정 식별자**: D-P7-1 (`docs/design/notes/phase7-public-transition-design.md` §3 R-BRAND + §11 D-P7-1)
+
+**근거 요약** (design doc §3.2):
+1. **등록 가능성 최우선** — Top 3 후보(Custos / Lodestar / Praxis) 중 보안·SW Class 9·42 dominant player 부재. LODESTAR Corp Class 42 = Dead/Cancelled(2010) 확인.
+2. **메타포 가치** — "신뢰의 기준점(길잡이 별)" 메타포가 외부 감사인 검증 가치(§13.5 1순위 결합 청구항)와 직접 공명.
+3. **한국어 표기 안정** — Custos("쿠스토스"/"커스토스")·Praxis("프락시스"/"프랙시스") 대비 "로드스타" 단일 표기.
+4. **합성형 의존도 낮음** — 단독 단어로 등록 가능성 높아 brand 단순성 유지.
+
+**트레이드오프 수용**:
+- 차량 모델 연상(KG 쌍용 Lodestar) — Class 12 무관이라 출원 장애 X, 일반 사용자 첫 인상에서 차량 노이즈 minor.
+- `.com`은 점유 — `.io` 또는 `.security` 또는 `.dev` 중 1개 확보 권장(D8 출원 완료 후).
+
+**코드 네임스페이스 보존**: `rosshield` 유지. Go 모듈(`github.com/ssabro/rosshield`)·내부 패키지·CLI 명령(`rosshield`, `rosshield-server`, `rosshield-audit-verify`, `pack-tools`)·YAML apiVersion(`rosshield.io/v1`) 모두 변경 0. 사용자 대면 제품명 Lodestar / 코드네임 rosshield 양립.
+
+**후속**: R-BRAND Stage 1 — 이전 commit `3e3d892`(사용자 대면 6 파일) + 본 commit(docs/design + docs/onboarding 잔여 + web i18n)으로 cover 완료.
 
 ---
 

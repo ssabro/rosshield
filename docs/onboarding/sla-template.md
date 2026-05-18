@@ -1,6 +1,6 @@
-# SLA 합의 Template — rosshield <ProductName>
+# SLA 합의 Template — rosshield Lodestar
 
-> **목적**: rosshield(`<ProductName>`) 운영자와 customer 사이의 서비스 수준(SLA) 합의용 markdown template입니다. customer가 본 파일을 fork·복사해 placeholder를 채우고 양측 서명으로 합의를 확정합니다.
+> **목적**: rosshield(`Lodestar`) 운영자와 customer 사이의 서비스 수준(SLA) 합의용 markdown template입니다. customer가 본 파일을 fork·복사해 placeholder를 채우고 양측 서명으로 합의를 확정합니다.
 > **상태**: paying customer 0인 현 단계의 **draft**입니다. 모든 수치는 보수적 default이며 첫 enterprise 계약 체결 시점에 정식 SLA로 승격됩니다.
 > **참조**:
 > - `docs/onboarding/README.md` — onboarding 전체 흐름 + Phase 5 best-effort 표.

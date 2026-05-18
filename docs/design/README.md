@@ -1,4 +1,4 @@
-# (가칭) `<ProductName>` — 차세대 ROS2 플릿 보안 감사 플랫폼 설계서
+# Lodestar — 차세대 ROS2 플릿 보안 감사 플랫폼 설계서
 
 > **상태**: Draft v0.1
 > **작성일**: 2026-04-23
@@ -19,7 +19,7 @@
 
 동시에 **기존 자산을 최대한 차용**합니다 — 도메인 모델, 벤치마크 DB, 평가 로직, UI 컴포넌트 라이브러리, 평가 알고리즘, 컴플라이언스 매핑 데이터 등. 자세한 재활용 범위는 `11-migration-and-non-goals.md` 참조.
 
-> 참고: 제품 브랜드는 미확정(D1 연기). 모든 문서는 `<ProductName>` placeholder를 사용합니다. 코드 네임스페이스는 `rosshield`로 확정(2026-04-23) — Go 모듈·내부 패키지·설정 경로에서 사용. 브랜드 확정은 Phase 1 후반으로 연기. 초기 가칭 "FleetGuard"는 Cummins의 Fleetguard(엔진 필터 브랜드) 및 Attestor.ai 등과 상표 충돌 가능성이 있어 폐기됨.
+> 참고: 제품 브랜드는 **Lodestar**로 확정(2026-05-18, D-P7-1). 사용자 대면 문자열은 `Lodestar`를 사용합니다. 코드 네임스페이스는 `rosshield`로 확정(2026-04-23) — Go 모듈·내부 패키지·설정 경로에서 사용. 초기 가칭 "FleetGuard"는 Cummins의 Fleetguard(엔진 필터 브랜드) 및 Attestor.ai 등과 상표 충돌 가능성이 있어 폐기됨.
 
 ---
 

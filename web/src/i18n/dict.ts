@@ -9,7 +9,7 @@
 // dict.test.ts가 키 동기 강제(누락 시 CI fail).
 
 export const ko = {
-  'app.brand': 'rosshield',
+  'app.brand': 'Lodestar',
   'app.brand.subtitle': 'Security Console',
   'app.version': 'v0.1.0 · Phase 2',
 
@@ -874,7 +874,7 @@ export const ko = {
 } as const
 
 export const en: Record<keyof typeof ko, string> = {
-  'app.brand': 'rosshield',
+  'app.brand': 'Lodestar',
   'app.brand.subtitle': 'Security Console',
   'app.version': 'v0.1.0 · Phase 2',
 

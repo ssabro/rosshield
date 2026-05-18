@@ -171,7 +171,7 @@
 #### 스코프
 - 상표 검색 (KIPO + USPTO + EUIPO + WIPO Madrid) — 메모리 [`feedback_naming_verification.md`](memory) 따라 WebSearch 필수
 - 후보 3개 → 도메인 가용성 + 발음·기억성 평가
-- 결정 후 `<ProductName>` placeholder 일괄 치환 (코드 네임스페이스 `rosshield`는 그대로)
+- 결정 후 placeholder 일괄 치환 (코드 네임스페이스 `rosshield`는 그대로) — 2026-05-18 Lodestar로 R-BRAND Stage 1에서 완료
 - README + LICENSE + 모든 docs 갱신
 - GitHub repo private → public 전환
 
