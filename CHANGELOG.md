@@ -6,7 +6,16 @@
 
 ## [Unreleased]
 
-> **상태**: Phase 7(공개 출시 + 청구권 본체 + 라이선스 양분) 진입 중. 출원 완료 가정 trigger(사용자 결정, 2026-05-18)로 R-BRAND·R-LICENSE·R-D8·R-PUBLIC 4 epic unblock. R-D8 잔여 3 청구권(B-1·C-1·D-3) 진척 중.
+### Added
+- (placeholder) 차기 release 항목 — Phase 7 R-PUBLIC(사용자 GitHub Settings 권한 대기) / ROS2 pack Round 2 C4·C5 carryover (paying customer trigger 권장)
+
+---
+
+## [0.4.0] — 2026-05-18
+
+> **요약**: Phase 7 코드 트랙 3/4 epic 마감(R-BRAND · R-LICENSE · R-D8 4/4 청구권 완전 마감) + ROS2 baseline pack Round 1 MVP 6/8 카테고리 cover. v0.3.0 이후 20 commit. 회귀 0건. 상세는 [docs/releases/v0.4.0.md](docs/releases/v0.4.0.md).
+>
+> **기준 commit**: `01e41fc` (main)
 
 ### Added
 
@@ -42,7 +51,7 @@
 
 ---
 
-## [0.3.0] — 2026-05-18 (release candidate)
+## [0.3.0] — 2026-05-18
 
 > **요약**: Phase 5(Enterprise & Appliance) 5 epic 100% 마감 + Phase 6 후보 1(첫 paying customer onboarding 보강) 마감. v0.2.0 이후 90 commit. 회귀 0건. 상세는 [docs/releases/v0.3.0.md](docs/releases/v0.3.0.md).
 >
