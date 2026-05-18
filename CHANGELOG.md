@@ -212,5 +212,5 @@
 - **2026-04-23 — D3**: 데스크톱 셸 `Tauri 2.x` 확정 (Electron fallback 보류).
 - **2026-04-23 — D5**: 라이선스 `Open-core` — 코어 Apache-2.0 + 엔터프라이즈 closed.
 - **2026-04-23 — D6**: 리포 호스팅 `GitHub private` → Phase 1 exit 후 public 전환.
-- **2026-04-23 — D1 부분 확정**: 코드네임 `rosshield` 채택(Google 검색으로 충돌 없음 확인). 제품 브랜드는 `<ProductName>` placeholder로 유지, Phase 1 후반 최종 확정. 초기 가칭 "FleetGuard"는 Cummins·Attestor.ai·TrustArc 등과 상표 충돌로 폐기.
+- **2026-04-23 — D1 부분 확정**: 코드네임 `rosshield` 채택(Google 검색으로 충돌 없음 확인). 제품 브랜드는 placeholder로 유지 → 2026-05-18 D-P7-1에서 **Lodestar**로 최종 확정. 초기 가칭 "FleetGuard"는 Cummins·Attestor.ai·TrustArc 등과 상표 충돌로 폐기.
 - **2026-04-23 — D4 연기**: 어플라이언스 OS 기본 가정 `Ubuntu Core 24`, Phase 3 exit 재확정.

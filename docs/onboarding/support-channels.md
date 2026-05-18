@@ -1,6 +1,6 @@
-# 지원 채널 정책 — rosshield <ProductName>
+# 지원 채널 정책 — rosshield Lodestar
 
-> **대상**: rosshield(`<ProductName>`) customer(community / pro / enterprise edition)의 사고·문의 보고 채널 가이드입니다.
+> **대상**: rosshield(`Lodestar`) customer(community / pro / enterprise edition)의 사고·문의 보고 채널 가이드입니다.
 > **상태**: paying customer 0인 현 단계의 **draft**입니다. 모든 채널 식별자(이메일·Slack URL·휴대폰)는 D1(브랜드·도메인 확정) 트랙 마감 후 정식 값으로 교체합니다. 본 epic(R3) 시점에는 placeholder를 유지하고 `support@<rosshield-domain-TBD>` 형식으로 표기합니다.
 > **참조**:
 > - `docs/onboarding/README.md` — onboarding 전체 흐름 + Phase 5 best-effort 표 + 연락처 TBD.

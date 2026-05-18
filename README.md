@@ -1,4 +1,4 @@
-# `<ProductName>` — 코드네임 rosshield
+# Lodestar — 코드네임 rosshield
 
 > **상태**: **Phase 5 진행 중** — Phase 0~4 마감, enterprise build tag scaffold 완료, 첫 customer 진입 자료 준비.
 > **산출**: Go server + TypeScript web UI + CLI 3종(`rosshield`, `rosshield-server`, `rosshield-audit-verify`) + pack-tools converter. v0.2.0 release(2026-05-08, 47 assets cosign keyless 서명).
@@ -7,11 +7,11 @@
 
 ROS2 로봇 플릿 보안 감사 플랫폼. 감사인이 받아들이는 결정론적 증거와 서명된 리포트를 생성하는 상용 B2B 제품.
 
-> **제품 브랜드**는 미확정(D1 연기). 문서·UI 등 사용자 대면 문자열은 `<ProductName>` placeholder를 씁니다. **코드 네임스페이스는 `rosshield`로 확정**(2026-04-23) — Go 모듈·내부 패키지·설정 경로에서 사용. 결정 추적은 [`SESSION_HANDOFF.md`](./SESSION_HANDOFF.md).
+> **제품 브랜드**는 `Lodestar`로 확정(2026-05-18, D-P7-1). 문서·UI 등 사용자 대면 문자열은 `Lodestar`를 사용합니다. **코드 네임스페이스는 `rosshield`로 확정**(2026-04-23) — Go 모듈·내부 패키지·설정 경로에서 사용. 결정 추적은 [`SESSION_HANDOFF.md`](./SESSION_HANDOFF.md).
 
 ## 한 줄 포지셔닝
 
-> **CAI가 로봇을 침투한다면, `<ProductName>`은 플릿이 그 공격에 대비되어 있는지 매일 증명한다.**
+> **CAI가 로봇을 침투한다면, `Lodestar`는 플릿이 그 공격에 대비되어 있는지 매일 증명한다.**
 
 ## 지금 무엇을 볼 수 있는가
 
