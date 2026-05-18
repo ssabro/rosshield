@@ -1,0 +1,26 @@
+# selftest — ros2.C1.sros2_security_enable
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C1.sros2_security_enable
+spec:
+  cases:
+    - name: PASS — Enforce 모드 활성
+      input:
+        stdout: '** PASS ** ROS_SECURITY_ENABLE=true ROS_SECURITY_STRATEGY=Enforce'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — ROS_SECURITY_ENABLE unset
+      input:
+        stdout: '** FAIL ** ROS_SECURITY_ENABLE=unset ROS_SECURITY_STRATEGY=unset (want true/Enforce)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — Permissive 모드 (Enforce 아님)
+      input:
+        stdout: '** FAIL ** ROS_SECURITY_ENABLE=true ROS_SECURITY_STRATEGY=Permissive (want true/Enforce)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

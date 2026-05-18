@@ -1,0 +1,43 @@
+# C6 — ros2 CLI binary가 PATH에 존재 (모든 ROS2 check의 preflight)
+#
+# design doc §3.2 preflight.requiredBinaries=["ros2"] — 본 check는 preflight를 일반
+# check로 표현해 결과 evidence에 남기는 역할(R1 Stage 1에서 schema 확장 없이 cover).
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C6.ros2_cli_available
+  title: ros2 CLI binary가 PATH에 존재
+  description: |-
+    ros2 CLI는 노드 list·토픽 inspect·security 관리 등 모든 ROS2 운영 진단의 entry
+    point입니다. PATH에 없으면 본 pack의 다른 check가 모두 INDETERMINATE 처리되어
+    실효 audit이 불가능합니다.
+
+    본 check는 /opt/ros/jazzy/setup.bash source 시도 후 ros2 binary가 PATH에 있는지
+    확인합니다.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    if command -v ros2 >/dev/null 2>&1; then
+      ROS2_PATH=$(command -v ros2);
+      echo "** PASS ** ros2 CLI 발견: $ROS2_PATH";
+    else
+      echo "** FAIL ** ros2 CLI 미발견 (ROS2 미설치 또는 setup.bash source 누락)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    ros2 CLI 부재는 두 가지 의미: (1) ROS2 미설치 — robot이 ROS2 fleet의
+    구성원이 아니므로 본 pack 대상 외, (2) setup.bash source 누락 — 운영 환경
+    초기화 스크립트 누락으로 노드가 정상 시작 안 됨. 어느 경우든 audit 결과
+    신뢰도 0 → 운영자 즉시 진단 필요.
+  fixGuidance: |-
+    1. ROS2 미설치 시 Jazzy 설치:
+         sudo apt update && sudo apt install ros-jazzy-ros-base
+    2. /etc/profile.d/ros2.sh 작성:
+         #!/bin/bash
+         source /opt/ros/jazzy/setup.bash
+    3. systemd unit이라면 EnvironmentFile= 또는 ExecStart 전에 source 실행.
+    4. 재로그인 후 command -v ros2 로 확인.

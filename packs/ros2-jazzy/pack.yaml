@@ -1,0 +1,18 @@
+# ros2-jazzy — ROS2 Jazzy LTS Baseline Security Pack v0.1.0
+#
+# design doc: docs/design/notes/ros2-baseline-pack-design.md §3.2 + §6 (R1) + §7.1.
+# D-ROS2-1 옵션 B Round 1 MVP — Stage 1 진입(C1+C6 첫 진척).
+# D-ROS2-2 권장 default — Jazzy LTS 단독(humble pack은 R3+).
+#
+# 본 pack은 솔루션 핵심 차별화 영역(ROS2 robot 보안 감사) 첫 코드 산출물.
+# 기존 packs/ros2-jazzy-baseline/(nrobotcheck 자산 자동 변환, 329 checks)과
+# 별도 — 본 pack은 SROS2 spec + DDS Security Spec v1.1 기반 수동 작성.
+apiVersion: rosshield.io/v1
+kind: Pack
+metadata:
+  name: ros2-jazzy
+  version: 0.1.0
+  vendor: rosshield
+  description: ROS2 Jazzy LTS Baseline Security Pack (Round 1 Stage 1 — C1·C6)
+spec:
+  schemaVersion: 1

@@ -1,0 +1,50 @@
+# C6 — EOL distro 사용 차단 (iron·foxy·galactic·dashing·eloquent)
+#
+# design doc §2 C6 — distro.not_eol.
+# EOL distro는 보안 patch 미발급 — 알려진 CVE 미해결 상태로 운영 위험.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C6.distro_not_eol
+  title: EOL ROS2 distro 사용 금지
+  description: |-
+    EOL(End-Of-Life) distro는 보안 patch 발급이 중단되어 known CVE가 미해결로
+    잔존합니다. 본 check는 다음 EOL distro 사용을 차단합니다:
+
+      - iron      (2023-05 release, 2025-11 EOL)
+      - foxy      (2020-06 release, 2023-05 EOL)
+      - galactic  (2021-05 release, 2022-12 EOL)
+      - dashing   (2019-05 release, 2021-05 EOL)
+      - eloquent  (2019-11 release, 2020-11 EOL)
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    DISTRO="${ROS_DISTRO:-unset}";
+    case "$DISTRO" in
+      iron|foxy|galactic|dashing|eloquent)
+        echo "** FAIL ** ROS_DISTRO=$DISTRO (EOL — 보안 patch 미발급)";
+        ;;
+      unset)
+        echo "** PASS ** ROS_DISTRO 미설정 (EOL distro 검출 0)";
+        ;;
+      *)
+        echo "** PASS ** ROS_DISTRO=$DISTRO (EOL 아님)";
+        ;;
+    esac'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    EOL distro에서 발견된 CVE는 upstream patch 없이 customer 자체 해결만 가능 —
+    enterprise 환경에서 수용 불가. 본 check가 FAIL이면 즉시 LTS(jazzy/humble)로
+    migration 필요.
+  fixGuidance: |-
+    1. apt list --installed 2>/dev/null | grep ros-<distro>- 로 설치된 패키지 확인.
+    2. EOL distro 패키지 제거:
+         sudo apt remove 'ros-iron-*' 'ros-foxy-*' (예시 — 검출된 distro 이름)
+    3. Jazzy 설치 (D-ROS2-2 default):
+         sudo apt update && sudo apt install ros-jazzy-desktop
+    4. workspace 재빌드 + /etc/profile.d/ros2.sh 갱신.
+    5. ros2 --version 으로 확인.

@@ -1,0 +1,48 @@
+# C6 — ROS_DISTRO가 LTS distro인지 확인 (jazzy 또는 humble)
+#
+# design doc §2 C6 + D-ROS2-2 (Jazzy 단독 default, Humble은 LTS이므로 허용).
+# 본 pack의 metadata.name=ros2-jazzy이지만 LTS 일반 baseline은 humble도 cover.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C6.distro_is_lts
+  title: ROS_DISTRO가 LTS 버전(jazzy 또는 humble)
+  description: |-
+    ROS2 LTS distro는 5년 support(보안 patch 포함). non-LTS(rolling·iron)는
+    1~2년 cycle로 EOL — 보안 patch 미반영 위험.
+
+    LTS 목록(2026-05 기준):
+      - jazzy   (2024-05 release, EOL 2029-05) — 현재 권장
+      - humble  (2022-05 release, EOL 2027-05) — 안정 운영 사용
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    DISTRO="${ROS_DISTRO:-unset}";
+    case "$DISTRO" in
+      jazzy|humble)
+        echo "** PASS ** ROS_DISTRO=$DISTRO (LTS)";
+        ;;
+      unset)
+        echo "** FAIL ** ROS_DISTRO 미설정 (ROS2 환경 source 누락 가능)";
+        ;;
+      *)
+        echo "** FAIL ** ROS_DISTRO=$DISTRO (LTS 아님 — jazzy/humble만 허용)";
+        ;;
+    esac'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    LTS distro는 보안 patch가 지속 release되어 CVE 대응 가능. non-LTS distro는
+    EOL 후 patch 미반영 — 알려진 취약점이 누적 노출. enterprise 환경 baseline은
+    LTS만 허용하는 것이 표준 정책.
+  fixGuidance: |-
+    1. 현 distro 확인: env | grep ROS_DISTRO 또는 ros2 --version.
+    2. non-LTS 사용 중이면 jazzy로 migration:
+         sudo apt update && sudo apt install ros-jazzy-desktop
+    3. 기존 workspace 재빌드:
+         cd ~/ros2_ws && rm -rf build install log && colcon build
+    4. /etc/profile.d/ros2.sh의 source 경로를 /opt/ros/jazzy/setup.bash로 변경.
+    5. 모든 노드 재시작.
