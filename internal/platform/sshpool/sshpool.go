@@ -316,16 +316,6 @@ func ExecOnClient(ctx context.Context, client *ssh.Client, opts ExecOnClientOpts
 	}
 }
 
-func (e *executor) assemble(stdout, stderr []byte, exit int, dur time.Duration) ExecResult {
-	res := ExecResult{ExitCode: exit, Duration: dur}
-	res.Stdout, res.Truncated = trim(stdout, e.deps.MaxStdoutBytes)
-	if stderrTrimmed, t2 := trim(stderr, e.deps.MaxStderrBytes); true {
-		res.Stderr = stderrTrimmed
-		res.Truncated = res.Truncated || t2
-	}
-	return res
-}
-
 func trim(b []byte, max int) ([]byte, bool) {
 	if len(b) <= max {
 		return b, false

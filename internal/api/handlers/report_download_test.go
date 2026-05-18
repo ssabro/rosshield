@@ -71,7 +71,7 @@ func (noopStorage) Bootstrap(ctx context.Context, fn func(context.Context, stora
 	return fn(ctx, nil) //nolint:nilnil
 }
 func (noopStorage) Migrate(ctx context.Context) error { return nil }
-func (noopStorage) Close() error                       { return nil }
+func (noopStorage) Close() error                      { return nil }
 
 func TestDownloadReport_Returns200WithPDF(t *testing.T) {
 	t.Parallel()
@@ -298,7 +298,7 @@ func TestVerifyReport_Returns401WithoutTenantContext(t *testing.T) {
 type fakeSigner struct{}
 
 func (fakeSigner) Sign([]byte) ([]byte, string, error) { return nil, "", nil }
-func (fakeSigner) Verify([]byte, []byte) error          { return nil }
+func (fakeSigner) Verify([]byte, []byte) error         { return nil }
 func (fakeSigner) PublicKey() []byte {
 	// 32B Ed25519 PublicKey size — VerifyReport 흐름에서 BuildBundle에 전달.
 	return make([]byte, 32)

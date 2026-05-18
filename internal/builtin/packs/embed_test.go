@@ -105,9 +105,9 @@ func TestFilenameForPackKey(t *testing.T) {
 	}{
 		{packKey: "rosshield-cis-ubuntu-2404-1.0.0", wantSubstr: "cis-ubuntu-2404", wantErr: false},
 		{packKey: "rosshield-ros2-jazzy-baseline-1.1.0", wantSubstr: "ros2-jazzy-baseline", wantErr: false},
-		{packKey: "tenant-custom-pack-1.0", wantErr: true},               // non-rosshield prefix
-		{packKey: "rosshield-nonexistent-pack-1.0.0", wantErr: true},     // archive missing
-		{packKey: "rosshield", wantErr: true},                            // no version
+		{packKey: "tenant-custom-pack-1.0", wantErr: true},           // non-rosshield prefix
+		{packKey: "rosshield-nonexistent-pack-1.0.0", wantErr: true}, // archive missing
+		{packKey: "rosshield", wantErr: true},                        // no version
 	}
 	for _, tc := range cases {
 		t.Run(tc.packKey, func(t *testing.T) {

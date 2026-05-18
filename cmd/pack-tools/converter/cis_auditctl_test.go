@@ -337,7 +337,7 @@ func TestSynthesizeAuditctlMatch(t *testing.T) {
 				"UID_MIN=${UID_MIN:-1000}",
 				"need_disk=(",
 				"need_run=(",
-				`-w /etc/sudoers -p wa -F key=scope`,    // -k → -F key= normalize
+				`-w /etc/sudoers -p wa -F key=scope`, // -k → -F key= normalize
 				`-w /etc/sudoers.d -p wa -F key=scope`,
 				"normalize_fn() {",
 				"grep -qxF --",

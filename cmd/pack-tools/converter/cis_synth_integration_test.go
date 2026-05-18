@@ -45,7 +45,9 @@ func resolveBash() string {
 // 같은 shell 안에서 함수/변수 정의 후 audit 명령 substitution이 그것들을 활용.
 //
 // e.g., mockEnv = `sshd() { echo "permitrootlogin no"; }`
-//       auditCommand = `bash -c 'out="$(sshd -T | grep ...)"; ...'`
+//
+//	auditCommand = `bash -c 'out="$(sshd -T | grep ...)"; ...'`
+//
 // 이 둘을 한 shell session에 결선하려면 outer shell에서 함수 export + bash -c 호출 또는
 // audit body를 직접 추출해 실행. 후자가 더 명료.
 func runSynthesizedAudit(t *testing.T, bashPath, mockEnv, auditCommand string) string {
@@ -67,7 +69,7 @@ func runSynthesizedAudit(t *testing.T, bashPath, mockEnv, auditCommand string) s
 }
 
 // stripBashCWrap는 `bash -c '<body>'` 텍스트에서 single-quoted body를 unescape후 반환.
-// CIS converter wrapBash는 본문 안의 single quote를 `'\''` 시퀀스로 escape. 역변환.
+// CIS converter wrapBash는 본문 안의 single quote를 `'\”` 시퀀스로 escape. 역변환.
 func stripBashCWrap(s string) (string, bool) {
 	const prefix = "bash -c '"
 	if !strings.HasPrefix(s, prefix) {

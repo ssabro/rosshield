@@ -13,8 +13,8 @@ import (
 //   - rp == nil → HA 비활성, 모든 요청 통과 (legacy 단일 인스턴스)
 //   - method ∈ {GET, HEAD, OPTIONS} → read 요청, follower도 통과
 //   - method ∈ {POST, PUT, PATCH, DELETE}:
-//       - leader → 통과
-//       - follower → 503 Service Unavailable + Retry-After: 5 + body NOT_LEADER
+//   - leader → 통과
+//   - follower → 503 Service Unavailable + Retry-After: 5 + body NOT_LEADER
 //
 // LB(nginx upstream proxy_next_upstream http_503)가 follower 응답을 보고 다음
 // upstream(leader)으로 자동 retry. 클라이언트는 투명하게 leader로 라우팅됨.

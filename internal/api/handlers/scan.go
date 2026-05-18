@@ -36,24 +36,24 @@ type startScanRequest struct {
 // 운영자가 "0건이라 안전"을 list 화면에서 직접 식별 가능(D26 §5.5). scanrun terminal transition
 // 직후 atomic 갱신(§5.4)된 컬럼 직접 SELECT — list polling 비용 0.
 type scanSessionResponse struct {
-	SessionID               string  `json:"sessionId"`
-	TenantID                string  `json:"tenantId"`
-	FleetID                 string  `json:"fleetId"`
-	PackID                  string  `json:"packId"`
-	Trigger                 string  `json:"trigger"`
-	Status                  string  `json:"status"`
-	Total                   int     `json:"total"`
-	Completed               int     `json:"completed"`
-	Failed                  int     `json:"failed"`
-	SeverityCriticalFailed  int     `json:"severityCriticalFailed"`
-	SeverityHighFailed      int     `json:"severityHighFailed"`
-	SeverityMediumFailed    int     `json:"severityMediumFailed"`
-	SeverityLowFailed       int     `json:"severityLowFailed"`
-	FailureReason           string  `json:"failureReason,omitempty"`
-	CreatedAt               string  `json:"createdAt,omitempty"`
-	UpdatedAt               string  `json:"updatedAt,omitempty"`
-	StartedAt               *string `json:"startedAt,omitempty"`
-	CompletedAt             *string `json:"completedAt,omitempty"`
+	SessionID              string  `json:"sessionId"`
+	TenantID               string  `json:"tenantId"`
+	FleetID                string  `json:"fleetId"`
+	PackID                 string  `json:"packId"`
+	Trigger                string  `json:"trigger"`
+	Status                 string  `json:"status"`
+	Total                  int     `json:"total"`
+	Completed              int     `json:"completed"`
+	Failed                 int     `json:"failed"`
+	SeverityCriticalFailed int     `json:"severityCriticalFailed"`
+	SeverityHighFailed     int     `json:"severityHighFailed"`
+	SeverityMediumFailed   int     `json:"severityMediumFailed"`
+	SeverityLowFailed      int     `json:"severityLowFailed"`
+	FailureReason          string  `json:"failureReason,omitempty"`
+	CreatedAt              string  `json:"createdAt,omitempty"`
+	UpdatedAt              string  `json:"updatedAt,omitempty"`
+	StartedAt              *string `json:"startedAt,omitempty"`
+	CompletedAt            *string `json:"completedAt,omitempty"`
 }
 
 // toScanSessionResponse는 도메인 ScanSession을 응답 DTO로 변환합니다.

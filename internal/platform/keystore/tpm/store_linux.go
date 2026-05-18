@@ -76,6 +76,8 @@ func New(opts Options) (*Store, error) {
 
 // newWithOpener는 test 전용 — simulator 같은 in-process TPM을 주입합니다.
 // store_linux_test.go가 호출.
+//
+//nolint:unused // test seam — store_linux_test.go (build tag tpm_integration)
 func newWithOpener(opts Options, opener tpmOpener) (*Store, error) {
 	if opts.SealingDir == "" {
 		return nil, ErrSealingDirRequired

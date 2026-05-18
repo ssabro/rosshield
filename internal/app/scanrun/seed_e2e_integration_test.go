@@ -123,11 +123,11 @@ func parseCheckYAML(t *testing.T, content []byte, packCheckID string) scan.Check
 // TestE2EWithSeededBuiltinPack — built-in pack 자산 → InstallPack → fakesshd → orchestrator → DB.
 //
 // 시나리오:
-//   1. builtinpacks.Builtins() 첫 pack을 호출자 tenant에 InstallPack
-//   2. archive에서 checks/<first>.yaml 한 개 추출 + scan.CheckDef로 변환
-//   3. fakesshd 1개(모든 cmd에 "** PASS **" 응답) + robot 1개 시드
-//   4. scanrun.Orchestrator.Run 한 cycle
-//   5. session=completed, 결과 1개 PASS, audit started+completed 2건 검증
+//  1. builtinpacks.Builtins() 첫 pack을 호출자 tenant에 InstallPack
+//  2. archive에서 checks/<first>.yaml 한 개 추출 + scan.CheckDef로 변환
+//  3. fakesshd 1개(모든 cmd에 "** PASS **" 응답) + robot 1개 시드
+//  4. scanrun.Orchestrator.Run 한 cycle
+//  5. session=completed, 결과 1개 PASS, audit started+completed 2건 검증
 func TestE2EWithSeededBuiltinPack(t *testing.T) {
 	verifyNoLeak(t)
 
