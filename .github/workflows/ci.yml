@@ -67,7 +67,9 @@ jobs:
         run: go build ./...
 
       - name: Test
-        run: go test -race -count=1 ./...
+        # -timeout=20m — default 10m은 cmd/rosshield-server (race + 19 test 파일 +
+        # 88 t.Parallel + sshpool/scanrun e2e + intake_e2e_test 492줄 결합)가 일관 초과.
+        run: go test -race -count=1 -timeout=20m ./...
 
       - name: Lint
         uses: golangci/golangci-lint-action@v8
@@ -142,7 +144,8 @@ jobs:
         run: go build -tags rosshield_enterprise ./...
 
       - name: Test (enterprise)
-        run: go test -tags rosshield_enterprise -race -count=1 ./...
+        # -timeout=20m — go job과 동일 사유 (cmd/rosshield-server 600s 일관 초과).
+        run: go test -tags rosshield_enterprise -race -count=1 -timeout=20m ./...
 
   pg-integration:
     name: PG integration (testcontainers)
