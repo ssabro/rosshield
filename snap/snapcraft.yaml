@@ -111,8 +111,10 @@ hooks:
   post-refresh:
     plugs:
       - network    # curl localhost healthz
-  configure:
-    plugs: []      # snapctl get/set만 — 외부 자원 접근 X
+  # configure hook 자체는 snap/hooks/configure script로 자동 인식 (snapd가
+  # hooks/ 디렉터리 스캔). snapcraft 8.x는 hooks:configure:plugs: [] 빈 list
+  # 거부 + configure: empty block도 invalid이므로 hooks section에서 완전 생략.
+  # plug가 필요할 경우 추가 명시.
 
 # 향후 stage(E34 후속·E37 D1):
 #   - configure hook 확장 (snap set rosshield addr=... storage=... 등)
