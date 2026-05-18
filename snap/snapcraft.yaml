@@ -91,7 +91,17 @@ parts:
         cd ..
       fi
 
-      # 2) Go 바이너리 3종 빌드 (server·CLI·audit-verify).
+      # 2) Built-in pack archive 빌드 (E12) — embed.go //go:embed _archives/*.tar.gz
+      # 패턴이 fresh clone에서 'no matching files found'로 fail. release-pipeline.yml
+      # + ci.yml 동일 패턴 적용. snap build는 release 시점이므로 fallback keygen 충분
+      # (dev pubkey embed 상수와 mismatch 시 binary 사용자가 customer 환경에서 별 trust).
+      echo "==> Building pack-tools + archive (E12)"
+      go build -o bin/pack-tools ./cmd/pack-tools
+      mkdir -p scripts
+      ./bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex -force
+      make pack-archive
+
+      # 3) Go 바이너리 3종 빌드 (server·CLI·audit-verify).
       VERSION="$(craftctl get version)"
       COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
       BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
