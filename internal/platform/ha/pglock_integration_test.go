@@ -426,14 +426,22 @@ func TestEpochMonotonicAcrossAcquisitions(t *testing.T) {
 			roundCancel()
 			t.Fatalf("round %d expected to acquire", i)
 		}
-		t.Logf("round %d: acquired epoch=%d, Release", i, epoch)
 		gotEpochs = append(gotEpochs, epoch)
-		if err := lock.Release(roundCtx); err != nil {
+		// 마지막 round는 Release 생략 — leader_epoch assertion이 current=1 row 1개를
+		// 요구 (마지막 acquire 후 release하면 모두 current=0이 되어 검증 실패).
+		// 마지막 lock은 t.Cleanup pool.Close가 connection drop으로 advisory lock 자동 해제.
+		if i < rounds-1 {
+			t.Logf("round %d: acquired epoch=%d, Release", i, epoch)
+			if err := lock.Release(roundCtx); err != nil {
+				roundCancel()
+				t.Fatalf("round %d Release: %v", i, err)
+			}
 			roundCancel()
-			t.Fatalf("round %d Release: %v", i, err)
+			t.Logf("round %d: released", i)
+		} else {
+			t.Logf("round %d: acquired epoch=%d (final, Release 생략)", i, epoch)
+			roundCancel()
 		}
-		roundCancel()
-		t.Logf("round %d: released", i)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
