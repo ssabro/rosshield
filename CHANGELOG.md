@@ -11,6 +11,17 @@
 
 ---
 
+## [0.4.3] — 2026-05-19 (patch)
+
+> **요약**: v0.4.2 Snap Build fail fix — snap override-build에 pack-archive step 추가 (embed.go `_archives/*.tar.gz` 부재). 자체 코드 회귀 0. 상세는 [docs/releases/v0.4.3.md](docs/releases/v0.4.3.md).
+>
+> **기준 commit**: `7fbde90` (main)
+
+### Fixed
+- `fix(snap)` override-build에 pack-archive step 추가 (`7fbde90`) — embed.go fresh clone 부재 fix, ci.yml/release-pipeline.yml 패턴 일관.
+
+---
+
 ## [0.4.2] — 2026-05-19 (patch)
 
 > **요약**: v0.4.1 Snap Build fail fix — snapcraft 8.x `hooks.configure.plugs: []` 빈 list 거부. 자체 코드 회귀 0, v0.4.1 ↔ v0.4.2 차이는 snap config 1줄. 상세는 [docs/releases/v0.4.2.md](docs/releases/v0.4.2.md).
