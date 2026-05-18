@@ -1,8 +1,157 @@
 # Changelog
 
-이 프로젝트의 주요 변경 사항을 기록합니다. 포맷은 [Keep a Changelog](https://keepachangelog.com/)를 따르고, 버저닝은 [Semantic Versioning](https://semver.org/)을 따릅니다.
+이 프로젝트의 주요 변경 사항을 기록합니다. 포맷은 [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/)을 따르고, 버저닝은 [Semantic Versioning](https://semver.org/)을 따릅니다.
+
+> **참고**: 본 changelog는 v0.3.0(2026-05-18 release candidate) 이후 항목이 최상단에 정리되어 있습니다. Phase 0~1 초기 부트스트랩 항목(2026-04-23 이하)은 역사 기록 보존을 위해 하단의 "Pre-v0.2.0 historical entries" 섹션으로 이동했습니다.
 
 ## [Unreleased]
+
+### Added
+- (placeholder) 차기 release 항목
+
+---
+
+## [0.3.0] — 2026-05-18 (release candidate)
+
+> **요약**: Phase 5(Enterprise & Appliance) 5 epic 100% 마감 + Phase 6 후보 1(첫 paying customer onboarding 보강) 마감. v0.2.0 이후 90 commit. 회귀 0건. 상세는 [docs/releases/v0.3.0.md](docs/releases/v0.3.0.md).
+>
+> **기준 commit**: `c85838c` (main, marathon retrospective 후 handoff 갱신)
+
+### Added
+
+#### Phase 5 — scanrun SSH 통합 (epic 마감)
+- `feat(robot)` scanrun SSH 통합 Stage 1 — `robot_host_keys` 도메인 + 마이그레이션 0027 (TOFU) (`e9b93c0`)
+- `feat(sshpool)` Stage 2 — `KnownHostsManager` + TOFU host key callback (`951e924`)
+- `feat(scanrun)` Stage 3 — bootstrap KnownHostsManager 결선 + sudo non-interactive (`894449e`)
+- `feat(sshpool)` Stage 4 — Pool idle 재사용 + keepalive + metrics 5종 (`22f472d`)
+- `feat(scanrun)` Stage 5a — per-robot health window (`robot_offline` 즉시 skip) (`cade719`)
+- `feat(scanrun)` Stage 5b — Pool 결선 (idle 재사용 활성화) (`1d67cef`)
+- `test(scanrun)` Stage 5c — docker compose + sshd e2e 5 phase (`ee2aa34`)
+
+#### Phase 5 — 세분 RBAC (epic 마감)
+- `feat(authz)` Stage 1 — authz 결정 테이블 + 6 시스템 role permission matrix (`4c4bfc9`)
+- `feat(tenant)` Stage 2 — `RoleBinding` + 마이그레이션 0028 + repo 확장 (`scope_type`/`scope_id`) (`daacb57`)
+- `feat(rbac)` Stage 3 — JWT bindings claim + `RequirePermission` middleware factory (`a9125aa`)
+- `feat(rbac)` Stage 4 — handlers.go 24 mutation gate `RequireRole` → `RequirePermission` 교체 + 통합 매트릭스 (`0452941`)
+- `feat(rbac)` Stage 5 — web `useHasPermission` + sidebar/router guard 확장 (`4ec5620`)
+
+#### Phase 5 — PWA 오프라인 (epic 마감)
+- `feat(web)` PWA Stage 1 — manifest + 아이콘 4종 + index.html link (installable, SW 없이) (`4079e66`)
+- `feat(web)` PWA Stage 2 — vite-plugin-pwa generateSW + SW 등록 (오프라인 셸 캐싱) (`1bf2c21`)
+- `feat(web)` PWA Stage 3 — `OfflineIndicator` + `UpdatePrompt` UX (`1732a40`)
+- `feat(web)` PWA Stage 4 — mutation 가드 + 운영자 docs (`70ef3d6`)
+
+#### Phase 5 — PWA persist (epic 마감)
+- `feat(web)` PWA persist Stage 1 — idb-storage 모듈 (IndexedDB AsyncStorage 어댑터) (`2499722`)
+- `feat(web)` PWA persist Stage 2 — `PersistQueryClientProvider` 결선 + dehydrate filter (보안 차단 list) (`7e855a8`)
+- `feat(web)` PWA persist Stage 3 — logout flow clear (multi-tenant 격리) (`1f985c7`)
+- `docs(operations)` PWA persist 운영자 가이드 (`350c38d`)
+
+#### Phase 5 — RBAC fleet 정밀화 (epic 마감)
+- `feat(authz)` Stage 1 — PDP `MatchedBindings` 확장 (explainability) (`d55cd71`)
+- `feat(rbac)` Stage 2 — `RequirePermissionWithFleet` + body peek + `ScopeResolver` (`0deb4c8`)
+- `feat(rbac)` Stage 3 — handlers 5 endpoint 교체 + ScopeResolver 구체 + 통합 매트릭스 (`e3a7958`)
+- `feat(rbac)` Stage 4 — SSO group 매핑 도메인 + 마이그레이션 0029 + `user_roles.source` (`07fb0a8`)
+- `feat(rbac)` Stage 5 — SSO callback sync + audit + web admin UI (`acde2b2`)
+- `feat(rbac)` Stage 6 — reports/insights service 확장 + 2 endpoint 정밀화 (`77180db`)
+
+#### Phase 6 후보 1 — Customer onboarding 보강 (R1·R2·R3 마감)
+- `feat(intake)` R1 Stage 1 — intake 도메인 + 마이그레이션 0030 (`6d7f869`)
+- `feat(intake)` R1 Stage 2 — intake handler + endpoint + RBAC mount (`09c20cf`)
+- `feat(intake)` R1 Stage 3 — chi mount + RBAC + bootstrap intake 결선 (`6da6ffd`)
+- `feat(intake)` R1 Stage 4 — auto-provisioning wrap (accept → tenant + admin invite) (`975109e`)
+- `feat(intake)` R1 Stage 5 — 실 e2e 통합 + 운영자 docs 갱신 (`e13c9b0`)
+- `docs(onboarding)` R2 — PoC walkthrough (단계별 명령 + 예상 결과 + 트러블슈팅 12개) (`f8446de`)
+- `docs(onboarding)` R3 — SLA template + 지원 채널 정책 (`2b47546`)
+
+#### Design docs (Phase 5 + Phase 6)
+- `design(scanrun)` scanrun SSH 통합 design doc (`6f893de`)
+- `design(web)` PWA 오프라인 지원 design doc (`eeebfdd`)
+- `design(rbac)` 세분 RBAC (fleet scope + permission tier) design doc (`b975e94`)
+- `design(rbac)` fleet-scope 정밀화 + SSO group 매핑 design doc (`37778ef`)
+- `design(scanrun)` scanrun 후속 (Pool size 동적 + rate limit + circuit breaker) design doc (`7d26bfd`)
+- `design(web)` PWA persist design doc — 옵션 C trigger (`af0b84d`)
+- `design(phase6)` Phase 6 backlog — Phase 5 retrospective + 후보 5종 비교 + 권장 우선순위 (`ad5fcf6`)
+- `design(onboarding)` 첫 customer onboarding 보강 design doc — intake API + walkthrough + SLA + 지원 채널 + license lifecycle (`c0f8586`)
+- `design(meta)` 마라톤 세션 retrospective — 73 commit 패턴·결정·learnings 정리 (`ebc2b80`)
+
+### Changed
+- `AssignRoleScoped(..., source)` 매개변수 추가 — backward-compat (`source=""`/`"manual"` → 기존 동작, `"sso:<provider>"` → 자동 동기화 경로)
+- 24 mutation gate `RequireRole` → `RequirePermission` 단계적 전환 (관리자 전용 gate는 `RequireRole` 잔존)
+
+### Deprecated
+- 없음
+
+### Removed
+- 없음
+
+### Fixed
+- 본 release 구간 내 회귀 0건 (separate fix commits 없음)
+
+### Security
+- TOFU host key 정책 도입 (마이그레이션 0027 `robot_host_keys`) — SSH MITM 방지
+- fleet-scope 정밀 권한 검사로 cross-fleet 데이터 누출 차단 (RBAC fleet 정밀화 epic)
+- PWA persist의 dehydrate filter에 보안 차단 list 적용 (token·자격 증명·민감 도메인 캐시 금지)
+
+### Migrations
+| ID | 내용 | down sql |
+|---|---|---|
+| `0027_robot_host_keys` | TOFU host key 저장 | ✅ |
+| `0028_user_roles_scope` | `scope_type`/`scope_id` 컬럼 추가 (fleet-scope RBAC) | ✅ |
+| `0029_sso_group_mappings` | SSO group → role 매핑 + `user_roles.source` | ✅ |
+| `0030_customer_intakes` | customer intake 도메인 | ✅ |
+
+---
+
+## [0.2.0] — 2026-05-08
+
+> **요약**: Phase 4(Production hardening) carryover 11/11 마감 + 첫 공식 release. 47 release assets + cosign keyless 서명 (Sigstore Fulcio).
+>
+> **기준 commit**: `14a3ccb` 이하 (tag `v0.2.0`).
+
+### Added
+- E12 — release CI signer + dual trust bundle (dev + release pack signer)
+- E25 — HA leader-election scaffold (PG advisory lock + leader_epoch fence token, 마이그레이션 0022·0023)
+- E22-F (1차) — PG-native 핫 path 3 컬럼 회수 (R30-1=C 하이브리드, JSONB + TIMESTAMPTZ, 마이그레이션 0024)
+- E27 — Grafana dashboard + Prometheus scrape 가이드
+- E29 — `rosshield ha status` + `backup list`/`download` CLI
+- E31 — enterprise build tag scaffold (`//go:build rosshield_enterprise`)
+- E33 — Ubuntu Core snap 빌드 파이프라인 + smoke test (R40-1=core22)
+- E34 — TPM 2.0 PCR-sealed ed25519 (`go-tpm-tools`, PCR `[0,2,4,7]`)
+- E35 — A/B OTA post-refresh hook + 자동 rollback + healthz polling
+- E36 — 레퍼런스 HW 매트릭스 + 측정 절차 docs
+- E38 — 첫 paying customer onboarding 사전 자료 (`docs/onboarding/`)
+- O6 — invite email adapter (Noop + SMTP + `InvitationNotifier`)
+- O7 — webhook UI 강화 (Test 버튼 + delivery 통계 + dead-letter)
+- B6+B7 — `/system` 운영 정보 dashboard (헬스·HA·라이선스·백업) + 자동 백업 schedule + 다운로드 API
+- OpenAPI spec — Webhook test + SSO 8 + Invitation 5 endpoint 추가
+
+### Changed
+- `apiClient` 100% 전환 (webhook·sso·invitation 4 wrapper 제거 + 16 hook 전환)
+- 데스크톱 셸 Tauri 2.x 결선 (D3)
+
+### Decisions (이 release 구간 확정)
+- D5 — Open-core 채택 (코어 Apache-2.0 + enterprise BSL/Commercial 별 라이선스)
+- D6 — GitHub private 유지 (release binary + report verify CLI로 P1 외부 검증 대체)
+- R30-1=C 하이브리드 (E22-F 1차)
+- R30-2 (E25 HA 권고안)
+- R30-4 (Open-core + private repo 종결)
+- R40-1~4 (snap 트랙)
+- R41 (TPM 3종 결정 — B Keystore + go-tpm-tools + PCR `[0,2,4,7]`)
+
+### Fixed
+- `fix(bootstrap)` `WriteString(Sprintf)` → `Fprintf` (staticcheck QF1012) (`b700ff7`)
+
+### Security
+- cosign keyless 서명 (Sigstore Fulcio) — release artifact 무결성
+- audit chain leader-gate + leader_epoch fence token (split-brain 방지)
+- TPM 2.0 PCR-sealed key (E34)
+
+---
+
+## Pre-v0.2.0 historical entries
+
+> Phase 0~1 초기 부트스트랩 기록 (2026-04-23). 본 entries는 v0.2.0 release 시점에 changelog 정식화가 진행되기 전 작성된 초기 항목으로, 역사 기록 보존을 위해 유지합니다. 향후 별도 chronological release tag로 정리될 가능성 있음.
 
 ### Added (Phase 0 — 설계)
 
