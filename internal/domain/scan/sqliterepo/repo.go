@@ -562,13 +562,13 @@ func scanSessionRow(scanFn func(...any) error) (scan.ScanSession, error) {
 		return scan.ScanSession{}, fmt.Errorf("scan: parse updated_at: %w", err)
 	}
 	s := scan.ScanSession{
-		ID:            id,
-		TenantID:      storage.TenantID(tenantID),
-		FleetID:       fleetID,
-		PackID:        packID,
-		Trigger:       scan.SessionTrigger(trigger),
-		Status:        scan.SessionStatus(status),
-		Progress:      scan.SessionProgress{Total: total, Completed: completed, Failed: failed},
+		ID:       id,
+		TenantID: storage.TenantID(tenantID),
+		FleetID:  fleetID,
+		PackID:   packID,
+		Trigger:  scan.SessionTrigger(trigger),
+		Status:   scan.SessionStatus(status),
+		Progress: scan.SessionProgress{Total: total, Completed: completed, Failed: failed},
 		SeverityFailed: scan.SeverityFailed{
 			Critical: sevCritical,
 			High:     sevHigh,

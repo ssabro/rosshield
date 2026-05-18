@@ -109,26 +109,6 @@ func expectedRolesForCell(resource Resource, action Action) []string {
 	return roles
 }
 
-// shortToRoleName은 §3.3 약칭을 RoleName 상수로 변환합니다.
-func shortToRoleName(short string) string {
-	switch short {
-	case "own":
-		return RoleOwner
-	case "adm":
-		return RoleAdmin
-	case "fadm":
-		return RoleFleetAdmin
-	case "op":
-		return RoleOperator
-	case "aud":
-		return RoleAuditor
-	case "ro":
-		return RoleReadOnly
-	default:
-		panic("unknown role short: " + short)
-	}
-}
-
 // makeBindingForRole은 role 단일 보유 Subject를 만듭니다 — fleet scope role은 fleet[A] binding.
 func makeBindingForRole(roleName, fleetID string) []RoleBinding {
 	if IsTenantScopedRole(roleName) {

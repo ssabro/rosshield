@@ -33,13 +33,15 @@ type Store struct {
 	rwc          io.ReadWriteCloser
 	pcrSelection []int
 	sealingDir   string
-	openTPM      tpmOpener // test seam — production 코드는 항상 openLinuxTPM
+	openTPM      tpmOpener //nolint:unused // test seam — store_linux_test.go의 newWithOpener에서 사용 (build tag tpm_integration)
 	mu           sync.Mutex
 	closed       bool
 }
 
 // tpmOpener는 store_linux_test.go가 simulator를 주입하기 위한 hook입니다.
 // nil이면 production 경로(/dev/tpmrm0 → /dev/tpm0).
+//
+//nolint:unused // build tag tpm_integration 한정 사용 (newWithOpener)
 type tpmOpener func() (io.ReadWriteCloser, error)
 
 // New는 TPM Store를 생성합니다 (Linux).

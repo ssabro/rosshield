@@ -14,9 +14,10 @@
 // 모두 ErrSignatureInvalid면 archive가 어떤 trust로도 검증 안 되는 의심 archive.
 //
 // 빌드 흐름:
-//   make pack-archive  → packs/*.tar.gz 생성 (dev signer) + cp internal/builtin/packs/_archives/
-//   release-pipeline   → ROSSHIELD_PACK_SIGNER_KEY → packs/*.tar.gz (release signer) + cp _archives/
-//   go build           → //go:embed가 _archives/*.tar.gz를 binary에 포함
+//
+//	make pack-archive  → packs/*.tar.gz 생성 (dev signer) + cp internal/builtin/packs/_archives/
+//	release-pipeline   → ROSSHIELD_PACK_SIGNER_KEY → packs/*.tar.gz (release signer) + cp _archives/
+//	go build           → //go:embed가 _archives/*.tar.gz를 binary에 포함
 //
 // _archives/ 디렉터리는 _ prefix로 Go 패키지 스캔에서 제외 — 같은 디렉터리에 두지만
 // 별도 source tree로 취급. .gitignore가 _archives/*.tar.gz를 제외 — build artifact.
@@ -46,8 +47,8 @@ const (
 // Public key hex 상수 — scripts/{dev,release}-pack-signer.pub.hex와 동기화.
 //
 // 키 회전 시 두 위치 모두 갱신:
-//   1. bin/pack-tools keygen -out scripts/<role>-pack-signer.key -pub-out scripts/<role>-pack-signer.pub.hex -force
-//   2. 본 상수를 새 .pub.hex 내용으로 교체
+//  1. bin/pack-tools keygen -out scripts/<role>-pack-signer.key -pub-out scripts/<role>-pack-signer.pub.hex -force
+//  2. 본 상수를 새 .pub.hex 내용으로 교체
 const (
 	devSignerPublicKeyHex     = "f074a51dac239cc2496b927b1d8a363cd2ca8db59b6e29fec6123bc4929d6478"
 	releaseSignerPublicKeyHex = "482ea7964e48fee1e25ff0a907cb3861c9d2a2d1688f935cb8d643d6920760fb"

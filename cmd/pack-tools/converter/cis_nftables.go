@@ -110,7 +110,7 @@ func synthesizeNftHook(audit string) (string, bool) {
 func extractNftListTablesExpected(audit string) (cmd, expected string, ok bool) {
 	lines := strings.Split(audit, "\n")
 	var cmdFound bool
-	var phraseIdx int = -1
+	phraseIdx := -1
 	for i, raw := range lines {
 		line := strings.TrimSpace(raw)
 		if !cmdFound {
