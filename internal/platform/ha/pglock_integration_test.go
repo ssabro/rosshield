@@ -26,6 +26,7 @@ package ha_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -68,8 +69,13 @@ func setupHAFixture(t *testing.T) *haFixture {
 		tcpg.WithUsername("test"),
 		tcpg.WithPassword("test"),
 		testcontainers.WithWaitStrategy(
+			// CI fix cascade 12회차: startup timeout 30s → 90s.
+			// 4 test 동시 PG container spin up + image pull(첫 회) 시 30s 초과 가능.
+			// 초과 시 t.Skipf로 끝나면 그나마 다행이지만, container start 자체가 hang
+			// (docker daemon backpressure)이면 testcontainers 내부에서 추가 대기.
+			// 90s 여유 확보로 CI runner 부하 흡수.
 			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).WithStartupTimeout(30*time.Second),
+				WithOccurrence(2).WithStartupTimeout(90*time.Second),
 		),
 	)
 	if err != nil {
@@ -106,16 +112,21 @@ func setupHAFixture(t *testing.T) *haFixture {
 		t.Fatalf("pool ping: %v", err)
 	}
 
-	if err := applyMigrations(pool); err != nil {
+	migrateCtx, migrateCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer migrateCancel()
+	if err := applyMigrations(migrateCtx, pool); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
 
 	return &haFixture{pool: pool}
 }
 
-// applyMigrations은 postgres 어댑터가 embed한 migration 0001~0023을 적용합니다.
+// applyMigrations은 postgres 어댑터가 embed한 migration 0001~0030을 적용합니다.
 // pgstorage.MigrationsFS 만 가져와 사용 — 어댑터의 *Postgres 인스턴스는 만들지 않음.
-func applyMigrations(pool *pgxpool.Pool) error {
+//
+// ctx는 60s timeout 권장 — migrate Up()이 internal advisory lock + 30개 migration
+// 직렬 적용으로 시간 소요. CI 부하 시 무한 대기 차단.
+func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	src, err := iofs.New(pgstorage.MigrationsFS, "migrations")
 	if err != nil {
 		return err
@@ -133,10 +144,20 @@ func applyMigrations(pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return err
+	// migrate-go는 자체 컨텍스트 미수신 — ctx 통한 cancel은 best-effort.
+	// 별도 goroutine에서 Up() 호출 + ctx done 시 graceful close.
+	done := make(chan error, 1)
+	go func() { done <- m.Up() }()
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, migrate.ErrNoChange) {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		// migrate가 hang하면 sqlDB.Close()로 강제 종료. defer가 처리.
+		return fmt.Errorf("apply migrations: %w", ctx.Err())
 	}
-	return nil
 }
 
 // === TestPGLockSingleHolderConcurrent ===
@@ -144,15 +165,22 @@ func applyMigrations(pool *pgxpool.Pool) error {
 // 두 PGLock 인스턴스가 같은 pool/lockID로 동시 TryAcquire → 정확히 1개만 성공.
 // design doc §6 E25.T1.
 func TestPGLockSingleHolderConcurrent(t *testing.T) {
-	t.Parallel()
+	// CI fix cascade 12회차: t.Parallel() 제거 — 4 test 동시 PG container 부하 회피.
+	// 각 test는 자체 testcontainer 보유라 동시 4 PG image pull/start가 GitHub Actions
+	// runner의 docker daemon backpressure 유발 가설.
 	fx := setupHAFixture(t)
-	ctx := context.Background()
+	// 각 PG 호출은 30s timeout — 본체 hang(advisory lock 대기·tx commit hang 등) 차단.
+	// 정상 path는 sub-second에 끝남.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	lockA := ha.NewPGLock(fx.pool, testLockID)
 	lockB := ha.NewPGLock(fx.pool, testLockID)
 	t.Cleanup(func() {
-		_ = lockA.Release(context.Background())
-		_ = lockB.Release(context.Background())
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer releaseCancel()
+		_ = lockA.Release(releaseCtx)
+		_ = lockB.Release(releaseCtx)
 	})
 
 	type result struct {
@@ -232,9 +260,10 @@ func TestPGLockSingleHolderConcurrent(t *testing.T) {
 // epoch가 단조 증가 + leader_epoch 테이블에 2 row(이전 current=0, 새 current=1).
 // design doc §6 E25.T2 (failover).
 func TestPGLockReleasedOnSessionDrop(t *testing.T) {
-	t.Parallel()
+	// CI fix cascade 12회차: t.Parallel() 제거 + ctx timeout 추가.
 	fx := setupHAFixture(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	lockA := ha.NewPGLock(fx.pool, testLockID)
 	ok, epochA, err := lockA.TryAcquire(ctx, "host-a:1111")
@@ -256,7 +285,11 @@ func TestPGLockReleasedOnSessionDrop(t *testing.T) {
 
 	// 두 번째 PGLock이 같은 lockID 재획득.
 	lockB := ha.NewPGLock(fx.pool, testLockID)
-	t.Cleanup(func() { _ = lockB.Release(context.Background()) })
+	t.Cleanup(func() {
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer releaseCancel()
+		_ = lockB.Release(releaseCtx)
+	})
 	ok, epochB, err := lockB.TryAcquire(ctx, "host-b:2222")
 	if err != nil {
 		t.Fatalf("lockB TryAcquire: %v", err)
@@ -306,26 +339,38 @@ func TestPGLockReleasedOnSessionDrop(t *testing.T) {
 // leader_epoch 5 row, 마지막만 current=1.
 // design doc §6 "단조 epoch".
 func TestEpochMonotonicAcrossAcquisitions(t *testing.T) {
-	t.Parallel()
+	// CI fix cascade 12회차: t.Parallel() 제거 + 각 round별 ctx timeout + log.
+	// 이전 hang(8m timeout)이 어느 round에서 멈췄는지 다음 CI run에서 식별 가능.
 	fx := setupHAFixture(t)
-	ctx := context.Background()
 
 	const rounds = 5
 	gotEpochs := make([]int64, 0, rounds)
 	for i := 0; i < rounds; i++ {
+		// 매 round 자체 ctx timeout 15s — TryAcquire + Release가 각각 sub-second 정상.
+		// hang하면 round i와 단계(acquire vs release)가 fail msg에 명시.
+		roundCtx, roundCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		t.Logf("round %d: NewPGLock + TryAcquire", i)
 		lock := ha.NewPGLock(fx.pool, testLockID)
-		ok, epoch, err := lock.TryAcquire(ctx, "host-cycle")
+		ok, epoch, err := lock.TryAcquire(roundCtx, "host-cycle")
 		if err != nil {
+			roundCancel()
 			t.Fatalf("round %d TryAcquire: %v", i, err)
 		}
 		if !ok {
+			roundCancel()
 			t.Fatalf("round %d expected to acquire", i)
 		}
+		t.Logf("round %d: acquired epoch=%d, Release", i, epoch)
 		gotEpochs = append(gotEpochs, epoch)
-		if err := lock.Release(ctx); err != nil {
+		if err := lock.Release(roundCtx); err != nil {
+			roundCancel()
 			t.Fatalf("round %d Release: %v", i, err)
 		}
+		roundCancel()
+		t.Logf("round %d: released", i)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
 	// 단조 증가 검증.
 	for i, e := range gotEpochs {
@@ -372,13 +417,19 @@ func TestEpochMonotonicAcrossAcquisitions(t *testing.T) {
 // TryAcquire 성공 → Heartbeat() = nil → Release() → Heartbeat() = "not held" 에러.
 // design doc §6 E25.T4.
 func TestPGLockHeartbeatPingsLiveConn(t *testing.T) {
-	t.Parallel()
+	// CI fix cascade 12회차: t.Parallel() 제거 + 단계별 ctx timeout + log.
 	fx := setupHAFixture(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	lock := ha.NewPGLock(fx.pool, testLockID)
-	t.Cleanup(func() { _ = lock.Release(context.Background()) })
+	t.Cleanup(func() {
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer releaseCancel()
+		_ = lock.Release(releaseCtx)
+	})
 
+	t.Logf("step 1: TryAcquire")
 	ok, _, err := lock.TryAcquire(ctx, "host-hb")
 	if err != nil {
 		t.Fatalf("TryAcquire: %v", err)
@@ -387,15 +438,18 @@ func TestPGLockHeartbeatPingsLiveConn(t *testing.T) {
 		t.Fatalf("expected acquire success")
 	}
 
+	t.Logf("step 2: Heartbeat while held")
 	// 보유 중 — Heartbeat 정상.
 	if err := lock.Heartbeat(ctx); err != nil {
 		t.Fatalf("Heartbeat while held: %v", err)
 	}
 
+	t.Logf("step 3: Release")
 	// Release 후 Heartbeat → 보유 conn 없음 → 에러.
 	if err := lock.Release(ctx); err != nil {
 		t.Fatalf("Release: %v", err)
 	}
+	t.Logf("step 4: Heartbeat after Release (expect not held)")
 	err = lock.Heartbeat(ctx)
 	if err == nil {
 		t.Fatalf("Heartbeat after Release expected error, got nil")

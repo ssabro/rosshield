@@ -115,16 +115,22 @@ func (l *PGLock) markCurrentEpoch(ctx context.Context, conn *pgxpool.Conn, epoch
 
 // Heartbeat은 보유 중인 conn에 SELECT 1 ping을 보냅니다.
 // conn이 끊어졌으면 에러 — Manager가 demote 처리.
+//
+// 동시성: mu를 query 동안 잡고 있어 동시 Release()와 race 없음.
+// Release는 mu.Lock → l.conn = nil → mu.Unlock 후 conn.Release() 호출이라
+// Heartbeat이 mu 보유 중이면 Release는 대기. SELECT 1은 sub-ms라 blocking
+// window 무시 가능. CI fix cascade 12회차에서 race window 보완(이전 mu 풀고
+// conn 사용 패턴은 Release 직후 conn.QueryRow가 released pool conn에 query를
+// 날려 무한 hang 가능성 있었음).
 func (l *PGLock) Heartbeat(ctx context.Context) error {
 	l.mu.Lock()
-	conn := l.conn
-	l.mu.Unlock()
+	defer l.mu.Unlock()
 
-	if conn == nil {
+	if l.conn == nil {
 		return errors.New("pglock: not held")
 	}
 	var one int
-	if err := conn.QueryRow(ctx, "SELECT 1").Scan(&one); err != nil {
+	if err := l.conn.QueryRow(ctx, "SELECT 1").Scan(&one); err != nil {
 		return fmt.Errorf("pglock: heartbeat: %w", err)
 	}
 	return nil
@@ -132,6 +138,10 @@ func (l *PGLock) Heartbeat(ctx context.Context) error {
 
 // Release는 advisory lock을 해제하고 conn을 반환합니다.
 // 멱등 — 보유 중이 아니면 nil.
+//
+// 호출자가 timeout 없는 ctx를 넘기면 PG hang 시 무한 대기. CI fix cascade
+// 12회차에서 내부 두 Exec에 10s timeout fallback 추가 — ctx 자체에 deadline이
+// 있으면 그것을 사용, 없으면 10s timeout 생성. 결정론적 종료 보장.
 func (l *PGLock) Release(ctx context.Context) error {
 	l.mu.Lock()
 	conn := l.conn
@@ -143,11 +153,23 @@ func (l *PGLock) Release(ctx context.Context) error {
 	}
 	defer conn.Release()
 
+	execCtx, cancel := withFallbackTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	// best-effort — 어차피 conn release 시 PG가 자동 unlock.
-	if _, err := conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", l.lockID); err != nil {
+	if _, err := conn.Exec(execCtx, "SELECT pg_advisory_unlock($1)", l.lockID); err != nil {
 		return fmt.Errorf("pglock: advisory_unlock: %w", err)
 	}
 	// current epoch 다운그레이드 (best-effort, 새 leader가 어차피 덮어씀).
-	_, _ = conn.Exec(ctx, "UPDATE leader_epoch SET current = 0 WHERE current = 1")
+	_, _ = conn.Exec(execCtx, "UPDATE leader_epoch SET current = 0 WHERE current = 1")
 	return nil
+}
+
+// withFallbackTimeout은 ctx에 deadline이 없으면 fallback timeout을 적용합니다.
+// ctx에 이미 deadline이 있으면 그대로 사용 (cancel은 noop).
+func withFallbackTimeout(ctx context.Context, fallback time.Duration) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, fallback)
 }
