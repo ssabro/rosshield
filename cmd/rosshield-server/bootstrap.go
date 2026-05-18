@@ -224,7 +224,7 @@ type Platform struct {
 	LLM               llm.Adapter
 	Advisor           advisor.Service          // E16
 	License           *license.Enforcer        // E24 — Open-core enterprise feature 게이트 + 쿼터
-	Intake            intake.Service           // Phase 6 후보 1 R1 Stage 3 — customer onboarding intake CRUD (운영자 admin 전용)
+	Intake            intake.Service           // Phase 6 후보 1 R1 Stage 3+4 — customer intake CRUD + auto-provisioning wrap
 	Webhook           webhook.Service          // E23 — webhook + SIEM 통합 도메인
 	WebhookDispatcher *webhookrun.Dispatcher   // E23-B — Process worker
 	WebhookBridge     *webhookrun.EventBridge  // E23-D — EventBus → webhook.Enqueue bridge
@@ -1252,15 +1252,20 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: build license enforcer: %w", err)
 	}
 
-	// Phase 6 후보 1 R1 Stage 3 — customer onboarding intake 결선.
-	// design doc `docs/design/notes/customer-onboarding-design.md` §6.1 + §7 R1 Stage 3.
-	// 본 service는 운영자 admin 전용 (handlers.go RequirePermission(ResourceTenantAdmin,
-	// ActionAdmin) gate). audit emit + auto-provisioning(tenant.Create + admin invite +
-	// license 발급)은 R1 Stage 4에서 별 어댑터로 wrap — 본 stage는 도메인 → handler 결선만.
-	intakeSvc := intakerepo.New(intakerepo.Deps{
+	// Phase 6 후보 1 R1 Stage 3+4 — Customer onboarding intake 결선 + auto-provisioning wrap.
+	//
+	// Stage 3: raw intake.Service(sqliterepo) 도메인 → handler.Deps.Intake 주입.
+	// Stage 4: 그 위에 intakeProvisioningAdapter wrap → AcceptIntake 호출 시 같은 Tx에
+	//          tenant.Service.Create + license 발급 placeholder + intake row UPDATE 묶음
+	//          (cmd/rosshield-server/intake_provisioning.go).
+	//
+	// handler RBAC gate: RequirePermission(ResourceTenantAdmin, ActionAdmin) — design doc
+	// §6.1 + §7 R1 Stage 3. licenseEnforcer nil 허용(paying customer 0 단계).
+	rawIntakeSvc := intakerepo.New(intakerepo.Deps{
 		Clock: clk,
 		IDGen: ids,
 	})
+	intakeSvc := newIntakeProvisioningAdapter(rawIntakeSvc, tenantSvc, licenseEnforcer)
 
 	logger.Info("platform bootstrap complete",
 		"dataDir", cfg.DataDir,
