@@ -155,13 +155,13 @@ func TestIntegrationPGNativeInsightsEvidenceJSON(t *testing.T) {
 	err = store.Bootstrap(ctx, func(ctx context.Context, tx storage.Tx) error {
 		_, e := tx.Exec(ctx, `
 INSERT INTO insights (
-    id, tenant_id, kind, severity, status, title, summary,
-    evidence_json, source_meta_json,
-    created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			insightID, string(tenantID), "remediation", "high", "open", "test", "summary",
-			evidenceJSON, `{}`,
-			now, now)
+    id, tenant_id, kind, severity, summary,
+    evidence_json,
+    created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			insightID, string(tenantID), "drift", "high", "summary",
+			evidenceJSON,
+			now)
 		return e
 	})
 	if err != nil {
