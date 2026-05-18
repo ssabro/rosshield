@@ -187,7 +187,7 @@ curl http://127.0.0.1:8080/healthz
 
 ## 단계 2: customer info 입력 + tenant 메타 확인 (5분)
 
-> **R1 intake API 마감 전**: 본 단계는 운영자가 customer 측에서 회수한 yaml(`customer-info-template.md`)을 참고해 **수동 점검**합니다. R1 마감 후엔 `POST /api/v1/customers/intake` 자동화로 대체.
+> **R1 intake API 마감 후 (2026-05-18)**: 본 단계는 `POST /api/v1/customers/intake` + `:accept` 자동화로 대체 가능합니다. 절차는 [`README.md` §Intake API](./README.md#intake-api-phase-6-r1--yaml-회수-후-자동-provisioning) 참조. 본 walkthrough는 yaml 수동 점검 path도 보존 — 운영자가 customer 자체 호스팅 또는 자체 발급된 tenant를 점검할 때 활용.
 
 ### 명령
 
