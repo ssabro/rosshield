@@ -39,8 +39,8 @@ func TestIntegrationPGNativeAuditOccurredAtRoundTrip(t *testing.T) {
 
 	// 1. tenant 시드 (FK 충족)
 	err := store.Bootstrap(ctx, func(ctx context.Context, tx storage.Tx) error {
-		_, e := tx.Exec(ctx, `INSERT INTO tenants (id, name, plan, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			string(tenantID), "PG hotpath audit", "trial", "active", occurredStr, occurredStr)
+		_, e := tx.Exec(ctx, `INSERT INTO tenants (id, name, plan, created_at) VALUES (?, ?, ?, ?)`,
+			string(tenantID), "PG hotpath audit", "trial", occurredStr)
 		return e
 	})
 	if err != nil {
@@ -100,8 +100,8 @@ func TestIntegrationPGNativeAuditChainHeadUpdatedAt(t *testing.T) {
 	updated := time.Now().UTC().Format(time.RFC3339Nano)
 
 	err := store.Bootstrap(ctx, func(ctx context.Context, tx storage.Tx) error {
-		_, e := tx.Exec(ctx, `INSERT INTO tenants (id, name, plan, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			string(tenantID), "PG hotpath head", "trial", "active", updated, updated)
+		_, e := tx.Exec(ctx, `INSERT INTO tenants (id, name, plan, created_at) VALUES (?, ?, ?, ?)`,
+			string(tenantID), "PG hotpath head", "trial", updated)
 		if e != nil {
 			return e
 		}
@@ -141,8 +141,8 @@ func TestIntegrationPGNativeInsightsEvidenceJSON(t *testing.T) {
 
 	// tenant + 핵심 dependency 시드
 	err := store.Bootstrap(ctx, func(ctx context.Context, tx storage.Tx) error {
-		_, e := tx.Exec(ctx, `INSERT INTO tenants (id, name, plan, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			string(tenantID), "PG hotpath insight", "trial", "active", now, now)
+		_, e := tx.Exec(ctx, `INSERT INTO tenants (id, name, plan, created_at) VALUES (?, ?, ?, ?)`,
+			string(tenantID), "PG hotpath insight", "trial", now)
 		return e
 	})
 	if err != nil {
