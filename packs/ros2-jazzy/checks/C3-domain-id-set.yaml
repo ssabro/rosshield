@@ -1,0 +1,37 @@
+# C3 — ROS_DOMAIN_ID 명시 + non-zero (격리 baseline)
+#
+# design doc §2 C3 + §3.3 (canonical yaml 예) + §6 R1 권장 default.
+# 기본값 ROS_DOMAIN_ID=0은 동일 LAN 인접 fleet과 discovery traffic 충돌 + cross-fleet 도청.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C3.domain_id_set
+  title: ROS_DOMAIN_ID is explicitly set and non-zero
+  description: |-
+    Default ROS_DOMAIN_ID=0 leaks discovery traffic to adjacent fleets on
+    the same network. Explicit assignment per fleet is required for isolation
+    and reduces cross-fleet topic collision.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    DOM="${ROS_DOMAIN_ID:-unset}";
+    if [ "$DOM" = "unset" ] || [ "$DOM" = "0" ]; then
+      echo "** FAIL ** ROS_DOMAIN_ID=$DOM";
+    else
+      echo "** PASS ** ROS_DOMAIN_ID=$DOM";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    DDS discovery broadcasts use ROS_DOMAIN_ID for namespacing. ID 0 (default)
+    is widely used by tutorials and demo code, so any neighbor on the same
+    network is likely to be reachable. Assigning a per-fleet ID also prevents
+    accidental cross-fleet teleop or topic loops.
+  fixGuidance: |-
+    1. Choose a per-fleet ID in [1, 232].
+    2. Add `export ROS_DOMAIN_ID=<id>` to /etc/profile.d/ros2.sh.
+    3. Document the assignment in fleet inventory (per-site mapping).
+    4. Verify via `ros2 daemon status --domain-id <id>`.

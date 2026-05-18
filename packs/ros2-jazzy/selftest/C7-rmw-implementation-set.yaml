@@ -1,0 +1,32 @@
+# selftest — ros2.C7.rmw_implementation_set
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C7.rmw_implementation_set
+spec:
+  cases:
+    - name: PASS — Cyclone DDS 명시
+      input:
+        stdout: '** PASS ** RMW_IMPLEMENTATION=rmw_cyclonedds_cpp'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — Fast DDS 명시
+      input:
+        stdout: '** PASS ** RMW_IMPLEMENTATION=rmw_fastrtps_cpp'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — unset (distro default 묵시 의존)
+      input:
+        stdout: '** FAIL ** RMW_IMPLEMENTATION=unset (want rmw_cyclonedds_cpp or rmw_fastrtps_cpp)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — 비표준 구현체
+      input:
+        stdout: '** FAIL ** RMW_IMPLEMENTATION=rmw_connext_cpp (want rmw_cyclonedds_cpp or rmw_fastrtps_cpp)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
