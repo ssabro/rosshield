@@ -114,6 +114,27 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      # embed.go _archives/*.tar.gz는 .gitignore — vet 전 archive 빌드 필수.
+      - name: Build pack-tools (E12)
+        run: go build -o bin/pack-tools ./cmd/pack-tools
+
+      - name: Decode dev pack signer key (DEV_PACK_SIGNER_KEY_B64 → raw 64B)
+        env:
+          DEV_PACK_SIGNER_KEY_B64: ${{ secrets.DEV_PACK_SIGNER_KEY_B64 }}
+        run: |
+          set -e
+          if [ -z "$DEV_PACK_SIGNER_KEY_B64" ]; then
+            echo "::warning::DEV_PACK_SIGNER_KEY_B64 secret not set — falling back to fresh keygen"
+            ./bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex -force
+          else
+            mkdir -p scripts
+            echo "$DEV_PACK_SIGNER_KEY_B64" | base64 -d > scripts/dev-pack-signer.key
+            chmod 600 scripts/dev-pack-signer.key
+          fi
+
+      - name: Build built-in pack archives
+        run: make pack-archive
+
       - name: Vet (enterprise)
         run: go vet -tags rosshield_enterprise ./...
 
@@ -134,6 +155,28 @@ jobs:
         with:
           go-version: '1.26'
           cache: true
+
+      # embed.go _archives/*.tar.gz는 .gitignore — go test의 import 그래프가
+      # internal/builtin/packs를 끌어들이면 fail. 사전 archive build.
+      - name: Build pack-tools (E12)
+        run: go build -o bin/pack-tools ./cmd/pack-tools
+
+      - name: Decode dev pack signer key (DEV_PACK_SIGNER_KEY_B64 → raw 64B)
+        env:
+          DEV_PACK_SIGNER_KEY_B64: ${{ secrets.DEV_PACK_SIGNER_KEY_B64 }}
+        run: |
+          set -e
+          if [ -z "$DEV_PACK_SIGNER_KEY_B64" ]; then
+            echo "::warning::DEV_PACK_SIGNER_KEY_B64 secret not set — falling back to fresh keygen"
+            ./bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex -force
+          else
+            mkdir -p scripts
+            echo "$DEV_PACK_SIGNER_KEY_B64" | base64 -d > scripts/dev-pack-signer.key
+            chmod 600 scripts/dev-pack-signer.key
+          fi
+
+      - name: Build built-in pack archives
+        run: make pack-archive
 
       - name: Run PG integration tests
         run: go test -tags=integration -count=1 -timeout=8m ./internal/platform/storage/postgres/... ./internal/platform/ha/...
@@ -198,6 +241,27 @@ jobs:
           node-version: '22'
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
+
+      # embed.go _archives/*.tar.gz는 .gitignore — go binary 빌드 전 archive 사전 빌드.
+      - name: Build pack-tools (E12)
+        run: go build -o bin/pack-tools ./cmd/pack-tools
+
+      - name: Decode dev pack signer key (DEV_PACK_SIGNER_KEY_B64 → raw 64B)
+        env:
+          DEV_PACK_SIGNER_KEY_B64: ${{ secrets.DEV_PACK_SIGNER_KEY_B64 }}
+        run: |
+          set -e
+          if [ -z "$DEV_PACK_SIGNER_KEY_B64" ]; then
+            echo "::warning::DEV_PACK_SIGNER_KEY_B64 secret not set — falling back to fresh keygen"
+            ./bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex -force
+          else
+            mkdir -p scripts
+            echo "$DEV_PACK_SIGNER_KEY_B64" | base64 -d > scripts/dev-pack-signer.key
+            chmod 600 scripts/dev-pack-signer.key
+          fi
+
+      - name: Build built-in pack archives
+        run: make pack-archive
 
       - name: Install (web)
         working-directory: web
