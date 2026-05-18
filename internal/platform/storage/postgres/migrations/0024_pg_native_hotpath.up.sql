@@ -21,6 +21,15 @@ ALTER TABLE audit_chain_heads
     ALTER COLUMN updated_at TYPE TIMESTAMPTZ
     USING updated_at::timestamptz;
 
+-- insights.evidence_json은 0014에서 TEXT DEFAULT '[]'로 정의됨.
+-- TEXT default '[]'은 JSONB로 자동 cast 불가 (42804) — DROP DEFAULT → ALTER TYPE →
+-- SET DEFAULT 패턴으로 분리.
+ALTER TABLE insights
+    ALTER COLUMN evidence_json DROP DEFAULT;
+
 ALTER TABLE insights
     ALTER COLUMN evidence_json TYPE JSONB
     USING evidence_json::jsonb;
+
+ALTER TABLE insights
+    ALTER COLUMN evidence_json SET DEFAULT '[]'::jsonb;
