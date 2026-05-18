@@ -11,6 +11,17 @@
 
 ---
 
+## [0.4.2] — 2026-05-19 (patch)
+
+> **요약**: v0.4.1 Snap Build fail fix — snapcraft 8.x `hooks.configure.plugs: []` 빈 list 거부. 자체 코드 회귀 0, v0.4.1 ↔ v0.4.2 차이는 snap config 1줄. 상세는 [docs/releases/v0.4.2.md](docs/releases/v0.4.2.md).
+>
+> **기준 commit**: `40b64a0` (main)
+
+### Fixed
+- `fix(snap)` configure hook hooks section 제거 (`40b64a0`) — snapcraft 8.x pydantic validator가 빈 plugs list 거부. snap/hooks/configure script는 snapd 자동 인식.
+
+---
+
 ## [0.4.1] — 2026-05-18 (patch)
 
 > **요약**: v0.4.0 직후 CI infrastructure fix cascade 14 round 마감 + snap binary 빌드 fix. 자체 코드 회귀 0. main CI 7/7 ALL PASS 완전 안정화 milestone 도달. 상세는 [docs/releases/v0.4.1.md](docs/releases/v0.4.1.md).
