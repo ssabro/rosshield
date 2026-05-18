@@ -1,0 +1,26 @@
+# selftest — ros2.C8.governance_encrypt_topics
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C8.governance_encrypt_topics
+spec:
+  cases:
+    - name: PASS — ENCRYPT 토픽 3건 선언
+      input:
+        stdout: '** PASS ** ENCRYPT topic_security_kind count=3'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — ENCRYPT 토픽 0건 (SIGN/NONE만)
+      input:
+        stdout: '** FAIL ** ENCRYPT topic_security_kind count=0 (governance.xml may only sign — payload still plaintext)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — keystore enclaves dir 부재
+      input:
+        stdout: '** FAIL ** keystore enclaves dir not found: /home/ros/.ros/keystore/enclaves'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
