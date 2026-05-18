@@ -142,6 +142,23 @@ internal/
 - ✅ 비공개 GitHub repo 내부 commit·CI 동작은 OK (자기 공개 아님)
 - ✅ NDA 체결 잠재 고객에게 PoC 가능
 
+### 출원 완료 가정 trigger (2026-05-18)
+
+사용자 결정(2026-05-18, [`SESSION_HANDOFF.md`](../../SESSION_HANDOFF.md) "출원이 완료 된것으로 생각하고 작업을 이어 갔으면 좋겠어") 정확 인용으로 D8-4 잠금이 **작업 진행을 위해 가정 해제** 됩니다. 본 가정은 실제 KIPO 출원 완료 확인이 아닌 **작업 trigger**이며, 사용자가 실제 출원 절차(변리사 컨설팅 → 명세서 → KR 출원)를 별 track으로 진행함을 전제합니다.
+
+이 가정 trigger로 다음 4 epic이 unblock됩니다(`docs/design/notes/phase7-public-transition-design.md` §1.1):
+
+| Epic | 본 trigger 이후 가능 작업 | 진척 (2026-05-18 기준) |
+|---|---|---|
+| **R-BRAND** (D1) | `<ProductName>` placeholder → `Lodestar` 전역 치환 + 코드 네임스페이스 `rosshield` 보존 | ✅ Stage 1 마감 (`3e3d892` + `20eddee`, 15 파일 22 위치) |
+| **R-LICENSE** (D5) | Open-core 라이선스 결선 — LICENSE Apache-2.0 + LICENSE-ENTERPRISE BSL 1.1 + NOTICE | ✅ 마감 (`ea8d5d7`, 2 파일 + Apache 2.0 보존) |
+| **R-D8** (본 §13.5) | 1순위 결합 청구항 4 본체 구현 — enterprise build tag 본체 (`internal/enterprise/*`) | A-1 ✅ `b4e77eb` (crosswitness fold.go 197줄 + 17 단위 PASS) / B-1·C-1·D-3 ⏸ 진척 중 |
+| **R-PUBLIC** (D6) | GitHub repo private → public 전환 + first external contribution 수용 baseline | ⏸ 대기 — 사용자 GitHub Settings 권한 필요 (D-P7-3) |
+
+**중요 — 사용자 실 출원 결과와 본 가정의 불일치 처리**:
+- 사용자가 실 출원 결과 본 문서 4 청구항(A-1·B-1·C-1·D-3)의 범위가 좁혀지거나 일부 거절되면, 해당 enterprise 패키지의 청구권 분배는 **D8-1·D8-2 원칙 일관**으로 재평가 필요(코어로 회수 또는 별 청구로 재출원).
+- 본 가정 trigger 후 추가된 commit(R-BRAND·R-LICENSE·R-D8 본체)은 모두 **git history에 보존**되며, 실 출원 결과 잠금 재적용 시 `git revert` 또는 [`SESSION_HANDOFF.md`](../../SESSION_HANDOFF.md) 결정 로그 추가로 trail 보존(D-P7-3 권장 default — git history rewrite 불필요).
+
 ## 13.7 설계서 본체 갱신 후속 (별도 단계)
 
 본 문서가 단일 진실 원천이므로 **본체 설계서는 한 줄 hook + 본 문서 참조**만으로 충분. 단 1순위 결합 청구항이 의존하는 4개 설계서는 명세서 작성 시점에 함께 갱신 필요:
@@ -174,3 +191,4 @@ internal/
 ## 13.10 결정 로그 (특허 전용)
 
 - **2026-05-08 · D8 — 특허 전략 수립**: 본 문서 신설. 후보 D(ROS2 도메인 특화) 전체 신규 채택, 후보 A·B·C는 강화안 채택, 후보 E는 Phase 4 보류. 1순위 결합 청구항(A-1+B-1+C-1+D-3) 확정. enterprise build tag 골격을 Phase 2 후반/Phase 3 진입 시 가속 도입(D5 원안 대비 가속). 출원 전 GitHub public 전환·OSS 라이선스 적용 잠금. 다음 단계: 후보 A 명세서 초안 → 변리사 컨설팅.
+- **2026-05-18 · D-P7-5 — 출원 완료 가정 trigger**: 사용자 결정("출원이 완료 된것으로 생각하고 작업을 이어 갔으면 좋겠어")으로 D8-4 출원 전 잠금이 작업 trigger 차원에서 해제됩니다. 실 KIPO 출원은 사용자 별 track. 본 가정으로 R-BRAND(Lodestar 확정)·R-LICENSE(Apache-2.0 + BSL 1.1)·R-D8 A-1(`b4e77eb` cross-witness fold-in 본체)·R-PUBLIC(사용자 GitHub Settings 권한 대기) 4 epic unblock. 본 trigger 통합 design은 [`docs/design/notes/phase7-public-transition-design.md`](notes/phase7-public-transition-design.md) §1.1 + D-P7-1~6 권장 default 6건 명시. 실 출원 결과와 가정 불일치 처리는 §13.6 "출원 완료 가정 trigger" 섹션 명시.
