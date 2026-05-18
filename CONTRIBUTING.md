@@ -63,8 +63,51 @@ SESSION_HANDOFF.md에 D-NNN 추가
 ## 보안 관련 기여
 
 - 보안 민감 영역(인증·서명·감사 체인·암호화) 변경은 **2인 리뷰 필수**.
-- 취약점 제보는 공개 이슈 대신 비공개 채널로 (이메일 채널은 추후 명시).
+- 취약점 제보는 공개 이슈가 아닌 [`SECURITY.md`](./SECURITY.md) 채널로 (GitHub Private Vulnerability Reporting 또는 ssabro_k@naver.com).
 - SBOM·서명 관련 기여는 `docs/design/06-security-and-tenancy.md` §6.12 일관성 유지.
+
+## DCO (Developer Certificate of Origin)
+
+본 프로젝트는 [Developer Certificate of Origin 1.1](https://developercertificate.org/)을 채택합니다. 모든 commit은 `Signed-off-by: <name> <email>` 라인을 포함해야 합니다:
+
+```bash
+git commit -s -m "..."
+# 또는 commit message 마지막 줄에 명시:
+# Signed-off-by: Your Name <your.email@example.com>
+```
+
+DCO sign-off 의미 (1.1 표준):
+- (a) 본인이 작성했고, 해당 라이선스(Apache-2.0 또는 BSL 1.1 enterprise)로 기여할 권리가 있음
+- (b) 또는 적절한 open source 라이선스 하에 제공받은 코드이고 본 프로젝트 라이선스와 호환됨
+- (c) 본인이 직접 작성하지 않았지만 (a)/(b)를 충족하는 기여자로부터 제공받음
+
+CLA(Contributor License Agreement)는 채택하지 않습니다 (DCO로 충분).
+
+## Pull Request 절차
+
+1. **fork + branch** 또는 (maintainer는) trunk-based main 직접 commit
+2. **TDD** — 테스트 먼저 → 실패 확인 → 구현 → 통과
+3. **DCO sign-off** — 모든 commit에 `Signed-off-by` (git commit -s)
+4. **PR template** 채우기 — `.github/PULL_REQUEST_TEMPLATE.md`가 자동 인식
+5. **CI 7/7 PASS** — Go + Enterprise + Web + PG integration + CIS + TPM + Playwright E2E
+6. **maintainer 리뷰** — 코어 1인, 보안 민감 영역 2인 리뷰
+7. **squash merge** 권장 (작은 fix) 또는 commit history 보존 (큰 feature)
+
+## 외부 contributor 환영 영역
+
+특히 다음 영역에서 contribution 환영합니다:
+
+- **새 baseline pack** — ROS2 distros(humble·iron·rolling), 다른 robot stack(MoveIt·Nav2), 다른 Linux distro(RHEL·Debian)
+- **번역** — 문서 영어 번역 (현재 한국어 위주)
+- **외부 검증 도구** — `cmd/rosshield-audit-verify` 확장 (다른 언어 SDK)
+- **Issue triage** — bug reproduction · design 토론
+- **Docs 개선** — onboarding · examples · troubleshooting
+
+직접 코드 PR 전에 먼저 [Discussions](https://github.com/ssabro/rosshield/discussions)에서 의도 공유 권장 — 설계서와 충돌 시 PR 거부 risk.
+
+## 행동 강령
+
+본 프로젝트는 [Contributor Covenant 2.1](./CODE_OF_CONDUCT.md)을 채택합니다. 모든 기여자·maintainer는 본 행동 강령을 준수해야 합니다.
 
 ## 코드 기여 전 체크
 
@@ -78,3 +121,4 @@ SESSION_HANDOFF.md에 D-NNN 추가
 - [ ] 파일·함수 크기 제한 준수
 - [ ] 테스트 추가
 - [ ] 설계서와 정합 (설계서 수정이 먼저 or 동시)
+- [ ] DCO sign-off (`git commit -s`)

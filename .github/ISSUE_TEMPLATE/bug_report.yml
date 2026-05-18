@@ -1,0 +1,98 @@
+name: 🐛 Bug Report
+description: Lodestar에서 발견한 버그를 보고합니다.
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lodestar 버그 신고에 감사드립니다. 더 빠른 해결을 위해 아래 정보를 가능한 한 자세히 채워주세요.
+
+        > **보안 취약점은 본 form이 아닌 [SECURITY.md](https://github.com/ssabro/rosshield/blob/main/SECURITY.md) 채널로 신고해주세요.**
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 요약
+      description: 버그의 한 줄 요약
+      placeholder: "예: 'rosshield scan'이 ROS2 Jazzy에서 C8 governance check를 PASS로 잘못 보고"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 절차
+      description: 정확히 어떤 단계로 재현되는지 step-by-step
+      placeholder: |
+        1. `rosshield scan --pack ros2-jazzy ...`
+        2. ros2 governance.xml에 ENCRYPT 토픽 0건 상태
+        3. 결과 'PASS' 출력 (FAIL이 기대됨)
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+      description: 어떻게 동작해야 한다고 생각하시나요?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 실제로는 어떻게 동작했나요? (에러 메시지·log·screenshot 첨부 환영)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Lodestar 버전
+      description: "`rosshield version` 출력 또는 release tag"
+      placeholder: "v0.4.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: 배포 형태
+      options:
+        - Desktop (Tauri 또는 standalone binary)
+        - On-prem (Linux server)
+        - Appliance (snap on Ubuntu Core)
+        - Web (browser via PWA)
+        - 기타 (text로 설명)
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS · 환경
+      description: 예 Ubuntu 24.04 LTS · macOS 15 · Windows 11 + WSL2
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 관련 log · audit chain 정보 (선택)
+      description: |
+        민감 정보(IP·robot 식별자·tenant 정보) 제거 후 첨부. evidence redaction은 자동 처리됨.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 사전 점검
+      options:
+        - label: 기존 issue · discussion 검색했음
+          required: true
+        - label: 최신 release(v0.4.3+)에서 재현됨 또는 release log 확인함
+          required: true
+        - label: 보안 취약점이 아님 (보안 issue는 SECURITY.md 채널)
+          required: true
