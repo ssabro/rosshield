@@ -6,8 +6,36 @@
 
 ## [Unreleased]
 
+> **상태**: Phase 7(공개 출시 + 청구권 본체 + 라이선스 양분) 진입 중. 출원 완료 가정 trigger(사용자 결정, 2026-05-18)로 R-BRAND·R-LICENSE·R-D8·R-PUBLIC 4 epic unblock. R-D8 잔여 3 청구권(B-1·C-1·D-3) 진척 중.
+
 ### Added
-- (placeholder) 차기 release 항목
+
+#### Phase 7 — R-BRAND (Lodestar 브랜드 확정)
+- `feat(brand)` R-BRAND Stage 1 — Lodestar 채택 + `<ProductName>` placeholder 사용자 대면 6 파일 교체 (`3e3d892`)
+- `feat(brand)` R-BRAND Stage 1 보완 — design/onboarding/web 잔여 9 파일 11 위치 교체 + d1-brand-candidates §5.6 확정 근거 (`20eddee`)
+- 코드 네임스페이스 `rosshield` 보존 (Go 모듈 · CLI · YAML apiVersion · PWA manifest short_name 변경 0)
+
+#### Phase 7 — R-LICENSE (Open-core 라이선스 양분)
+- `docs(license)` R-LICENSE — LICENSE-ENTERPRISE (BSL 1.1, Change Date 2030-05-18) + NOTICE (third-party OSS attribution ~20 dep) (`ea8d5d7`)
+- 기존 LICENSE(Apache 2.0) 보존 — 코어/enterprise 라이선스 양분 결선
+
+#### Phase 7 — R-D8 (D8 청구권 코드 분리, enterprise build tag)
+- `feat(enterprise)` R-D8 A-1 — cross-witness fold-in 본체 (multi-fold hash chain, RFC 8785 canonical JSON, 17 단위 PASS) (`b4e77eb`)
+- ⏸ R-D8 B-1 multi-hash evidence (carryover)
+- ⏸ R-D8 C-1 WASM sandboxed evaluator (carryover)
+- ⏸ R-D8 D-3 robot identity binding (carryover)
+
+#### ROS2 baseline pack Round 1 (솔루션 핵심 차별화 영역)
+- `feat(packs)` Round 1 Stage 1 — `packs/ros2-jazzy/` 신규 pack + C1 SROS2 보안 활성화 + C6 distro(LTS/EOL/CLI) (`8eb3d7d`)
+- `feat(packs)` Round 1 Stage 2 — C3 ROS_DOMAIN_ID 격리 + C7 RMW_IMPLEMENTATION (`edfba4f`)
+- `feat(packs)` Round 1 Stage 3 — C8 governance.xml ENCRYPT topics (`f34f8b9`)
+- `feat(packs)` Round 1 Stage 4 — C2 cmd_vel publisher count + ACL (`c6ea725`)
+- **카테고리 cover 6/8** (C1·C2·C3·C6·C7·C8 ✅ / C4 binary 무결성·C5 launch 안전 carryover Round 2)
+- 9 check 총 + 9 selftest fixture (mock 작성, D-ROS2-9 정확 준수) — ros2_jazzy_fixture_test.go 동적 round-trip cover
+
+### Notes
+- 메모리 정책 일관: 큰 작업 design doc 우선(`feedback_design_doc_first`) · 보수적 추정(`feedback_design_doc_conservative`) · 병렬 작업 사전 판단(`feedback_parallel_agents`) · backtick hash 보호(`feedback_commit_message_backticks`)
+- sub-agent worktree 패턴 누적 28회 — 마라톤 retrospective(`c85838c`) 학습 반영
 
 ---
 
