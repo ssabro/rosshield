@@ -19,11 +19,13 @@
 - `docs(license)` R-LICENSE — LICENSE-ENTERPRISE (BSL 1.1, Change Date 2030-05-18) + NOTICE (third-party OSS attribution ~20 dep) (`ea8d5d7`)
 - 기존 LICENSE(Apache 2.0) 보존 — 코어/enterprise 라이선스 양분 결선
 
-#### Phase 7 — R-D8 (D8 청구권 코드 분리, enterprise build tag)
+#### Phase 7 — R-D8 (D8 청구권 코드 분리, enterprise build tag) — **4/4 본체 완전 마감**
 - `feat(enterprise)` R-D8 A-1 — cross-witness fold-in 본체 (multi-fold hash chain, RFC 8785 canonical JSON, 17 단위 PASS) (`b4e77eb`)
-- ⏸ R-D8 B-1 multi-hash evidence (carryover)
-- ⏸ R-D8 C-1 WASM sandboxed evaluator (carryover)
-- ⏸ R-D8 D-3 robot identity binding (carryover)
+- `feat(enterprise)` R-D8 B-1 — multi-hash evidence 본체 (sha256+blake3 cross-check + JSONPath/line sub-hash + VerifyMode enum, 48 단위 PASS, `lukechampine.com/blake3 v1.4.1` dep 추가) (`5292585`)
+- `feat(enterprise)` R-D8 D-3 — robotid fingerprint 본체 (TPM EK + sorted MACs + CPU serial + tenant salt, 19+ 단위 PASS, `go-tpm-tools v0.4.8` indirect 활용) (`b8bbae7`)
+- `feat(enterprise)` R-D8 C-1 — WASM sandboxed evaluator 본체 (wazero v1.11.0 + WASI 격리 + CPU timeout + hand-crafted WASM 4종, 45 단위 PASS, PolicyVerifier interface) (`012fe3f`)
+- **enterprise 8 패키지 누적 129+ 단위 PASS** (crosswitness 17 + multihash 48 + wasmrt 45 + robotid 19+ = 4 청구권 본체 cover) + 코어 → enterprise import 0 (boundary_test 회귀 0)
+- **1순위 결합 청구항 4 본체 모두 enterprise build tag 격리** — `docs/design/13-patent-strategy.md` §13.5 spec 정확 일치
 
 #### ROS2 baseline pack Round 1 (솔루션 핵심 차별화 영역)
 - `feat(packs)` Round 1 Stage 1 — `packs/ros2-jazzy/` 신규 pack + C1 SROS2 보안 활성화 + C6 distro(LTS/EOL/CLI) (`8eb3d7d`)
@@ -35,7 +37,8 @@
 
 ### Notes
 - 메모리 정책 일관: 큰 작업 design doc 우선(`feedback_design_doc_first`) · 보수적 추정(`feedback_design_doc_conservative`) · 병렬 작업 사전 판단(`feedback_parallel_agents`) · backtick hash 보호(`feedback_commit_message_backticks`)
-- sub-agent worktree 패턴 누적 28회 — 마라톤 retrospective(`c85838c`) 학습 반영
+- sub-agent worktree 패턴 누적 31회 — 마라톤 retrospective(`c85838c`) 학습 반영
+- Phase 7 코드 트랙 R-D8 본체 100% 마감 — 다음 자연 진입은 R-PUBLIC (사용자 GitHub Settings 권한 대기) / ROS2 pack Round 2 carryover (paying customer trigger 권장)
 
 ---
 
