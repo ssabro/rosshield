@@ -104,7 +104,24 @@ func setupHAFixture(t *testing.T) *haFixture {
 	if err != nil {
 		t.Fatalf("pgxpool.NewWithConfig: %v", err)
 	}
-	t.Cleanup(pool.Close)
+	// CI fix cascade 13회차: pool.Close를 timeout 가능 close로 감싼다.
+	// migrate conn leak fix(applyMigrations m.Close 호출)로 leak 0이지만,
+	// 만에 하나 다른 leak path가 있어도 cleanup이 무한 hang하지 않게 방어선.
+	// 30s 후 timeout 시 t.Log로 leak 의심 conn 수 출력 + 그대로 return.
+	t.Cleanup(func() {
+		done := make(chan struct{})
+		go func() {
+			pool.Close()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(30 * time.Second):
+			stat := pool.Stat()
+			t.Logf("pool.Close timeout 30s — acquired=%d total=%d idle=%d (conn leak suspected)",
+				stat.AcquiredConns(), stat.TotalConns(), stat.IdleConns())
+		}
+	})
 
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -118,6 +135,12 @@ func setupHAFixture(t *testing.T) *haFixture {
 		t.Fatalf("apply migrations: %v", err)
 	}
 
+	// CI fix cascade 13회차: migration 후 pool stat 로그 — conn leak 가시화.
+	// applyMigrations 정상 종료 시 acquired=0 기대. >0이면 leak 즉시 표면화.
+	postStat := pool.Stat()
+	t.Logf("post-migration pool stat: acquired=%d total=%d idle=%d",
+		postStat.AcquiredConns(), postStat.TotalConns(), postStat.IdleConns())
+
 	return &haFixture{pool: pool}
 }
 
@@ -126,14 +149,26 @@ func setupHAFixture(t *testing.T) *haFixture {
 //
 // ctx는 60s timeout 권장 — migrate Up()이 internal advisory lock + 30개 migration
 // 직렬 적용으로 시간 소요. CI 부하 시 무한 대기 차단.
+//
+// CI fix cascade 13회차: migrate.Migrate.Close() / dbDrv.Close() 호출 추가.
+// migratepg.WithInstance는 sql.DB.Conn(ctx)으로 dedicated conn 1개를 영구 borrow
+// (golang-migrate/v4 database/postgres/postgres.go Postgres.conn). Close 호출
+// 없으면 그 conn은 pgxpool에서 영구 acquired 상태로 남아 pool.Close()가 무한 hang.
+// CI run 26026373823 stack trace에서 puddle.Pool[...].Close → WaitGroup.Wait
+// 7m hang으로 확인 — TestPGLockSingleHolderConcurrent 본체는 완료됐고 t.Cleanup
+// pool.Close에서 leak conn 대기. m.Close 호출이 진짜 fix.
 func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	src, err := iofs.New(pgstorage.MigrationsFS, "migrations")
 	if err != nil {
 		return err
 	}
+	// src.Close는 m.Close가 이미 호출함 (Migrate.Close가 source/database 모두 닫음).
+	// 다만 NewWithInstance 실패 path 대비 defer로도 close — close 멱등(iofs).
 	defer func() { _ = src.Close() }()
 
 	sqlDB := stdlib.OpenDBFromPool(pool)
+	// sqlDB.Close는 m.Close가 dbDrv.Close → p.db.Close 경로로 호출함. 다만 m 생성
+	// 실패 path 대비 defer로도 close — sql.DB.Close 멱등.
 	defer func() { _ = sqlDB.Close() }()
 
 	dbDrv, err := migratepg.WithInstance(sqlDB, &migratepg.Config{})
@@ -142,8 +177,19 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	m, err := migrate.NewWithInstance("iofs", src, "postgres", dbDrv)
 	if err != nil {
+		// dbDrv는 이미 conn borrow 상태 — 명시 close로 반납.
+		_ = dbDrv.Close()
 		return err
 	}
+	// m.Close는 source + database 모두 닫음. database close는 borrowed conn
+	// (sql.DB.Conn) 반납 + sqlDB.Close 호출. 이게 누락되면 pgxpool conn 1개
+	// 영구 leak → pool.Close hang.
+	defer func() {
+		srcErr, dbErr := m.Close()
+		_ = srcErr
+		_ = dbErr
+	}()
+
 	// migrate-go는 자체 컨텍스트 미수신 — ctx 통한 cancel은 best-effort.
 	// 별도 goroutine에서 Up() 호출 + ctx done 시 graceful close.
 	done := make(chan error, 1)
@@ -155,7 +201,7 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 		return nil
 	case <-ctx.Done():
-		// migrate가 hang하면 sqlDB.Close()로 강제 종료. defer가 처리.
+		// migrate가 hang하면 defer m.Close가 dbDrv.Close → conn.Close로 강제 종료.
 		return fmt.Errorf("apply migrations: %w", ctx.Err())
 	}
 }
@@ -168,18 +214,25 @@ func TestPGLockSingleHolderConcurrent(t *testing.T) {
 	// CI fix cascade 12회차: t.Parallel() 제거 — 4 test 동시 PG container 부하 회피.
 	// 각 test는 자체 testcontainer 보유라 동시 4 PG image pull/start가 GitHub Actions
 	// runner의 docker daemon backpressure 유발 가설.
+	// CI fix cascade 13회차: step log + panic-safe wg.Done + goroutine별 step trace.
+	// 8m hang 원인이 t.Cleanup pool.Close였음(applyMigrations conn leak) — 진짜 fix는
+	// applyMigrations 측 m.Close 호출. 본체는 보강 차원 step log.
+	t.Logf("step 1: setupHAFixture")
 	fx := setupHAFixture(t)
 	// 각 PG 호출은 30s timeout — 본체 hang(advisory lock 대기·tx commit hang 등) 차단.
 	// 정상 path는 sub-second에 끝남.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	t.Logf("step 2: NewPGLock x2")
 	lockA := ha.NewPGLock(fx.pool, testLockID)
 	lockB := ha.NewPGLock(fx.pool, testLockID)
 	t.Cleanup(func() {
 		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer releaseCancel()
+		t.Logf("cleanup: lockA.Release")
 		_ = lockA.Release(releaseCtx)
+		t.Logf("cleanup: lockB.Release")
 		_ = lockB.Release(releaseCtx)
 	})
 
@@ -191,17 +244,24 @@ func TestPGLockSingleHolderConcurrent(t *testing.T) {
 	results := make(chan result, 2)
 	var wg sync.WaitGroup
 	wg.Add(2)
+	t.Logf("step 3: concurrent TryAcquire start")
 	go func() {
+		// defer wg.Done은 panic-safe — TryAcquire가 panic해도 wg는 풀림.
 		defer wg.Done()
+		start := time.Now()
 		ok, epoch, err := lockA.TryAcquire(ctx, "host-a:1111")
+		t.Logf("goroutine A: ok=%v epoch=%d err=%v elapsed=%s", ok, epoch, err, time.Since(start))
 		results <- result{ok, epoch, err}
 	}()
 	go func() {
 		defer wg.Done()
+		start := time.Now()
 		ok, epoch, err := lockB.TryAcquire(ctx, "host-b:2222")
+		t.Logf("goroutine B: ok=%v epoch=%d err=%v elapsed=%s", ok, epoch, err, time.Since(start))
 		results <- result{ok, epoch, err}
 	}()
 	wg.Wait()
+	t.Logf("step 4: wg.Wait complete")
 	close(results)
 
 	winners := 0
@@ -261,10 +321,13 @@ func TestPGLockSingleHolderConcurrent(t *testing.T) {
 // design doc §6 E25.T2 (failover).
 func TestPGLockReleasedOnSessionDrop(t *testing.T) {
 	// CI fix cascade 12회차: t.Parallel() 제거 + ctx timeout 추가.
+	// CI fix cascade 13회차: step log 추가 — 다음 hang 시 단계 식별.
+	t.Logf("step 1: setupHAFixture")
 	fx := setupHAFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	t.Logf("step 2: lockA TryAcquire")
 	lockA := ha.NewPGLock(fx.pool, testLockID)
 	ok, epochA, err := lockA.TryAcquire(ctx, "host-a:1111")
 	if err != nil {
@@ -277,17 +340,20 @@ func TestPGLockReleasedOnSessionDrop(t *testing.T) {
 		t.Errorf("epochA = %d, want 1", epochA)
 	}
 
+	t.Logf("step 3: lockA Release")
 	// Release simulates leader stepping down (PG advisory_unlock + conn 반환).
 	// 세션 강제 종료(pg_terminate_backend)와 동등한 효과 — lock 해제됨.
 	if err := lockA.Release(ctx); err != nil {
 		t.Fatalf("lockA Release: %v", err)
 	}
 
+	t.Logf("step 4: lockB TryAcquire (after lockA released)")
 	// 두 번째 PGLock이 같은 lockID 재획득.
 	lockB := ha.NewPGLock(fx.pool, testLockID)
 	t.Cleanup(func() {
 		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer releaseCancel()
+		t.Logf("cleanup: lockB.Release")
 		_ = lockB.Release(releaseCtx)
 	})
 	ok, epochB, err := lockB.TryAcquire(ctx, "host-b:2222")
