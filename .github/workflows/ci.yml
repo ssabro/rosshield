@@ -29,6 +29,37 @@ jobs:
             exit 1
           fi
 
+      # E12 — built-in pack archive는 .gitignore라 fresh clone에 없음.
+      # //go:embed _archives/*.tar.gz 패턴이 vet 단계에서 실패 → archive 사전 build.
+      # Secret DEV_PACK_SIGNER_KEY_B64 (base64 인코딩 64B raw Ed25519 private key) 우선.
+      # Secret 미설정 시 fallback keygen — vet/build PASS는 보장하나 InstallPack Verify는
+      # embed.go DevSignerPublicKeyHex const와 mismatch로 fail 가능.
+      - name: Build pack-tools (E12)
+        run: go build -o bin/pack-tools ./cmd/pack-tools
+
+      - name: Decode dev pack signer key (DEV_PACK_SIGNER_KEY_B64 → raw 64B)
+        env:
+          DEV_PACK_SIGNER_KEY_B64: ${{ secrets.DEV_PACK_SIGNER_KEY_B64 }}
+        run: |
+          set -e
+          if [ -z "$DEV_PACK_SIGNER_KEY_B64" ]; then
+            echo "::warning::DEV_PACK_SIGNER_KEY_B64 secret not set — falling back to fresh keygen (built-in pack Verify will mismatch embed.go DevSignerPublicKeyHex const)"
+            ./bin/pack-tools keygen -out scripts/dev-pack-signer.key -pub-out scripts/dev-pack-signer.pub.hex -force
+          else
+            mkdir -p scripts
+            echo "$DEV_PACK_SIGNER_KEY_B64" | base64 -d > scripts/dev-pack-signer.key
+            chmod 600 scripts/dev-pack-signer.key
+            SIZE=$(wc -c < scripts/dev-pack-signer.key)
+            if [ "$SIZE" != "64" ]; then
+              echo "::error::dev pack signer key has size $SIZE, want 64 bytes (raw Ed25519 private key)"
+              exit 1
+            fi
+            echo "Dev signer key decoded ($SIZE bytes)."
+          fi
+
+      - name: Build built-in pack archives (populates internal/builtin/packs/_archives/)
+        run: make pack-archive
+
       - name: Vet
         run: go vet ./...
 
