@@ -1,0 +1,57 @@
+Lodestar Enterprise License (Business Source License 1.1)
+
+Applies to:    internal/enterprise/* (when built with `rosshield_enterprise` build tag)
+Licensor:      Lodestar contributors
+Licensed Work: Lodestar Enterprise modules (the contents of `internal/enterprise/*`)
+               in the rosshield repository (https://github.com/ssabro/rosshield).
+
+Change Date:   2030-05-18
+Change License: Apache License, Version 2.0
+
+------------------------------------------------------------------------
+
+The Licensed Work is provided under the terms of the Business Source
+License 1.1 (the "License"). The full official text of the BSL 1.1
+template is published at https://mariadb.com/bsl11 and is incorporated
+here by reference.
+
+The terms below set the parameters for this License:
+
+  1. **Licensed Work**: The Lodestar Enterprise modules listed above.
+     Core modules outside `internal/enterprise/*` are NOT covered by
+     this License — they are licensed under Apache-2.0 (see LICENSE).
+
+  2. **Additional Use Grant**: You may make production use of the
+     Licensed Work, provided that your use does not include offering
+     the Licensed Work to third parties as a hosted or embedded service
+     that competes with a commercial product or service offered by the
+     Licensor.
+
+     For development, testing, evaluation, internal compliance audits,
+     and non-production deployments, no additional restrictions apply
+     beyond those in the BSL 1.1 template.
+
+  3. **Change Date**: 2030-05-18 (four years from the assumed first
+     patent priority date 2026-05-18; see docs/design/13-patent-strategy.md
+     and docs/design/notes/phase7-public-transition-design.md §4).
+
+  4. **Change License**: Apache License, Version 2.0. On the Change
+     Date, the License automatically converts to Apache-2.0 and the
+     Licensed Work is freely usable under those terms.
+
+------------------------------------------------------------------------
+
+Notice required by the BSL 1.1 template:
+
+  Business Source License 1.1
+  License text Copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
+  "Business Source License" is a trademark of MariaDB Corporation Ab.
+
+------------------------------------------------------------------------
+
+For questions about commercial licensing, exemptions to the Additional
+Use Grant, or early conversion to Apache-2.0, contact the Licensor via
+the channels listed in docs/onboarding/support-channels.md.
+
+For the canonical machine-readable BSL 1.1 template, see:
+  https://mariadb.com/bsl11

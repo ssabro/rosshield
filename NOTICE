@@ -1,0 +1,66 @@
+Lodestar — 코드네임 rosshield
+Copyright 2026 Lodestar contributors
+
+This product includes software developed at Lodestar (https://github.com/ssabro/rosshield).
+The core is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The `internal/enterprise/*` subtree is licensed under a separate license
+(see LICENSE-ENTERPRISE) and is included only when built with the
+`rosshield_enterprise` build tag.
+
+=== Third-party software ===
+
+This product bundles or depends on the following third-party software.
+Each dependency retains its original license — full text available at the
+upstream project URL.
+
+--- Go standard library + extensions ---
+golang.org/x/crypto         BSD-3-Clause   https://pkg.go.dev/golang.org/x/crypto
+golang.org/x/sync           BSD-3-Clause   https://pkg.go.dev/golang.org/x/sync
+golang.org/x/sys            BSD-3-Clause   https://pkg.go.dev/golang.org/x/sys
+
+--- Storage ---
+modernc.org/sqlite          BSD-3-Clause   https://gitlab.com/cznic/sqlite
+github.com/jackc/pgx/v5     MIT            https://github.com/jackc/pgx
+github.com/pressly/goose/v3 MIT            https://github.com/pressly/goose
+
+--- HTTP / API ---
+github.com/go-chi/chi/v5    MIT            https://github.com/go-chi/chi
+github.com/oapi-codegen/runtime
+                            Apache-2.0     https://github.com/oapi-codegen/oapi-codegen
+
+--- Identity / IDs ---
+github.com/oklog/ulid/v2    Apache-2.0     https://github.com/oklog/ulid
+
+--- Observability ---
+github.com/prometheus/client_golang
+                            Apache-2.0     https://github.com/prometheus/client_golang
+github.com/prometheus/client_model
+                            Apache-2.0     https://github.com/prometheus/client_model
+
+--- Scheduling ---
+github.com/robfig/cron/v3   MIT            https://github.com/robfig/cron
+
+--- SSO ---
+github.com/russellhaering/gosaml2
+                            Apache-2.0     https://github.com/russellhaering/gosaml2
+github.com/russellhaering/goxmldsig
+                            Apache-2.0     https://github.com/russellhaering/goxmldsig
+
+--- TPM (enterprise build tag) ---
+github.com/google/go-tpm-tools
+                            Apache-2.0     https://github.com/google/go-tpm-tools
+
+--- IndexedDB / Web ---
+idb-keyval                  Apache-2.0     https://github.com/jakearchibald/idb-keyval
+
+--- React / Frontend ---
+react                       MIT            https://github.com/facebook/react
+@tanstack/react-query       MIT            https://github.com/TanStack/query
+@tanstack/react-router      MIT            https://github.com/TanStack/router
+zustand                     MIT            https://github.com/pmndrs/zustand
+vite                        MIT            https://github.com/vitejs/vite
+vite-plugin-pwa             MIT            https://github.com/vite-pwa/vite-plugin-pwa
+workbox-window              MIT            https://github.com/GoogleChrome/workbox
+
+For the full text of each license, visit the upstream project URL listed above.
