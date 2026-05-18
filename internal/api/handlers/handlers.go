@@ -380,6 +380,26 @@ func (h *Handlers) Mount(r chi.Router) {
 			Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
 				h.GenerateComplianceSnapshot(w, req, chi.URLParam(req, "profileId"))
 			})
+
+		// === Customer Intake (5건) — Phase 6 후보 1 R1 Stage 3 ===
+		// design doc `docs/design/notes/customer-onboarding-design.md` §6.1 + §6.2 산출.
+		// 운영자(rosshield admin) 전용 — intake row는 tenant 생성 *전* 단계 글로벌 데이터로
+		// cross-tenant 격리가 적용되지 않음 (Bootstrap Tx 진입). 따라서 모든 5 endpoint는
+		// tenant 글로벌 admin 권한(ResourceTenantAdmin.Admin)만 통과 — design doc §6.2 line 90
+		// "tenant:create 권한 신규 또는 기존 admin role 사용" + line 538 "intake API는 운영자
+		// admin 권한 필수" 일관.
+		// read도 admin gate — intake 내용에 contact email·use case 등 개인정보 포함, 운영자
+		// 외 공유 금지(P10 프라이버시 기본값).
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/customers/intake", h.CreateCustomerIntake)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Get("/api/v1/customers/intakes", h.ListCustomerIntakes)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Get("/api/v1/customers/intakes/{intakeId}", h.GetCustomerIntake)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/customers/intakes/{intakeId}:accept", h.AcceptCustomerIntake)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/customers/intakes/{intakeId}:reject", h.RejectCustomerIntake)
 	})
 }
 

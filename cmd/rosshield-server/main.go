@@ -176,6 +176,7 @@ func newMux(p *Platform) http.Handler {
 		Invitation:        p.Invitation,
 		Metrics:           p.Metrics,
 		ReportSigner:      p.ReportSigner,
+		Intake:            p.Intake, // Phase 6 후보 1 R1 Stage 3 — customer intake handler 결선 (운영자 admin gate).
 		// RBAC fleet 정밀화 Stage 3 + Stage 6 closing — robot/scan/insight/reporting service
 		// 위임 ScopeResolver. cross-resource fleet lookup이 필요한 7 mutation endpoint(DELETE
 		// /robots/{id}, POST /robots/{id}/credential:rotate, POST /scans/{id}:cancel,

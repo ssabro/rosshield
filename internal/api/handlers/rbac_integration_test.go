@@ -8,9 +8,10 @@
 // 까지의 status code(200/403)만 검증합니다. 따라서 도메인 서비스 의존성 0이며, panic 없는
 // 가벼운 단위 통합 테스트입니다.
 //
-// 매트릭스: 6 페르소나 × 24 mutation endpoint = 144 case.
+// 매트릭스: 6 페르소나 × 29 endpoint = 174 case.
 //   - 페르소나: owner / admin / fleet-admin@flt_a / operator@flt_a / auditor / read-only
-//   - 엔드포인트: handlers.go의 admin 그룹 mutation 24건 (Stage 1+2-A 합계).
+//   - 엔드포인트: handlers.go의 RequirePermission mutation 24건 + Phase 6 후보 1 R1 Stage 3
+//     customer intake 5건 (운영자 admin 전용 — design doc §6.2 line 90·538).
 //
 // 본 테스트는 chi RouteContext에 fleetId param을 직접 주입해 path scope 결정도 검증합니다.
 
@@ -89,6 +90,15 @@ func allMutationEndpoints() []rbacEndpoint {
 		// === Compliance (2) ===
 		{name: "POST /compliance/profiles", resource: authz.ResourceCompliance, action: authz.ActionAdmin},
 		{name: "POST /compliance/profiles/{profileId}/snapshots", resource: authz.ResourceCompliance, action: authz.ActionExecute},
+
+		// === Customer Intake (5) — Phase 6 후보 1 R1 Stage 3 ===
+		// 운영자 admin 전용 — read 포함 모든 5 endpoint가 ResourceTenantAdmin.Admin 게이트.
+		// design doc `customer-onboarding-design.md` §6.2 line 90·538 일관.
+		{name: "POST /customers/intake", resource: authz.ResourceTenantAdmin, action: authz.ActionAdmin},
+		{name: "GET /customers/intakes", resource: authz.ResourceTenantAdmin, action: authz.ActionAdmin},
+		{name: "GET /customers/intakes/{intakeId}", resource: authz.ResourceTenantAdmin, action: authz.ActionAdmin},
+		{name: "POST /customers/intakes/{intakeId}:accept", resource: authz.ResourceTenantAdmin, action: authz.ActionAdmin},
+		{name: "POST /customers/intakes/{intakeId}:reject", resource: authz.ResourceTenantAdmin, action: authz.ActionAdmin},
 	}
 }
 
@@ -173,8 +183,8 @@ func TestRBACMatrix_AllPersonasAllEndpoints(t *testing.T) {
 	t.Parallel()
 
 	endpoints := allMutationEndpoints()
-	if got, want := len(endpoints), 24; got != want {
-		t.Fatalf("endpoint count = %d, want %d (handlers.go admin 그룹 mutation)", got, want)
+	if got, want := len(endpoints), 29; got != want {
+		t.Fatalf("endpoint count = %d, want %d (handlers.go admin 그룹 mutation 24 + intake 5)", got, want)
 	}
 	personas := allPersonas()
 	if got, want := len(personas), 6; got != want {
@@ -219,7 +229,7 @@ func TestRBACMatrix_AllPersonasAllEndpoints(t *testing.T) {
 // TestRBACMatrix_OwnerAllowsAllMutations는 owner 페르소나가 모든 mutation을 통과함을 검증합니다.
 //
 // design doc §3.1 — owner는 모든 (resource, action) implicit. 본 테스트는 매트릭스의
-// owner row가 24/24 ALLOW임을 별도 검증합니다 (설계 회귀 방지).
+// owner row가 29/29 ALLOW임을 별도 검증합니다 (설계 회귀 방지). intake 5건 포함.
 func TestRBACMatrix_OwnerAllowsAllMutations(t *testing.T) {
 	t.Parallel()
 

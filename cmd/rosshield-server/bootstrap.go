@@ -30,6 +30,8 @@ import (
 	evidencerepo "github.com/ssabro/rosshield/internal/domain/evidence/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/insight"
 	insightrepo "github.com/ssabro/rosshield/internal/domain/insight/sqliterepo"
+	"github.com/ssabro/rosshield/internal/domain/intake"
+	intakerepo "github.com/ssabro/rosshield/internal/domain/intake/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/integration/webhook"
 	webhookrepo "github.com/ssabro/rosshield/internal/domain/integration/webhook/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/reporting"
@@ -222,6 +224,7 @@ type Platform struct {
 	LLM               llm.Adapter
 	Advisor           advisor.Service          // E16
 	License           *license.Enforcer        // E24 — Open-core enterprise feature 게이트 + 쿼터
+	Intake            intake.Service           // Phase 6 후보 1 R1 Stage 3 — customer onboarding intake CRUD (운영자 admin 전용)
 	Webhook           webhook.Service          // E23 — webhook + SIEM 통합 도메인
 	WebhookDispatcher *webhookrun.Dispatcher   // E23-B — Process worker
 	WebhookBridge     *webhookrun.EventBridge  // E23-D — EventBus → webhook.Enqueue bridge
@@ -1249,6 +1252,16 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: build license enforcer: %w", err)
 	}
 
+	// Phase 6 후보 1 R1 Stage 3 — customer onboarding intake 결선.
+	// design doc `docs/design/notes/customer-onboarding-design.md` §6.1 + §7 R1 Stage 3.
+	// 본 service는 운영자 admin 전용 (handlers.go RequirePermission(ResourceTenantAdmin,
+	// ActionAdmin) gate). audit emit + auto-provisioning(tenant.Create + admin invite +
+	// license 발급)은 R1 Stage 4에서 별 어댑터로 wrap — 본 stage는 도메인 → handler 결선만.
+	intakeSvc := intakerepo.New(intakerepo.Deps{
+		Clock: clk,
+		IDGen: ids,
+	})
+
 	logger.Info("platform bootstrap complete",
 		"dataDir", cfg.DataDir,
 		"dbPath", dbPath,
@@ -1286,6 +1299,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		LLM:               llmAdapter,
 		Advisor:           advisorSvc,
 		License:           licenseEnforcer,
+		Intake:            intakeSvc,
 		Webhook:           webhookSvc,
 		WebhookDispatcher: webhookDispatcher,
 		WebhookBridge:     webhookBridge,
