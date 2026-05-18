@@ -182,6 +182,12 @@ jobs:
         run: make pack-archive
 
       - name: Run PG integration tests
+        # TESTCONTAINERS_RYUK_DISABLED=true — GitHub Actions runner에서 Reaper(Ryuk)
+        # connect가 8분 hang (chan receive, testcontainers-go reaper.go:535). Ryuk은
+        # leaked container cleanup용이지만 GitHub Actions는 job 종료 시 runner 정리되어
+        # 의미 0. ha 패키지 480s timeout 원인.
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
         run: go test -tags=integration -count=1 -timeout=8m ./internal/platform/storage/postgres/... ./internal/platform/ha/...
 
   cis-synth-integration:
