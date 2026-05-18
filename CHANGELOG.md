@@ -7,7 +7,37 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 7 R-PUBLIC(사용자 GitHub Settings 권한 대기) / ROS2 pack Round 2 C4·C5 carryover (paying customer trigger 권장)
+- (placeholder) 차기 release 항목 — Phase 7 R-PUBLIC(사용자 GitHub Settings 권한 대기) / R-D8 청구권 후속 v2 / ROS2 pack Round 2 C4·C5 carryover
+
+---
+
+## [0.4.1] — 2026-05-18 (patch)
+
+> **요약**: v0.4.0 직후 CI infrastructure fix cascade 14 round 마감 + snap binary 빌드 fix. 자체 코드 회귀 0. main CI 7/7 ALL PASS 완전 안정화 milestone 도달. 상세는 [docs/releases/v0.4.1.md](docs/releases/v0.4.1.md).
+>
+> **기준 commit**: `921a2cc` (main)
+
+### Fixed
+
+#### CI fix cascade 14 round
+
+- `ci(go)` pack-archive pre-build step 추가 (`c7a630c`) — embed `_archives/*.tar.gz` fresh clone 부재 fix, Secret `DEV_PACK_SIGNER_KEY_B64` 사용
+- `fix(snap)` architectures 중복 arm64 제거 (`cd29d62`) — snapcraft 8.x validation 호환
+- `fix(packs)` cis-ubuntu-2404 duplicate placeholder 12건 제거 (`885700e`) — manual fixture 작성 후 obsolete
+- `ci(go)` pack-archive 3 job 확장 (`b2f30b9`) — go-enterprise + pg-integration + e2e
+- `ci(go)` test timeout 10m → 20m (`b21be1e`) — cmd/rosshield-server 일관 초과
+- `fix(lint)` golangci-lint v8 cascade 2 round 14건 (`70851d1` + `9889fb5`) — gofmt + errcheck + staticcheck + unused
+- `fix(postgres)` 마이그레이션 0024 evidence_json JSONB cast DEFAULT DROP/SET (`b19802a`)
+- `fix(postgres)` pgnative_hotpath tenants schema drift (`2e1ba6a`) + insights schema drift (`c978964`)
+- `ci(pg)` TESTCONTAINERS_RYUK_DISABLED=true (`282fb9a`) — Reaper hang fix
+- `fix(ha)` pglock integration 다층 차단 + migrate conn leak 차단 + assertion 일관 (`a1d7e14` + `5bc5fdd` + `f17777d`)
+
+#### main CI 결과
+- **7/7 ALL PASS** — Go + Enterprise + Web + PG integration + CIS + TPM + Playwright E2E
+
+### Notes
+- 자체 코드 회귀 0 — 모든 fix는 CI infra · test infra · 마이그레이션 schema drift
+- sub-agent stack trace 정독으로 migrate driver borrowed conn leak 진짜 root cause 발견 (golang-migrate/v4 postgres.WithInstance `instance.Conn(ctx)` 영구 borrow)
 
 ---
 
