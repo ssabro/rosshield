@@ -1,11 +1,28 @@
 # Lodestar — 코드네임 rosshield
 
-> **상태**: **Phase 5 진행 중** — Phase 0~4 마감, enterprise build tag scaffold 완료, 첫 customer 진입 자료 준비.
-> **산출**: Go server + TypeScript web UI + CLI 3종(`rosshield`, `rosshield-server`, `rosshield-audit-verify`) + pack-tools converter. v0.2.0 release(2026-05-08, 47 assets cosign keyless 서명).
-> **CIS Ubuntu 24.04 자동 변환률**: **94.6%** (295/312, 2026-05-14). nrobotcheck baseline JSON에서 28 합성 패턴 자동 변환 — 기본 9종 + 12 epic별(D auditctl / E-1 gsettings+sshd+auditd / E-2 nftables+iptables / E-3 dpkg+stat+apparmor / G16/G14/G3/G10/G6/G13/G5) + 잔여 3종(6.2.3.6 hashbang OK/Warning / 4.4.2.2 iptables -L X -v -n / 4.2.4 ufw before.rules + status) + E-4 Manual 자동 후보 4종(1.2.2.1 apt updates / 3.1.1 IPv6 / 4.3.3 iptables empty / 6.2.3.21 augenrules check). **NoMarker 0건 + Manual 자동 후보 cover 완료** — 잔여 17건은 fixture 트랙 대상.
-> **탄생일**: 2026-04-23
+[![CI](https://github.com/ssabro/rosshield/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ssabro/rosshield/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ssabro/rosshield?sort=semver)](https://github.com/ssabro/rosshield/releases)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Enterprise: BSL 1.1](https://img.shields.io/badge/Enterprise-BSL_1.1-orange.svg)](./LICENSE-ENTERPRISE)
+[![cosign](https://img.shields.io/badge/signed_by-cosign_keyless-brightgreen)](https://docs.sigstore.dev/cosign/overview/)
 
-ROS2 로봇 플릿 보안 감사 플랫폼. 감사인이 받아들이는 결정론적 증거와 서명된 리포트를 생성하는 상용 B2B 제품.
+**Open-source ROS2 robot fleet security audit platform — deterministic evidence, signed reports, external verifiability.**
+
+ROS2 로봇 플릿 보안 감사 플랫폼. 감사인이 받아들이는 **결정론적 증거**와 **서명된 리포트**를 생성하는 B2B 제품. 코어는 Apache-2.0, enterprise 결합 청구권 본체는 BSL 1.1 (코드 네임스페이스 `internal/enterprise/*`, build tag `rosshield_enterprise`).
+
+> **상태**: Phase 7 코드 트랙 마감 (R-BRAND · R-LICENSE · R-D8 4/4 본체 ✅) + main CI 7/7 ALL PASS + v0.4.3 release artifact 완전 안정화 (cosign signed amd64 + arm64 snap binary).
+> **산출**: Go server + TypeScript web UI + CLI 3종(`rosshield`, `rosshield-server`, `rosshield-audit-verify`) + pack-tools converter. 최신 release [v0.4.3](https://github.com/ssabro/rosshield/releases/tag/v0.4.3) (cosign keyless 서명 + Sigstore Rekor 등록).
+> **CIS Ubuntu 24.04 자동 변환률**: **94.6%** (295/312) — NoMarker 0건 + Manual 자동 후보 cover 완료.
+> **ROS2 baseline pack Round 1 MVP**: 8 카테고리 중 6 cover (C1·C2·C3·C6·C7·C8).
+> **탄생일**: 2026-04-23.
+
+## 외부 사용자 시작
+
+- **다운로드**: [Releases](https://github.com/ssabro/rosshield/releases) → 최신 tarball + snap binary (cosign 서명 검증 가능)
+- **검증**: `cosign verify-blob --certificate-identity-regexp 'https://github.com/ssabro/rosshield/.github/workflows/.*' --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' --signature <release>.sig <release>.tar.gz`
+- **이슈**: [Issues](https://github.com/ssabro/rosshield/issues) (template 자동 인식) · 보안 취약점은 [SECURITY.md](./SECURITY.md) 채널
+- **토론**: [Discussions](https://github.com/ssabro/rosshield/discussions) (Q&A · 기능 제안 사전 토론)
+- **기여**: [CONTRIBUTING.md](./CONTRIBUTING.md) — DCO sign-off 필수, [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) 준수
 
 > **제품 브랜드**는 `Lodestar`로 확정(2026-05-18, D-P7-1). 문서·UI 등 사용자 대면 문자열은 `Lodestar`를 사용합니다. **코드 네임스페이스는 `rosshield`로 확정**(2026-04-23) — Go 모듈·내부 패키지·설정 경로에서 사용. 결정 추적은 [`SESSION_HANDOFF.md`](./SESSION_HANDOFF.md).
 
