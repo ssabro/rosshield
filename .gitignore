@@ -137,3 +137,6 @@ docs/.vitepress/dist/
 # ─── Local scratch ──────────────────────────────────────
 scratch/
 .local/
+
+# Local dev data dir (admin seed + DB)
+run-data/
