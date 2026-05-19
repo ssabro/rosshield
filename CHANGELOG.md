@@ -7,7 +7,36 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 7 R-PUBLIC(사용자 GitHub Settings 권한 대기) / R-D8 청구권 후속 v2 / ROS2 pack Round 2 C4·C5 carryover
+- (placeholder) 차기 release 항목 — R-D8 v3(Sigstore keyless + TPM Quote signature 검증) / ROS2 pack Round 2 C4·C5 carryover (paying customer trigger 권장) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.5.0] — 2026-05-19
+
+> **요약**: Phase 7 마지막 epic R-PUBLIC 마감(repo public + community 파일 + README badge) + R-D8 v2 후속 보강 4/4 마감(scheduler/anchor + wildcard JSONPath + cosign keyed verifier + TPM PCR 결합). enterprise 단위 +88 (129+ → 217+). 회귀 0. 상세는 [docs/releases/v0.5.0.md](docs/releases/v0.5.0.md).
+>
+> **기준 commit**: `6b0c247` (main)
+
+### Added
+
+#### Phase 7 — R-PUBLIC (GitHub repo public 전환 + community baseline)
+- `feat(public)` Stage 2 community 파일 신규 (`537c98a`) — SECURITY + CODE_OF_CONDUCT + CONTRIBUTING 보강 + .github templates
+- `feat(public)` Stage 3 README badge + repo description (`d61a8eb`) — CI/Release/Apache 2.0/Enterprise BSL 1.1/cosign badge + 영어 첫 paragraph + 외부 사용자 시작 섹션
+
+#### Phase 7 — R-D8 v2 후속 보강 (1순위 결합 청구권 4/4)
+- `feat(enterprise)` A-1 cross-witness v2 scheduler + anchor (`138185b`) — Scheduler + WebhookAnchor + FilesystemDumpAnchor + 15 신규 단위
+- `feat(enterprise)` B-1 multi-hash v2 wildcard JSONPath (`35ecbb3`) — `$.foo[*].bar` + 중첩 cartesian + 26 신규 단위
+- `feat(enterprise)` C-1 wasmrt v2 cosign keyed verifier (`a18a4f9`) — ECDSA P-256 + ed25519 + RSA PKCS#1 v1.5 + 28 신규 단위
+- `feat(enterprise)` D-3 robotid v2 TPM PCR 결합 (`d281c66`) — pcr_digest + HasPCRQuote flag + 19 신규 단위
+
+#### main CI 7/7 + enterprise 217+
+- enterprise 단위 누적 217+ PASS (v1 129+ → v2 +88) — crosswitness 32 + multihash 74 + wasmrt 73 + robotid 38
+- 신규 dep 0 (stdlib + 이미 indirect dep)
+- sub-agent worktree pattern 36회 누적
+
+### Notes
+- 자체 코드 회귀 0 (v1 backward compat 검증 모두 PASS)
+- R-D8 v3 후보 별 round 명시 — C-1 Sigstore keyless + D-3 TPM Quote signature 검증
 
 ---
 
