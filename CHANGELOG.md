@@ -7,7 +7,25 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — D-UI-1 Stage 5 polish (axe-core) / Phase 5~7 큰 본체 (LLM private deployment · Audit rotation · Multi-region HA) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 5~7 큰 본체 잔여 (Audit rotation · Multi-region HA) / Stage 5b (color-contrast 실측 + drill-down spacing) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.4] — 2026-05-20 (patch)
+
+> **요약**: LLM private deployment 본체 (vLLM driver + Ollama 강화) + D-UI-1 Stage 5 a11y polish (axe-core 5 페이지 violation 0) + integrations delivery detail dialog (3 tab + URL state). 회귀 0. 상세는 [docs/releases/v0.6.4.md](docs/releases/v0.6.4.md).
+>
+> **기준 commit**: `fc1640d` (main)
+
+### Added
+- `feat(intelligence)` LLM private deployment 본체 (`97b7b36`) — vLLM driver 신규 (14 test) + Ollama KeepAlive/AutoPull/PullModel 강화 (7 test) + bootstrap vllm case + env 7 + CLI flag 3 + onboarding doc (~280줄)
+- `test(web)` D-UI-1 Stage 5 axe-core a11y scan (`e4ab01f`) — 5 페이지 light/dark violation **0** (overview · findings · scans · robots · fleets) + spacing 일관화 (scans/fleets `space-y-4`) + vitest-axe/axe-core devDep
+- `feat(web)` integrations delivery detail dialog (`cb1b48b`) — 3 tab (Request/Response/Retries) + URL state `?delivery=<id>` + i18n 16 키 + a11y (role=button + tabIndex + Enter/Space)
+
+### Notes
+- sub-agent 3 병렬 dispatch (LLM 본체 + Stage 5 polish + delivery detail) — 도메인 충돌 0
+- LLM Stage 4 (e2e testcontainers) carryover — GPU 의존
+- Stage 5b carryover — color-contrast 실측 (Playwright) + drill-down spacing + 3rd party a11y
 
 ---
 
