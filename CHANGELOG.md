@@ -7,7 +7,26 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 5~7 큰 본체 잔여 (Audit rotation · Multi-region HA) / Stage 5b (color-contrast 실측 + drill-down spacing) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Multi-region HA 본체 / Audit rotation Stage 4~6 (hot GC + cosign + S3 SDK + cron) / Stage 5b carryover (color-contrast 실 실행 + 잔여 페이지) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.5] — 2026-05-20 (patch)
+
+> **요약**: Audit chain rotation 본체 Stage 1~3 (마이그레이션 0032 + rotation 패키지 + 581줄 test) + Stage 5b color-contrast 실측 e2e + drill-down spacing 통일. 회귀 0. 상세는 [docs/releases/v0.6.5.md](docs/releases/v0.6.5.md).
+>
+> **기준 commit**: `de9e380` (main)
+
+### Added
+- `feat(audit)` chain rotation Stage 1~3 (`de9e380`) — 마이그레이션 0032 (audit_rotation_segments + 불변성 트리거) + `internal/domain/audit/rotation/` 패키지 8 파일 (policy + builder + archiver + file backend + S3 stub + rotator) + `audit.rotate.complete` entry emit (chain 정상 link) + env override 3 + 581줄 test
+- `test(web)` Stage 5b color-contrast 실측 e2e (`a1f7353`) — Playwright + @axe-core/playwright. 5 페이지 × light/dark = 10 test. jsdom 한계 회피
+- `style(web)` Stage 5b drill-down + 일반 페이지 spacing 통일 (`ec28349`) — compliance + fleets.$fleetId 일관화 (`space-y-4`). 19 페이지 중 18 통일. robots.$robotId만 carryover (위험 액션 분리)
+
+### Notes
+- sub-agent 3 병렬 dispatch (Audit rotation + color-contrast + drill-down) — 도메인 충돌 0
+- audit chain 무결성 보존 — rotation 자체가 audit chain 정상 entry (외부 검증 누락 0)
+- Audit Stage 4~6 carryover: hot GC + cosign 실서명 + S3 SDK + cron + verify CLI 확장 + cross-witness fold-in + prev_segment_hash chain
+- Stage 5b carryover: 실 실행 + CI 임계치 + 잔여 페이지 (Login · Settings · Users · System)
 
 ---
 
