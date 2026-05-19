@@ -1,0 +1,52 @@
+# C4 — /opt/ros/jazzy/lib world-writable 파일 0
+#
+# design doc §2 C4 후보 'binary.no_world_writable_libs'.
+# world-writable shared lib는 unprivileged user가 binary tampering 가능 → escalation 경로.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C4.no_world_writable_libs
+  title: /opt/ros/jazzy/lib — world-writable 파일 0건
+  description: |-
+    /opt/ros/jazzy/lib 하위에 world-writable(o+w) 파일이 0건이어야 합니다.
+    world-writable shared library는 unprivileged user가 ros2 node 실행 전
+    내용을 교체할 수 있어 binary tampering + privilege escalation 경로.
+
+    본 check는:
+      1. /opt/ros/jazzy/lib 디렉토리 존재
+      2. 하위에 perm /o+w 인 파일 0건
+
+    조건이 모두 충족되면 PASS.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    LIBDIR="/opt/ros/jazzy/lib";
+    if [ ! -d "$LIBDIR" ]; then
+      echo "** FAIL ** ROS2 lib 디렉토리 부재: $LIBDIR";
+      exit 0;
+    fi;
+    CNT=$(find "$LIBDIR" -type f -perm /o+w 2>/dev/null | wc -l);
+    if [ "$CNT" -eq 0 ]; then
+      echo "** PASS ** world-writable file 0건 ($LIBDIR)";
+    else
+      echo "** FAIL ** world-writable file count=$CNT ($LIBDIR) — binary tampering risk";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    Shared library가 world-writable이면 unprivileged 프로세스가 .so 파일을
+    교체 후 ros2 node 실행 시 LD_PRELOAD 없이도 임의 코드 실행 가능. 정상
+    apt 설치는 root:root 0644 — world-writable은 잘못된 chmod 또는 손상된
+    custom build 의심. /opt/ros 전체보다 lib만 좁힌 이유: bin/share 등은
+    소유권 변경 빈도 높아 false positive risk.
+  fixGuidance: |-
+    1. world-writable file 목록 확인:
+         sudo find /opt/ros/jazzy/lib -type f -perm /o+w
+    2. 권한 정상화 (apt 기본 0644):
+         sudo chmod o-w /opt/ros/jazzy/lib/<file>
+    3. 광범위 손상 의심 시 패키지 재설치:
+         sudo apt install --reinstall ros-jazzy-ros-base
+    4. 재발 시 root cause(잘못된 deployment script·umask) 추적.

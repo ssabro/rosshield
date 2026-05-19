@@ -13,6 +13,6 @@ metadata:
   name: ros2-jazzy
   version: 0.1.0
   vendor: rosshield
-  description: ROS2 Jazzy LTS Baseline Security Pack (Round 1 Stage 1+2+3+4 — C1·C2·C3·C6·C7·C8 6/8 cover)
+  description: ROS2 Jazzy LTS Baseline Security Pack (Round 1+2 Stage 1+2+3+4+5 — C1·C2·C3·C4·C6·C7·C8 7/8 cover)
 spec:
   schemaVersion: 1

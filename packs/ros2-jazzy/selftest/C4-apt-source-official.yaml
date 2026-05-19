@@ -1,0 +1,26 @@
+# selftest — ros2.C4.apt_source_official
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C4.apt_source_official
+spec:
+  cases:
+    - name: PASS — 공식 packages.ros.org URL 발견
+      input:
+        stdout: '** PASS ** 공식 packages.ros.org URL 발견'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — 비공식 mirror만 사용
+      input:
+        stdout: '** FAIL ** 공식 packages.ros.org URL 없음 (비공식 mirror 사용 의심)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — apt source list 파일 부재
+      input:
+        stdout: '** FAIL ** ros2 apt source list 부재 (/etc/apt/sources.list.d/ros2*.list)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

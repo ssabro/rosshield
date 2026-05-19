@@ -1,0 +1,26 @@
+# selftest — ros2.C4.no_world_writable_libs
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C4.no_world_writable_libs
+spec:
+  cases:
+    - name: PASS — world-writable file 0건
+      input:
+        stdout: '** PASS ** world-writable file 0건 (/opt/ros/jazzy/lib)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — world-writable file 3건 검출
+      input:
+        stdout: '** FAIL ** world-writable file count=3 (/opt/ros/jazzy/lib) — binary tampering risk'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — ROS2 lib 디렉토리 부재
+      input:
+        stdout: '** FAIL ** ROS2 lib 디렉토리 부재: /opt/ros/jazzy/lib'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
