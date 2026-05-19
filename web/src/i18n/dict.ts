@@ -292,15 +292,27 @@ export const ko = {
   'scans.session.cancel': '스캔 취소',
   'scans.session.cancel.pending': '취소 중…',
   'scans.session.cancel.error': '취소 실패',
+  // D-UI-1 Stage 4 — cancel ConfirmDialog + toast 메시지.
+  'scans.session.cancel.confirm.title': '스캔을 취소하시겠습니까?',
+  'scans.session.cancel.confirm.description':
+    '진행 중인 검사가 즉시 중단되고 부분 결과만 보존됩니다. 이 작업은 되돌릴 수 없습니다.',
+  'scans.session.cancel.confirm.confirm': '스캔 취소',
+  'scans.session.cancel.confirm.cancel': '계속 실행',
+  'scans.session.cancel.toast.success': '스캔이 취소되었습니다',
   'scans.list.title': '최근 세션',
   'scans.list.loading': '세션 목록 로드 중…',
   'scans.list.empty': '아직 시작된 스캔이 없습니다.',
+  // D-UI-1 Stage 4 — EmptyState 보강.
+  'scans.list.empty.description':
+    '위 폼에서 fleet과 벤치마크 팩을 선택해 첫 스캔을 시작하세요.',
+  'scans.list.empty.cta': '로봇 등록부터 시작',
   'scans.list.error': '목록 로드 실패',
   'scans.list.filter.status': '상태',
   'scans.list.filter.fleet': 'Fleet',
   'scans.list.filter.all': '전체',
   'scans.list.count': '{shown}/{total}',
   'scans.list.noMatches': '필터 조건에 맞는 세션이 없습니다.',
+  'scans.list.noMatches.cta': '필터 초기화',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':
@@ -321,9 +333,23 @@ export const ko = {
   'findings.action.dismissing': '처리 중…',
   'findings.prompt.dismiss': 'Dismiss 사유를 입력하세요',
   'findings.prompt.dismiss.default': 'manual review',
+  // D-UI-1 Stage 4 — ConfirmDialog + toast (window.prompt 대체).
+  'findings.dismiss.confirm.title': '이 Insight를 dismiss 하시겠습니까?',
+  'findings.dismiss.confirm.description':
+    'dismiss 후에는 활성 목록에서 사라지며 되돌릴 수 없습니다. 감사 로그에는 사유가 기록됩니다.',
+  'findings.dismiss.confirm.reasonLabel': '사유 (감사 로그에 기록됨)',
+  'findings.dismiss.confirm.confirm': 'Dismiss',
+  'findings.dismiss.confirm.cancel': '취소',
+  'findings.dismiss.toast.success': 'Insight가 dismiss 되었습니다',
   'findings.empty.title': '활성 Insight가 없습니다',
   'findings.empty.description':
     '필터를 비우거나, scan 완료 후 자동 산출되거나 fleet 단위로 :run을 호출하세요.',
+  'findings.empty.noFilter.title': '탐지된 이슈가 없습니다 ✓',
+  'findings.empty.noFilter.description':
+    '현재 활성 fleet에서 drift·anomaly가 감지되지 않았습니다. 좋은 상태입니다.',
+  'findings.empty.filtered.title': '조건에 맞는 Insight가 없습니다',
+  'findings.empty.filtered.description': '다른 필터를 시도하거나 전체를 해제해 보세요.',
+  'findings.empty.filtered.cta': '필터 초기화',
   'findings.error.fallback': 'Insight 목록을 불러올 수 없습니다',
 
   'pages.compliance.title': 'Compliance',
@@ -432,6 +458,22 @@ export const ko = {
   'overview.card.score': '최근 컴플라이언스 점수',
   'overview.card.score.empty': '활성 프로필이 없습니다',
   'overview.card.score.cta': '프로필 활성화',
+  // D-UI-1 Stage 4 — overview 보강 (critical+high · 최근 24h scan · audit head).
+  'overview.card.criticalHigh': 'critical+high Insight',
+  'overview.card.criticalHigh.cta': '확인',
+  'overview.card.criticalHigh.none': '없음',
+  'overview.card.scans24h': '최근 24h 스캔',
+  'overview.card.scans24h.cta': '스캔 시작',
+  'overview.card.scans24h.activeSuffix': ' (진행 중 {active})',
+  'overview.card.auditHead': '감사 체인 head',
+  'overview.card.auditHead.cta': '감사 페이지로',
+  'overview.card.auditHead.empty': '아직 항목 없음',
+  // D-UI-1 Stage 4 — empty state (robot 0 시).
+  'overview.empty.title': 'fleet에 로봇이 등록되지 않았습니다',
+  'overview.empty.description':
+    '먼저 로봇을 등록하고 fleet을 구성한 뒤 첫 스캔을 실행하세요.',
+  'overview.empty.cta.registerRobot': '로봇 등록',
+  'overview.empty.cta.viewFleets': 'Fleet 관리',
 
   'pages.audit.title': '감사',
   'pages.audit.description':
@@ -1222,15 +1264,25 @@ export const en: Record<keyof typeof ko, string> = {
   'scans.session.cancel': 'Cancel scan',
   'scans.session.cancel.pending': 'Cancelling…',
   'scans.session.cancel.error': 'Cancel failed',
+  'scans.session.cancel.confirm.title': 'Cancel this scan?',
+  'scans.session.cancel.confirm.description':
+    'The running checks will stop immediately and only partial results will be kept. This action cannot be undone.',
+  'scans.session.cancel.confirm.confirm': 'Cancel scan',
+  'scans.session.cancel.confirm.cancel': 'Keep running',
+  'scans.session.cancel.toast.success': 'Scan cancelled',
   'scans.list.title': 'Recent sessions',
   'scans.list.loading': 'Loading sessions…',
   'scans.list.empty': 'No scans started yet.',
+  'scans.list.empty.description':
+    'Pick a fleet and a benchmark pack above to start your first scan.',
+  'scans.list.empty.cta': 'Register a robot to start',
   'scans.list.error': 'Failed to load sessions',
   'scans.list.filter.status': 'Status',
   'scans.list.filter.fleet': 'Fleet',
   'scans.list.filter.all': 'All',
   'scans.list.count': '{shown}/{total}',
   'scans.list.noMatches': 'No sessions match the current filters.',
+  'scans.list.noMatches.cta': 'Reset filters',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':
@@ -1251,9 +1303,22 @@ export const en: Record<keyof typeof ko, string> = {
   'findings.action.dismissing': 'Working…',
   'findings.prompt.dismiss': 'Enter dismissal reason',
   'findings.prompt.dismiss.default': 'manual review',
+  'findings.dismiss.confirm.title': 'Dismiss this insight?',
+  'findings.dismiss.confirm.description':
+    'Dismissed insights are removed from the active list and cannot be restored. The reason is recorded in the audit log.',
+  'findings.dismiss.confirm.reasonLabel': 'Reason (recorded in the audit log)',
+  'findings.dismiss.confirm.confirm': 'Dismiss',
+  'findings.dismiss.confirm.cancel': 'Cancel',
+  'findings.dismiss.toast.success': 'Insight dismissed',
   'findings.empty.title': 'No active insights',
   'findings.empty.description':
     'Clear filters, wait for the next scan, or trigger :run on a fleet.',
+  'findings.empty.noFilter.title': 'No issues detected ✓',
+  'findings.empty.noFilter.description':
+    'No drift or anomalies detected across your active fleets. Looking good.',
+  'findings.empty.filtered.title': 'No insights match the filters',
+  'findings.empty.filtered.description': 'Try different filters or clear them.',
+  'findings.empty.filtered.cta': 'Reset filters',
   'findings.error.fallback': 'Failed to load insights',
 
   'pages.compliance.title': 'Compliance',
@@ -1363,6 +1428,20 @@ export const en: Record<keyof typeof ko, string> = {
   'overview.card.score': 'Latest compliance score',
   'overview.card.score.empty': 'No active profile',
   'overview.card.score.cta': 'Activate profile',
+  'overview.card.criticalHigh': 'critical + high insights',
+  'overview.card.criticalHigh.cta': 'Review',
+  'overview.card.criticalHigh.none': 'None',
+  'overview.card.scans24h': 'Scans in the last 24h',
+  'overview.card.scans24h.cta': 'Start a scan',
+  'overview.card.scans24h.activeSuffix': ' ({active} active)',
+  'overview.card.auditHead': 'Audit chain head',
+  'overview.card.auditHead.cta': 'Open audit',
+  'overview.card.auditHead.empty': 'No entries yet',
+  'overview.empty.title': 'No robots registered in any fleet',
+  'overview.empty.description':
+    'Register a robot, build a fleet, then start your first scan.',
+  'overview.empty.cta.registerRobot': 'Register a robot',
+  'overview.empty.cta.viewFleets': 'Manage fleets',
 
   'pages.audit.title': 'Audit',
   'pages.audit.description':

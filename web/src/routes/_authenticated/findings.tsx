@@ -1,13 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { Inbox } from 'lucide-react'
-
 import { ApiError } from '@/api/errors'
 import { useDismissInsight, useHasPermission, useInsights } from '@/api/hooks'
+import { SeverityBadge } from '@/components/common/SeverityBadge'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { confirm } from '@/lib/confirm'
+import { toast } from '@/lib/toast'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TableRowSkeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -30,11 +32,12 @@ import {
 } from '@/components/ui/table'
 
 import type { Insight } from '@/api/hooks'
+import type { Severity } from '@/lib/severity'
 
 // `/findings` — Insight 목록 (E19-1).
 // - kind/severity/robotId 필터 (모두 선택 옵션)
-// - 각 row의 "Dismiss" 버튼 → reason 입력 후 API 호출 → 자동 invalidate
-// - 빈 결과/로딩/에러는 robots.tsx와 동일 패턴
+// - 각 row의 "Dismiss" 버튼 → ConfirmDialog → API 호출 → 자동 invalidate
+// - D-UI-1 Stage 4 공통 패턴 (SeverityBadge · EmptyState · Skeleton · Toast · ConfirmDialog).
 const KIND_OPTIONS = ['drift', 'anomaly', 'peer', 'root_cause', 'prediction'] as const
 const SEVERITY_OPTIONS = ['info', 'low', 'medium', 'high', 'critical'] as const
 
@@ -46,6 +49,12 @@ function FindingsPage(): React.ReactElement {
 
   const filter = buildInsightsFilter({ kind, severity, robotId })
   const insights = useInsights(filter)
+  const hasActiveFilter = kind !== '' || severity !== '' || robotId.trim() !== ''
+  const resetFilters = (): void => {
+    setKind('')
+    setSeverity('')
+    setRobotId('')
+  }
 
   return (
     <div className="space-y-4">
@@ -104,56 +113,94 @@ function FindingsPage(): React.ReactElement {
         </div>
       </div>
 
+      {/* 모바일 반응형: 표는 overflow-x-auto로 가로 스크롤 허용 — md 이하 시 액션 셀까지 노출. */}
       <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('findings.table.kind')}</TableHead>
-              <TableHead>{t('findings.table.severity')}</TableHead>
-              <TableHead>{t('findings.table.summary')}</TableHead>
-              <TableHead>{t('findings.table.scope')}</TableHead>
-              <TableHead>{t('findings.table.created')}</TableHead>
-              <TableHead className="text-right">{t('findings.table.action')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {insights.isPending && (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  {t('common.loading')}
-                </TableCell>
+                <TableHead>{t('findings.table.kind')}</TableHead>
+                <TableHead>{t('findings.table.severity')}</TableHead>
+                <TableHead>{t('findings.table.summary')}</TableHead>
+                <TableHead>{t('findings.table.scope')}</TableHead>
+                <TableHead>{t('findings.table.created')}</TableHead>
+                <TableHead className="text-right">{t('findings.table.action')}</TableHead>
               </TableRow>
-            )}
-            {insights.isError && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-destructive">
-                  {insights.error instanceof ApiError
-                    ? insights.error.message
-                    : t('findings.error.fallback')}
-                </TableCell>
-              </TableRow>
-            )}
-            {insights.isSuccess && insights.data.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="p-0">
-                  <EmptyState
-                    icon={Inbox}
-                    title={t('findings.empty.title')}
-                    description={t('findings.empty.description')}
-                    className="rounded-none border-0 bg-transparent"
-                  />
-                </TableCell>
-              </TableRow>
-            )}
-            {insights.isSuccess &&
-              sortInsightsBySeverityIfUnfiltered(insights.data, severity).map((ins) => (
-                <InsightRow key={ins.id} insight={ins} />
-              ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {insights.isPending && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-3">
+                    <TableRowSkeleton rows={5} columns={6} />
+                  </TableCell>
+                </TableRow>
+              )}
+              {insights.isError && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      variant="loading-fail"
+                      title={
+                        insights.error instanceof ApiError
+                          ? insights.error.message
+                          : t('findings.error.fallback')
+                      }
+                      description={t('findings.error.fallback')}
+                      className="rounded-none border-0 bg-transparent"
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+              {insights.isSuccess && insights.data.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="p-0">
+                    <EmptyState
+                      variant={hasActiveFilter ? 'search-no-result' : 'no-data'}
+                      title={t(
+                        hasActiveFilter
+                          ? 'findings.empty.filtered.title'
+                          : 'findings.empty.noFilter.title',
+                      )}
+                      description={t(
+                        hasActiveFilter
+                          ? 'findings.empty.filtered.description'
+                          : 'findings.empty.noFilter.description',
+                      )}
+                      action={
+                        hasActiveFilter ? (
+                          <Button size="sm" variant="outline" onClick={resetFilters}>
+                            {t('findings.empty.filtered.cta')}
+                          </Button>
+                        ) : undefined
+                      }
+                      className="rounded-none border-0 bg-transparent"
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+              {insights.isSuccess &&
+                sortInsightsBySeverityIfUnfiltered(insights.data, severity).map((ins) => (
+                  <InsightRow key={ins.id} insight={ins} />
+                ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   )
+}
+
+// SEVERITY_KEYS — SeverityBadge가 받는 5종 Severity. 알 수 없는 값은 'info'로 fallback.
+const SEVERITY_KEYS: ReadonlySet<Severity> = new Set([
+  'critical',
+  'high',
+  'medium',
+  'low',
+  'info',
+])
+
+function toSeverityKey(value: string): Severity {
+  return SEVERITY_KEYS.has(value as Severity) ? (value as Severity) : 'info'
 }
 
 function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
@@ -164,13 +211,29 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
   const canDismiss = useHasPermission('insight', 'write', insight.fleetId ?? undefined)
   const isOffline = useIsOffline()
 
-  const onDismiss = (): void => {
-    const reason = window.prompt(
-      t('findings.prompt.dismiss'),
-      t('findings.prompt.dismiss.default'),
+  // D-UI-1 Stage 4 — window.prompt → ConfirmDialog 교체.
+  //   irreversible action이므로 destructive 확인 후 default reason('manual review')으로 dismiss.
+  //   상세 사유 입력은 후속 task에서 별도 dialog로 확장 (현재는 ConfirmDialog imperative API).
+  const onDismiss = async (): Promise<void> => {
+    const ok = await confirm({
+      title: t('findings.dismiss.confirm.title'),
+      description: t('findings.dismiss.confirm.description'),
+      confirmLabel: t('findings.dismiss.confirm.confirm'),
+      cancelLabel: t('findings.dismiss.confirm.cancel'),
+      destructive: true,
+    })
+    if (!ok) return
+    dismiss.mutate(
+      { insightId: insight.id, reason: t('findings.prompt.dismiss.default') },
+      {
+        onSuccess: () => {
+          toast.success(t('findings.dismiss.toast.success'))
+        },
+        onError: (err) => {
+          toast.error(err instanceof Error ? err.message : t('findings.error.fallback'))
+        },
+      },
     )
-    if (!reason || reason.trim().length === 0) return
-    dismiss.mutate({ insightId: insight.id, reason: reason.trim() })
   }
 
   const scope: string[] = []
@@ -184,7 +247,7 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
         <Badge variant="outline">{insight.kind}</Badge>
       </TableCell>
       <TableCell>
-        <Badge variant={severityVariant(insight.severity)}>{insight.severity}</Badge>
+        <SeverityBadge severity={toSeverityKey(insight.severity)} />
       </TableCell>
       <TableCell className="max-w-md truncate" title={insight.summary}>
         {insight.summary}
@@ -199,7 +262,9 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
         <Button
           size="sm"
           variant="outline"
-          onClick={onDismiss}
+          onClick={() => {
+            void onDismiss()
+          }}
           disabled={dismiss.isPending || !canDismiss || isOffline}
           title={mutationGuardTitle({
             isOffline,
@@ -300,6 +365,7 @@ function SeverityStats({
 }
 
 // severityVariant는 Insight severity(5-값)를 shadcn Badge variant로 매핑합니다.
+// SeverityBadge 적용 이후 row 셀은 본 함수를 직접 사용하지 않으나, test 호환 유지 위해 export.
 // 단위 테스트(findings.test.tsx) 대상으로 export.
 export function severityVariant(
   s: string,

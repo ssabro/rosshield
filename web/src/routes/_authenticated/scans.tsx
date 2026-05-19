@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
@@ -13,8 +13,12 @@ import {
   useScans,
   useStartScan,
 } from '@/api/hooks'
+import { StatusBadge, type StatusKind } from '@/components/common/StatusBadge'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { confirm } from '@/lib/confirm'
+import { toast } from '@/lib/toast'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,13 +38,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Skeleton, TableRowSkeleton } from '@/components/ui/skeleton'
 
 import type { ScanSession } from '@/api/hooks'
 import type { FormEvent } from 'react'
 
-// `/scans` — 새 스캔 시작 폼.
-// - 별도 목록 endpoint가 Stage B에 없어, Phase 1은 시작 폼 + 결과 카드만 노출.
-// - 성공 시 sessionId·status 카드 표시. 실패 시 에러 메시지.
+// `/scans` — 새 스캔 시작 폼 + 최근 세션 목록 + 진행 카드.
+// D-UI-1 Stage 4 공통 패턴 적용 (StatusBadge · EmptyState · Skeleton · Toast · ConfirmDialog).
 const TRIGGERS = ['manual', 'schedule', 'event'] as const
 
 function ScansPage(): React.ReactElement {
@@ -237,6 +241,47 @@ type StatusFilterValue = (typeof STATUS_FILTER_VALUES)[number]
 // FLEET_ALL_VALUE는 fleet dropdown의 'all' sentinel입니다.
 const FLEET_ALL_VALUE = '__all__'
 
+// scanStatusToStatusKind — scan 도메인 status를 공통 StatusBadge 표시값으로 매핑.
+// cancelled는 StatusBadge의 직접 매핑 항목이 없어 `paused`(amber) tone으로 대체하되,
+// label은 i18n status.cancelled로 override하여 의미는 정확히 표시.
+// 단위 테스트(scans.test.tsx) 대상으로 export.
+export function scanStatusToStatusKind(status: string): StatusKind {
+  switch (status) {
+    case 'running':
+      return 'running'
+    case 'pending':
+      return 'pending'
+    case 'completed':
+      return 'success'
+    case 'failed':
+      return 'failed'
+    case 'cancelled':
+      return 'paused'
+    default:
+      return 'unknown'
+  }
+}
+
+// scanStatusLabelKey — scan status별 i18n 라벨 키. StatusBadge label override 용.
+const SCAN_STATUS_LABEL_KEY: Record<string, 'status.running' | 'status.pending' | 'status.completed' | 'status.failed' | 'status.cancelled'> = {
+  running: 'status.running',
+  pending: 'status.pending',
+  completed: 'status.completed',
+  failed: 'status.failed',
+  cancelled: 'status.cancelled',
+}
+
+function ScanStatusBadge({ status }: { status: string }): React.ReactElement {
+  const t = useT()
+  const key = SCAN_STATUS_LABEL_KEY[status]
+  return (
+    <StatusBadge
+      status={scanStatusToStatusKind(status)}
+      label={key ? t(key) : status}
+    />
+  )
+}
+
 // RecentSessionsCard는 최근 세션 10개를 표 형태로 표시합니다.
 // active 세션(pending/running) 1건 이상이면 5s polling — terminal 도달 시 정지.
 // 행 클릭 시 ?session=<id>로 navigate해 위 진행 카드에 즉시 표시.
@@ -256,13 +301,14 @@ function RecentSessionsCard({
   const [fleetFilter, setFleetFilter] = useState<string>(FLEET_ALL_VALUE)
 
   if (scansQuery.isPending) {
+    // D-UI-1 Stage 4 — loading text → Skeleton 교체.
     return (
       <Card>
         <CardHeader>
           <CardTitle>{t('scans.list.title')}</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {t('scans.list.loading')}
+        <CardContent>
+          <TableRowSkeleton rows={4} columns={4} />
         </CardContent>
       </Card>
     )
@@ -273,10 +319,17 @@ function RecentSessionsCard({
         <CardHeader>
           <CardTitle>{t('scans.list.title')}</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-destructive">
-          {scansQuery.error instanceof Error
-            ? scansQuery.error.message
-            : t('scans.list.error')}
+        <CardContent>
+          <EmptyState
+            variant="loading-fail"
+            title={
+              scansQuery.error instanceof Error
+                ? scansQuery.error.message
+                : t('scans.list.error')
+            }
+            description={t('scans.list.error')}
+            className="bg-transparent"
+          />
         </CardContent>
       </Card>
     )
@@ -296,6 +349,11 @@ function RecentSessionsCard({
     if (fleetFilter !== FLEET_ALL_VALUE && s.fleetId !== fleetFilter) return false
     return true
   })
+
+  const resetFilters = (): void => {
+    setStatusFilter('all')
+    setFleetFilter(FLEET_ALL_VALUE)
+  }
 
   return (
     <Card>
@@ -354,11 +412,29 @@ function RecentSessionsCard({
           </div>
         )}
         {list.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('scans.list.empty')}</p>
+          // D-UI-1 Stage 4 — 세션 0건 → EmptyState + CTA (로봇 등록 안내).
+          <EmptyState
+            variant="no-data"
+            title={t('scans.list.empty')}
+            description={t('scans.list.empty.description')}
+            action={
+              <Button asChild size="sm" variant="outline">
+                <Link to="/robots">{t('scans.list.empty.cta')}</Link>
+              </Button>
+            }
+            className="bg-transparent"
+          />
         ) : filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t('scans.list.noMatches')}
-          </p>
+          <EmptyState
+            variant="search-no-result"
+            title={t('scans.list.noMatches')}
+            action={
+              <Button size="sm" variant="outline" onClick={resetFilters}>
+                {t('scans.list.noMatches.cta')}
+              </Button>
+            }
+            className="bg-transparent"
+          />
         ) : (
           <div className="space-y-1">
             {filtered.map((s) => (
@@ -403,9 +479,9 @@ function SessionRow({
         isActive ? 'border-primary bg-accent/50' : 'border-border'
       }`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="truncate font-mono text-xs">{session.sessionId}</span>
-        <Badge variant={statusVariant(session.status)}>{session.status}</Badge>
+        <ScanStatusBadge status={session.status} />
         <span className="ml-auto text-xs text-muted-foreground">
           {formatRelativeTime(session.createdAt)}
         </span>
@@ -543,10 +619,13 @@ function SessionProgressCardById({
   const t = useT()
   const scanQuery = useScan(sessionId)
   if (scanQuery.isPending) {
+    // D-UI-1 Stage 4 — loading text → Skeleton 교체.
     return (
       <Card className="max-w-xl">
-        <CardContent className="py-6 text-sm text-muted-foreground">
-          {t('scans.session.loading')}
+        <CardContent className="space-y-3 py-6">
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-2 w-full" />
         </CardContent>
       </Card>
     )
@@ -554,8 +633,12 @@ function SessionProgressCardById({
   if (scanQuery.isError || !scanQuery.data) {
     return (
       <Card className="max-w-xl">
-        <CardContent className="py-6 text-sm text-destructive">
-          {t('scans.session.notFound')}
+        <CardContent className="py-6">
+          <EmptyState
+            variant="loading-fail"
+            title={t('scans.session.notFound')}
+            className="bg-transparent"
+          />
         </CardContent>
       </Card>
     )
@@ -588,9 +671,32 @@ function SessionProgressCard({
   const isTerminal = isTerminalScanStatus(status)
   const canCancel = !isTerminal && canExecute && !isOffline
 
-  const handleCancel = (): void => {
+  // D-UI-1 Stage 4 — window.confirm 없던 자리에 명시적 ConfirmDialog 추가 (destructive action).
+  //   cancel은 진행 중 검사를 즉시 중단하고 부분 결과만 보존 — 사용자 확인 후 실행.
+  //   onSuccess/onError에 toast 추가 (silent fail 0건).
+  const handleCancel = async (): Promise<void> => {
     if (!canCancel) return
-    cancelScan.mutate({ sessionId: session.sessionId })
+    const ok = await confirm({
+      title: t('scans.session.cancel.confirm.title'),
+      description: t('scans.session.cancel.confirm.description'),
+      confirmLabel: t('scans.session.cancel.confirm.confirm'),
+      cancelLabel: t('scans.session.cancel.confirm.cancel'),
+      destructive: true,
+    })
+    if (!ok) return
+    cancelScan.mutate(
+      { sessionId: session.sessionId },
+      {
+        onSuccess: () => {
+          toast.success(t('scans.session.cancel.toast.success'))
+        },
+        onError: (err) => {
+          toast.error(
+            err instanceof Error ? err.message : t('scans.session.cancel.error'),
+          )
+        },
+      },
+    )
   }
 
   return (
@@ -603,9 +709,9 @@ function SessionProgressCard({
           <span className="text-muted-foreground">{t('scans.session.id')}: </span>
           <span className="font-mono">{session.sessionId}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-muted-foreground">{t('scans.session.status')}:</span>
-          <Badge variant={statusVariant(status)}>{status}</Badge>
+          <ScanStatusBadge status={status} />
           <Badge variant="outline" className="ml-auto text-xs">
             {sourceLabel(ws.status, isTerminal, t)}
           </Badge>
@@ -630,11 +736,13 @@ function SessionProgressCard({
         {isTerminal && <SessionSeverityCardGrid session={session} />}
         {ws.error && <p className="text-xs text-destructive">{ws.error}</p>}
         {!isTerminal && (
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
             <Button
               variant="destructive"
               size="sm"
-              onClick={handleCancel}
+              onClick={() => {
+                void handleCancel()
+              }}
               disabled={!canCancel || cancelScan.isPending}
               title={
                 isOffline
@@ -727,23 +835,6 @@ function formatDuration(ms: number): string {
   const hr = Math.floor(min / 60)
   const remMin = min % 60
   return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`
-}
-
-function statusVariant(
-  status: string,
-): 'default' | 'destructive' | 'secondary' | 'outline' {
-  switch (status) {
-    case 'completed':
-      return 'default'
-    case 'failed':
-    case 'cancelled':
-      return 'destructive'
-    case 'running':
-    case 'pending':
-      return 'secondary'
-    default:
-      return 'outline'
-  }
 }
 
 export const Route = createFileRoute('/_authenticated/scans')({
