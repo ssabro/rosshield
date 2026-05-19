@@ -8,6 +8,13 @@
 //     무시(qwen·llama 모두 동일 prompt format으로 충분히 동작).
 //   - 비용: 로컬 무료 → LlmTrace.Cost = 0.
 //   - 토큰 카운트: ollama가 prompt_eval_count·eval_count로 보고하므로 그대로 사용.
+//
+// LLM private deployment 강화 (옵션 C, D-LLM-5 GPU 부재 fallback):
+//   - keep_alive: 모델을 메모리에 유지하는 시간 (Ollama 기본 5분 — config로 조정 가능).
+//     long-running batch에서 매 호출마다 model load/unload 비용 회피.
+//   - HTTPTimeout: 명시 default 60초 → CPU-only 환경(D-LLM-5)에서 늘려야 할 수 있음.
+//   - AutoPull: 모델 부재 시 `POST /api/pull`로 자동 다운로드 (기본 false — 에어갭 안전).
+//     true일 때만 부팅 후 첫 Complete 호출 전 PullModel(ctx)을 caller가 호출.
 package ollama
 
 import (
@@ -30,17 +37,24 @@ const defaultEndpoint = "http://localhost:11434"
 // defaultHTTPTimeout은 요청 전체(stream 포함) 상한입니다.
 const defaultHTTPTimeout = 60 * time.Second
 
+// defaultKeepAlive는 모델을 메모리에 유지하는 시간 (Ollama 기본 동작과 동일).
+const defaultKeepAlive = 5 * time.Minute
+
 // Options는 Adapter 생성 옵션입니다.
 type Options struct {
 	Endpoint     string        // 기본 http://localhost:11434
 	DefaultModel string        // request에 model이 비어있을 때 fallback (예: "llama3.2")
 	HTTPTimeout  time.Duration // 0이면 defaultHTTPTimeout
+	KeepAlive    time.Duration // 모델 메모리 유지 시간. 0이면 defaultKeepAlive(5분). 음수면 즉시 unload.
+	AutoPull     bool          // true면 PullModel(ctx)을 caller가 부팅 시 호출 가능 (에어갭 안전을 위해 기본 false).
 }
 
 // Adapter는 ollama HTTP API 호출 어댑터입니다.
 type Adapter struct {
 	endpoint     string
 	defaultModel string
+	keepAlive    time.Duration
+	autoPull     bool
 	httpClient   *http.Client
 }
 
@@ -54,22 +68,38 @@ func New(opts Options) *Adapter {
 	if timeout <= 0 {
 		timeout = defaultHTTPTimeout
 	}
+	keepAlive := opts.KeepAlive
+	if keepAlive == 0 {
+		keepAlive = defaultKeepAlive
+	}
 	return &Adapter{
 		endpoint:     strings.TrimRight(endpoint, "/"),
 		defaultModel: opts.DefaultModel,
+		keepAlive:    keepAlive,
+		autoPull:     opts.AutoPull,
 		httpClient:   &http.Client{Timeout: timeout},
 	}
 }
+
+// AutoPullEnabled는 AutoPull 옵션 값을 반환합니다.
+//
+// caller(bootstrap)는 이 값이 true면 부팅 시 PullModel을 호출해 모델을 미리 받아두고,
+// false면 모델 부재 시 첫 호출에서 ollama가 에러를 반환하도록 둡니다 (에어갭 안전).
+func (a *Adapter) AutoPullEnabled() bool { return a.autoPull }
+
+// KeepAlive는 현재 적용된 keep_alive duration을 반환합니다 (테스트·diag용).
+func (a *Adapter) KeepAlive() time.Duration { return a.keepAlive }
 
 // Provider는 식별자 "ollama"를 반환합니다.
 func (*Adapter) Provider() string { return "ollama" }
 
 // generateRequest는 ollama `POST /api/generate` body입니다.
 type generateRequest struct {
-	Model   string         `json:"model"`
-	Prompt  string         `json:"prompt"`
-	Stream  bool           `json:"stream"`
-	Options map[string]any `json:"options,omitempty"`
+	Model     string         `json:"model"`
+	Prompt    string         `json:"prompt"`
+	Stream    bool           `json:"stream"`
+	Options   map[string]any `json:"options,omitempty"`
+	KeepAlive string         `json:"keep_alive,omitempty"`
 }
 
 // generateLine는 NDJSON 응답의 한 라인 스키마입니다 (필요 필드만).
@@ -239,10 +269,11 @@ func (a *Adapter) openStream(ctx context.Context, req llm.CompleteRequest, model
 	enc := json.NewEncoder(&bodyBuf)
 	enc.SetEscapeHTML(false) // `<|role|>` 토큰을 unicode escape 없이 그대로 보낸다.
 	if err := enc.Encode(generateRequest{
-		Model:   model,
-		Prompt:  prompt,
-		Stream:  true,
-		Options: options,
+		Model:     model,
+		Prompt:    prompt,
+		Stream:    true,
+		Options:   options,
+		KeepAlive: keepAliveString(a.keepAlive),
 	}); err != nil {
 		return nil, generateLine{}, fmt.Errorf("ollama: marshal: %w", err)
 	}
@@ -301,4 +332,58 @@ func mapErr(err error) error {
 		return llm.ErrTimeout
 	}
 	return err
+}
+
+// keepAliveString은 time.Duration을 ollama `keep_alive` 문자열로 직렬화합니다.
+//
+// ollama 스펙: "5m"·"1h"·"0" (즉시 unload)·"-1" (영구) 또는 초 단위 정수.
+// 0이면 빈 문자열 → omitempty로 필드 자체 생략 → ollama daemon 기본값(5분).
+func keepAliveString(d time.Duration) string {
+	if d == 0 {
+		return ""
+	}
+	if d < 0 {
+		return "0" // 즉시 unload (caller가 음수로 명시했으므로 의도적 unload).
+	}
+	// 정수 초로 표현 — sub-second는 ollama가 무시.
+	return fmt.Sprintf("%ds", int64(d.Seconds()))
+}
+
+// pullRequest는 ollama `POST /api/pull` body입니다 (`Stream=false`로 동기 다운로드).
+type pullRequest struct {
+	Name   string `json:"name"`
+	Stream bool   `json:"stream"`
+}
+
+// PullModel은 모델을 ollama 레지스트리에서 동기 다운로드합니다 (AutoPull=true 시 caller가 호출).
+//
+// 에어갭 안전: AutoPull=false가 기본 — caller(bootstrap)는 AutoPullEnabled()로 확인하고
+// 명시적으로만 호출. 모델이 이미 존재하면 ollama가 빠르게 응답.
+//
+// model이 비어있으면 defaultModel을 사용. 둘 다 비면 에러.
+func (a *Adapter) PullModel(ctx context.Context, model string) error {
+	name := a.resolveModel(model)
+	if name == "" {
+		return errors.New("ollama: PullModel requires model name (Options.DefaultModel or arg)")
+	}
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(pullRequest{Name: name, Stream: false}); err != nil {
+		return fmt.Errorf("ollama: pull marshal: %w", err)
+	}
+	url := a.endpoint + "/api/pull"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		return fmt.Errorf("ollama: pull build: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(httpReq)
+	if err != nil {
+		return mapErr(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ollama: pull http %d", resp.StatusCode)
+	}
+	return nil
 }

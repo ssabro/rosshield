@@ -61,6 +61,7 @@ import (
 	llmanthropic "github.com/ssabro/rosshield/internal/platform/llm/anthropic"
 	llmnoop "github.com/ssabro/rosshield/internal/platform/llm/noop"
 	llmollama "github.com/ssabro/rosshield/internal/platform/llm/ollama"
+	llmvllm "github.com/ssabro/rosshield/internal/platform/llm/vllm"
 	"github.com/ssabro/rosshield/internal/platform/metrics"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
@@ -116,13 +117,23 @@ type Config struct {
 	CheckpointSpec string
 
 	// LLM 옵션 — R14-1 옵트인 (기본값 noop).
-	// LLMProvider: "" → noop, "ollama" → Ollama, "anthropic" → Anthropic. 그 외는 부트스트랩 에러.
+	// LLMProvider: "" → noop, "ollama" → Ollama, "vllm" → vLLM(OpenAI-compat), "anthropic" → Anthropic.
+	// 그 외는 부트스트랩 에러.
 	// LLMModel·LLMBaseURL·LLMAPIKey·LLMTimeout은 provider별 의미가 다름 (provider 주석 참조).
-	LLMProvider string
-	LLMModel    string
-	LLMBaseURL  string        // ollama daemon URL 또는 anthropic API base
-	LLMAPIKey   string        // anthropic 전용
-	LLMTimeout  time.Duration // 0이면 어댑터 기본값
+	//
+	// LLM private deployment 추가 (D-LLM-1·D-LLM-5·D-LLM-7):
+	//   - LLMMaxTokens: vllm용 응답 토큰 상한 (0이면 어댑터 default 1024).
+	//   - LLMKeepAlive: ollama용 모델 메모리 유지 시간 (0이면 default 5분, 음수면 즉시 unload).
+	//   - LLMAutoPull: ollama AutoPull 옵션 (true면 customer가 미리 받지 않은 모델을 부팅 후
+	//     PullModel로 다운로드 — 에어갭 환경은 반드시 false 유지).
+	LLMProvider  string
+	LLMModel     string
+	LLMBaseURL   string        // ollama daemon URL / vllm endpoint / anthropic API base
+	LLMAPIKey    string        // anthropic 필수, vllm 옵션, ollama 미사용
+	LLMTimeout   time.Duration // 0이면 어댑터 기본값
+	LLMMaxTokens int           // vllm 응답 토큰 상한 (0이면 1024 default)
+	LLMKeepAlive time.Duration // ollama keep_alive (0=default 5m, <0=즉시 unload)
+	LLMAutoPull  bool          // ollama AutoPull 옵션 (에어갭 환경은 false 유지)
 
 	// E24 — License 옵션 (옵트인).
 	// LicenseToken: 빈 값이면 community SKU (enterprise feature 모두 비활성).
@@ -1445,7 +1456,8 @@ func (s *slogHALogger) Error(msg string, args ...any) { s.l.Error(msg, args...) 
 // buildLLMAdapter는 cfg.LLMProvider 기반으로 어댑터 1개를 생성합니다 (R14-1 옵트인).
 //
 //	"" / "noop"   → noop.New()  — 기본값, ErrLLMDisabled 즉시 반환.
-//	"ollama"      → ollama.New(BaseURL, DefaultModel, Timeout)
+//	"ollama"      → ollama.New(BaseURL, DefaultModel, Timeout, KeepAlive, AutoPull)
+//	"vllm"        → vllm.New(BaseURL, APIKey, DefaultModel, Timeout, MaxTokens) — D-LLM-1.
 //	"anthropic"   → anthropic.New(BaseURL, APIKey, DefaultModel, Timeout). APIKey 누락은 에러.
 //	그 외          → 에러 (오타 방지).
 func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
@@ -1457,6 +1469,18 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 			Endpoint:     cfg.LLMBaseURL,
 			DefaultModel: cfg.LLMModel,
 			HTTPTimeout:  cfg.LLMTimeout,
+			KeepAlive:    cfg.LLMKeepAlive,
+			AutoPull:     cfg.LLMAutoPull,
+		}), nil
+	case "vllm":
+		// D-LLM-1 — OpenAI-compatible self-hosted inference (vLLM, TGI 등).
+		// APIKey는 옵션(자체 host 환경이 흔히 인증 없음 — 있으면 Bearer로 전송).
+		return llmvllm.New(llmvllm.Options{
+			BaseURL:      cfg.LLMBaseURL,
+			APIKey:       cfg.LLMAPIKey,
+			DefaultModel: cfg.LLMModel,
+			HTTPTimeout:  cfg.LLMTimeout,
+			MaxTokens:    cfg.LLMMaxTokens,
 		}), nil
 	case "anthropic":
 		if cfg.LLMAPIKey == "" {
@@ -1469,7 +1493,7 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 			HTTPTimeout:  cfg.LLMTimeout,
 		}), nil
 	default:
-		return nil, fmt.Errorf("unknown LLMProvider %q (allowed: noop|ollama|anthropic)", cfg.LLMProvider)
+		return nil, fmt.Errorf("unknown LLMProvider %q (allowed: noop|ollama|vllm|anthropic)", cfg.LLMProvider)
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -253,11 +255,14 @@ func main() {
 	dataDir := flag.String("data-dir", defaultDataDir(), "data directory (SQLite DB, keys, etc.)")
 	storageDriver := flag.String("storage", "sqlite", "storage driver: sqlite (default) | postgres")
 	storageDSN := flag.String("storage-dsn", "", "storage DSN. SQLite ignores (uses data-dir/data.db). Postgres requires postgres://user:pass@host:port/db")
-	llmProvider := flag.String("llm-provider", "", "LLM provider: noop (default) | ollama | anthropic — opt-in (R14-1)")
-	llmModel := flag.String("llm-model", "", "LLM model name (provider-specific, e.g. llama3.2 / claude-haiku-4-5-20251001)")
-	llmBaseURL := flag.String("llm-base-url", "", "LLM base URL (ollama daemon or Anthropic API base)")
-	llmAPIKey := flag.String("llm-api-key", "", "LLM API key (anthropic only — prefer env ANTHROPIC_API_KEY)")
+	llmProvider := flag.String("llm-provider", "", "LLM provider: noop (default) | ollama | vllm | anthropic — opt-in (R14-1). vllm is OpenAI-compatible self-hosted (D-LLM-1).")
+	llmModel := flag.String("llm-model", "", "LLM model name (provider-specific, e.g. llama3.2 / meta-llama/Llama-3.1-8B-Instruct / claude-haiku-4-5-20251001)")
+	llmBaseURL := flag.String("llm-base-url", "", "LLM base URL (ollama daemon / vllm endpoint / Anthropic API base)")
+	llmAPIKey := flag.String("llm-api-key", "", "LLM API key (anthropic required, vllm optional Bearer — prefer env ANTHROPIC_API_KEY or ROSSHIELD_LLM_API_KEY)")
 	llmTimeout := flag.Duration("llm-timeout", 0, "LLM request timeout (0 = adapter default)")
+	llmMaxTokens := flag.Int("llm-max-tokens", 0, "vllm response token cap (0 = adapter default 1024). Anthropic uses CompleteRequest.MaxTokens directly.")
+	llmKeepAlive := flag.Duration("llm-keep-alive", 0, "ollama model memory retention (0 = default 5m; <0 = immediate unload).")
+	llmAutoPull := flag.Bool("llm-auto-pull", false, "ollama AutoPull (D-LLM-7). false = airgap safe default; true = allow PullModel on boot.")
 	licenseToken := flag.String("license-token", "", "Enterprise license token (E24 — opt-in). Prefer env ROSSHIELD_LICENSE_TOKEN.")
 	licensePubHex := flag.String("license-pubkey-hex", "", "Ed25519 public key (32B hex) for license verification. Prefer env ROSSHIELD_LICENSE_PUBKEY_HEX.")
 	webhookTick := flag.Duration("webhook-tick-interval", 0, "Webhook dispatcher polling interval (E23-B). 0 = default 30s.")
@@ -281,9 +286,57 @@ func main() {
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
+	// 우선순위: flag → ROSSHIELD_LLM_API_KEY (provider-neutral) → ANTHROPIC_API_KEY (legacy).
 	apiKey := *llmAPIKey
 	if apiKey == "" {
+		apiKey = os.Getenv("ROSSHIELD_LLM_API_KEY")
+	}
+	if apiKey == "" {
 		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	// LLM private deployment env overrides (D-LLM-1·D-LLM-5·D-LLM-7).
+	// flag가 default(빈 값/0/false)일 때만 env로 덮어쓰기 — flag 우선.
+	llmProviderVal := *llmProvider
+	if llmProviderVal == "" {
+		llmProviderVal = os.Getenv("ROSSHIELD_LLM_PROVIDER")
+	}
+	llmBaseURLVal := *llmBaseURL
+	if llmBaseURLVal == "" {
+		llmBaseURLVal = os.Getenv("ROSSHIELD_LLM_BASE_URL")
+	}
+	llmModelVal := *llmModel
+	if llmModelVal == "" {
+		llmModelVal = os.Getenv("ROSSHIELD_LLM_MODEL")
+	}
+	llmTimeoutVal := *llmTimeout
+	if llmTimeoutVal == 0 {
+		if s := os.Getenv("ROSSHIELD_LLM_TIMEOUT_SEC"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				llmTimeoutVal = time.Duration(n) * time.Second
+			}
+		}
+	}
+	llmMaxTokensVal := *llmMaxTokens
+	if llmMaxTokensVal == 0 {
+		if s := os.Getenv("ROSSHIELD_LLM_MAX_TOKENS"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				llmMaxTokensVal = n
+			}
+		}
+	}
+	llmKeepAliveVal := *llmKeepAlive
+	if llmKeepAliveVal == 0 {
+		if s := os.Getenv("ROSSHIELD_LLM_KEEP_ALIVE_SEC"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n != 0 {
+				llmKeepAliveVal = time.Duration(n) * time.Second
+			}
+		}
+	}
+	llmAutoPullVal := *llmAutoPull
+	if !llmAutoPullVal {
+		if s := os.Getenv("ROSSHIELD_LLM_AUTO_PULL"); s == "1" || strings.EqualFold(s, "true") {
+			llmAutoPullVal = true
+		}
 	}
 	// License token/pubkey도 env fallback (운영에선 secret manager 권장).
 	licTok := *licenseToken
@@ -317,11 +370,14 @@ func main() {
 		Logger:                 logger,
 		StorageDriver:          *storageDriver,
 		StorageDSN:             dsn,
-		LLMProvider:            *llmProvider,
-		LLMModel:               *llmModel,
-		LLMBaseURL:             *llmBaseURL,
+		LLMProvider:            llmProviderVal,
+		LLMModel:               llmModelVal,
+		LLMBaseURL:             llmBaseURLVal,
 		LLMAPIKey:              apiKey,
-		LLMTimeout:             *llmTimeout,
+		LLMTimeout:             llmTimeoutVal,
+		LLMMaxTokens:           llmMaxTokensVal,
+		LLMKeepAlive:           llmKeepAliveVal,
+		LLMAutoPull:            llmAutoPullVal,
 		LicenseToken:           licTok,
 		LicensePublicKeyHex:    licPub,
 		WebhookTickInterval:    *webhookTick,

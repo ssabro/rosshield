@@ -116,6 +116,8 @@ func TestBootstrapLLMProviderSelection(t *testing.T) {
 		{name: "default empty → noop", cfg: Config{}, wantProvider: "noop"},
 		{name: "noop explicit", cfg: Config{LLMProvider: "noop"}, wantProvider: "noop"},
 		{name: "ollama", cfg: Config{LLMProvider: "ollama"}, wantProvider: "ollama"},
+		{name: "vllm without key (self-hosted)", cfg: Config{LLMProvider: "vllm"}, wantProvider: "vllm"},
+		{name: "vllm with bearer key", cfg: Config{LLMProvider: "vllm", LLMAPIKey: "sk-vllm"}, wantProvider: "vllm"},
 		{name: "anthropic without key → error", cfg: Config{LLMProvider: "anthropic"}, wantErr: true},
 		{name: "anthropic with key", cfg: Config{LLMProvider: "anthropic", LLMAPIKey: "sk-test"}, wantProvider: "anthropic"},
 		{name: "unknown provider → error", cfg: Config{LLMProvider: "openai"}, wantErr: true},
