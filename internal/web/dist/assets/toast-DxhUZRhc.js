@@ -1,1 +1,0 @@
-import{ab as o}from"./index-DTUTnfuV.js";const e={success:((s,r)=>o.success(s,r)),error:((s,r)=>o.error(s,r)),warning:((s,r)=>o.warning(s,r)),info:((s,r)=>o.info(s,r)),message:((s,r)=>o(s,r)),promise:(s,r)=>{o.promise(s,r)},dismiss:s=>{o.dismiss(s)}};export{e as t};
