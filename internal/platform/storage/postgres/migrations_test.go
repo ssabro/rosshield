@@ -53,6 +53,7 @@ var expectedSequences = []string{
 	"0028_user_roles_scope",
 	"0029_sso_group_mappings",
 	"0030_customer_intakes",
+	"0031_boolean_native_recovery",
 }
 
 // noopSequences 는 E22-E 폐기 — TestPGConversionMarkersPresent 함께 폐기됐으므로 미사용.

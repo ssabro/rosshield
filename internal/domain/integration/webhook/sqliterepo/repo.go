@@ -84,11 +84,12 @@ func (r *Repo) CreateEndpoint(ctx context.Context, tx storage.Tx, ep webhook.Web
 		return webhook.WebhookEndpoint{}, fmt.Errorf("webhook: marshal events: %w", err)
 	}
 
+	// E22-F R30-1.2 — enabled BOOLEAN. Go bool 직접 BIND (양 driver 호환).
 	if _, err := tx.Exec(ctx, `INSERT INTO webhook_endpoints (
     id, tenant_id, url, secret, events, format, enabled, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ep.ID, string(ep.TenantID), ep.URL, ep.Secret, eventsJSON, string(ep.Format),
-		boolToInt(ep.Enabled), ep.CreatedAt.Format(rfc3339Nano), ep.UpdatedAt.Format(rfc3339Nano),
+		ep.Enabled, ep.CreatedAt.Format(rfc3339Nano), ep.UpdatedAt.Format(rfc3339Nano),
 	); err != nil {
 		return webhook.WebhookEndpoint{}, fmt.Errorf("webhook: insert endpoint: %w", err)
 	}
@@ -133,7 +134,7 @@ func (r *Repo) UpdateEndpoint(ctx context.Context, tx storage.Tx, ep webhook.Web
 	if _, err := tx.Exec(ctx, `UPDATE webhook_endpoints SET
     url = ?, secret = ?, events = ?, format = ?, enabled = ?, updated_at = ?
 WHERE id = ? AND tenant_id = ?`,
-		ep.URL, ep.Secret, eventsJSON, string(ep.Format), boolToInt(ep.Enabled),
+		ep.URL, ep.Secret, eventsJSON, string(ep.Format), ep.Enabled,
 		now.Format(rfc3339Nano), ep.ID, string(tenantID),
 	); err != nil {
 		return webhook.WebhookEndpoint{}, fmt.Errorf("webhook: update endpoint: %w", err)
@@ -258,13 +259,15 @@ func (r *Repo) Enqueue(ctx context.Context, tx storage.Tx, evt webhook.DomainEve
 			NextAttemptAt: now,
 			CreatedAt:     now,
 		}
+		// E22-F R30-1.2 — succeeded BOOLEAN. literal 0/1 대신 parameterized bool 인자
+		// (PG BOOLEAN은 `0` int literal 비교가 type mismatch — `false` 명시 필요).
 		if _, err := tx.Exec(ctx, `INSERT INTO webhook_deliveries (
     id, endpoint_id, tenant_id, event_type, event_id, payload,
     attempt_count, last_attempted_at, next_attempt_at,
     succeeded, last_response_status, last_error, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, 0, '', ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 0, '', ?)`,
 			d.ID, d.EndpointID, string(d.TenantID), string(d.EventType), d.EventID, d.Payload,
-			d.AttemptCount, d.NextAttemptAt.Format(rfc3339Nano), d.CreatedAt.Format(rfc3339Nano),
+			d.AttemptCount, d.NextAttemptAt.Format(rfc3339Nano), false, d.CreatedAt.Format(rfc3339Nano),
 		); err != nil {
 			return nil, fmt.Errorf("webhook: insert delivery: %w", err)
 		}
@@ -333,9 +336,12 @@ ORDER BY created_at DESC LIMIT ?`,
 
 // ListDueDeliveries는 dispatch 대상 delivery를 cross-tenant로 반환합니다 (E23-B Process worker).
 //
-// 조건: succeeded = 0 AND attempt_count < MaxRetryAttempts AND next_attempt_at <= now.
+// 조건: succeeded = false AND attempt_count < MaxRetryAttempts AND next_attempt_at <= now.
 // 정렬: next_attempt_at ASC — 가장 오래 대기한 것부터 처리.
 // limit <= 0이면 default 50. tx.TenantID()는 무시 — worker는 cross-tenant 잡 (Bootstrap Tx 사용).
+//
+// E22-F R30-1.2 — succeeded BOOLEAN. WHERE literal `= 0` 대신 parameterized bool 인자
+// (PG는 BOOLEAN 컬럼에 int literal 비교가 type mismatch).
 func (r *Repo) ListDueDeliveries(ctx context.Context, tx storage.Tx, now time.Time, limit int) ([]webhook.WebhookDelivery, error) {
 	if limit <= 0 {
 		limit = defaultListLimit
@@ -344,9 +350,9 @@ func (r *Repo) ListDueDeliveries(ctx context.Context, tx storage.Tx, now time.Ti
        attempt_count, last_attempted_at, next_attempt_at,
        succeeded, last_response_status, last_error, created_at
 FROM webhook_deliveries
-WHERE succeeded = 0 AND attempt_count < ? AND next_attempt_at <= ?
+WHERE succeeded = ? AND attempt_count < ? AND next_attempt_at <= ?
 ORDER BY next_attempt_at ASC LIMIT ?`,
-		webhook.MaxRetryAttempts, now.UTC().Format(rfc3339Nano), limit,
+		false, webhook.MaxRetryAttempts, now.UTC().Format(rfc3339Nano), limit,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("webhook: list due deliveries: %w", err)
@@ -364,14 +370,16 @@ ORDER BY next_attempt_at ASC LIMIT ?`,
 	return out, rows.Err()
 }
 
-// MarkDeliverySucceeded는 succeeded=1·last_response_status·attempt_count·last_attempted_at·last_error 갱신합니다.
+// MarkDeliverySucceeded는 succeeded=true·last_response_status·attempt_count·last_attempted_at·last_error 갱신합니다.
 //
 // 본 메서드는 cross-tenant write — Bootstrap Tx 또는 system worker에서 호출. tx.TenantID()는 무시.
+//
+// E22-F R30-1.2 — succeeded BOOLEAN. SET literal `= 1` 대신 parameterized bool 인자.
 func (r *Repo) MarkDeliverySucceeded(ctx context.Context, tx storage.Tx, deliveryID string, attemptCount, responseStatus int, attemptedAt time.Time) error {
 	res, err := tx.Exec(ctx, `UPDATE webhook_deliveries SET
-    succeeded = 1, attempt_count = ?, last_response_status = ?, last_attempted_at = ?, last_error = ''
+    succeeded = ?, attempt_count = ?, last_response_status = ?, last_attempted_at = ?, last_error = ''
 WHERE id = ?`,
-		attemptCount, responseStatus, attemptedAt.UTC().Format(rfc3339Nano), deliveryID,
+		true, attemptCount, responseStatus, attemptedAt.UTC().Format(rfc3339Nano), deliveryID,
 	)
 	if err != nil {
 		return fmt.Errorf("webhook: mark delivery succeeded: %w", err)
@@ -418,14 +426,15 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// scanEndpoint — E22-F R30-1.2: enabled를 bool로 SCAN (양 driver 호환).
 func scanEndpoint(s rowScanner) (webhook.WebhookEndpoint, error) {
 	var (
 		id, tid, urlStr, secret, eventsJSON, format string
-		enabledInt                                  int
+		enabled                                     bool
 		createdStr, updatedStr                      string
 	)
 	if err := s.Scan(&id, &tid, &urlStr, &secret, &eventsJSON, &format,
-		&enabledInt, &createdStr, &updatedStr,
+		&enabled, &createdStr, &updatedStr,
 	); err != nil {
 		return webhook.WebhookEndpoint{}, err
 	}
@@ -442,12 +451,13 @@ func scanEndpoint(s rowScanner) (webhook.WebhookEndpoint, error) {
 		Secret:    secret,
 		Events:    events,
 		Format:    webhook.Format(format),
-		Enabled:   enabledInt != 0,
+		Enabled:   enabled,
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 	}, nil
 }
 
+// scanDelivery — E22-F R30-1.2: succeeded를 bool로 SCAN (양 driver 호환).
 func scanDelivery(s rowScanner) (webhook.WebhookDelivery, error) {
 	var (
 		id, epID, tid, etype, eventID string
@@ -455,14 +465,14 @@ func scanDelivery(s rowScanner) (webhook.WebhookDelivery, error) {
 		attempt                       int
 		lastAttempted                 sql.NullString
 		nextAttemptStr                string
-		succeededInt                  int
+		succeeded                     bool
 		lastStatus                    int
 		lastErr                       string
 		createdStr                    string
 	)
 	if err := s.Scan(&id, &epID, &tid, &etype, &eventID, &payload,
 		&attempt, &lastAttempted, &nextAttemptStr,
-		&succeededInt, &lastStatus, &lastErr, &createdStr,
+		&succeeded, &lastStatus, &lastErr, &createdStr,
 	); err != nil {
 		return webhook.WebhookDelivery{}, err
 	}
@@ -477,7 +487,7 @@ func scanDelivery(s rowScanner) (webhook.WebhookDelivery, error) {
 		Payload:            payload,
 		AttemptCount:       attempt,
 		NextAttemptAt:      nextAt,
-		Succeeded:          succeededInt != 0,
+		Succeeded:          succeeded,
 		LastResponseStatus: lastStatus,
 		LastError:          lastErr,
 		CreatedAt:          createdAt,
@@ -517,11 +527,4 @@ func unmarshalEvents(raw string) ([]webhook.EventType, error) {
 		out[i] = webhook.EventType(s)
 	}
 	return out, nil
-}
-
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }

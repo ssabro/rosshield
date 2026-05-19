@@ -86,17 +86,14 @@ func (r *Repo) CreateProfile(ctx context.Context, tx storage.Tx, req compliance.
 		UpdatedAt:          now,
 	}
 
-	enabledInt := 0
-	if profile.Enabled {
-		enabledInt = 1
-	}
+	// E22-F R30-1.2 — enabled BOOLEAN. Go bool 직접 BIND (양 driver 호환).
 	if _, err := tx.Exec(ctx, `
 INSERT INTO compliance_profiles (
     id, tenant_id, framework, framework_version, enabled,
     customizations_json, created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		profile.ID, string(profile.TenantID), string(profile.Framework), profile.FrameworkVersion,
-		enabledInt, string(profile.CustomizationsJSON),
+		profile.Enabled, string(profile.CustomizationsJSON),
 		profile.CreatedAt.Format(rfc3339Nano), profile.UpdatedAt.Format(rfc3339Nano),
 	); err != nil {
 		if isUniqueViolation(err) {
@@ -304,11 +301,12 @@ SELECT id, tenant_id, profile_id, session_id,
        not_applicable_count, unmapped_count,
        chain_head_seq, chain_head_hash, statuses_json, created_at`
 
+// scanProfileRow — E22-F R30-1.2: enabled를 bool로 SCAN (양 driver 호환).
 func scanProfileRow(scanFn func(...any) error) (compliance.ComplianceProfile, error) {
 	var (
 		id, tenantID, framework, version string
 		customizations                   string
-		enabled                          int
+		enabled                          bool
 		createdAt, updatedAt             string
 	)
 	if err := scanFn(&id, &tenantID, &framework, &version, &enabled,
@@ -331,7 +329,7 @@ func scanProfileRow(scanFn func(...any) error) (compliance.ComplianceProfile, er
 		TenantID:           storage.TenantID(tenantID),
 		Framework:          compliance.Framework(framework),
 		FrameworkVersion:   version,
-		Enabled:            enabled != 0,
+		Enabled:            enabled,
 		CustomizationsJSON: []byte(customizations),
 		CreatedAt:          created,
 		UpdatedAt:          updated,

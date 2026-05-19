@@ -715,7 +715,7 @@ SELECT r.id, r.tenant_id, r.name, r.permissions, r.is_system, r.created_at,
 	for rows.Next() {
 		var (
 			id, tid, name, permsJSON, createdStr string
-			isSystem                             int
+			isSystem                             bool
 			scopeType, scopeID, source           string
 		)
 		if err := rows.Scan(&id, &tid, &name, &permsJSON, &isSystem, &createdStr,
@@ -928,14 +928,12 @@ func insertRole(ctx context.Context, tx storage.Tx, role tenant.Role) error {
 	if err != nil {
 		return fmt.Errorf("tenant: marshal permissions: %w", err)
 	}
-	isSystem := 0
-	if role.IsSystem {
-		isSystem = 1
-	}
+	// E22-F R30-1.2 — is_system BOOLEAN. Go bool 직접 BIND (modernc.org/sqlite는
+	// INTEGER affinity 컬럼에 bool→0/1 자동 캐스트, PG는 BOOLEAN native).
 	_, err = tx.Exec(ctx, `
 INSERT INTO roles (id, tenant_id, name, permissions, is_system, created_at)
 VALUES (?, ?, ?, ?, ?, ?)`,
-		role.ID, string(role.TenantID), role.Name, string(permsJSON), isSystem,
+		role.ID, string(role.TenantID), role.Name, string(permsJSON), role.IsSystem,
 		role.CreatedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("tenant: insert role %q: %w", role.Name, err)
@@ -978,10 +976,13 @@ func assignRoleScoped(ctx context.Context, tx storage.Tx, userID, roleID string,
 }
 
 // scanRoleRow는 *sql.Row → Role.
+//
+// E22-F R30-1.2 — is_system 컬럼은 BOOLEAN(PG)/INTEGER 0/1(SQLite). Go bool SCAN
+// target으로 양 driver 자동 캐스트(modernc.org/sqlite는 INTEGER→bool 자동, pgx는 native).
 func scanRoleRow(row *sql.Row) (tenant.Role, error) {
 	var (
 		id, tid, name, permsJSON, createdStr string
-		isSystem                             int
+		isSystem                             bool
 	)
 	err := row.Scan(&id, &tid, &name, &permsJSON, &isSystem, &createdStr)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -997,7 +998,7 @@ func scanRoleRow(row *sql.Row) (tenant.Role, error) {
 func scanRoleRows(rows *sql.Rows) (tenant.Role, error) {
 	var (
 		id, tid, name, permsJSON, createdStr string
-		isSystem                             int
+		isSystem                             bool
 	)
 	if err := rows.Scan(&id, &tid, &name, &permsJSON, &isSystem, &createdStr); err != nil {
 		return tenant.Role{}, fmt.Errorf("tenant: scan role row: %w", err)
@@ -1005,7 +1006,7 @@ func scanRoleRows(rows *sql.Rows) (tenant.Role, error) {
 	return assembleRole(id, tid, name, permsJSON, isSystem, createdStr)
 }
 
-func assembleRole(id, tid, name, permsJSON string, isSystem int, createdStr string) (tenant.Role, error) {
+func assembleRole(id, tid, name, permsJSON string, isSystem bool, createdStr string) (tenant.Role, error) {
 	var perms []tenant.Permission
 	if err := json.Unmarshal([]byte(permsJSON), &perms); err != nil {
 		return tenant.Role{}, fmt.Errorf("tenant: unmarshal permissions for role %q: %w", name, err)
@@ -1019,7 +1020,7 @@ func assembleRole(id, tid, name, permsJSON string, isSystem int, createdStr stri
 		TenantID:    storage.TenantID(tid),
 		Name:        name,
 		Permissions: perms,
-		IsSystem:    isSystem == 1,
+		IsSystem:    isSystem,
 		CreatedAt:   createdAt,
 	}, nil
 }

@@ -112,14 +112,11 @@ func (r *Repo) CreateProvider(ctx context.Context, tx storage.Tx, req sso.Create
 		UpdatedAt: now,
 	}
 
-	enabledInt := 0
-	if p.Enabled {
-		enabledInt = 1
-	}
+	// E22-F R30-1.2 — enabled BOOLEAN. Go bool 직접 BIND (양 driver 호환).
 	_, err := tx.Exec(ctx, `INSERT INTO sso_providers
 (id, tenant_id, type, name, enabled, config_json, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, string(p.TenantID), string(p.Type), p.Name, enabledInt, string(p.Config),
+		p.ID, string(p.TenantID), string(p.Type), p.Name, p.Enabled, string(p.Config),
 		p.CreatedAt.Format(rfc3339Nano), p.UpdatedAt.Format(rfc3339Nano),
 	)
 	if err != nil {
@@ -162,14 +159,10 @@ func (r *Repo) UpdateProvider(ctx context.Context, tx storage.Tx, req sso.Update
 	}
 	p.UpdatedAt = r.deps.Clock.Now().UTC()
 
-	enabledInt := 0
-	if p.Enabled {
-		enabledInt = 1
-	}
 	res, err := tx.Exec(ctx, `UPDATE sso_providers
 SET name = ?, enabled = ?, config_json = ?, updated_at = ?
 WHERE id = ? AND tenant_id = ?`,
-		p.Name, enabledInt, string(p.Config), p.UpdatedAt.Format(rfc3339Nano),
+		p.Name, p.Enabled, string(p.Config), p.UpdatedAt.Format(rfc3339Nano),
 		p.ID, string(p.TenantID),
 	)
 	if err != nil {
@@ -611,13 +604,14 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// scanProvider — E22-F R30-1.2: enabled를 bool로 SCAN (양 driver 호환).
 func scanProvider(s rowScanner) (sso.Provider, error) {
 	var (
 		id, tid, ptype, name, configStr string
-		enabledInt                      int
+		enabled                         bool
 		createdStr, updatedStr          string
 	)
-	if err := s.Scan(&id, &tid, &ptype, &name, &enabledInt, &configStr, &createdStr, &updatedStr); err != nil {
+	if err := s.Scan(&id, &tid, &ptype, &name, &enabled, &configStr, &createdStr, &updatedStr); err != nil {
 		return sso.Provider{}, err
 	}
 	createdAt, _ := time.Parse(rfc3339Nano, createdStr)
@@ -627,7 +621,7 @@ func scanProvider(s rowScanner) (sso.Provider, error) {
 		TenantID:  storage.TenantID(tid),
 		Type:      sso.Type(ptype),
 		Name:      name,
-		Enabled:   enabledInt != 0,
+		Enabled:   enabled,
 		Config:    json.RawMessage(configStr),
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
