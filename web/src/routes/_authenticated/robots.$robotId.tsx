@@ -16,7 +16,6 @@ import {
 } from '@/api/hooks'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,6 +33,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CardSkeleton } from '@/components/ui/skeleton'
+import { useT } from '@/i18n/t'
+import { confirm } from '@/lib/confirm'
+import { toast } from '@/lib/toast'
 
 import type { FormEvent } from 'react'
 
@@ -52,7 +55,8 @@ function RobotDetailPage(): React.ReactElement {
     return (
       <div className="space-y-6">
         <PageHeader title={t('pages.robots.title')} />
-        <p className="text-sm text-muted-foreground">{t('robots.detail.loading')}</p>
+        <CardSkeleton />
+        <p className="sr-only">{t('robots.detail.loading')}</p>
       </div>
     )
   }
@@ -78,21 +82,35 @@ function RobotDetailPage(): React.ReactElement {
   const osDistro = typeof robot.osDistro === 'string' ? robot.osDistro : ''
   const rosDistro = typeof robot.rosDistro === 'string' ? robot.rosDistro : ''
 
+  // D-UI-1 Stage 4 — PageHeader subtitle을 robot meta(host · auth · criticality)로
+  //   강화. role이 있으면 우선 노출. Breadcrumbs는 PageHeader slot 사용.
+  const subtitleParts: string[] = []
+  if (role) subtitleParts.push(role)
+  subtitleParts.push(`${robot.host}:${robot.port}`)
+  subtitleParts.push(robot.authType)
+  const subtitle = subtitleParts.join(' · ')
+
   return (
     <div className="space-y-6">
-      <Breadcrumbs
-        items={[
-          { label: t('nav.fleets'), to: '/fleets' },
-          {
-            label: fleetQuery.data?.name ?? robot.fleetId,
-            to: '/fleets/$fleetId',
-            params: { fleetId: robot.fleetId },
-          },
-          { label: t('nav.robots'), to: '/robots' },
-          { label: robot.name },
-        ]}
+      <PageHeader
+        title={robot.name}
+        description={subtitle}
+        breadcrumbs={
+          <Breadcrumbs
+            items={[
+              { label: t('nav.fleets'), to: '/fleets' },
+              {
+                label: fleetQuery.data?.name ?? robot.fleetId,
+                to: '/fleets/$fleetId',
+                params: { fleetId: robot.fleetId },
+              },
+              { label: t('nav.robots'), to: '/robots' },
+              { label: robot.name },
+            ]}
+          />
+        }
+        badge={<Badge variant="secondary">{robot.criticality}</Badge>}
       />
-      <PageHeader title={robot.name} description={role} />
 
       <Card className="max-w-xl">
         <CardHeader>
@@ -171,64 +189,41 @@ function RobotDetailPage(): React.ReactElement {
   )
 }
 
-// DeleteRobotCard — admin/fleet-admin only, 2-step confirm. 성공 시 /robots로 navigate.
+// DeleteRobotCard — admin/fleet-admin only. typing confirmation (robot name) +
+// toast 성공 통지. 성공 시 /robots로 navigate.
 //
 // RBAC Stage 5 — server `RequirePermission(robot, write)` 매핑 (§2.2 ID 5).
 // fleet 컨텍스트는 robot.fleetId. admin tenant scope는 fleetId 무관 통과 (회귀 0).
+//
+// D-UI-1 Stage 4 — window.confirm/inline 2-step 대신 imperative confirm() Promise
+// + typing confirmation (robot.name 입력 필요)으로 실수 차단 강도↑.
 function DeleteRobotCard({ robot }: { robot: Robot }): React.ReactElement | null {
   const t = useT()
   const canDelete = useHasPermission('robot', 'write', robot.fleetId)
   const navigate = useNavigate()
   const del = useDeleteRobot()
-  const [confirming, setConfirming] = useState(false)
-  const [error, setError] = useState('')
 
   if (!canDelete) return null
 
-  if (confirming) {
-    return (
-      <Card className="max-w-xl border-destructive">
-        <CardHeader>
-          <CardTitle className="text-sm text-destructive">
-            {t('robots.detail.delete.confirmTitle')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <p>{t('robots.detail.delete.confirmBody')}</p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={del.isPending}
-              onClick={() =>
-                del.mutate(robot.id, {
-                  onSuccess: () => {
-                    void navigate({ to: '/robots', replace: true })
-                  },
-                  onError: (e) =>
-                    setError(e instanceof Error ? e.message : t('robots.detail.delete.error')),
-                })
-              }
-            >
-              {del.isPending
-                ? t('robots.detail.delete.pending')
-                : t('robots.detail.delete.yes')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setConfirming(false)
-                setError('')
-              }}
-            >
-              {t('robots.detail.delete.cancel')}
-            </Button>
-            {error && <span className="text-xs text-destructive">{error}</span>}
-          </div>
-        </CardContent>
-      </Card>
-    )
+  const handleDeleteClick = async (): Promise<void> => {
+    const ok = await confirm({
+      title: t('robots.detail.delete.confirmTitle'),
+      description: `${t('robots.detail.delete.confirmBody')}\n\n${t('robots.detail.delete.confirm.typingHint')}`,
+      confirmText: robot.name,
+      confirmLabel: t('robots.detail.delete.confirm.button'),
+      cancelLabel: t('robots.detail.delete.cancel'),
+      destructive: true,
+    })
+    if (!ok) return
+    del.mutate(robot.id, {
+      onSuccess: () => {
+        toast.success(t('robots.detail.delete.toast.success'))
+        void navigate({ to: '/robots', replace: true })
+      },
+      onError: (e) => {
+        toast.error(e instanceof Error ? e.message : t('robots.detail.delete.error'))
+      },
+    })
   }
 
   return (
@@ -237,8 +232,17 @@ function DeleteRobotCard({ robot }: { robot: Robot }): React.ReactElement | null
         <CardTitle className="text-sm">{t('robots.detail.delete.title')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <Button variant="destructive" size="sm" onClick={() => setConfirming(true)}>
-          {t('robots.detail.delete.button')}
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={del.isPending}
+          onClick={() => {
+            void handleDeleteClick()
+          }}
+        >
+          {del.isPending
+            ? t('robots.detail.delete.pending')
+            : t('robots.detail.delete.button')}
         </Button>
       </CardContent>
     </Card>
@@ -715,10 +719,21 @@ function RotateCredentialCard({
     setError('')
   }
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
+  // D-UI-1 Stage 4 — rotate는 irreversible + 운영 risk 큰 작업.
+  //   submit 전에 confirm() typing confirmation으로 한 번 더 차단. 성공 시 toast.
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setError('')
     setSuccess('')
+    const ok = await confirm({
+      title: t('robots.detail.rotate.confirm.title'),
+      description: t('robots.detail.rotate.confirm.description'),
+      confirmText: 'rotate',
+      confirmLabel: t('robots.detail.rotate.confirm.button'),
+      cancelLabel: t('robots.detail.rotate.cancel'),
+      destructive: true,
+    })
+    if (!ok) return
     rotate.mutate(
       {
         robotId,
@@ -733,13 +748,22 @@ function RotateCredentialCard({
       },
       {
         onSuccess: (data) => {
+          toast.success(t('robots.detail.rotate.toast.success'), {
+            description: t('robots.detail.rotate.toast.successDescription', {
+              id: data.newCredentialId,
+            }),
+          })
           setSuccess(
             t('robots.detail.rotate.success', { id: data.newCredentialId }),
           )
           reset()
           setOpen(false)
         },
-        onError: (e) => setError(e instanceof Error ? e.message : t('robots.detail.rotate.error')),
+        onError: (e) => {
+          const msg = e instanceof Error ? e.message : t('robots.detail.rotate.error')
+          setError(msg)
+          toast.error(msg)
+        },
       },
     )
   }
@@ -766,7 +790,12 @@ function RotateCredentialCard({
         <CardTitle className="text-sm">{t('robots.detail.rotate.formTitle')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-3 text-sm">
+        <form
+          onSubmit={(e) => {
+            void handleSubmit(e)
+          }}
+          className="space-y-3 text-sm"
+        >
           <div className="space-y-2">
             <Label htmlFor="rot-authtype">{t('robots.detail.rotate.authType')}</Label>
             <Select

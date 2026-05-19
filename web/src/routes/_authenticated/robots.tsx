@@ -1,16 +1,25 @@
+import { zodResolver } from '@hookform/resolvers/zod'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState } from 'react'
-
 import { Server } from 'lucide-react'
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 
 import { ApiError } from '@/api/errors'
 import { useCreateRobot, useHasPermission, useRobots } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useT } from '@/i18n/t'
-import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -20,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TableRowSkeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -28,14 +38,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useT } from '@/i18n/t'
+import { toast } from '@/lib/toast'
+import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 
 import type { CreateRobotVars, Robot } from '@/api/hooks'
+import type { DictKey } from '@/i18n/dict'
 
 // `/robots` — 로봇 목록 + fleet 필터.
-// - 빈 결과: "(로봇 없음)"
-// - 로딩: "불러오는 중…"
-// - 에러: ApiError 메시지 표시
-// 컬럼: 이름·호스트:포트·인증·심각도·태그
+//
+// D-UI-1 Stage 4 (B 그룹) 적용 패턴:
+//   - PageHeader: title/description + actions (등록 토글)
+//   - TableRowSkeleton: 로딩 시 layout shift 0
+//   - EmptyState: 등록 0건 → 직관적 CTA
+//   - 가로 스크롤 (모바일 반응형)
+//   - toast: mutation 성공/실패 비차단 통지
+//   - react-hook-form + zod (form pilot): 검증 자동화 + a11y 자동 결선
+
 function RobotsPage(): React.ReactElement {
   const [fleetId, setFleetId] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -82,7 +101,7 @@ function RobotsPage(): React.ReactElement {
         />
       </div>
 
-      <div className="rounded-md border">
+      <div className="-mx-4 overflow-x-auto sm:mx-0 sm:rounded-md sm:border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -96,11 +115,8 @@ function RobotsPage(): React.ReactElement {
           <TableBody>
             {robots.isPending && (
               <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="text-center text-muted-foreground"
-                >
-                  {t('common.loading')}
+                <TableCell colSpan={5} className="p-3">
+                  <TableRowSkeleton rows={5} columns={5} />
                 </TableCell>
               </TableRow>
             )}
@@ -120,6 +136,13 @@ function RobotsPage(): React.ReactElement {
                     icon={Server}
                     title={t('robots.empty.title')}
                     description={t('robots.empty.description')}
+                    action={
+                      canCreate && !showForm ? (
+                        <Button size="sm" onClick={() => setShowForm(true)}>
+                          {t('robots.form.toggle.show')}
+                        </Button>
+                      ) : undefined
+                    }
                     className="rounded-none border-0 bg-transparent"
                   />
                 </TableCell>
@@ -173,9 +196,54 @@ function RobotRow({ robot }: { robot: Robot }): React.ReactElement {
   )
 }
 
-// CreateRobotForm — 신규 Robot 등록 폼.
-//   - 평문 자격증명을 본문으로 보냄 (백엔드가 KEK→DEK wrap).
-//   - 성공 시 robots 캐시 무효화 → 자동 refetch + 폼 닫음.
+// D-UI-1 Stage 4 form pilot — react-hook-form + zod schema.
+//
+// 기존 hand-coded useState 매트릭스를 단일 useForm + FormField 트리로 대체:
+//   - 필드별 검증은 schema에 일원화 (host required, port range, auth-conditional).
+//   - 입력 오류는 FormMessage가 a11y aria-describedby로 자동 결선.
+//   - mutation 결과는 toast로 비차단 통지 (성공/실패 모두).
+//
+// schema는 module-scope에 두어 t()와 분리 — message는 schemaErrorToI18n로 변환.
+
+const ROBOT_AUTH_TYPES = ['password', 'privateKey'] as const
+const ROBOT_CRITICALITIES = ['low', 'medium', 'high', 'critical'] as const
+
+const robotFormSchema = z
+  .object({
+    fleetId: z.string().trim().min(1, 'robots.form.validation.fleetId'),
+    name: z.string().trim().min(1, 'robots.form.validation.name'),
+    host: z.string().trim().min(1, 'robots.form.validation.host'),
+    port: z.coerce
+      .number()
+      .int()
+      .min(1, 'robots.form.validation.port')
+      .max(65535, 'robots.form.validation.port'),
+    authType: z.enum(ROBOT_AUTH_TYPES),
+    username: z.string().trim().min(1, 'robots.form.validation.username'),
+    password: z.string().optional(),
+    privateKeyPem: z.string().optional(),
+    criticality: z.enum(ROBOT_CRITICALITIES),
+    tagsRaw: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.authType === 'password' && !data.password) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['password'],
+        message: 'robots.form.validation.password',
+      })
+    }
+    if (data.authType === 'privateKey' && !data.privateKeyPem?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['privateKeyPem'],
+        message: 'robots.form.validation.privateKeyPem',
+      })
+    }
+  })
+
+type RobotFormValues = z.infer<typeof robotFormSchema>
+
 function CreateRobotForm({
   onCreated,
 }: {
@@ -184,216 +252,310 @@ function CreateRobotForm({
   const t = useT()
   const create = useCreateRobot()
   const isOffline = useIsOffline()
-  const [vars, setVars] = useState<CreateRobotVars>({
-    fleetId: '',
-    name: '',
-    host: '',
-    port: 22,
-    authType: 'password',
-    username: '',
-    password: '',
-    criticality: 'medium',
+  const form = useForm<RobotFormValues>({
+    resolver: zodResolver(robotFormSchema),
+    defaultValues: {
+      fleetId: '',
+      name: '',
+      host: '',
+      port: 22,
+      authType: 'password',
+      username: '',
+      password: '',
+      privateKeyPem: '',
+      criticality: 'medium',
+      tagsRaw: '',
+    },
   })
+  const fleetIdValue = form.watch('fleetId').trim()
   // RBAC Stage 5 — fleet 컨텍스트는 form 입력 fleetId. 빈 문자열 시 fleet scope role
   // 은 통과 0, admin tenant scope만 통과 (회귀 0).
   const canCreate = useHasPermission(
     'robot',
     'write',
-    vars.fleetId.trim().length > 0 ? vars.fleetId.trim() : undefined,
+    fleetIdValue.length > 0 ? fleetIdValue : undefined,
   )
-  const [tagsRaw, setTagsRaw] = useState('')
-  const [success, setSuccess] = useState('')
+  const authType = form.watch('authType')
 
-  const set = <K extends keyof CreateRobotVars>(k: K, v: CreateRobotVars[K]): void => {
-    setVars((prev) => ({ ...prev, [k]: v }))
-  }
-
-  const handleSubmit = (e: React.FormEvent): void => {
-    e.preventDefault()
-    setSuccess('')
-    const tags = tagsRaw
+  const onSubmit = (values: RobotFormValues): void => {
+    const tags = (values.tagsRaw ?? '')
       .split(',')
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
-    create.mutate(
-      { ...vars, tags: tags.length > 0 ? tags : undefined },
-      {
-        onSuccess: (data) => {
-          setSuccess(t('robots.form.success', { id: data.robot.id }))
-          // 본 폼은 한 번 닫고 새로 열도록 — 입력 유지하지 않음.
-          onCreated()
-        },
+    const payload: CreateRobotVars = {
+      fleetId: values.fleetId.trim(),
+      name: values.name.trim(),
+      host: values.host.trim(),
+      port: values.port,
+      authType: values.authType,
+      username: values.username.trim(),
+      password: values.authType === 'password' ? values.password : undefined,
+      privateKeyPem:
+        values.authType === 'privateKey' ? values.privateKeyPem : undefined,
+      criticality: values.criticality,
+      tags: tags.length > 0 ? tags : undefined,
+    }
+    create.mutate(payload, {
+      onSuccess: (data) => {
+        toast.success(t('robots.form.toast.success'), {
+          description: t('robots.form.success', { id: data.robot.id }),
+        })
+        onCreated()
+        form.reset()
       },
-    )
+      onError: (err) => {
+        toast.error(
+          err instanceof ApiError ? err.message : t('robots.form.error.fallback'),
+        )
+      },
+    })
+  }
+
+  // i18n: zod schema message가 dict key를 그대로 들고 옴 — t()로 풀어서 화면 표시.
+  const renderError = (message?: string): string | undefined => {
+    if (!message) return undefined
+    return t(message as DictKey)
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-2"
-      aria-label={t('robots.form.title')}
-    >
-      <div className="md:col-span-2">
-        <h3 className="text-sm font-medium">{t('robots.form.title')}</h3>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-fleet">{t('robots.form.fleet')}</Label>
-        <Input
-          id="rb-fleet"
-          required
-          placeholder={t('robots.form.fleet.placeholder')}
-          value={vars.fleetId}
-          onChange={(e) => set('fleetId', e.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-name">{t('robots.form.name')}</Label>
-        <Input
-          id="rb-name"
-          required
-          placeholder={t('robots.form.name.placeholder')}
-          value={vars.name}
-          onChange={(e) => set('name', e.target.value)}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-host">{t('robots.form.host')}</Label>
-        <Input
-          id="rb-host"
-          required
-          placeholder={t('robots.form.host.placeholder')}
-          value={vars.host}
-          onChange={(e) => set('host', e.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-port">{t('robots.form.port')}</Label>
-        <Input
-          id="rb-port"
-          type="number"
-          min={1}
-          max={65535}
-          value={vars.port ?? 22}
-          onChange={(e) => set('port', Number(e.target.value))}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-auth">{t('robots.form.authType')}</Label>
-        <Select
-          value={vars.authType}
-          onValueChange={(v) => set('authType', v as CreateRobotVars['authType'])}
-        >
-          <SelectTrigger id="rb-auth">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="password">
-              {t('robots.form.authType.password')}
-            </SelectItem>
-            <SelectItem value="privateKey">
-              {t('robots.form.authType.privateKey')}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-user">{t('robots.form.username')}</Label>
-        <Input
-          id="rb-user"
-          required
-          placeholder={t('robots.form.username.placeholder')}
-          value={vars.username}
-          onChange={(e) => set('username', e.target.value)}
-        />
-      </div>
-
-      {vars.authType === 'password' ? (
-        <div className="flex flex-col gap-1.5 md:col-span-2">
-          <Label htmlFor="rb-pw">{t('robots.form.password')}</Label>
-          <Input
-            id="rb-pw"
-            type="password"
-            required
-            value={vars.password ?? ''}
-            onChange={(e) => set('password', e.target.value)}
-          />
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-2"
+        aria-label={t('robots.form.title')}
+        noValidate
+      >
+        <div className="md:col-span-2">
+          <h3 className="text-sm font-medium">{t('robots.form.title')}</h3>
         </div>
-      ) : (
-        <div className="flex flex-col gap-1.5 md:col-span-2">
-          <Label htmlFor="rb-pem">{t('robots.form.privateKeyPem')}</Label>
-          <textarea
-            id="rb-pem"
-            required
-            rows={5}
-            placeholder={t('robots.form.privateKeyPem.placeholder')}
-            value={vars.privateKeyPem ?? ''}
-            onChange={(e) => set('privateKeyPem', e.target.value)}
-            className="rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-xs"
-          />
-        </div>
-      )}
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-crit">{t('robots.form.criticality')}</Label>
-        <Select
-          value={vars.criticality ?? 'medium'}
-          onValueChange={(v) =>
-            set('criticality', v as CreateRobotVars['criticality'])
-          }
-        >
-          <SelectTrigger id="rb-crit">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="low">{t('robots.form.criticality.low')}</SelectItem>
-            <SelectItem value="medium">
-              {t('robots.form.criticality.medium')}
-            </SelectItem>
-            <SelectItem value="high">{t('robots.form.criticality.high')}</SelectItem>
-            <SelectItem value="critical">
-              {t('robots.form.criticality.critical')}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="rb-tags">{t('robots.form.tags')}</Label>
-        <Input
-          id="rb-tags"
-          placeholder={t('robots.form.tags.placeholder')}
-          value={tagsRaw}
-          onChange={(e) => setTagsRaw(e.target.value)}
+        <FormField
+          control={form.control}
+          name="fleetId"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.fleet')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('robots.form.fleet.placeholder')}
+                  autoComplete="off"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage>{renderError(fieldState.error?.message)}</FormMessage>
+            </FormItem>
+          )}
         />
-      </div>
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.name')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('robots.form.name.placeholder')}
+                  autoComplete="off"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage>{renderError(fieldState.error?.message)}</FormMessage>
+            </FormItem>
+          )}
+        />
 
-      {create.isError && (
-        <p className="md:col-span-2 text-sm text-destructive" role="alert">
-          {create.error instanceof ApiError
-            ? create.error.message
-            : t('robots.form.error.fallback')}
-        </p>
-      )}
-      {success && (
-        <p className="md:col-span-2 text-sm text-emerald-600">{success}</p>
-      )}
+        <FormField
+          control={form.control}
+          name="host"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.host')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('robots.form.host.placeholder')}
+                  autoComplete="off"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage>{renderError(fieldState.error?.message)}</FormMessage>
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="port"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.port')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  {...field}
+                  onChange={(e) => field.onChange(Number(e.target.value))}
+                />
+              </FormControl>
+              <FormMessage>{renderError(fieldState.error?.message)}</FormMessage>
+            </FormItem>
+          )}
+        />
 
-      <div className="md:col-span-2 flex justify-end">
-        <Button
-          type="submit"
-          disabled={create.isPending || !canCreate || isOffline}
-          title={mutationGuardTitle({
-            isOffline,
-            offlineLabel: t('pwa.offline.mutationBlocked'),
-            fallback: !canCreate ? t('common.role.required.admin') : undefined,
-          })}
-        >
-          {create.isPending ? t('robots.form.submitting') : t('robots.form.submit')}
-        </Button>
-      </div>
-    </form>
+        <FormField
+          control={form.control}
+          name="authType"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.authType')}</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="password">
+                    {t('robots.form.authType.password')}
+                  </SelectItem>
+                  <SelectItem value="privateKey">
+                    {t('robots.form.authType.privateKey')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="username"
+          render={({ field, fieldState }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.username')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('robots.form.username.placeholder')}
+                  autoComplete="username"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage>{renderError(fieldState.error?.message)}</FormMessage>
+            </FormItem>
+          )}
+        />
+
+        {authType === 'password' ? (
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field, fieldState }) => (
+              <FormItem className="md:col-span-2">
+                <FormLabel>{t('robots.form.password')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    {...field}
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+                <FormMessage>{renderError(fieldState.error?.message)}</FormMessage>
+              </FormItem>
+            )}
+          />
+        ) : (
+          <FormField
+            control={form.control}
+            name="privateKeyPem"
+            render={({ field, fieldState }) => (
+              <FormItem className="md:col-span-2">
+                <FormLabel>{t('robots.form.privateKeyPem')}</FormLabel>
+                <FormControl>
+                  <textarea
+                    rows={5}
+                    placeholder={t('robots.form.privateKeyPem.placeholder')}
+                    className="rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-xs"
+                    {...field}
+                    value={field.value ?? ''}
+                  />
+                </FormControl>
+                <FormMessage>{renderError(fieldState.error?.message)}</FormMessage>
+              </FormItem>
+            )}
+          />
+        )}
+
+        <FormField
+          control={form.control}
+          name="criticality"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.criticality')}</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="low">{t('robots.form.criticality.low')}</SelectItem>
+                  <SelectItem value="medium">
+                    {t('robots.form.criticality.medium')}
+                  </SelectItem>
+                  <SelectItem value="high">
+                    {t('robots.form.criticality.high')}
+                  </SelectItem>
+                  <SelectItem value="critical">
+                    {t('robots.form.criticality.critical')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="tagsRaw"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('robots.form.tags')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('robots.form.tags.placeholder')}
+                  {...field}
+                  value={field.value ?? ''}
+                />
+              </FormControl>
+              <FormDescription>{t('robots.form.tags.placeholder')}</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {create.isError && (
+          <p className="md:col-span-2 text-sm text-destructive" role="alert">
+            {create.error instanceof ApiError
+              ? create.error.message
+              : t('robots.form.error.fallback')}
+          </p>
+        )}
+
+        <div className="md:col-span-2 flex justify-end">
+          <Button
+            type="submit"
+            disabled={create.isPending || !canCreate || isOffline}
+            title={mutationGuardTitle({
+              isOffline,
+              offlineLabel: t('pwa.offline.mutationBlocked'),
+              fallback: !canCreate ? t('common.role.required.admin') : undefined,
+            })}
+          >
+            {create.isPending ? t('robots.form.submitting') : t('robots.form.submit')}
+          </Button>
+        </div>
+      </form>
+    </Form>
   )
 }
 

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { Network } from 'lucide-react'
 import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
@@ -10,9 +11,8 @@ import {
   usePacks,
   useUpdateFleet,
 } from '@/api/hooks'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useT } from '@/i18n/t'
-import { requirePermission } from '@/lib/route-guards'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,6 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TableRowSkeleton } from '@/components/ui/skeleton'
+import { useT } from '@/i18n/t'
+import { confirm } from '@/lib/confirm'
+import { requirePermission } from '@/lib/route-guards'
+import { toast } from '@/lib/toast'
 
 import type { Fleet, FleetPolicy } from '@/api/hooks'
 import type { FormEvent } from 'react'
@@ -39,6 +44,13 @@ const CRITICALITY_VALUES = ['', 'low', 'medium', 'high', 'critical'] as const
 
 // `/fleets` — fleet 등록·이름 변경·삭제 페이지 (admin).
 //
+// D-UI-1 Stage 4 적용 패턴:
+//   - PageHeader: actions에 "Fleet 생성" 토글 (canCreate 시)
+//   - TableRowSkeleton: list 로딩 시 layout shift 0
+//   - EmptyState: 등록 0건 → "첫 fleet 생성" CTA
+//   - ConfirmDialog: delete typing confirmation (fleet 이름)
+//   - toast: create/update/delete 성공·실패 비차단 통지
+//
 // RBAC Stage 5 — 매트릭스 매핑:
 //   - 생성/삭제: tenant `fleet.admin` (§2.2 ID 14, 16)
 //   - 단건 PATCH (FleetRow.canEdit): `fleet[X].fleet.write` (§2.2 ID 15)
@@ -46,15 +58,29 @@ function FleetsPage(): React.ReactElement {
   const t = useT()
   const canCreate = useHasPermission('fleet', 'admin')
   const fleetsQuery = useFleets()
+  const [showCreate, setShowCreate] = useState(false)
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={t('pages.fleets.title')}
         description={t('pages.fleets.description')}
+        actions={
+          canCreate && (
+            <Button
+              variant={showCreate ? 'outline' : 'default'}
+              size="sm"
+              onClick={() => setShowCreate((v) => !v)}
+            >
+              {showCreate ? t('fleets.row.cancel') : t('fleets.action.create')}
+            </Button>
+          )
+        }
       />
 
-      {canCreate && <CreateFleetCard />}
+      {canCreate && showCreate && (
+        <CreateFleetCard onCreated={() => setShowCreate(false)} />
+      )}
 
       <Card>
         <CardHeader>
@@ -62,9 +88,7 @@ function FleetsPage(): React.ReactElement {
         </CardHeader>
         <CardContent>
           {fleetsQuery.isPending ? (
-            <p className="text-sm text-muted-foreground">
-              {t('fleets.list.loading')}
-            </p>
+            <TableRowSkeleton rows={4} columns={3} />
           ) : fleetsQuery.isError ? (
             <p className="text-sm text-destructive">
               {fleetsQuery.error instanceof Error
@@ -72,9 +96,17 @@ function FleetsPage(): React.ReactElement {
                 : t('fleets.list.error')}
             </p>
           ) : (fleetsQuery.data?.length ?? 0) === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t('fleets.list.empty')}
-            </p>
+            <EmptyState
+              icon={Network}
+              title={t('fleets.list.empty')}
+              action={
+                canCreate && !showCreate ? (
+                  <Button size="sm" onClick={() => setShowCreate(true)}>
+                    {t('fleets.empty.cta')}
+                  </Button>
+                ) : undefined
+              }
+            />
           ) : (
             <div className="space-y-2">
               {fleetsQuery.data?.map((f) => (
@@ -88,7 +120,11 @@ function FleetsPage(): React.ReactElement {
   )
 }
 
-function CreateFleetCard(): React.ReactElement {
+function CreateFleetCard({
+  onCreated,
+}: {
+  onCreated: () => void
+}): React.ReactElement {
   const t = useT()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -103,16 +139,21 @@ function CreateFleetCard(): React.ReactElement {
       { name, description, policy: hasPolicyContent(policy) ? policy : undefined },
       {
         onSuccess: () => {
+          toast.success(t('fleets.form.toast.success'))
           setName('')
           setDescription('')
           setPolicy({})
+          onCreated()
         },
         onError: (err) => {
-          if (err instanceof ApiError && err.status === 409) {
-            setError(t('fleets.form.error.duplicate'))
-          } else {
-            setError(err instanceof Error ? err.message : t('fleets.form.error.fallback'))
-          }
+          const msg =
+            err instanceof ApiError && err.status === 409
+              ? t('fleets.form.error.duplicate')
+              : err instanceof Error
+                ? err.message
+                : t('fleets.form.error.fallback')
+          setError(msg)
+          toast.error(msg)
         },
       },
     )
@@ -307,7 +348,7 @@ function FleetRow({
   return (
     <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             to="/fleets/$fleetId"
             params={{ fleetId: fleet.id }}
@@ -358,13 +399,19 @@ function EditFleetForm({
     update.mutate(
       { fleetId: fleet.id, name, description, policy },
       {
-        onSuccess: () => onDone(),
+        onSuccess: () => {
+          toast.success(t('fleets.row.update.toast.success'))
+          onDone()
+        },
         onError: (err) => {
-          if (err instanceof ApiError && err.status === 409) {
-            setError(t('fleets.form.error.duplicate'))
-          } else {
-            setError(err instanceof Error ? err.message : t('fleets.form.error.fallback'))
-          }
+          const msg =
+            err instanceof ApiError && err.status === 409
+              ? t('fleets.form.error.duplicate')
+              : err instanceof Error
+                ? err.message
+                : t('fleets.form.error.fallback')
+          setError(msg)
+          toast.error(msg)
         },
       },
     )
@@ -406,46 +453,44 @@ function EditFleetForm({
   )
 }
 
+// DeleteFleetButton — typing confirmation (fleet 이름) + toast 성공/실패 통지.
+//
+// D-UI-1 Stage 4 — inline 2-step → imperative confirm() Promise로 a11y(focus
+// trap, ESC)와 실수 차단 강화.
 function DeleteFleetButton({ fleet }: { fleet: Fleet }): React.ReactElement {
   const t = useT()
-  const [confirming, setConfirming] = useState(false)
-  const [error, setError] = useState('')
   const del = useDeleteFleet()
 
-  if (confirming) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">{t('fleets.row.confirm')}</span>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() =>
-            del.mutate(fleet.id, {
-              onError: (e) =>
-                setError(e instanceof Error ? e.message : t('fleets.row.delete.error')),
-            })
-          }
-          disabled={del.isPending}
-        >
-          {del.isPending ? t('fleets.form.submitting') : t('fleets.row.delete.yes')}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setConfirming(false)
-            setError('')
-          }}
-        >
-          {t('fleets.row.cancel')}
-        </Button>
-        {error && <span className="text-xs text-destructive">{error}</span>}
-      </div>
-    )
+  const handleClick = async (): Promise<void> => {
+    const ok = await confirm({
+      title: t('fleets.row.delete.confirm.title'),
+      description: `${t('fleets.row.delete.confirm.description')}\n\n${t('fleets.row.delete.confirm.typingHint')}`,
+      confirmText: fleet.name,
+      confirmLabel: t('fleets.row.delete.yes'),
+      cancelLabel: t('fleets.row.cancel'),
+      destructive: true,
+    })
+    if (!ok) return
+    del.mutate(fleet.id, {
+      onSuccess: () => {
+        toast.success(t('fleets.row.delete.toast.success'))
+      },
+      onError: (e) => {
+        toast.error(e instanceof Error ? e.message : t('fleets.row.delete.error'))
+      },
+    })
   }
+
   return (
-    <Button variant="destructive" size="sm" onClick={() => setConfirming(true)}>
-      {t('fleets.row.delete')}
+    <Button
+      variant="destructive"
+      size="sm"
+      disabled={del.isPending}
+      onClick={() => {
+        void handleClick()
+      }}
+    >
+      {del.isPending ? t('fleets.form.submitting') : t('fleets.row.delete')}
     </Button>
   )
 }

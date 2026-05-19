@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { Server } from 'lucide-react'
 
 import { useFleet, useRobots } from '@/api/hooks'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useT } from '@/i18n/t'
-import { requireRole } from '@/lib/route-guards'
 import { Badge } from '@/components/ui/badge'
 import {
   Card,
@@ -12,10 +12,18 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { CardSkeleton } from '@/components/ui/skeleton'
+import { useT } from '@/i18n/t'
+import { requireRole } from '@/lib/route-guards'
 
 import type { Robot } from '@/api/hooks'
 
 // `/fleets/$fleetId` — 단일 fleet 메타 + 그 fleet의 robot 목록 (admin/auditor).
+//
+// D-UI-1 Stage 4 적용 패턴:
+//   - PageHeader: breadcrumbs slot 사용 + badge (robotCount)
+//   - CardSkeleton: 로딩 시 layout shift 0
+//   - EmptyState: 소속 robot 0 → "이 fleet에 robot 없음" + 등록 가이드
 function FleetDetailPage(): React.ReactElement {
   const t = useT()
   const { fleetId } = Route.useParams()
@@ -28,7 +36,8 @@ function FleetDetailPage(): React.ReactElement {
     return (
       <div className="space-y-6">
         <PageHeader title={t('pages.fleets.title')} />
-        <p className="text-sm text-muted-foreground">{t('fleets.list.loading')}</p>
+        <CardSkeleton />
+        <p className="sr-only">{t('fleets.list.loading')}</p>
       </div>
     )
   }
@@ -50,15 +59,22 @@ function FleetDetailPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs
-        items={[
-          { label: t('nav.fleets'), to: '/fleets' },
-          { label: fleet.name },
-        ]}
-      />
       <PageHeader
         title={fleet.name}
         description={fleet.description || t('fleets.detail.noDescription')}
+        breadcrumbs={
+          <Breadcrumbs
+            items={[
+              { label: t('nav.fleets'), to: '/fleets' },
+              { label: fleet.name },
+            ]}
+          />
+        }
+        badge={
+          <Badge variant="secondary">
+            {t('fleets.row.robotCount', { count: fleet.robotCount })}
+          </Badge>
+        }
       />
 
       <Card className="max-w-xl">
@@ -84,7 +100,7 @@ function FleetDetailPage(): React.ReactElement {
         </CardHeader>
         <CardContent>
           {robotsQuery.isPending ? (
-            <p className="text-sm text-muted-foreground">{t('fleets.detail.robotsLoading')}</p>
+            <CardSkeleton />
           ) : robotsQuery.isError ? (
             <p className="text-sm text-destructive">
               {robotsQuery.error instanceof Error
@@ -92,7 +108,11 @@ function FleetDetailPage(): React.ReactElement {
                 : t('fleets.detail.robotsError')}
             </p>
           ) : (robotsQuery.data?.length ?? 0) === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('fleets.detail.robotsEmpty')}</p>
+            <EmptyState
+              icon={Server}
+              title={t('fleets.detail.robotsEmpty')}
+              size="sm"
+            />
           ) : (
             <div className="space-y-1">
               {robotsQuery.data?.map((r) => <RobotRow key={r.id} robot={r} />)}
@@ -129,7 +149,7 @@ function RobotRow({ robot }: { robot: Robot }): React.ReactElement {
   return (
     <div className="flex items-center justify-between rounded border border-border px-3 py-2 text-sm">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             to="/robots/$robotId"
             params={{ robotId: robot.id }}
