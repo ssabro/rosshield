@@ -9,6 +9,8 @@ import {
   acceptUrl,
   invitationStatus,
   invitationStatusLabelKey,
+  invitationStatusToBadgeKind,
+  roleVisual,
   statusBadgeVariant,
 } from './users'
 
@@ -77,6 +79,36 @@ describe('invitationStatusLabelKey', () => {
     expect(invitationStatusLabelKey('expired')).toBe(
       'users.status.expired',
     )
+  })
+})
+
+describe('invitationStatusToBadgeKind', () => {
+  it('pending → pending (StatusBadge gray)', () => {
+    expect(invitationStatusToBadgeKind('pending')).toBe('pending')
+  })
+  it('accepted → success (StatusBadge green)', () => {
+    expect(invitationStatusToBadgeKind('accepted')).toBe('success')
+  })
+  it('expired → failed (StatusBadge red — 토큰 무효)', () => {
+    expect(invitationStatusToBadgeKind('expired')).toBe('failed')
+  })
+})
+
+describe('roleVisual', () => {
+  it('admin role은 dict 라벨 키 admin.label로 매핑', () => {
+    expect(roleVisual('admin').labelKey).toBe('users.role.admin.label')
+  })
+  it('auditor role은 dict 라벨 키 auditor.label로 매핑', () => {
+    expect(roleVisual('auditor').labelKey).toBe('users.role.auditor.label')
+  })
+  it('operator role은 dict 라벨 키 operator.label로 매핑', () => {
+    expect(roleVisual('operator').labelKey).toBe('users.role.operator.label')
+  })
+  it('대소문자 무관 매핑 (ADMIN → admin)', () => {
+    expect(roleVisual('ADMIN').labelKey).toBe('users.role.admin.label')
+  })
+  it('알 수 없는 role은 unknown 라벨로 fallback', () => {
+    expect(roleVisual('superuser').labelKey).toBe('users.role.unknown.label')
   })
 })
 

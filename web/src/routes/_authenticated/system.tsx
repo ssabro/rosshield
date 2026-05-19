@@ -1,9 +1,13 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 
+import { CalendarClock, ServerOff } from 'lucide-react'
+
 import { ApiError } from '@/api/errors'
 import { API_BASE_PATH } from '@/api/client'
 import { useBackups, useHasPermission, useLicenseInfo, usePacks, useScans, useUsageStats } from '@/api/hooks'
+import { StatusBadge, type StatusKind } from '@/components/common/StatusBadge'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { requirePermission } from '@/lib/route-guards'
@@ -15,17 +19,21 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 
 import type { DictKey } from '@/i18n/dict'
 
 // `/system` — B6+B7 운영 정보 dashboard.
 //
+// D-UI-1 Stage 4 — PageHeader 표준화 + StatusBadge / EmptyState / Skeleton 일관
+// 패턴 적용 + 4 핵심 카드 (Health · HA · License · Backups) grid polish. 부가 카드
+// (Usage / Severity / Packs)는 full-width로 두어 정보 밀도 유지. hook · API ·
+// business logic은 무변경.
+//
 //   - Service health (healthz fetch, public)
 //   - HA status (healthz.ha 필드 — E25)
 //   - License usage (useLicenseInfo, E24)
 //   - Backups CLI 안내 (E28; 자동 백업·web 다운로드는 B7 후속)
-//
-// 백엔드 변경 0 — 이미 노출된 /healthz + GET /api/v1/license 만 사용.
 
 interface HealthHA {
   enabled: boolean
@@ -79,13 +87,18 @@ function SystemPage(): React.ReactElement {
         description={t('pages.system.description')}
       />
 
-      <HealthCard />
-      <HACard />
-      <LicenseUsageCard />
+      {/* 핵심 4 카드 — 헬스 · HA · 라이선스 · 백업. 모바일 1열, lg 이상 2열. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <HealthCard />
+        <HACard />
+        <LicenseUsageCard />
+        <BackupsCard />
+      </div>
+
+      {/* 부가 카드 — 운영 메트릭. full-width로 정보 밀도 유지. */}
       <UsageStatsCard />
       <ScansSeverityCard />
       <PacksCard />
-      <BackupsCard />
     </div>
   )
 }
@@ -104,7 +117,7 @@ function PacksCard(): React.ReactElement {
       </CardHeader>
       <CardContent>
         {packsQuery.isPending ? (
-          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+          <CardContentSkeleton rows={3} />
         ) : packsQuery.isError ? (
           <p className="text-sm text-destructive">
             {packsQuery.error instanceof Error
@@ -166,18 +179,19 @@ function HealthCard(): React.ReactElement {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {q.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+        {q.isPending && <CardContentSkeleton rows={4} />}
         {q.isError && (
-          <p className="text-destructive">{t('system.health.error')}</p>
+          <p className="text-destructive" role="alert">
+            {t('system.health.error')}
+          </p>
         )}
         {q.isSuccess && (
           <>
             <div className="flex items-center gap-2">
-              <Badge
-                variant={q.data.status === 'ok' ? 'default' : 'destructive'}
-              >
-                {q.data.status}
-              </Badge>
+              <StatusBadge
+                status={healthStatusToBadgeKind(q.data.status)}
+                label={t(healthStatusLabelKey(q.data.status))}
+              />
             </div>
             <Row label={t('system.health.storage')} value={q.data.components.storage} />
             <Row label={t('system.health.eventbus')} value={q.data.components.eventbus} />
@@ -216,17 +230,28 @@ function HACard(): React.ReactElement {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {q.isSuccess && !ha && (
-          <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            {t('system.ha.disabled')}
+        {q.isPending && <CardContentSkeleton rows={3} />}
+        {q.isError && (
+          <p className="text-destructive" role="alert">
+            {t('system.health.error')}
           </p>
+        )}
+        {q.isSuccess && !ha && (
+          <EmptyState
+            icon={ServerOff}
+            size="sm"
+            title={t('system.ha.disabled.title')}
+            description={t('system.ha.disabled.description')}
+            className="border-dashed"
+          />
         )}
         {ha && (
           <>
             <div className="flex items-center gap-2">
-              <Badge variant={ha.role === 'leader' ? 'default' : 'secondary'}>
-                {t(haRoleLabelKey(ha.role))}
-              </Badge>
+              <StatusBadge
+                status={ha.role === 'leader' ? 'success' : 'pending'}
+                label={t(haRoleLabelKey(ha.role))}
+              />
             </div>
             <Row label={t('system.ha.epoch')} value={String(ha.epoch)} mono />
             <Row label={t('system.ha.leaderId')} value={ha.leaderId ?? '—'} mono />
@@ -255,9 +280,9 @@ function LicenseUsageCard(): React.ReactElement {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {q.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+        {q.isPending && <CardContentSkeleton rows={3} />}
         {q.isError && (
-          <p className="text-destructive">
+          <p className="text-destructive" role="alert">
             {q.error instanceof ApiError ? q.error.message : t('settings.license.error')}
           </p>
         )}
@@ -321,9 +346,9 @@ function UsageStatsCard(): React.ReactElement {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {q.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+        {q.isPending && <CardContentSkeleton rows={3} />}
         {q.isError && (
-          <p className="text-destructive">
+          <p className="text-destructive" role="alert">
             {q.error instanceof ApiError ? q.error.message : t('system.usage.error')}
           </p>
         )}
@@ -374,9 +399,9 @@ function ScansSeverityCard(): React.ReactElement {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {q.isPending && <p className="text-muted-foreground">{t('common.loading')}</p>}
+        {q.isPending && <CardContentSkeleton rows={2} />}
         {q.isError && (
-          <p className="text-destructive">
+          <p className="text-destructive" role="alert">
             {q.error instanceof ApiError ? q.error.message : t('system.scansSeverity.error')}
           </p>
         )}
@@ -473,22 +498,22 @@ function BackupsCard(): React.ReactElement {
             )}
           </div>
 
-          {q.isPending && (
-            <p className="text-xs text-muted-foreground">
-              {t('system.backups.list.loading')}
-            </p>
-          )}
+          {q.isPending && <CardContentSkeleton rows={3} />}
           {q.isError && (
-            <p className="text-xs text-destructive">
+            <p className="text-xs text-destructive" role="alert">
               {q.error instanceof ApiError
                 ? q.error.message
                 : t('system.backups.list.error')}
             </p>
           )}
           {q.isSuccess && recent.length === 0 && (
-            <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              {t('system.backups.list.empty')}
-            </p>
+            <EmptyState
+              icon={CalendarClock}
+              size="sm"
+              title={t('system.backups.empty.title')}
+              description={t('system.backups.empty.description')}
+              className="border-dashed"
+            />
           )}
           {q.isSuccess && recent.length > 0 && (
             <ul className="divide-y divide-border rounded-md border border-border">
@@ -591,6 +616,43 @@ function haRoleLabelKey(role: 'leader' | 'follower'): DictKey {
   return role === 'leader' ? 'system.ha.role.leader' : 'system.ha.role.follower'
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Helpers (export — 단위 테스트용)
+// ────────────────────────────────────────────────────────────────────────
+
+// healthStatusToBadgeKind — /healthz status 문자열 → StatusBadge `StatusKind`.
+//   백엔드 enum: 'ok' | 'degraded' (internal/api/gen/openapi.gen.go §HealthStatusStatus).
+//   'fail'은 일부 sub-component (signer 등) 에서만 — 카드 전체 status는 ok/degraded.
+//   미지정 또는 처음 보는 값은 'unknown' 으로 안전 fallback.
+export function healthStatusToBadgeKind(status: string): StatusKind {
+  switch (status.toLowerCase()) {
+    case 'ok':
+      return 'success'
+    case 'degraded':
+      return 'paused'
+    case 'fail':
+    case 'down':
+      return 'failed'
+    default:
+      return 'unknown'
+  }
+}
+
+// healthStatusLabelKey — /healthz status 문자열 → 사용자 라벨 dict 키.
+export function healthStatusLabelKey(status: string): DictKey {
+  switch (status.toLowerCase()) {
+    case 'ok':
+      return 'system.health.status.ok'
+    case 'degraded':
+      return 'system.health.status.degraded'
+    case 'fail':
+    case 'down':
+      return 'system.health.status.fail'
+    default:
+      return 'system.health.status.unknown'
+  }
+}
+
 function Row({
   label,
   value,
@@ -612,6 +674,19 @@ function Row({
       >
         {value}
       </span>
+    </div>
+  )
+}
+
+// CardContentSkeleton — Card body 내부에 들어가는 가벼운 skeleton (헤더는 이미 표시).
+//   CardSkeleton 컴포넌트는 외곽 border까지 렌더하므로 Card 내부에서는 부적합.
+function CardContentSkeleton({ rows = 3 }: { rows?: number }): React.ReactElement {
+  return (
+    <div className="space-y-2" role="status" aria-label="불러오는 중">
+      <Skeleton className="h-5 w-1/4" />
+      {Array.from({ length: rows }).map((_, i) => (
+        <Skeleton key={i} className={i === rows - 1 ? 'h-3 w-2/3' : 'h-3 w-full'} />
+      ))}
     </div>
   )
 }

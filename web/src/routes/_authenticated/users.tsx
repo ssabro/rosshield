@@ -1,7 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { Users as UsersIcon } from 'lucide-react'
+import {
+  ShieldCheck,
+  ShieldQuestion,
+  Users as UsersIcon,
+  UserCheck,
+  UserCog,
+  type LucideIcon,
+} from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
 import {
@@ -10,12 +17,15 @@ import {
   useHasPermission,
   useInvitations,
 } from '@/api/hooks'
+import { StatusBadge, type StatusKind } from '@/components/common/StatusBadge'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { confirm } from '@/lib/confirm'
 import { requirePermission } from '@/lib/route-guards'
+import { toast } from '@/lib/toast'
+import { cn } from '@/lib/utils'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TableRowSkeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -43,13 +54,14 @@ import type { DictKey } from '@/i18n/dict'
 
 // `/users` — 사용자 초대 + 활성 초대 관리 (B2).
 //
-// admin 운영용 페이지. 인증 + admin role 가정. 백엔드는 admin 가드를 자체 처리하므로
-// 본 페이지는 401/403을 친화 메시지로 표면화하기만 한다.
+// D-UI-1 Stage 4 — PageHeader 표준화 + StatusBadge / RoleBadge (a11y P0 보강) +
+// Toast/ConfirmDialog/Skeleton/EmptyState 일관 패턴 적용. 기능·API·라우팅·RBAC
+// 분기는 무변경.
 //
 // 핵심 UX:
-//   - 초대 생성 시 token이 1회 노출 → URL 형식으로 사용자에게 전달.
-//   - 활성 초대 테이블에서 status 색상으로 한눈에 분류.
-//   - 취소(revoke)는 즉시 만료 시킴. 사용된 token은 무효화.
+//   - 초대 생성 시 token이 1회 노출 → URL 형식으로 사용자에게 전달 + toast 알림.
+//   - role 컬럼은 색·아이콘·텍스트 3중 채널로 표시 (색만 의존 금지 — WCAG 1.4.1).
+//   - 취소(revoke)는 비차단 dialog로 confirm + destructive 스타일 + toast 결과.
 function UsersPage(): React.ReactElement {
   const t = useT()
   const invitations = useInvitations()
@@ -58,11 +70,20 @@ function UsersPage(): React.ReactElement {
   const isOffline = useIsOffline()
   const [created, setCreated] = useState<CreateInvitationResponse | null>(null)
 
+  const totalCount = invitations.data?.length ?? 0
+
   return (
     <div className="space-y-4">
       <PageHeader
         title={t('pages.users.title')}
         description={t('pages.users.description')}
+        badge={
+          invitations.isSuccess ? (
+            <span className="text-xs text-muted-foreground">
+              {t('users.summary.total', { count: totalCount })}
+            </span>
+          ) : null
+        }
       />
 
       <CreateInvitationForm
@@ -83,6 +104,7 @@ function UsersPage(): React.ReactElement {
         isPending={invitations.isPending}
         isError={invitations.isError}
         error={invitations.error}
+        onRetry={() => void invitations.refetch()}
         canRevoke={isAdmin}
         isOffline={isOffline}
       />
@@ -120,6 +142,14 @@ function CreateInvitationForm({
           onCreated(res)
           setEmail('')
           setExpiresInHours('')
+          toast.success(t('users.toast.created'), {
+            description: t('users.toast.created.desc'),
+          })
+        },
+        onError: (err) => {
+          toast.error(t('users.toast.create.error'), {
+            description: createInvitationErrorMessage(err, t),
+          })
         },
       },
     )
@@ -127,6 +157,7 @@ function CreateInvitationForm({
 
   return (
     <form
+      id="invite-form"
       onSubmit={handleSubmit}
       className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-4"
       aria-label={t('users.invite.section')}
@@ -272,6 +303,7 @@ function InvitationsTable({
   isPending,
   isError,
   error,
+  onRetry,
   canRevoke,
   isOffline,
 }: {
@@ -279,68 +311,92 @@ function InvitationsTable({
   isPending: boolean
   isError: boolean
   error: unknown
+  onRetry: () => void
   canRevoke: boolean
   isOffline: boolean
 }): React.ReactElement {
   const t = useT()
   return (
     <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t('users.table.id')}</TableHead>
-            <TableHead>{t('users.table.email')}</TableHead>
-            <TableHead>{t('users.table.role')}</TableHead>
-            <TableHead>{t('users.table.status')}</TableHead>
-            <TableHead>{t('users.table.invitedBy')}</TableHead>
-            <TableHead>{t('users.table.created')}</TableHead>
-            <TableHead>{t('users.table.expires')}</TableHead>
-            <TableHead className="text-right">
-              {t('users.table.actions')}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isPending && (
+      {/* 모바일 가로 스크롤 — table은 narrow viewport에서 줄바꿈 대신 overflow. */}
+      <div className="w-full overflow-x-auto">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={8} className="text-center text-muted-foreground">
-                {t('common.loading')}
-              </TableCell>
+              <TableHead>{t('users.table.id')}</TableHead>
+              <TableHead>{t('users.table.email')}</TableHead>
+              <TableHead>{t('users.table.role')}</TableHead>
+              <TableHead>{t('users.table.status')}</TableHead>
+              <TableHead>{t('users.table.invitedBy')}</TableHead>
+              <TableHead>{t('users.table.created')}</TableHead>
+              <TableHead>{t('users.table.expires')}</TableHead>
+              <TableHead className="text-right">
+                {t('users.table.actions')}
+              </TableHead>
             </TableRow>
-          )}
-          {isError && (
-            <TableRow>
-              <TableCell colSpan={8} className="text-center text-destructive">
-                {error instanceof ApiError
-                  ? error.message
-                  : t('users.error.fallback')}
-              </TableCell>
-            </TableRow>
-          )}
-          {!isPending && !isError && invitations.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={8} className="p-0">
-                <EmptyState
-                  icon={UsersIcon}
-                  title={t('users.empty.title')}
-                  description={t('users.empty.description')}
-                  className="rounded-none border-0 bg-transparent"
+          </TableHeader>
+          <TableBody>
+            {isPending && (
+              <TableRow>
+                <TableCell colSpan={8} className="p-3">
+                  <TableRowSkeleton rows={3} columns={5} />
+                </TableCell>
+              </TableRow>
+            )}
+            {isError && (
+              <TableRow>
+                <TableCell colSpan={8} className="p-0">
+                  <EmptyState
+                    variant="loading-fail"
+                    title={t('users.error.fallback')}
+                    description={
+                      error instanceof ApiError
+                        ? error.message
+                        : undefined
+                    }
+                    action={
+                      <Button size="sm" variant="outline" onClick={onRetry}>
+                        {t('users.error.action.retry')}
+                      </Button>
+                    }
+                    className="rounded-none border-0 bg-transparent"
+                  />
+                </TableCell>
+              </TableRow>
+            )}
+            {!isPending && !isError && invitations.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="p-0">
+                  <EmptyState
+                    icon={UsersIcon}
+                    title={t('users.empty.title')}
+                    description={t('users.empty.description')}
+                    action={
+                      <a
+                        href="#invite-form"
+                        className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        {t('users.empty.cta')}
+                      </a>
+                    }
+                    className="rounded-none border-0 bg-transparent"
+                  />
+                </TableCell>
+              </TableRow>
+            )}
+            {!isPending &&
+              !isError &&
+              invitations.map((inv) => (
+                <InvitationRow
+                  key={inv.id}
+                  invitation={inv}
+                  canRevoke={canRevoke}
+                  isOffline={isOffline}
                 />
-              </TableCell>
-            </TableRow>
-          )}
-          {!isPending &&
-            !isError &&
-            invitations.map((inv) => (
-              <InvitationRow
-                key={inv.id}
-                invitation={inv}
-                canRevoke={canRevoke}
-                isOffline={isOffline}
-              />
-            ))}
-        </TableBody>
-      </Table>
+              ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
@@ -358,14 +414,25 @@ function InvitationRow({
   const del = useDeleteInvitation()
   const status = invitationStatus(invitation)
 
-  const handleDelete = (): void => {
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm(t('users.action.delete.confirm'))
-    ) {
-      return
-    }
-    del.mutate(invitation.id)
+  const handleDelete = async (): Promise<void> => {
+    const ok = await confirm({
+      title: t('users.action.delete.confirm.title'),
+      description: t('users.action.delete.confirm.desc'),
+      confirmLabel: t('users.action.delete.confirm.ok'),
+      cancelLabel: t('users.action.delete.confirm.cancel'),
+      destructive: true,
+    })
+    if (!ok) return
+    del.mutate(invitation.id, {
+      onSuccess: () => {
+        toast.success(t('users.toast.deleted'))
+      },
+      onError: (err) => {
+        toast.error(t('users.toast.delete.error'), {
+          description: err instanceof ApiError ? err.message : undefined,
+        })
+      },
+    })
   }
 
   const isTerminal = status === 'accepted' || status === 'expired'
@@ -381,11 +448,14 @@ function InvitationRow({
         {shortId(invitation.id)}
       </TableCell>
       <TableCell className="text-sm">{invitation.email}</TableCell>
-      <TableCell className="text-xs uppercase">{invitation.roleName}</TableCell>
       <TableCell>
-        <Badge variant={statusBadgeVariant(status)} className="text-[10px]">
-          {t(invitationStatusLabelKey(status))}
-        </Badge>
+        <RoleBadge roleName={invitation.roleName} />
+      </TableCell>
+      <TableCell>
+        <StatusBadge
+          status={invitationStatusToBadgeKind(status)}
+          label={t(invitationStatusLabelKey(status))}
+        />
       </TableCell>
       <TableCell
         className="font-mono text-xs text-muted-foreground"
@@ -407,7 +477,7 @@ function InvitationRow({
         <Button
           size="sm"
           variant="outline"
-          onClick={handleDelete}
+          onClick={() => void handleDelete()}
           disabled={del.isPending || isTerminal || !canRevoke || isOffline}
           title={guardTitle}
         >
@@ -417,6 +487,69 @@ function InvitationRow({
         </Button>
       </TableCell>
     </TableRow>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// RoleBadge — role을 색·아이콘·텍스트 3중 채널로 표시 (a11y review P0).
+//
+// a11y review에서 지적된 "role 컬럼이 단색 uppercase 텍스트 only" 이슈를 해소.
+// admin은 운영 권한 강조 (sky), auditor 감사 강조 (emerald), operator (slate).
+// ────────────────────────────────────────────────────────────────────────
+
+interface RoleVisual {
+  icon: LucideIcon
+  className: string
+  labelKey: DictKey
+}
+
+const ROLE_VISUAL: Record<string, RoleVisual> = {
+  admin: {
+    icon: ShieldCheck,
+    className:
+      'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200 border-sky-300/40',
+    labelKey: 'users.role.admin.label',
+  },
+  auditor: {
+    icon: UserCheck,
+    className:
+      'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200 border-emerald-300/40',
+    labelKey: 'users.role.auditor.label',
+  },
+  operator: {
+    icon: UserCog,
+    className:
+      'bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border-slate-300/40',
+    labelKey: 'users.role.operator.label',
+  },
+}
+
+const ROLE_UNKNOWN: RoleVisual = {
+  icon: ShieldQuestion,
+  className: 'bg-muted text-muted-foreground border-border',
+  labelKey: 'users.role.unknown.label',
+}
+
+export function roleVisual(roleName: string): RoleVisual {
+  return ROLE_VISUAL[roleName.toLowerCase()] ?? ROLE_UNKNOWN
+}
+
+function RoleBadge({ roleName }: { roleName: string }): React.ReactElement {
+  const t = useT()
+  const v = roleVisual(roleName)
+  const Icon = v.icon
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-xs font-medium',
+        v.className,
+      )}
+      data-role={roleName.toLowerCase()}
+      title={roleName}
+    >
+      <Icon className="size-3" aria-hidden />
+      {t(v.labelKey)}
+    </span>
   )
 }
 
@@ -443,8 +576,11 @@ export function invitationStatus(
   return 'pending'
 }
 
-// statusBadgeVariant — invitation status별 Badge variant.
+// statusBadgeVariant — invitation status별 (legacy) shadcn Badge variant.
 //   pending(default·primary 강조) / accepted(secondary·완료) / expired(outline·회색).
+//
+// D-UI-1 Stage 4 — 페이지는 StatusBadge로 전환되었으나 본 helper는 기존 테스트와
+// 잠재 호출지 호환을 위해 export 유지. `invitationStatusToBadgeKind`가 신규 매핑.
 export function statusBadgeVariant(
   status: InvitationStatus,
 ): 'default' | 'secondary' | 'destructive' | 'outline' {
@@ -455,6 +591,22 @@ export function statusBadgeVariant(
       return 'secondary'
     case 'expired':
       return 'outline'
+  }
+}
+
+// invitationStatusToBadgeKind — invitation status → StatusBadge `StatusKind`.
+//   pending → 'pending' (gray clock), accepted → 'success' (green check),
+//   expired → 'failed' (red x) — 만료는 사용자가 "받을 수 없는 상태" 임을 강조.
+export function invitationStatusToBadgeKind(
+  status: InvitationStatus,
+): StatusKind {
+  switch (status) {
+    case 'pending':
+      return 'pending'
+    case 'accepted':
+      return 'success'
+    case 'expired':
+      return 'failed'
   }
 }
 
