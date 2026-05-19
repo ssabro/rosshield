@@ -13,6 +13,7 @@ import {
 } from '@/api/hooks'
 
 import {
+  deliveryStatusKind,
   deliveryStatusLabelKey,
   endpointDisplayName,
   statCellColorClass,
@@ -102,6 +103,21 @@ describe('statusBadgeVariant', () => {
   })
   it('pending → outline', () => {
     expect(statusBadgeVariant('pending')).toBe('outline')
+  })
+})
+
+describe('deliveryStatusKind (Stage 4 — StatusBadge 매핑)', () => {
+  it('success → success', () => {
+    expect(deliveryStatusKind('success')).toBe('success')
+  })
+  it('dead → failed', () => {
+    expect(deliveryStatusKind('dead')).toBe('failed')
+  })
+  it('retrying → running (animated dot)', () => {
+    expect(deliveryStatusKind('retrying')).toBe('running')
+  })
+  it('pending → pending', () => {
+    expect(deliveryStatusKind('pending')).toBe('pending')
   })
 })
 

@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { CardSkeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -43,18 +44,26 @@ function LicensePage(): React.ReactElement {
       <PageHeader
         title={t('pages.license.title')}
         description={t('pages.license.description')}
+        badge={
+          license.isSuccess ? (
+            <Badge variant={editionBadgeVariant(license.data.edition)}>
+              {t(editionLabelKey(license.data.edition))}
+            </Badge>
+          ) : undefined
+        }
       />
 
       {license.isPending && (
-        <Card>
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            {t('common.loading')}
-          </CardContent>
-        </Card>
+        <div className="space-y-3" aria-label={t('common.loading')}>
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
       )}
 
       {license.isError && (
         <EmptyState
+          variant="loading-fail"
           title={
             license.error instanceof ApiError
               ? license.error.message

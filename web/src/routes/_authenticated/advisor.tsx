@@ -1,11 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, Sparkles } from 'lucide-react'
 
 import { ApiError } from '@/api/errors'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { EmptyState } from '@/components/layout/EmptyState'
 import { useT } from '@/i18n/t'
+import { toast } from '@/lib/toast'
 import {
   useAdvisorConversation,
   useAdvisorConversations,
@@ -15,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { TextSkeleton } from '@/components/ui/skeleton'
 
 import type { AdvisorConversation, AdvisorTurn } from '@/api/hooks'
 import type { DictKey } from '@/i18n/dict'
@@ -28,7 +31,10 @@ const EXAMPLE_PROMPT_KEYS: ReadonlyArray<DictKey> = [
 // `/advisor` — LLM 옵트인 대화 (E19-3-B).
 // - 좌: 대화 목록 (클릭 → 선택)
 // - 우: 선택 대화의 turn 렌더링 + 새 질문 입력 (Ask)
-// - 503 (LLM disabled) 응답 시 안내 메시지 — 옵트인 활성화 방법 안내
+// - 503 (LLM disabled) 응답 시 안내 EmptyState — 옵트인 활성화 방법 안내
+//
+// D-UI-1 Stage 4 — PageHeader badge로 "opt-in" 명시, EmptyState로 disabled UX
+// 일관화, mutation feedback에 toast 추가.
 function AdvisorPage(): React.ReactElement {
   const conversations = useAdvisorConversations()
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -36,14 +42,19 @@ function AdvisorPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={t('pages.advisor.title')} />
-      <p className="text-sm text-muted-foreground">
-        {t('advisor.subtitle.intro')}
-        <code className="rounded bg-muted px-1">--llm-provider=ollama</code>
-        {t('advisor.subtitle.or')}
-        <code className="rounded bg-muted px-1">=anthropic</code>
-        {t('advisor.subtitle.suffix')}
-      </p>
+      <PageHeader
+        title={t('pages.advisor.title')}
+        description={t('advisor.subtitle.summary')}
+        badge={
+          <Badge
+            variant="outline"
+            className="flex items-center gap-1 text-[10px] uppercase tracking-wide"
+          >
+            <Sparkles className="size-3" aria-hidden />
+            {t('advisor.badge.optIn')}
+          </Badge>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[18rem_1fr]">
         <ConversationsList
@@ -92,9 +103,11 @@ function ConversationsList({
       </div>
 
       {isPending && (
-        <p className="text-xs text-muted-foreground">
-          {t('advisor.conversations.loading')}
-        </p>
+        <div className="space-y-2 py-1" aria-label={t('advisor.conversations.loading')}>
+          <TextSkeleton className="h-3 w-3/4" />
+          <TextSkeleton className="h-3 w-1/2" />
+          <TextSkeleton className="h-3 w-2/3" />
+        </div>
       )}
       {isError && (
         <p className="text-xs text-destructive">
@@ -151,6 +164,9 @@ function ConversationPanel({
 
   const turns: AdvisorTurn[] = detail.data?.turns ?? []
 
+  // ask 에러가 503 옵트인 안내인지 판단 — EmptyState로 별도 노출.
+  const isOptInDisabled = ask.error instanceof ApiError && ask.error.status === 503
+
   const onSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
     if (!question.trim() || ask.isPending) return
@@ -165,6 +181,14 @@ function ConversationPanel({
           if (!conversationId) {
             onConversationCreated(data.conversationId)
           }
+          toast.success(t('advisor.ask.success'))
+        },
+        onError: (err) => {
+          // 503은 EmptyState로 표시하므로 toast 중복 회피.
+          if (err instanceof ApiError && err.status === 503) return
+          toast.error(t('advisor.ask.error.toast'), {
+            description: resolveAskErrorMessage(err, t),
+          })
         },
       },
     )
@@ -176,9 +200,10 @@ function ConversationPanel({
   return (
     <section className="flex min-h-[28rem] flex-col gap-3 rounded-md border bg-card p-4">
       {detail.isPending && conversationId && (
-        <p className="text-xs text-muted-foreground">
-          {t('advisor.panel.detail.loading')}
-        </p>
+        <div className="space-y-2" aria-label={t('advisor.panel.detail.loading')}>
+          <TextSkeleton className="h-4 w-1/3" />
+          <TextSkeleton className="h-4 w-2/3" />
+        </div>
       )}
       {detail.isError && (
         <p className="text-sm text-destructive">
@@ -222,7 +247,17 @@ function ConversationPanel({
         ))}
       </ol>
 
-      {ask.isError && (
+      {isOptInDisabled && (
+        <EmptyState
+          variant="no-permission"
+          icon={Sparkles}
+          size="sm"
+          title={t('advisor.disabled.empty.title')}
+          description={t('advisor.disabled.empty.description')}
+        />
+      )}
+
+      {ask.isError && !isOptInDisabled && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
           {resolveAskErrorMessage(ask.error, t)}
         </div>

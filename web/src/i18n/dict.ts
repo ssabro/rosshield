@@ -442,6 +442,15 @@ export const ko = {
   'advisor.error.fallback': '질문 처리 중 오류가 발생했습니다',
   'advisor.turn.no_content': '(no content)',
   'advisor.turn.tool_result': '(tool result)',
+  // D-UI-1 Stage 4 — advisor opt-in badge + hint.
+  'advisor.badge.optIn': 'opt-in',
+  'advisor.subtitle.summary':
+    '룰 기반 fallback이 기본입니다. LLM 답변은 옵트인이며 사용 시 비용/지연이 발생합니다.',
+  'advisor.disabled.empty.title': 'AI 어드바이저는 옵트인 기능입니다',
+  'advisor.disabled.empty.description':
+    '서버를 --llm-provider=ollama 또는 =anthropic 으로 재시작하면 활성화됩니다. 활성화 전에는 규칙 기반 fallback이 사용됩니다.',
+  'advisor.ask.success': '답변이 도착했습니다',
+  'advisor.ask.error.toast': '질문 처리 실패',
 
   'pages.reports.title': '리포트',
   'pages.reports.description': '생성된 리포트 목록과 서명 상태를 확인합니다.',
@@ -560,9 +569,31 @@ export const ko = {
   'integrations.empty.title': '등록된 endpoint가 없습니다',
   'integrations.empty.description':
     '위 폼에서 첫 webhook endpoint를 등록하세요. 모든 송출은 HMAC-SHA256으로 서명됩니다.',
+  'integrations.empty.cta': 'Endpoint 등록',
   'integrations.error.fallback': 'Endpoint 목록을 불러올 수 없습니다',
   'integrations.error.disabled':
     '본 기능은 enterprise 라이선스에서만 활성화됩니다 (Settings > 라이선스).',
+  // D-UI-1 Stage 4 — toast / confirm / form validation 메시지.
+  'integrations.toast.create.success': 'Webhook endpoint 등록 완료',
+  'integrations.toast.create.error': 'Endpoint 등록 실패',
+  'integrations.toast.delete.success': 'Webhook endpoint 삭제됨',
+  'integrations.toast.delete.error': 'Endpoint 삭제 실패',
+  'integrations.toast.test.success.title': 'Webhook 전송 OK',
+  'integrations.toast.test.success.description':
+    'status {status} · {latency}ms',
+  'integrations.toast.test.failure.title': 'Webhook 전송 실패',
+  'integrations.toast.test.failure.description':
+    'status {status} · {error}',
+  'integrations.confirm.delete.title': 'Webhook endpoint 삭제',
+  'integrations.confirm.delete.description':
+    '활성 구독을 즉시 중단합니다. 송출 기록은 보존되지만 endpoint 자체는 복구할 수 없습니다.',
+  'integrations.confirm.delete.confirmText': 'DELETE',
+  'integrations.confirm.delete.confirmLabel': '삭제',
+  'integrations.form.validation.url.required': 'URL을 입력하세요.',
+  'integrations.form.validation.url.invalid':
+    '유효한 https:// URL을 입력하세요.',
+  'integrations.form.validation.secret.min':
+    '비밀키는 최소 8자 이상이어야 합니다.',
 
   'pages.system.title': '시스템',
   'pages.system.description':
@@ -1411,6 +1442,15 @@ export const en: Record<keyof typeof ko, string> = {
   'advisor.error.fallback': 'Failed to process the question',
   'advisor.turn.no_content': '(no content)',
   'advisor.turn.tool_result': '(tool result)',
+  // D-UI-1 Stage 4 — advisor opt-in badge + hint.
+  'advisor.badge.optIn': 'opt-in',
+  'advisor.subtitle.summary':
+    'Rule-based fallback by default. LLM answers are opt-in and may incur cost/latency.',
+  'advisor.disabled.empty.title': 'The AI advisor is opt-in',
+  'advisor.disabled.empty.description':
+    'Restart the server with --llm-provider=ollama or =anthropic to enable. Until then a deterministic rule fallback is used.',
+  'advisor.ask.success': 'Answer received',
+  'advisor.ask.error.toast': 'Question failed',
 
   'pages.reports.title': 'Reports',
   'pages.reports.description':
@@ -1529,9 +1569,31 @@ export const en: Record<keyof typeof ko, string> = {
   'integrations.empty.title': 'No endpoints registered',
   'integrations.empty.description':
     'Use the form above to register your first webhook endpoint. All payloads are signed with HMAC-SHA256.',
+  'integrations.empty.cta': 'Register endpoint',
   'integrations.error.fallback': 'Failed to load endpoints',
   'integrations.error.disabled':
     'This feature requires an enterprise license (see Settings > License).',
+  // D-UI-1 Stage 4 — toast / confirm / form validation 메시지.
+  'integrations.toast.create.success': 'Webhook endpoint created',
+  'integrations.toast.create.error': 'Failed to create endpoint',
+  'integrations.toast.delete.success': 'Webhook endpoint deleted',
+  'integrations.toast.delete.error': 'Failed to delete endpoint',
+  'integrations.toast.test.success.title': 'Webhook ping OK',
+  'integrations.toast.test.success.description':
+    'status {status} · {latency}ms',
+  'integrations.toast.test.failure.title': 'Webhook ping failed',
+  'integrations.toast.test.failure.description':
+    'status {status} · {error}',
+  'integrations.confirm.delete.title': 'Delete webhook endpoint',
+  'integrations.confirm.delete.description':
+    'Active subscriptions stop immediately. Delivery history is kept but the endpoint cannot be restored.',
+  'integrations.confirm.delete.confirmText': 'DELETE',
+  'integrations.confirm.delete.confirmLabel': 'Delete',
+  'integrations.form.validation.url.required': 'URL is required.',
+  'integrations.form.validation.url.invalid':
+    'Enter a valid https:// URL.',
+  'integrations.form.validation.secret.min':
+    'Secret must be at least 8 characters.',
 
   'pages.system.title': 'System',
   'pages.system.description':

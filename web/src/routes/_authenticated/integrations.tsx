@@ -1,5 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 
 import { Webhook } from 'lucide-react'
 
@@ -18,11 +21,23 @@ import {
 } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { StatusBadge, type StatusKind } from '@/components/common/StatusBadge'
 import { useT } from '@/i18n/t'
+import { confirm } from '@/lib/confirm'
+import { toast } from '@/lib/toast'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -32,6 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TableRowSkeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import {
   Table,
@@ -55,6 +71,10 @@ import type { DictKey } from '@/i18n/dict'
 //
 // Backend HTTP 표면(E23-C)이 머지되기 전이므로 hooks.ts는 raw fetch로 작성됨.
 // 본 페이지는 hooks 레이어가 정상 동작한다고 가정 — 401·로딩·에러 상태는 표준 처리.
+//
+// D-UI-1 Stage 4 — `window.confirm` / `window.alert` 제거 후 confirm()/toast 통합,
+// delivery status는 StatusBadge로, CreateEndpointForm은 react-hook-form + zod pilot,
+// 로딩은 TableRowSkeleton.
 function IntegrationsPage(): React.ReactElement {
   const t = useT()
   const endpoints = useWebhookEndpoints()
@@ -108,6 +128,8 @@ function IntegrationsPage(): React.ReactElement {
         onSelect={(id) => setSelectedId(id)}
         canMutate={isAdmin}
         isOffline={isOffline}
+        canShowForm={!showForm}
+        onRequestCreate={() => setShowForm(true)}
       />
 
       <DeliveriesSection
@@ -127,6 +149,8 @@ function EndpointsTable({
   onSelect,
   canMutate,
   isOffline,
+  canShowForm,
+  onRequestCreate,
 }: {
   endpoints: WebhookEndpoint[]
   isPending: boolean
@@ -136,6 +160,8 @@ function EndpointsTable({
   onSelect: (id: string) => void
   canMutate: boolean
   isOffline: boolean
+  canShowForm: boolean
+  onRequestCreate: () => void
 }): React.ReactElement {
   const t = useT()
   return (
@@ -157,8 +183,8 @@ function EndpointsTable({
         <TableBody>
           {isPending && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground">
-                {t('common.loading')}
+              <TableCell colSpan={7} className="p-3">
+                <TableRowSkeleton rows={3} columns={5} />
               </TableCell>
             </TableRow>
           )}
@@ -179,6 +205,22 @@ function EndpointsTable({
                   title={t('integrations.empty.title')}
                   description={t('integrations.empty.description')}
                   className="rounded-none border-0 bg-transparent"
+                  action={
+                    canMutate && canShowForm ? (
+                      <Button
+                        size="sm"
+                        onClick={onRequestCreate}
+                        disabled={isOffline}
+                        title={
+                          isOffline
+                            ? t('pwa.offline.mutationBlocked')
+                            : undefined
+                        }
+                      >
+                        {t('integrations.empty.cta')}
+                      </Button>
+                    ) : undefined
+                  }
                 />
               </TableCell>
             </TableRow>
@@ -216,15 +258,31 @@ function EndpointRow({
 }): React.ReactElement {
   const t = useT()
   const del = useDeleteWebhook()
-  const handleDelete = (): void => {
-    if (typeof window !== 'undefined' &&
-        !window.confirm(t('integrations.action.delete.confirm'))) {
-      return
-    }
-    del.mutate(endpoint.id)
+  const name = endpointDisplayName(endpoint)
+  const handleDelete = async (): Promise<void> => {
+    const ok = await confirm({
+      title: t('integrations.confirm.delete.title'),
+      description: t('integrations.confirm.delete.description'),
+      destructive: true,
+      confirmText: t('integrations.confirm.delete.confirmText'),
+      confirmLabel: t('integrations.confirm.delete.confirmLabel'),
+    })
+    if (!ok) return
+    del.mutate(endpoint.id, {
+      onSuccess: () => {
+        toast.success(t('integrations.toast.delete.success'), {
+          description: name,
+        })
+      },
+      onError: (err) => {
+        toast.error(t('integrations.toast.delete.error'), {
+          description:
+            err instanceof ApiError ? err.message : undefined,
+        })
+      },
+    })
   }
   const events = endpoint.events ?? []
-  const name = endpointDisplayName(endpoint)
   const guardTitle = mutationGuardTitle({
     isOffline,
     offlineLabel: t('pwa.offline.mutationBlocked'),
@@ -268,7 +326,7 @@ function EndpointRow({
           : '—'}
       </TableCell>
       <TableCell className="text-right">
-        <div className="inline-flex gap-1">
+        <div className="inline-flex flex-wrap justify-end gap-1">
           <Button
             size="sm"
             variant={selected ? 'default' : 'outline'}
@@ -278,6 +336,7 @@ function EndpointRow({
           </Button>
           <TestButton
             endpointId={endpoint.id}
+            endpointName={name}
             canMutate={canMutate}
             isOffline={isOffline}
           />
@@ -301,10 +360,12 @@ function EndpointRow({
 // TestButton — endpoint one-off ping (O7, E29 backend POST /webhooks/{id}/test).
 function TestButton({
   endpointId,
+  endpointName,
   canMutate,
   isOffline,
 }: {
   endpointId: string
+  endpointName: string
   canMutate: boolean
   isOffline: boolean
 }): React.ReactElement {
@@ -314,24 +375,33 @@ function TestButton({
     e.stopPropagation()
     test.mutate(endpointId, {
       onSuccess: (res) => {
-        const msg = res.success
-          ? t('integrations.action.test.success', {
-              status: String(res.status),
-              latency: String(res.latencyMs),
-            })
-          : t('integrations.action.test.failure', {
-              status: String(res.status),
-              error: res.error || t('common.error.unknown'),
-            })
-        // 사용자에게 즉시 피드백 — 단순 alert (B3 패턴 따라). 향후 toast 시스템 통합.
-        window.alert(msg)
+        if (res.success) {
+          toast.success(t('integrations.toast.test.success.title'), {
+            description:
+              endpointName +
+              ' · ' +
+              t('integrations.toast.test.success.description', {
+                status: String(res.status),
+                latency: String(res.latencyMs),
+              }),
+          })
+        } else {
+          toast.error(t('integrations.toast.test.failure.title'), {
+            description:
+              endpointName +
+              ' · ' +
+              t('integrations.toast.test.failure.description', {
+                status: String(res.status),
+                error: res.error || t('common.error.unknown'),
+              }),
+          })
+        }
       },
       onError: (err) => {
-        window.alert(
-          err instanceof ApiError
-            ? `${t('integrations.action.test.error.fallback')}: ${err.message}`
-            : t('integrations.action.test.error.fallback'),
-        )
+        toast.error(t('integrations.action.test.error.fallback'), {
+          description:
+            err instanceof ApiError ? err.message : undefined,
+        })
       },
     })
   }
@@ -378,7 +448,7 @@ function DeliveriesSection({
       <h2 className="text-sm font-medium">{title}</h2>
 
       {endpoint && stats.total > 0 && (
-        <div className="grid grid-cols-4 gap-2 rounded-md border bg-muted/30 p-3 text-xs">
+        <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/30 p-3 text-xs sm:grid-cols-4">
           <StatCell label={t('integrations.deliveries.stats.success')} value={stats.success} variant="success" />
           <StatCell label={t('integrations.deliveries.stats.retrying')} value={stats.retrying} variant="warning" />
           <StatCell label={t('integrations.deliveries.stats.dead')} value={stats.dead} variant="destructive" />
@@ -405,11 +475,8 @@ function DeliveriesSection({
             <TableBody>
               {deliveries.isPending && (
                 <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center text-muted-foreground"
-                  >
-                    {t('common.loading')}
+                  <TableCell colSpan={5} className="p-3">
+                    <TableRowSkeleton rows={3} columns={4} />
                   </TableCell>
                 </TableRow>
               )}
@@ -467,9 +534,10 @@ function DeliveryRow({
         {formatWebhookEvent(String(delivery.eventType))}
       </TableCell>
       <TableCell>
-        <Badge variant={statusBadgeVariant(status)} className="text-[10px]">
-          {t(deliveryStatusLabelKey(status))}
-        </Badge>
+        <StatusBadge
+          status={deliveryStatusKind(status)}
+          label={t(deliveryStatusLabelKey(status))}
+        />
       </TableCell>
       <TableCell className="font-mono text-xs">
         {delivery.attemptCount}
@@ -487,7 +555,12 @@ function DeliveryRow({
   )
 }
 
-// CreateEndpointForm — 신규 webhook endpoint 등록 폼.
+// CreateEndpointForm — 신규 webhook endpoint 등록 폼 (react-hook-form + zod pilot).
+//
+// Stage 4 pilot — Form / FormField / FormMessage 패턴.
+//   - zod schema로 field-level validation (URL · secret 길이).
+//   - submit disabled state는 form.formState.isValid + isPending.
+//   - 다중 체크박스(events) + select(format) + switch(enabled)는 setValue/watch로 결선.
 function CreateEndpointForm({
   onCreated,
   isOffline,
@@ -497,176 +570,225 @@ function CreateEndpointForm({
 }): React.ReactElement {
   const t = useT()
   const create = useCreateWebhook()
-  const [name, setName] = useState('')
-  const [url, setUrl] = useState('')
-  const [secret, setSecret] = useState('')
-  const [events, setEvents] = useState<WebhookEventType[]>([])
-  const [format, setFormat] = useState<WebhookFormat>('json')
-  const [enabled, setEnabled] = useState(true)
-  const [success, setSuccess] = useState('')
+
+  const schema = z.object({
+    name: z.string().optional(),
+    url: z
+      .string()
+      .min(1, t('integrations.form.validation.url.required'))
+      .url(t('integrations.form.validation.url.invalid')),
+    secret: z.string().min(8, t('integrations.form.validation.secret.min')),
+    events: z.array(z.string()),
+    format: z.enum(['json', 'cef', 'ecs']),
+    enabled: z.boolean(),
+  })
+  type FormValues = z.infer<typeof schema>
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: '',
+      url: '',
+      secret: '',
+      events: [],
+      format: 'json',
+      enabled: true,
+    },
+    mode: 'onBlur',
+  })
+
+  const events = (form.watch('events') ?? []) as WebhookEventType[]
+  const format = form.watch('format') as WebhookFormat
+  const enabled = form.watch('enabled') as boolean
 
   const toggleEvent = (e: WebhookEventType): void => {
-    setEvents((prev) =>
-      prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e],
-    )
+    const next = events.includes(e)
+      ? events.filter((x) => x !== e)
+      : [...events, e]
+    form.setValue('events', next, { shouldDirty: true, shouldValidate: true })
   }
 
-  const handleSubmit = (e: React.FormEvent): void => {
-    e.preventDefault()
-    setSuccess('')
+  const onSubmit = (values: FormValues): void => {
     // 주의: backend WebhookEndpoint에 name 필드 미존재 — 본 stage는 form state로만 유지.
     // Backend 확장 시 hook + 본 mutate 인자에 name 추가 (dispatch 시점 메모).
     create.mutate(
       {
-        url: url.trim(),
-        secret,
-        events,
-        format,
-        enabled,
+        url: values.url.trim(),
+        secret: values.secret,
+        events: values.events as WebhookEventType[],
+        format: values.format,
+        enabled: values.enabled,
       },
       {
         onSuccess: () => {
-          setSuccess(t('integrations.form.success'))
+          toast.success(t('integrations.toast.create.success'), {
+            description: values.url,
+          })
+          form.reset()
           onCreated()
+        },
+        onError: (err) => {
+          toast.error(t('integrations.toast.create.error'), {
+            description:
+              err instanceof ApiError
+                ? err.message
+                : t('integrations.form.error.fallback'),
+          })
         },
       },
     )
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-2"
-      aria-label={t('integrations.form.section')}
-    >
-      <div className="md:col-span-2">
-        <h3 className="text-sm font-medium">{t('integrations.form.section')}</h3>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="wh-name">{t('integrations.form.name')}</Label>
-        <Input
-          id="wh-name"
-          placeholder={t('integrations.form.name.placeholder')}
-          value={name}
-          onChange={(ev) => setName(ev.target.value)}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="wh-format">{t('integrations.form.format')}</Label>
-        <Select
-          value={format}
-          onValueChange={(v) => setFormat(v as WebhookFormat)}
-        >
-          <SelectTrigger id="wh-format">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="json">
-              {t('integrations.form.format.json')}
-            </SelectItem>
-            <SelectItem value="cef">
-              {t('integrations.form.format.cef')}
-            </SelectItem>
-            <SelectItem value="ecs">
-              {t('integrations.form.format.ecs')}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex flex-col gap-1.5 md:col-span-2">
-        <Label htmlFor="wh-url">{t('integrations.form.url')}</Label>
-        <Input
-          id="wh-url"
-          required
-          type="url"
-          placeholder={t('integrations.form.url.placeholder')}
-          value={url}
-          onChange={(ev) => setUrl(ev.target.value)}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5 md:col-span-2">
-        <Label htmlFor="wh-secret">{t('integrations.form.secret')}</Label>
-        <Input
-          id="wh-secret"
-          required
-          type="password"
-          placeholder={t('integrations.form.secret.placeholder')}
-          value={secret}
-          onChange={(ev) => setSecret(ev.target.value)}
-        />
-        <p className="text-xs text-muted-foreground">
-          {t('integrations.form.secret.hint')}
-        </p>
-      </div>
-
-      <fieldset className="md:col-span-2 flex flex-col gap-2">
-        <legend className="text-sm font-medium">
-          {t('integrations.form.events')}
-        </legend>
-        <p className="text-xs text-muted-foreground">
-          {t('integrations.form.events.hint')}
-        </p>
-        <div className="flex flex-wrap gap-3">
-          {KNOWN_WEBHOOK_EVENTS.map((e) => {
-            const checked = events.includes(e)
-            return (
-              <label
-                key={e}
-                className="flex items-center gap-2 text-xs"
-              >
-                <Checkbox
-                  checked={checked}
-                  onCheckedChange={() => toggleEvent(e)}
-                  aria-label={t(eventLabelKey(e))}
-                />
-                <span className="font-mono">{t(eventLabelKey(e))}</span>
-              </label>
-            )
-          })}
+    <Form {...form}>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-2"
+        aria-label={t('integrations.form.section')}
+      >
+        <div className="md:col-span-2">
+          <h3 className="text-sm font-medium">{t('integrations.form.section')}</h3>
         </div>
-      </fieldset>
 
-      <div className="md:col-span-2 flex items-center gap-2">
-        <Switch
-          id="wh-enabled"
-          checked={enabled}
-          onCheckedChange={(v) => setEnabled(Boolean(v))}
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('integrations.form.name')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('integrations.form.name.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-        <Label htmlFor="wh-enabled" className="text-sm">
-          {t('integrations.form.enabled')}
-        </Label>
-      </div>
 
-      {create.isError && (
-        <p className="md:col-span-2 text-sm text-destructive" role="alert">
-          {create.error instanceof ApiError
-            ? create.error.message
-            : t('integrations.form.error.fallback')}
-        </p>
-      )}
-      {success && (
-        <p className="md:col-span-2 text-sm text-emerald-600">{success}</p>
-      )}
+        <FormItem>
+          <FormLabel htmlFor="wh-format">{t('integrations.form.format')}</FormLabel>
+          <Select
+            value={format}
+            onValueChange={(v) =>
+              form.setValue('format', v as 'json' | 'cef' | 'ecs', {
+                shouldDirty: true,
+              })
+            }
+          >
+            <SelectTrigger id="wh-format">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="json">
+                {t('integrations.form.format.json')}
+              </SelectItem>
+              <SelectItem value="cef">
+                {t('integrations.form.format.cef')}
+              </SelectItem>
+              <SelectItem value="ecs">
+                {t('integrations.form.format.ecs')}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </FormItem>
 
-      <div className="md:col-span-2 flex justify-end">
-        <Button
-          type="submit"
-          disabled={create.isPending || isOffline}
-          title={mutationGuardTitle({
-            isOffline,
-            offlineLabel: t('pwa.offline.mutationBlocked'),
-          })}
-        >
-          {create.isPending
-            ? t('integrations.form.submitting')
-            : t('integrations.form.submit')}
-        </Button>
-      </div>
-    </form>
+        <FormField
+          control={form.control}
+          name="url"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>{t('integrations.form.url')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="url"
+                  placeholder={t('integrations.form.url.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="secret"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>{t('integrations.form.secret')}</FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  placeholder={t('integrations.form.secret.placeholder')}
+                  {...field}
+                />
+              </FormControl>
+              <FormDescription>
+                {t('integrations.form.secret.hint')}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <fieldset className="md:col-span-2 flex flex-col gap-2">
+          <legend className="text-sm font-medium">
+            {t('integrations.form.events')}
+          </legend>
+          <p className="text-xs text-muted-foreground">
+            {t('integrations.form.events.hint')}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {KNOWN_WEBHOOK_EVENTS.map((e) => {
+              const checked = events.includes(e)
+              return (
+                <label
+                  key={e}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() => toggleEvent(e)}
+                    aria-label={t(eventLabelKey(e))}
+                  />
+                  <span className="font-mono">{t(eventLabelKey(e))}</span>
+                </label>
+              )
+            })}
+          </div>
+        </fieldset>
+
+        <div className="md:col-span-2 flex items-center gap-2">
+          <Switch
+            id="wh-enabled"
+            checked={enabled}
+            onCheckedChange={(v) =>
+              form.setValue('enabled', Boolean(v), { shouldDirty: true })
+            }
+          />
+          <Label htmlFor="wh-enabled" className="text-sm">
+            {t('integrations.form.enabled')}
+          </Label>
+        </div>
+
+        <div className="md:col-span-2 flex justify-end">
+          <Button
+            type="submit"
+            disabled={create.isPending || isOffline || !form.formState.isValid}
+            title={mutationGuardTitle({
+              isOffline,
+              offlineLabel: t('pwa.offline.mutationBlocked'),
+            })}
+          >
+            {create.isPending
+              ? t('integrations.form.submitting')
+              : t('integrations.form.submit')}
+          </Button>
+        </div>
+      </form>
+    </Form>
   )
 }
 
@@ -684,7 +806,9 @@ export function endpointDisplayName(ep: WebhookEndpoint): string {
   }
 }
 
-// statusBadgeVariant — delivery status별 Badge variant 매핑. 단위 테스트 가능.
+// statusBadgeVariant — delivery status별 shadcn Badge variant 매핑.
+//   StatusBadge 컴포넌트 도입(Stage 4) 이후 본 함수는 호환을 위해 export만 유지.
+//   기존 단위 테스트 시그니처 보존.
 export function statusBadgeVariant(
   status: WebhookDeliveryStatus,
 ): 'default' | 'secondary' | 'destructive' | 'outline' {
@@ -697,6 +821,23 @@ export function statusBadgeVariant(
       return 'secondary'
     default:
       return 'outline'
+  }
+}
+
+// deliveryStatusKind — WebhookDeliveryStatus → StatusBadge StatusKind 매핑.
+//   Stage 4 신규 export, 단위 테스트 대상.
+export function deliveryStatusKind(
+  status: WebhookDeliveryStatus,
+): StatusKind {
+  switch (status) {
+    case 'success':
+      return 'success'
+    case 'dead':
+      return 'failed'
+    case 'retrying':
+      return 'running'
+    default:
+      return 'pending'
   }
 }
 
