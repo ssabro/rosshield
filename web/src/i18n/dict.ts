@@ -871,6 +871,21 @@ export const ko = {
   'invitations.accept.validation.displayName': '표시 이름을 입력하세요.',
   'invitations.accept.validation.password':
     '패스워드는 최소 12자 이상이어야 합니다.',
+
+  // D-UI-1 Stage 1 (Phase 6) — severity·status 공통 label.
+  // SeverityBadge·StatusBadge 등 Stage 2 component에서 helper(`severityLabel`/`statusLabel`)로
+  // 참조. 기존 'scans.session.severity.*' 등은 page-specific abbrev(CRIT/HIGH 등)로 유지하고,
+  // 본 키들은 full label("치명적"/"높음" 등)을 제공.
+  'severity.critical': '치명적',
+  'severity.high': '높음',
+  'severity.medium': '보통',
+  'severity.low': '낮음',
+  'severity.info': '정보',
+  'status.running': '실행 중',
+  'status.pending': '대기',
+  'status.completed': '완료',
+  'status.failed': '실패',
+  'status.cancelled': '취소됨',
 } as const
 
 export const en: Record<keyof typeof ko, string> = {
@@ -1743,6 +1758,18 @@ export const en: Record<keyof typeof ko, string> = {
   'invitations.accept.validation.displayName': 'Display name is required.',
   'invitations.accept.validation.password':
     'Password must be at least 12 characters.',
+
+  // D-UI-1 Stage 1 (Phase 6) — severity·status common labels.
+  'severity.critical': 'Critical',
+  'severity.high': 'High',
+  'severity.medium': 'Medium',
+  'severity.low': 'Low',
+  'severity.info': 'Info',
+  'status.running': 'Running',
+  'status.pending': 'Pending',
+  'status.completed': 'Completed',
+  'status.failed': 'Failed',
+  'status.cancelled': 'Cancelled',
 }
 
 export type DictKey = keyof typeof ko

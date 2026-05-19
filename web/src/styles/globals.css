@@ -1,8 +1,19 @@
 @import 'tailwindcss';
 
+/* Pretendard Variable (한국어 default + 영어 호환).
+ * dynamic-subset 사용 — unicode-range 기반으로 페이지가 실제 사용하는 글리프만 load
+ * (woff2-dynamic-subset 3.1MB on disk이지만 unicode-range 분할로 초기 페이지는 보통 50~200KB).
+ * D-UI-2 (ui-overhaul-design.md §4): self-host npm package 결정.
+ */
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+
 /* shadcn/ui 호환 디자인 토큰.
- * Tailwind v4에서는 @theme 블록으로 색상·라운딩 값을 노출합니다.
+ * Tailwind v4에서는 @theme 블록으로 색상·라운딩·폰트 값을 노출합니다.
  * 라이트/다크 변수는 :root / .dark 에서 정의합니다.
+ *
+ * D-UI-1 Stage 1 — severity·status 5-color HSL token 추가.
+ * 모든 색상은 WCAG AA 4.5:1 contrast (light: foreground=white on saturated 50% L,
+ * dark: foreground=slate-950 on lighter 65% L) 가정으로 선택.
  */
 
 @theme {
@@ -33,9 +44,32 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
+  /* Severity 5-color palette — Tremor 차용 변형 (ui-overhaul §4 D-UI-1). */
+  --color-severity-critical: hsl(var(--severity-critical));
+  --color-severity-high: hsl(var(--severity-high));
+  --color-severity-medium: hsl(var(--severity-medium));
+  --color-severity-low: hsl(var(--severity-low));
+  --color-severity-info: hsl(var(--severity-info));
+
+  /* Status 5-color palette — scan 세션 / report 상태 등. */
+  --color-status-running: hsl(var(--status-running));
+  --color-status-pending: hsl(var(--status-pending));
+  --color-status-completed: hsl(var(--status-completed));
+  --color-status-failed: hsl(var(--status-failed));
+  --color-status-cancelled: hsl(var(--status-cancelled));
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /* Font family — Pretendard Variable 우선 + 시스템 fallback 체인. */
+  --font-sans:
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Noto Sans KR', 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
 }
 
 @layer base {
@@ -69,6 +103,23 @@
     --ring: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
+
+    /* Severity light palette — WCAG AA 4.5:1 vs white foreground.
+     * critical=red-600 / high=orange-600 / medium=amber-600 (L 40 로 contrast 확보)
+     * low=blue-600 / info=cyan-600 (L 40 로 contrast 확보).
+     */
+    --severity-critical: 0 84% 50%;
+    --severity-high: 24 95% 50%;
+    --severity-medium: 48 96% 40%;
+    --severity-low: 217 91% 50%;
+    --severity-info: 192 91% 40%;
+
+    /* Status light palette. */
+    --status-running: 217 91% 50%;
+    --status-pending: 38 92% 50%;
+    --status-completed: 142 71% 38%;
+    --status-failed: 0 84% 50%;
+    --status-cancelled: 215 16% 47%;
   }
 
   .dark {
@@ -99,15 +150,58 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    /* Severity dark palette — L 65 로 dark background 위에 contrast 확보.
+     * (light variant 그대로 쓰면 dark BG 222 84% 4.9% 위에 contrast 부족).
+     */
+    --severity-critical: 0 91% 65%;
+    --severity-high: 24 95% 65%;
+    --severity-medium: 48 96% 65%;
+    --severity-low: 217 91% 65%;
+    --severity-info: 192 91% 65%;
+
+    /* Status dark palette. */
+    --status-running: 217 91% 65%;
+    --status-pending: 38 95% 65%;
+    --status-completed: 142 65% 55%;
+    --status-failed: 0 91% 65%;
+    --status-cancelled: 215 20% 65%;
   }
 
   * {
     border-color: hsl(var(--border));
   }
 
+  html {
+    /* 한국어 기준 line-height 1.6, letter-spacing -0.01em (Pretendard 권장). */
+    font-feature-settings: 'rlig' 1, 'calt' 1, 'ss06' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-feature-settings: 'rlig' 1, 'calt' 1;
+    font-family:
+      'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+      'Apple SD Gothic Neo', 'Noto Sans KR', 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, sans-serif;
+    /* 한국어 글자 간격 — Pretendard 가이드 -0.01em (조밀 + 가독성 균형). */
+    letter-spacing: -0.01em;
+    line-height: 1.6;
+  }
+
+  /* 한국어 가독성 — heading은 letter-spacing 약간 더 조밀하게. */
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+  }
+
+  /* 등폭 글꼴은 ID·hash·timestamp 등 결정론적 식별자 표시용. */
+  code, kbd, pre, samp {
+    font-family:
+      ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+      'Liberation Mono', monospace;
   }
 }
