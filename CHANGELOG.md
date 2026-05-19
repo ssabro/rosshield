@@ -7,7 +7,26 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — TPM simulator integration test (tpm_integration build tag) / ROS2 pack Round 2 C4·C5 carryover (paying customer trigger 권장) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — ROS2 Round 3 6 carryover (apt_key 만료·colcon_install_hash digest 등) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.5.2] — 2026-05-19 (patch)
+
+> **요약**: ROS2 baseline pack Round 2 마감 (C4 binary 무결성 + C5 launch 안전) → **8/8 카테고리 cover 완성** + TPM simulator integration CI 검증 통과 (R-D8 v3 D-3 full verification 32 cover). 회귀 0. 상세는 [docs/releases/v0.5.2.md](docs/releases/v0.5.2.md).
+>
+> **기준 commit**: `e636c1a` (main)
+
+### Added
+- `feat(packs)` ROS2 Round 2 C4 binary 무결성 3 check (`e885df0`) — apt source 공식 + world-writable libs + systemd unit perms
+- `feat(packs)` ROS2 Round 2 C5 launch 안전 3 check (`ab1775b`) — world-writable yaml + secret inline 검출 + shell exec 검출
+- `test(enterprise)` D-3 v3 TPM Quote simulator integration test (`7f1e7f4`) — 7 신규 simulator test (round_trip + nonce_mismatch + PCR_tamper + signature_tamper + 결정론) + ci.yml tpm-integration job robotid 패키지 추가 + CI 7/7 ALL PASS 검증
+
+### Notes
+- ROS2 baseline pack **Round 1+2 = 8/8 카테고리 완성** (15 check + 15 selftest)
+- R-D8 v3 D-3 full verification: mock 9 + simulator 7 + unit 16 = **32 cover**
+- 회귀 0, 신규 dep 0
+- sub-agent worktree pattern 42회 누적
 
 ---
 
