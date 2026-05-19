@@ -60,6 +60,22 @@ var (
 
 	// ErrRuntimeClosed 는 닫힌 Runtime에 Evaluate 가 호출됐을 때 반환됩니다.
 	ErrRuntimeClosed = errors.New("wasmrt: runtime closed")
+
+	// ErrSigstoreBundleInvalid 는 cosign Sigstore bundle (JSON) 의 parse 실패 시
+	// 반환됩니다 (CosignSigstoreVerifier 전용 — v3).
+	ErrSigstoreBundleInvalid = errors.New("wasmrt: sigstore bundle invalid")
+
+	// ErrSigstoreFulcioInvalid 는 Fulcio cert chain 검증 실패 시 반환됩니다.
+	// (cert chain 이 trusted root 와 매칭되지 않거나 expired/revoked).
+	ErrSigstoreFulcioInvalid = errors.New("wasmrt: sigstore fulcio cert invalid")
+
+	// ErrSigstoreRekorInvalid 는 Rekor transparency log inclusion proof 검증
+	// 실패 시 반환됩니다 (log entry 불일치 / 누락 / inclusion proof 위조).
+	ErrSigstoreRekorInvalid = errors.New("wasmrt: sigstore rekor entry invalid")
+
+	// ErrSigstoreIdentityMismatch 는 Fulcio cert 의 OIDC subject 또는 issuer 가
+	// 호출자 가 기대한 SigstoreIdentity 중 어느 하나와도 매칭되지 않을 때 반환됩니다.
+	ErrSigstoreIdentityMismatch = errors.New("wasmrt: sigstore identity mismatch")
 )
 
 // PolicyVerifier 는 WASM 정책 바이트 + 서명 바이트의 무결성/출처를 검증하는 인터페이스입니다.
