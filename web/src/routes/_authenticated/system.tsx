@@ -442,8 +442,8 @@ function ScansSeverityCard(): React.ReactElement {
                     key={o.severity}
                     className={`flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-1.5 ${o.bg}`}
                   >
-                    <span className={`text-[10px] font-medium uppercase ${o.text}`}>
-                      {o.severity}
+                    <span className={`text-[10px] font-medium ${o.text}`}>
+                      {t(`severity.${o.severity}` as 'severity.critical')}
                     </span>
                     <span className="text-xl font-bold leading-none tabular-nums">
                       {totals[o.severity]}

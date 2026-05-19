@@ -656,8 +656,8 @@ function SessionSeverityCardGrid({
               count: o.count.toString(),
             })}
           >
-            <span className={`text-[10px] font-medium uppercase ${o.text}`}>
-              {o.severity}
+            <span className={`text-[10px] font-medium ${o.text}`}>
+              {t(`scans.session.severity.${o.severity}` as 'scans.session.severity.critical')}
             </span>
             <span className="text-xl font-bold leading-none tabular-nums">{o.count}</span>
           </div>
@@ -699,7 +699,7 @@ export function SessionSeverityRow({
       {counts.map(([sev, count]) => (
         <span
           key={sev}
-          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase ${
+          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${
             count > 0 ? tone[sev] : muted
           }`}
           title={t('scans.session.severity.tooltip', {

@@ -460,7 +460,7 @@ export const ko = {
   'advisor.turn.no_content': '(no content)',
   'advisor.turn.tool_result': '(tool result)',
   // D-UI-1 Stage 4 — advisor opt-in badge + hint.
-  'advisor.badge.optIn': 'opt-in',
+  'advisor.badge.optIn': '옵트인',
   'advisor.subtitle.summary':
     '룰 기반 fallback이 기본입니다. LLM 답변은 옵트인이며 사용 시 비용/지연이 발생합니다.',
   'advisor.disabled.empty.title': 'AI 어드바이저는 옵트인 기능입니다',
@@ -1520,7 +1520,7 @@ export const en: Record<keyof typeof ko, string> = {
   'advisor.turn.no_content': '(no content)',
   'advisor.turn.tool_result': '(tool result)',
   // D-UI-1 Stage 4 — advisor opt-in badge + hint.
-  'advisor.badge.optIn': 'opt-in',
+  'advisor.badge.optIn': 'Opt-in',
   'advisor.subtitle.summary':
     'Rule-based fallback by default. LLM answers are opt-in and may incur cost/latency.',
   'advisor.disabled.empty.title': 'The AI advisor is opt-in',

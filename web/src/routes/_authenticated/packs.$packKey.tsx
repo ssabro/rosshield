@@ -252,7 +252,7 @@ function SeverityStats({
               isActive ? 'ring-2 ring-foreground/40' : ''
             }`}
           >
-            <span className={`text-xs font-medium uppercase ${o.text}`}>{o.severity}</span>
+            <span className={`text-xs font-medium ${o.text}`}>{t(`severity.${o.severity}` as 'severity.critical')}</span>
             <span className="text-2xl font-bold leading-none">{count}</span>
           </button>
         )

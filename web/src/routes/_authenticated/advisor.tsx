@@ -48,7 +48,7 @@ function AdvisorPage(): React.ReactElement {
         badge={
           <Badge
             variant="outline"
-            className="flex items-center gap-1 text-[10px] uppercase tracking-wide"
+            className="flex items-center gap-1 text-[10px] tracking-wide"
           >
             <Sparkles className="size-3" aria-hidden />
             {t('advisor.badge.optIn')}

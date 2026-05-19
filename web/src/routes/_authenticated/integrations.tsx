@@ -914,7 +914,7 @@ function StatCell({
 }): React.ReactElement {
   return (
     <div className="space-y-0.5">
-      <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
+      <div className="text-[10px] text-muted-foreground">{label}</div>
       <div className={`text-base font-medium tabular-nums ${statCellColorClass(variant)}`}>
         {value}
       </div>
