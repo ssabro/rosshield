@@ -7,7 +7,31 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Optimistic update + Undo window (carryover P0) / D-UI-1 Stage 5 polish (axe-core) / Phase 5~7 큰 carryover (LLM private · Multi-region HA · Audit rotation · E22-F BOOLEAN) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — D-UI-1 Stage 5 polish (axe-core) / Phase 5~7 큰 본체 (LLM private deployment · Audit rotation · Multi-region HA) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.3] — 2026-05-19 (patch)
+
+> **요약**: Phase 5~7 carryover 일소 round — design doc 4건 (LLM private · Multi-region HA · Audit rotation · CIS Manual fixture) + 작은 본체 3건 (E22-F BOOLEAN + CIS Manual 5건 + Optimistic+Undo). CIS Ubuntu 24.04 100% cover (false-FAIL 0). 회귀 0. 상세는 [docs/releases/v0.6.3.md](docs/releases/v0.6.3.md).
+>
+> **기준 commit**: `1ac5f35` (main)
+
+### Added
+- `design(phase8)` LLM private deployment (`d5b075f`, 431줄) — vLLM on-prem 옵션 5 + Stage 5 + 결정 7 (옵션 C: Ollama edge + vLLM)
+- `design(phase8)` Multi-region HA (`5afbed1`, 412줄) — 옵션 4 + Stage 7 + 결정 5 (옵션 A: PG logical+DNS)
+- `design(phase8)` Audit chain rotation (`be9239c`, 457줄) — 옵션 5 + Stage 6 + 결정 10 (옵션 A: 월 1회 + S3)
+- `design(phase5-carryover)` CIS Manual fixture 5건 (`465258c`, 406줄) — 옵션 5 + Stage 5 + 결정 7 (옵션 A+B: env-var skip + manual prompt). 잔여 정확 진단 (21건 → 5건)
+- `feat(packs)` CIS Ubuntu 24.04 잔여 Manual 5건 정식 cover (`f1b2dc5`) — 100% 도달 (false-FAIL 0). manual yaml 17건. onboarding doc 신규
+- `feat(web)` Optimistic update + Undo window (`6ec135f`) — D-UI-1 P0 carryover. 5 mutation hook + `undoableAction` helper + 5 destructive handler 적용 + i18n 3 키
+
+### Fixed
+- `feat(storage)` E22-F R30-1.2 BOOLEAN 회수 (`aa78984`) — 5 컬럼 PG SMALLINT → BOOLEAN (`0031_boolean_native_recovery`). sqliterepo bool 전환 + integration test 5개. 회귀 0
+
+### Notes
+- sub-agent 5+3 병렬 dispatch (5 design + 3 본체) — 도메인 충돌 0
+- design doc 메모리 정책 일관 (옵션 ≥3 + Stage 분해 + 권장 default + 보수적 추정)
+- CIS Manual "21건" 보수 진단 → 잔여 5건 정확 (자동 변환 4건 + op:manual 12건 이미 cover)
 
 ---
 
