@@ -64,7 +64,7 @@ func TestStorageMigrateIdempotent(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		const wantVersion = 30 // 0001~0027 + 0028 user_roles_scope + 0029 sso_group_mappings + 0030 customer_intakes (Phase 6 R1 Stage 1)
+		const wantVersion = 32 // 0001~0030 + 0031 boolean_native_recovery + 0032 audit_rotation (E32 Stage 1)
 		if maxVersion != wantVersion {
 			t.Errorf("max version_id = %d, want %d", maxVersion, wantVersion)
 		}
