@@ -411,6 +411,7 @@ export const ko = {
   'compliance.controls.empty.description':
     '이 스냅샷은 control 단위 데이터를 포함하지 않습니다.',
   'compliance.controls.no_match': '필터 조건에 맞는 통제가 없습니다.',
+  'compliance.header.activeBadge': '활성 프로필 {count}',
 
   'pages.advisor.title': 'Advisor',
   'advisor.subtitle.intro':
@@ -495,6 +496,11 @@ export const ko = {
   'audit.verify.description':
     'Phase 3 후속 — Web Console에서 직접 verify 호출. 현재는 CLI 명령으로 가능합니다.',
   'audit.error.fallback': '감사 head를 불러올 수 없습니다',
+  'audit.header.badge.seq': 'seq {seq}',
+  'audit.header.badge.genesis': 'genesis',
+  'audit.head.description': '해시 체인의 최신 entry. PDF 리포트의 chain head와 일치하는지 외부 검증으로 확인 가능합니다.',
+  'audit.head.empty.title': '아직 audit 엔트리가 없습니다',
+  'audit.chain.healthy': '체인 정상 · 최신 entry seq {seq}',
 
   'pages.integrations.title': '통합',
   'pages.integrations.description':
@@ -644,6 +650,7 @@ export const ko = {
   'packs.detail.col.checkId': '검사 ID',
   'packs.detail.col.severity': '심각도',
   'packs.detail.col.title': '제목',
+  'packs.detail.header.checkCount': '{count}개 검사',
 
   'checks.detail.notFound': '해당 검사 항목을 찾을 수 없습니다',
   'checks.detail.error': '검사 정보를 가져오지 못했습니다',
@@ -814,6 +821,9 @@ export const ko = {
   'reports.empty.description':
     'scan 완료 후 자동 생성되거나, 별도 endpoint로 수동 생성됩니다 (Phase 3 후속).',
   'reports.error.fallback': '리포트 목록을 불러올 수 없습니다',
+  'reports.header.countBadge': '총 {total}건 · 서명 {signed}건',
+  'reports.action.download.success': 'PDF 다운로드를 시작했습니다',
+  'reports.action.download.failed': 'PDF 다운로드에 실패했습니다',
 
   'pages.sso.title': 'SSO Provider',
   'pages.sso.description':
@@ -1411,6 +1421,7 @@ export const en: Record<keyof typeof ko, string> = {
   'compliance.controls.empty.description':
     'This snapshot does not include per-control breakdown.',
   'compliance.controls.no_match': 'No controls match the current filter.',
+  'compliance.header.activeBadge': '{count} active',
 
   'pages.advisor.title': 'Advisor',
   'advisor.subtitle.intro':
@@ -1494,6 +1505,11 @@ export const en: Record<keyof typeof ko, string> = {
   'audit.verify.description':
     'Phase 3 follow-up — direct verify from Web Console. Today, use the CLI.',
   'audit.error.fallback': 'Failed to read audit head',
+  'audit.header.badge.seq': 'seq {seq}',
+  'audit.header.badge.genesis': 'genesis',
+  'audit.head.description': 'Latest entry in the hash chain. Cross-check this against PDF report chain head for external verification.',
+  'audit.head.empty.title': 'No audit entries yet',
+  'audit.chain.healthy': 'Chain healthy · latest entry seq {seq}',
 
   'pages.integrations.title': 'Integrations',
   'pages.integrations.description':
@@ -1644,6 +1660,7 @@ export const en: Record<keyof typeof ko, string> = {
   'packs.detail.col.checkId': 'Check ID',
   'packs.detail.col.severity': 'Severity',
   'packs.detail.col.title': 'Title',
+  'packs.detail.header.checkCount': '{count} checks',
 
   'checks.detail.notFound': 'Check not found',
   'checks.detail.error': 'Failed to load check details',
@@ -1817,6 +1834,9 @@ export const en: Record<keyof typeof ko, string> = {
   'reports.empty.description':
     'Auto-generated on scan completion, or via a dedicated endpoint (Phase 3 follow-up).',
   'reports.error.fallback': 'Failed to load reports',
+  'reports.header.countBadge': '{total} total · {signed} signed',
+  'reports.action.download.success': 'PDF download started',
+  'reports.action.download.failed': 'PDF download failed',
 
   'pages.sso.title': 'SSO Providers',
   'pages.sso.description':

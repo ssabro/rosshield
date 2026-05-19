@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
-import { FileText } from 'lucide-react'
+import { CheckCircle2, FileText, ShieldOff } from 'lucide-react'
 
 import { apiClient } from '@/api/client'
 import { ApiError, extractErrorMessage } from '@/api/errors'
@@ -9,6 +9,7 @@ import { useReports } from '@/api/hooks'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
+import { toast } from '@/lib/toast'
 import { useAuthStore } from '@/stores/auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { TableRowSkeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -32,20 +34,35 @@ import {
 import type { Report } from '@/api/hooks'
 
 // `/reports` — 생성된 리포트 목록.
-// - 다운로드 endpoint는 spec 미정의(Phase 2). 버튼은 disabled + 툴팁 안내.
-// 컬럼: ID·session·생성일·서명 여부·SHA256(앞 16자)
+//   - 다운로드: GET /api/v1/reports/{id}/download (E20-3, Phase 2 완료) — Authorization Bearer 헤더.
+//   - 미리보기: PreviewButton이 같은 endpoint로 blob URL을 iframe에 inline 렌더.
+//   - 검증: VerifyButton이 POST /api/v1/reports/{id}/verify (signed report 한정).
+// 컬럼: ID·session·생성일·서명 여부·SHA256(앞 16자)·액션(preview/download/verify).
 function ReportsPage(): React.ReactElement {
   const reports = useReports()
   const t = useT()
+
+  const totalCount = reports.data?.length ?? 0
+  const signedCount = reports.data?.filter((r) => r.signed).length ?? 0
+  const headerBadge =
+    reports.isSuccess && totalCount > 0 ? (
+      <Badge variant="secondary" className="text-[10px] font-normal">
+        {t('reports.header.countBadge', {
+          total: totalCount.toString(),
+          signed: signedCount.toString(),
+        })}
+      </Badge>
+    ) : undefined
 
   return (
     <div className="space-y-4">
       <PageHeader
         title={t('pages.reports.title')}
         description={t('pages.reports.description')}
+        badge={headerBadge}
       />
 
-      <div className="rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
             <TableHeader>
               <TableRow>
@@ -62,11 +79,8 @@ function ReportsPage(): React.ReactElement {
             <TableBody>
               {reports.isPending && (
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="text-center text-muted-foreground"
-                  >
-                    {t('common.loading')}
+                  <TableCell colSpan={6} className="p-3">
+                    <TableRowSkeleton rows={4} columns={6} />
                   </TableCell>
                 </TableRow>
               )}
@@ -114,29 +128,33 @@ function ReportRow({ report }: { report: Report }): React.ReactElement {
       <TableCell className="font-mono text-xs">{report.id}</TableCell>
       <TableCell className="font-mono text-xs">{report.sessionId}</TableCell>
       <TableCell className="text-xs">{generated}</TableCell>
-      <TableCell
-        aria-label={
-          report.signed ? t('reports.signed.yes.aria') : t('reports.signed.no.aria')
-        }
-      >
+      <TableCell>
         {report.signed ? (
-          <span className="text-emerald-600" aria-hidden>
-            ✓
+          <span
+            className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"
+            aria-label={t('reports.signed.yes.aria')}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">{t('reports.signed.yes.aria')}</span>
           </span>
         ) : (
-          <span className="text-muted-foreground" aria-hidden>
-            ✗
+          <span
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+            aria-label={t('reports.signed.no.aria')}
+          >
+            <ShieldOff className="h-3.5 w-3.5" aria-hidden />
+            <span className="sr-only">{t('reports.signed.no.aria')}</span>
           </span>
         )}
       </TableCell>
       <TableCell className="font-mono text-xs">{sha}</TableCell>
       <TableCell className="space-y-1 text-right">
-        <div className="flex justify-end gap-1">
+        <div className="flex flex-wrap justify-end gap-1">
           <PreviewButton reportID={report.id} />
           <Button
             size="sm"
             variant="outline"
-            onClick={() => downloadReportPDF(report.id)}
+            onClick={() => void handleDownloadReportPDF(report.id, t)}
           >
             {t('reports.action.download')}
           </Button>
@@ -310,9 +328,9 @@ async function fetchReportPDFBlob(reportID: string): Promise<Blob | null> {
 }
 
 // downloadReportPDF — `<a download>` 트릭으로 PDF blob 다운로드.
-async function downloadReportPDF(reportID: string): Promise<void> {
+async function downloadReportPDF(reportID: string): Promise<boolean> {
   const blob = await fetchReportPDFBlob(reportID)
-  if (!blob) return
+  if (!blob) return false
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -321,6 +339,22 @@ async function downloadReportPDF(reportID: string): Promise<void> {
   a.click()
   a.remove()
   window.URL.revokeObjectURL(url)
+  return true
+}
+
+// handleDownloadReportPDF — D-UI-1 Stage 4 (UX review P0):
+// 다운로드 성공/실패에 대해 toast 비차단 피드백. 기존 downloadReportPDF는 silent 실패였음.
+// signature: handleDownloadReportPDF(id, t) — t는 useT() 결과.
+async function handleDownloadReportPDF(
+  reportID: string,
+  t: ReturnType<typeof useT>,
+): Promise<void> {
+  const ok = await downloadReportPDF(reportID)
+  if (ok) {
+    toast.success(t('reports.action.download.success'))
+  } else {
+    toast.error(t('reports.action.download.failed'))
+  }
 }
 
 // PreviewButton — Dialog + iframe + blob URL로 inline PDF 미리보기.
@@ -392,7 +426,10 @@ function PreviewButton({ reportID }: { reportID: string }): React.ReactElement {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => downloadReportPDF(reportID)}>
+            <Button
+              variant="outline"
+              onClick={() => void handleDownloadReportPDF(reportID, t)}
+            >
               {t('reports.action.download')}
             </Button>
             <Button onClick={() => setOpen(false)}>

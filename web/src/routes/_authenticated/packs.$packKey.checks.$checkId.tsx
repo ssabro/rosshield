@@ -2,12 +2,14 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 
 import { ApiError } from '@/api/errors'
 import { useCheck, useCheckSelftest, usePack } from '@/api/hooks'
+import { SeverityBadge } from '@/components/common/SeverityBadge'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardSkeleton } from '@/components/ui/skeleton'
 
 // `/packs/{packKey}/checks/{checkId}` — 단일 check 상세 (E12 Stage 6).
 //   - 기본 메타(id, severity, title, description)
@@ -24,8 +26,20 @@ function CheckDetailPage(): React.ReactElement {
   if (detailQuery.isPending) {
     return (
       <div className="space-y-4">
+        <Breadcrumbs
+          items={[
+            { label: t('nav.system'), to: '/system' },
+            {
+              label: packQuery.data?.name ?? packKey,
+              to: '/packs/$packKey',
+              params: { packKey },
+            },
+            { label: checkId },
+          ]}
+        />
         <PageHeader title={checkId} description={packKey} />
-        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        <CardSkeleton />
+        <CardSkeleton />
       </div>
     )
   }
@@ -34,6 +48,17 @@ function CheckDetailPage(): React.ReactElement {
     const status = detailQuery.error instanceof ApiError ? detailQuery.error.status : 0
     return (
       <div className="space-y-4">
+        <Breadcrumbs
+          items={[
+            { label: t('nav.system'), to: '/system' },
+            {
+              label: packQuery.data?.name ?? packKey,
+              to: '/packs/$packKey',
+              params: { packKey },
+            },
+            { label: checkId },
+          ]}
+        />
         <PageHeader title={checkId} description={packKey} />
         <EmptyState
           title={status === 404 ? t('checks.detail.notFound') : t('checks.detail.error')}
@@ -72,7 +97,11 @@ function CheckDetailPage(): React.ReactElement {
           { label: c.checkId },
         ]}
       />
-      <PageHeader title={c.title} description={c.checkId} />
+      <PageHeader
+        title={c.title}
+        description={c.checkId}
+        badge={<SeverityBadge severity={c.severity} size="sm" />}
+      />
 
       <Card>
         <CardHeader>
@@ -294,20 +323,6 @@ function Meta({
       </dd>
     </>
   )
-}
-
-function SeverityBadge({
-  severity,
-}: {
-  severity: 'low' | 'medium' | 'high' | 'critical'
-}): React.ReactElement {
-  const variant: Record<typeof severity, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-    low: 'outline',
-    medium: 'secondary',
-    high: 'default',
-    critical: 'destructive',
-  }
-  return <Badge variant={variant[severity]}>{severity}</Badge>
 }
 
 export const Route = createFileRoute('/_authenticated/packs/$packKey/checks/$checkId')({

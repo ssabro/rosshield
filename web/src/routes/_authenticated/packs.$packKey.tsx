@@ -3,12 +3,14 @@ import { useState } from 'react'
 
 import { ApiError } from '@/api/errors'
 import { usePack } from '@/api/hooks'
+import { SeverityBadge } from '@/components/common/SeverityBadge'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardSkeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -34,8 +36,15 @@ function PackDetailPage(): React.ReactElement {
   if (detailQuery.isPending) {
     return (
       <div className="space-y-4">
+        <Breadcrumbs
+          items={[
+            { label: t('nav.system'), to: '/system' },
+            { label: packKey },
+          ]}
+        />
         <PageHeader title={t('packs.detail.title')} description={packKey} />
-        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        <CardSkeleton />
+        <CardSkeleton />
       </div>
     )
   }
@@ -44,6 +53,12 @@ function PackDetailPage(): React.ReactElement {
     const status = detailQuery.error instanceof ApiError ? detailQuery.error.status : 0
     return (
       <div className="space-y-4">
+        <Breadcrumbs
+          items={[
+            { label: t('nav.system'), to: '/system' },
+            { label: packKey },
+          ]}
+        />
         <PageHeader title={t('packs.detail.title')} description={packKey} />
         <EmptyState
           title={status === 404 ? t('packs.detail.notFound') : t('packs.detail.error')}
@@ -64,6 +79,27 @@ function PackDetailPage(): React.ReactElement {
 
   const pack = detailQuery.data!
 
+  // PageHeader 우측 badge: version + check count 한 줄로 압축 표시.
+  // built-in 팩은 secondary, tenant 팩은 outline 으로 시각 구분(scope에 따라).
+  const headerBadge = (
+    <span className="flex items-center gap-1">
+      <Badge variant="outline" className="font-mono text-[10px]">
+        v{pack.version}
+      </Badge>
+      <Badge variant="secondary" className="text-[10px]">
+        {t('packs.detail.header.checkCount', {
+          count: String(pack.checks.length),
+        })}
+      </Badge>
+      <Badge
+        variant={pack.isBuiltin ? 'default' : 'outline'}
+        className="text-[10px]"
+      >
+        {pack.isBuiltin ? t('packs.scope.builtin') : t('packs.scope.tenant')}
+      </Badge>
+    </span>
+  )
+
   return (
     <div className="space-y-4">
       <Breadcrumbs
@@ -72,7 +108,11 @@ function PackDetailPage(): React.ReactElement {
           { label: pack.name },
         ]}
       />
-      <PageHeader title={pack.name} description={pack.description ?? pack.packKey} />
+      <PageHeader
+        title={pack.name}
+        description={pack.description ?? pack.packKey}
+        badge={headerBadge}
+      />
 
       <Card>
         <CardHeader>
@@ -110,22 +150,27 @@ function PackDetailPage(): React.ReactElement {
         </CardHeader>
         <CardContent>
           {pack.checks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('packs.detail.checks.empty')}</p>
+            <EmptyState
+              title={t('packs.detail.checks.empty')}
+              size="sm"
+            />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('packs.detail.col.checkId')}</TableHead>
-                  <TableHead>{t('packs.detail.col.severity')}</TableHead>
-                  <TableHead>{t('packs.detail.col.title')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filterChecksBySeverity(pack.checks, severityFilter).map((c) => (
-                  <CheckRow key={c.id} check={c} packKey={pack.packKey} />
-                ))}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('packs.detail.col.checkId')}</TableHead>
+                    <TableHead>{t('packs.detail.col.severity')}</TableHead>
+                    <TableHead>{t('packs.detail.col.title')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filterChecksBySeverity(pack.checks, severityFilter).map((c) => (
+                    <CheckRow key={c.id} check={c} packKey={pack.packKey} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -160,20 +205,6 @@ function CheckRow({ check, packKey }: { check: PackCheck; packKey: string }): Re
       <TableCell className="text-xs">{check.title}</TableCell>
     </TableRow>
   )
-}
-
-function SeverityBadge({
-  severity,
-}: {
-  severity: 'low' | 'medium' | 'high' | 'critical'
-}): React.ReactElement {
-  const variant: Record<typeof severity, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-    low: 'outline',
-    medium: 'secondary',
-    high: 'default',
-    critical: 'destructive',
-  }
-  return <Badge variant={variant[severity]}>{severity}</Badge>
 }
 
 // SeverityStats — pack의 checks를 severity별 카운트 카드 4개로 요약 + 클릭으로 필터.

@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { CardSkeleton, TableRowSkeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -73,18 +74,31 @@ function CompliancePage(): React.ReactElement {
 
   const selected = profiles.data?.find((p) => p.id === selectedId) ?? null
 
+  // D-UI-1 Stage 4 — PageHeader subtitle 보강: 활성 framework 카운트 + 선택된 framework 표시.
+  // 현재 활성 framework이 있으면 PageHeader 우측에 Badge로 표시 (visual hierarchy 강화).
+  const activeFrameworks = profiles.data?.filter((p) => p.enabled) ?? []
+  const headerBadge =
+    activeFrameworks.length > 0 ? (
+      <Badge variant="secondary" className="text-[10px] font-normal">
+        {t('compliance.header.activeBadge', {
+          count: activeFrameworks.length.toString(),
+        })}
+      </Badge>
+    ) : undefined
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={t('pages.compliance.title')}
         description={t('pages.compliance.description')}
+        badge={headerBadge}
       />
 
       <CreateProfileForm />
 
       <section className="space-y-2">
         <h2 className="text-lg font-medium">{t('compliance.profile.section')}</h2>
-        <div className="rounded-md border">
+        <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -97,8 +111,8 @@ function CompliancePage(): React.ReactElement {
             <TableBody>
               {profiles.isPending && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    {t('common.loading')}
+                  <TableCell colSpan={4} className="p-3">
+                    <TableRowSkeleton rows={3} columns={4} />
                   </TableCell>
                 </TableRow>
               )}
@@ -277,21 +291,23 @@ function SnapshotsSection({
 
   return (
     <section className="space-y-3">
-      <div className="flex items-baseline justify-between">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-medium">{t('compliance.snapshot.section')}</h2>
         <p className="text-xs text-muted-foreground">
           {t('compliance.snapshot.selected')}{' '}
-          <span className="font-mono">{profile.framework}</span>{' '}
-          <span className="font-mono">{profile.frameworkVersion}</span>
+          <Badge variant="outline" className="ml-1 font-mono text-[10px]">
+            {profile.framework} · {profile.frameworkVersion}
+          </Badge>
         </p>
       </div>
 
+      {snapshots.isPending && !latest && <CardSkeleton />}
       {latest && <ScoreHeroCard snapshot={latest} />}
       {latest && <ControlsBreakdown snapshot={latest} />}
 
       <GenerateSnapshotForm profileId={profile.id} />
 
-      <div className="rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -308,8 +324,8 @@ function SnapshotsSection({
           <TableBody>
             {snapshots.isPending && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  {t('common.loading')}
+                <TableCell colSpan={8} className="p-3">
+                  <TableRowSkeleton rows={3} columns={8} />
                 </TableCell>
               </TableRow>
             )}
