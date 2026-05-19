@@ -65,14 +65,15 @@ const CRITICALITY_VALUES = ['', 'low', 'medium', 'high', 'critical'] as const
 // RBAC Stage 5 — 매트릭스 매핑:
 //   - 생성/삭제: tenant `fleet.admin` (§2.2 ID 14, 16)
 //   - 단건 PATCH (FleetRow.canEdit): `fleet[X].fleet.write` (§2.2 ID 15)
-function FleetsPage(): React.ReactElement {
+export function FleetsPage(): React.ReactElement {
   const t = useT()
   const canCreate = useHasPermission('fleet', 'admin')
   const fleetsQuery = useFleets()
   const [createOpen, setCreateOpen] = useState(false)
 
   return (
-    <div className="space-y-6">
+    // D-UI-1 Stage 5 — 페이지 root 표준 `space-y-4` (5 페이지 axe scan 대상 일관화).
+    <div className="space-y-4">
       <PageHeader
         title={t('pages.fleets.title')}
         description={t('pages.fleets.description')}

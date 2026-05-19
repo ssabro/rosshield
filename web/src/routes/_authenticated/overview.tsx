@@ -48,7 +48,7 @@ import type { LucideIcon } from 'lucide-react'
 //   6. 감사 체인 head          → /audit
 //
 //   로딩은 Skeleton, robot 0건 시 EmptyState로 "fleet에 로봇이 없습니다 → 등록 CTA" 안내.
-function OverviewPage(): React.ReactElement {
+export function OverviewPage(): React.ReactElement {
   const t = useT()
   const robots = useRobots()
   const insights = useInsights({})

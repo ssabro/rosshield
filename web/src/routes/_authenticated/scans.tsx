@@ -66,7 +66,7 @@ import type { FormEvent } from 'react'
 // 상태는 session search param 유무로 도출 — 별도 useState 0.
 const TRIGGERS = ['manual', 'schedule', 'event'] as const
 
-function ScansPage(): React.ReactElement {
+export function ScansPage(): React.ReactElement {
   const t = useT()
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
@@ -89,7 +89,8 @@ function ScansPage(): React.ReactElement {
   }
 
   return (
-    <div className="space-y-6">
+    // D-UI-1 Stage 5 — 페이지 root 표준 `space-y-4` (5 페이지 axe scan 대상 일관화).
+    <div className="space-y-4">
       <PageHeader
         title={t('pages.scans.title')}
         description={t('pages.scans.description')}

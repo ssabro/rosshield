@@ -41,7 +41,7 @@ import type { Severity } from '@/lib/severity'
 const KIND_OPTIONS = ['drift', 'anomaly', 'peer', 'root_cause', 'prediction'] as const
 const SEVERITY_OPTIONS = ['info', 'low', 'medium', 'high', 'critical'] as const
 
-function FindingsPage(): React.ReactElement {
+export function FindingsPage(): React.ReactElement {
   const [kind, setKind] = useState<string>('')
   const [severity, setSeverity] = useState<string>('')
   const [robotId, setRobotId] = useState<string>('')

@@ -65,7 +65,7 @@ import type { DictKey } from '@/i18n/dict'
 //
 // 기존 hook · API mutation · 라우팅 변경 0. zod schema·useCreateRobot 호출 그대로.
 
-function RobotsPage(): React.ReactElement {
+export function RobotsPage(): React.ReactElement {
   const [fleetId, setFleetId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const trimmed = fleetId.trim()
