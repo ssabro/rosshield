@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"sort"
+	"strings"
 	"testing"
 
 	"lukechampine.com/blake3"
@@ -303,6 +304,173 @@ func TestCompute_subhash_algorithm_unsupported(t *testing.T) {
 	}
 	if !errors.Is(err, ErrUnsupportedAlgorithm) {
 		t.Errorf("err = %v, want wraps ErrUnsupportedAlgorithm", err)
+	}
+}
+
+// =============================================================================
+// v2 — wildcard JSONPath Compute 통합 테스트
+// =============================================================================
+
+func TestCompute_wildcard_expands_to_concrete_subhashes(t *testing.T) {
+	// $.checks[*].status → checks 배열의 모든 element에 대해 concrete sub-hash.
+	ev := []byte(`{"checks":[{"status":"ok"},{"status":"fail"},{"status":"warn"}]}`)
+	mh, err := Compute(ev, Option{JSONPaths: []string{"$.checks[*].status"}})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if len(mh.SubHashes) != 3 {
+		t.Fatalf("expected 3 sub-hashes (one per array element), got %d", len(mh.SubHashes))
+	}
+	// 각 sub-hash의 Path가 concrete index path여야 함 (정렬 후).
+	wantPaths := map[string]bool{
+		"jsonpath:$.checks[0].status": true,
+		"jsonpath:$.checks[1].status": true,
+		"jsonpath:$.checks[2].status": true,
+	}
+	for _, s := range mh.SubHashes {
+		if !wantPaths[s.Path] {
+			t.Errorf("unexpected path %q in sub-hashes", s.Path)
+		}
+		delete(wantPaths, s.Path)
+	}
+	if len(wantPaths) != 0 {
+		t.Errorf("missing paths: %v", wantPaths)
+	}
+}
+
+func TestCompute_wildcard_subhash_values_match_concrete_extraction(t *testing.T) {
+	// wildcard expansion으로 산출한 sub-hash가 concrete path로 직접 산출한 것과 일치해야 함.
+	ev := []byte(`{"items":["a","bb","ccc"]}`)
+	mhWild, err := Compute(ev, Option{JSONPaths: []string{"$.items[*]"}})
+	if err != nil {
+		t.Fatalf("Compute wildcard: %v", err)
+	}
+	mhConcrete, err := Compute(ev, Option{JSONPaths: []string{"$.items[0]", "$.items[1]", "$.items[2]"}})
+	if err != nil {
+		t.Fatalf("Compute concrete: %v", err)
+	}
+	if len(mhWild.SubHashes) != len(mhConcrete.SubHashes) {
+		t.Fatalf("count mismatch: wild=%d concrete=%d", len(mhWild.SubHashes), len(mhConcrete.SubHashes))
+	}
+	for i := range mhWild.SubHashes {
+		if mhWild.SubHashes[i] != mhConcrete.SubHashes[i] {
+			t.Errorf("sub-hash[%d] mismatch: wild=%+v concrete=%+v",
+				i, mhWild.SubHashes[i], mhConcrete.SubHashes[i])
+		}
+	}
+}
+
+func TestCompute_wildcard_empty_array_yields_zero_subhashes(t *testing.T) {
+	ev := []byte(`{"checks":[]}`)
+	mh, err := Compute(ev, Option{JSONPaths: []string{"$.checks[*].status"}})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if len(mh.SubHashes) != 0 {
+		t.Errorf("empty array wildcard should yield 0 sub-hashes, got %d", len(mh.SubHashes))
+	}
+}
+
+func TestCompute_wildcard_on_non_array_returns_invalid(t *testing.T) {
+	ev := []byte(`{"foo":{"x":1}}`)
+	_, err := Compute(ev, Option{JSONPaths: []string{"$.foo[*]"}})
+	if err == nil {
+		t.Fatal("expected ErrInvalidJSONPath for wildcard on non-array, got nil")
+	}
+	if !errors.Is(err, ErrInvalidJSONPath) {
+		t.Errorf("err = %v, want wraps ErrInvalidJSONPath", err)
+	}
+}
+
+func TestCompute_wildcard_missing_key_path_not_found(t *testing.T) {
+	ev := []byte(`{"foo":[1,2]}`)
+	_, err := Compute(ev, Option{JSONPaths: []string{"$.absent[*]"}})
+	if err == nil {
+		t.Fatal("expected ErrPathNotFound, got nil")
+	}
+	if !errors.Is(err, ErrPathNotFound) {
+		t.Errorf("err = %v, want wraps ErrPathNotFound", err)
+	}
+}
+
+func TestCompute_wildcard_nested_cartesian_subhashes(t *testing.T) {
+	// $.a[*].b[*] → 2 × 3 = 6 sub-hashes.
+	ev := []byte(`{
+		"a":[
+			{"b":["x0","x1","x2"]},
+			{"b":["y0","y1","y2"]}
+		]
+	}`)
+	mh, err := Compute(ev, Option{JSONPaths: []string{"$.a[*].b[*]"}})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if len(mh.SubHashes) != 6 {
+		t.Fatalf("expected 6 sub-hashes (2x3 cartesian), got %d", len(mh.SubHashes))
+	}
+	// 각 path가 concrete index를 가짐 + 사전식 정렬됨.
+	for _, s := range mh.SubHashes {
+		if !strings.HasPrefix(s.Path, "jsonpath:$.a[") {
+			t.Errorf("unexpected sub-hash path %q", s.Path)
+		}
+	}
+}
+
+func TestCompute_wildcard_determinism(t *testing.T) {
+	ev := []byte(`{"checks":[{"id":1,"status":"ok"},{"id":2,"status":"fail"},{"id":3,"status":"warn"}]}`)
+	opt := Option{
+		Algorithms: []Algorithm{AlgoSHA256, AlgoBLAKE3},
+		JSONPaths:  []string{"$.checks[*].status"},
+	}
+	mh1, err := Compute(ev, opt)
+	if err != nil {
+		t.Fatalf("Compute1: %v", err)
+	}
+	mh2, err := Compute(ev, opt)
+	if err != nil {
+		t.Fatalf("Compute2: %v", err)
+	}
+	if len(mh1.SubHashes) != len(mh2.SubHashes) {
+		t.Fatalf("sub-hash count differs: %d vs %d", len(mh1.SubHashes), len(mh2.SubHashes))
+	}
+	for i := range mh1.SubHashes {
+		if mh1.SubHashes[i] != mh2.SubHashes[i] {
+			t.Errorf("sub-hash[%d] non-deterministic: %+v vs %+v",
+				i, mh1.SubHashes[i], mh2.SubHashes[i])
+		}
+	}
+}
+
+func TestCompute_wildcard_integration_100_checks(t *testing.T) {
+	// 100-check evidence — 통합 시나리오.
+	var b strings.Builder
+	b.WriteString(`{"checks":[`)
+	for i := 0; i < 100; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		// 다양한 status로 sub-hash가 모두 동일하지 않게.
+		statuses := []string{"ok", "fail", "warn", "skip"}
+		b.WriteString(`{"status":"`)
+		b.WriteString(statuses[i%4])
+		b.WriteString(`"}`)
+	}
+	b.WriteString(`]}`)
+
+	mh, err := Compute([]byte(b.String()), Option{JSONPaths: []string{"$.checks[*].status"}})
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	if len(mh.SubHashes) != 100 {
+		t.Fatalf("expected 100 sub-hashes, got %d", len(mh.SubHashes))
+	}
+	// status가 4 종류 순환 → sub-hash 값도 4 종류로만 구성.
+	uniq := make(map[string]struct{})
+	for _, s := range mh.SubHashes {
+		uniq[s.Hash] = struct{}{}
+	}
+	if len(uniq) != 4 {
+		t.Errorf("expected 4 unique sub-hash values (4 status), got %d", len(uniq))
 	}
 }
 

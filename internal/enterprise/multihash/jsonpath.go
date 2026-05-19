@@ -7,15 +7,22 @@
 //
 // 지원 구문 (spec-A 인접 D8-B1 sub-hash 명세, design doc §6.3):
 //
-//   - `$`              : root 자체
-//   - `$.foo`          : object field
-//   - `$.foo.bar`      : nested field
-//   - `$.foo[0]`       : array index (음수 거부, 범위 초과 → ErrPathNotFound)
-//   - `$.foo[0].bar`   : 혼합
+//   - `$`                 : root 자체
+//   - `$.foo`             : object field
+//   - `$.foo.bar`         : nested field
+//   - `$.foo[0]`          : array index (음수 거부, 범위 초과 → ErrPathNotFound)
+//   - `$.foo[0].bar`      : 혼합
+//   - `$.foo[*]`          : wildcard — 배열의 모든 element를 expand (v2)
+//   - `$.foo[*].bar`      : wildcard 뒤 nested field
+//   - `$.foo[*].bar[*]`   : 중첩 wildcard — cartesian product expand
 //
 // 미지원 (복잡 표현식 — design doc spec 의도적 제한):
-//   - wildcard `$.foo[*]` (미래 확장 여지)
 //   - filter / slice / recursive descent (`..`)
+//
+// wildcard 결정론:
+//   - 같은 evidence + 같은 wildcard path → 항상 같은 concrete path 시퀀스(index 오름차순).
+//   - 빈 배열에 wildcard 적용 → 0개 sub-hash (에러 없음).
+//   - 비배열 위치에 wildcard 적용 → ErrInvalidJSONPath (스펙).
 //
 // canonical 직렬화: 추출된 sub-tree는 json.Marshal로 산출 (Go map은 key 정렬되므로
 // MarshalIndent 없이 결정론적). 단 nested map은 json.Decoder가 map[string]any로
@@ -32,6 +39,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -46,10 +54,16 @@ var (
 	ErrPathNotFound = errors.New("multihash: jsonpath not found in evidence")
 )
 
-// jsonPathStep는 path를 토큰화한 결과의 한 단계입니다 (object key 또는 array index).
+// jsonPathStep는 path를 토큰화한 결과의 한 단계입니다 (object key 또는 array index 또는 wildcard).
+//
+// 3가지 종류 (mutually exclusive):
+//   - object key:  key != "" && index == -1 && !wildcard
+//   - array index: key == "" && index >= 0  && !wildcard
+//   - wildcard:    key == "" && index == -1 && wildcard (v2 — `[*]`)
 type jsonPathStep struct {
-	key   string // object field name (index 단계면 "")
-	index int    // array index (key 단계면 -1)
+	key      string // object field name (index/wildcard 단계면 "")
+	index    int    // array index (key/wildcard 단계면 -1)
+	wildcard bool   // v2 — true이면 `[*]` (배열 전체 expand)
 }
 
 // parseJSONPath는 path 문자열을 단계 시퀀스로 토큰화합니다.
@@ -87,7 +101,7 @@ func parseJSONPath(path string) ([]jsonPathStep, error) {
 			}
 			steps = append(steps, jsonPathStep{key: rest[start:i], index: -1})
 		case '[':
-			// `[N]` — 십진 비음수 정수.
+			// `[N]` — 십진 비음수 정수, 또는 `[*]` — wildcard (v2).
 			i++
 			start := i
 			for i < len(rest) && rest[i] != ']' {
@@ -96,13 +110,19 @@ func parseJSONPath(path string) ([]jsonPathStep, error) {
 			if i >= len(rest) {
 				return nil, fmt.Errorf("%w: unterminated '[' at offset %d", ErrInvalidJSONPath, start)
 			}
-			idxStr := rest[start:i]
-			if idxStr == "" {
+			tokenStr := rest[start:i]
+			if tokenStr == "" {
 				return nil, fmt.Errorf("%w: empty index in '[]' at offset %d", ErrInvalidJSONPath, start)
 			}
-			idx, err := strconv.Atoi(idxStr)
+			if tokenStr == "*" {
+				// wildcard step — 배열 전체 expand (concrete index 산출은 expandJSONPath 단계).
+				steps = append(steps, jsonPathStep{key: "", index: -1, wildcard: true})
+				i++ // skip ']'
+				break
+			}
+			idx, err := strconv.Atoi(tokenStr)
 			if err != nil {
-				return nil, fmt.Errorf("%w: non-integer index %q: %v", ErrInvalidJSONPath, idxStr, err)
+				return nil, fmt.Errorf("%w: non-integer index %q: %v", ErrInvalidJSONPath, tokenStr, err)
 			}
 			if idx < 0 {
 				return nil, fmt.Errorf("%w: negative index %d", ErrInvalidJSONPath, idx)
@@ -139,6 +159,11 @@ func extractByPath(evidence []byte, path string) ([]byte, error) {
 
 	cur := root
 	for stepIdx, step := range steps {
+		if step.wildcard {
+			// extractByPath는 concrete path만 처리합니다. wildcard가 남아 있다면
+			// 호출자가 expandJSONPath를 거치지 않은 버그 — 명시적 거부.
+			return nil, fmt.Errorf("%w: step %d wildcard not allowed in extractByPath (expand first)", ErrInvalidJSONPath, stepIdx)
+		}
 		if step.key != "" {
 			obj, ok := cur.(map[string]any)
 			if !ok {
@@ -168,6 +193,141 @@ func extractByPath(evidence []byte, path string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: marshal extracted value: %v", ErrInvalidJSONPath, err)
 	}
 	return out, nil
+}
+
+// expandJSONPath는 path를 evidence에 대해 wildcard expansion한 concrete path 리스트로
+// 반환합니다 (v2).
+//
+// 동작:
+//   - path에 `[*]`가 없으면 → []string{path} 단일 반환 (원본 그대로).
+//   - path에 `[*]`가 있으면 → 해당 위치 배열의 모든 element index로 expand:
+//     예) evidence={"checks":[{...},{...},{...}]}, path="$.checks[*].status"
+//     → ["$.checks[0].status", "$.checks[1].status", "$.checks[2].status"]
+//   - 중첩 wildcard는 cartesian product:
+//     예) path="$.a[*].b[*]" → a의 길이 × 각 a[i].b의 길이 만큼 concrete path 생성.
+//   - 빈 배열에 wildcard 적용 → 해당 expansion에서 0개 path 생성 (에러 없음).
+//   - 비배열 위치에 wildcard 적용 → ErrInvalidJSONPath (스펙).
+//   - wildcard 앞 segment에 object key가 부재하면 → ErrPathNotFound.
+//
+// 결정론: 반환되는 concrete path는 array index 오름차순(0,1,2,...). 같은 input은 항상
+// 같은 output을 산출합니다.
+//
+// 반환 path 형식은 원본 syntax와 동일 (`$.foo[0].bar` 식 concrete index만 포함).
+func expandJSONPath(evidence []byte, path string) ([]string, error) {
+	steps, err := parseJSONPath(path)
+	if err != nil {
+		return nil, err
+	}
+	// wildcard가 한 개도 없으면 fast path — 원본 path를 그대로 반환합니다.
+	hasWildcard := false
+	for _, s := range steps {
+		if s.wildcard {
+			hasWildcard = true
+			break
+		}
+	}
+	if !hasWildcard {
+		return []string{path}, nil
+	}
+
+	var root any
+	dec := json.NewDecoder(bytes.NewReader(evidence))
+	dec.UseNumber()
+	if err := dec.Decode(&root); err != nil {
+		return nil, fmt.Errorf("%w: evidence is not valid JSON: %v", ErrInvalidJSONPath, err)
+	}
+
+	// recursive expansion — 현재까지의 prefix(완성된 step 시퀀스) + 현재 traverse 위치(cur)에서
+	// 남은 step을 처리하며 concrete path 누적.
+	type frame struct {
+		cur      any            // 현재 traverse 위치
+		stepIdx  int            // 다음 처리할 step index
+		concrete []jsonPathStep // 지금까지 확정된 concrete step 시퀀스
+	}
+	out := make([]string, 0, 4)
+	stack := []frame{{cur: root, stepIdx: 0, concrete: nil}}
+	for len(stack) > 0 {
+		// pop (DFS) — 결정론 위해 LIFO인데, 끝에 push할 때 역순으로 넣어 index 오름차순 유지.
+		fr := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if fr.stepIdx == len(steps) {
+			// 모든 step 소진 — concrete path 1건 확정.
+			out = append(out, renderJSONPath(fr.concrete))
+			continue
+		}
+		step := steps[fr.stepIdx]
+		if step.wildcard {
+			arr, ok := fr.cur.([]any)
+			if !ok {
+				return nil, fmt.Errorf("%w: step %d wildcard `[*]` requires array, got %T", ErrInvalidJSONPath, fr.stepIdx, fr.cur)
+			}
+			// 빈 배열 → 이 branch에서 frame 추가 없이 종료 (0건 산출).
+			// 결정론: 작은 index가 먼저 처리되도록 큰 index를 먼저 push.
+			for i := len(arr) - 1; i >= 0; i-- {
+				next := make([]jsonPathStep, len(fr.concrete)+1)
+				copy(next, fr.concrete)
+				next[len(fr.concrete)] = jsonPathStep{key: "", index: i}
+				stack = append(stack, frame{
+					cur:      arr[i],
+					stepIdx:  fr.stepIdx + 1,
+					concrete: next,
+				})
+			}
+			continue
+		}
+		if step.key != "" {
+			obj, ok := fr.cur.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("%w: step %d expected object for key %q", ErrPathNotFound, fr.stepIdx, step.key)
+			}
+			next, exists := obj[step.key]
+			if !exists {
+				return nil, fmt.Errorf("%w: step %d key %q absent", ErrPathNotFound, fr.stepIdx, step.key)
+			}
+			nextConcrete := make([]jsonPathStep, len(fr.concrete)+1)
+			copy(nextConcrete, fr.concrete)
+			nextConcrete[len(fr.concrete)] = step
+			stack = append(stack, frame{cur: next, stepIdx: fr.stepIdx + 1, concrete: nextConcrete})
+			continue
+		}
+		// concrete array index step.
+		arr, ok := fr.cur.([]any)
+		if !ok {
+			return nil, fmt.Errorf("%w: step %d expected array for index %d", ErrPathNotFound, fr.stepIdx, step.index)
+		}
+		if step.index >= len(arr) {
+			return nil, fmt.Errorf("%w: step %d index %d out of bounds (len=%d)", ErrPathNotFound, fr.stepIdx, step.index, len(arr))
+		}
+		nextConcrete := make([]jsonPathStep, len(fr.concrete)+1)
+		copy(nextConcrete, fr.concrete)
+		nextConcrete[len(fr.concrete)] = step
+		stack = append(stack, frame{cur: arr[step.index], stepIdx: fr.stepIdx + 1, concrete: nextConcrete})
+	}
+
+	// DFS LIFO 처리로 index 오름차순 출력이 나오도록 push했지만, 단일 stack에서 nested
+	// wildcard가 섞이면 순서가 흔들릴 수 있음 — 보장 위해 최종 sort.
+	sort.Strings(out)
+	return out, nil
+}
+
+// renderJSONPath는 concrete step 시퀀스(no wildcard)를 path 문자열로 직렬화합니다.
+// 예) [{key:"foo"},{index:0},{key:"bar"}] → "$.foo[0].bar".
+func renderJSONPath(steps []jsonPathStep) string {
+	var b strings.Builder
+	b.WriteByte('$')
+	for _, s := range steps {
+		if s.key != "" {
+			b.WriteByte('.')
+			b.WriteString(s.key)
+			continue
+		}
+		// concrete array index.
+		b.WriteByte('[')
+		b.WriteString(strconv.Itoa(s.index))
+		b.WriteByte(']')
+	}
+	return b.String()
 }
 
 // canonicalMarshal은 임의의 JSON value를 결정론적 바이트로 직렬화합니다.

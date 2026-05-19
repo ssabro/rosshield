@@ -212,6 +212,90 @@ func TestVerify_line_hash_isolation_subhash_diff(t *testing.T) {
 	}
 }
 
+// =============================================================================
+// v2 — wildcard JSONPath Verify 통합 테스트
+// =============================================================================
+
+func TestVerify_wildcard_round_trip(t *testing.T) {
+	// wildcard expanded sub-hash가 Compute와 Verify에서 같은 expansion 결과를 만들어
+	// round-trip 통과해야 함.
+	ev := []byte(`{"checks":[{"status":"ok"},{"status":"fail"},{"status":"warn"}]}`)
+	opt := Option{
+		Algorithms: []Algorithm{AlgoSHA256, AlgoBLAKE3},
+		JSONPaths:  []string{"$.checks[*].status"},
+	}
+	roundTrip(t, ev, opt, ModeEnterpriseFull)
+}
+
+func TestVerify_wildcard_subhash_tamper_detected(t *testing.T) {
+	// wildcard로 산출된 concrete sub-hash 하나를 조작 → ErrSubHashMismatch.
+	ev := []byte(`{"checks":[{"status":"ok"},{"status":"fail"},{"status":"warn"}]}`)
+	opt := Option{JSONPaths: []string{"$.checks[*].status"}}
+	mh, err := Compute(ev, opt)
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	// $.checks[1].status sub-hash 조작.
+	for i := range mh.SubHashes {
+		if mh.SubHashes[i].Path == subHashSchemeJSONPath+"$.checks[1].status" {
+			mh.SubHashes[i].Hash = strings.Repeat("a", 64)
+		}
+	}
+	err = Verify(ev, mh, opt, ModeEnterpriseFull)
+	if err == nil {
+		t.Fatal("expected ErrSubHashMismatch, got nil")
+	}
+	if !errors.Is(err, ErrSubHashMismatch) {
+		t.Errorf("err = %v, want wraps ErrSubHashMismatch", err)
+	}
+	if !strings.Contains(err.Error(), "$.checks[1].status") {
+		t.Errorf("err should mention path, got %q", err.Error())
+	}
+}
+
+func TestVerify_wildcard_array_length_change_detected(t *testing.T) {
+	// 원본 3-element → tampered 2-element. sha256 자체가 어긋남.
+	origEv := []byte(`{"checks":[{"status":"ok"},{"status":"fail"},{"status":"warn"}]}`)
+	opt := Option{JSONPaths: []string{"$.checks[*].status"}}
+	mh, err := Compute(origEv, opt)
+	if err != nil {
+		t.Fatalf("Compute: %v", err)
+	}
+	// element 1개 제거 evidence.
+	tampered := []byte(`{"checks":[{"status":"ok"},{"status":"warn"}]}`)
+	mh.EvidenceSize = int64(len(tampered)) // size pre-check 통과 위해 동기화.
+	err = Verify(tampered, mh, opt, ModeEnterpriseFull)
+	if err == nil {
+		t.Fatal("expected mismatch, got nil")
+	}
+	// sha256가 먼저 catch — array 변경이면 항상 sha256 어긋남.
+	if !errors.Is(err, ErrSHA256Mismatch) {
+		t.Errorf("err = %v, want ErrSHA256Mismatch", err)
+	}
+}
+
+func TestVerify_wildcard_nested_round_trip(t *testing.T) {
+	// 중첩 wildcard cartesian round-trip.
+	ev := []byte(`{
+		"a":[
+			{"b":["x0","x1"]},
+			{"b":["y0","y1","y2"]}
+		]
+	}`)
+	opt := Option{
+		Algorithms: []Algorithm{AlgoSHA256, AlgoBLAKE3},
+		JSONPaths:  []string{"$.a[*].b[*]"},
+	}
+	roundTrip(t, ev, opt, ModeEnterpriseFull)
+}
+
+func TestVerify_wildcard_empty_array_round_trip(t *testing.T) {
+	// 빈 배열 → 0개 sub-hash. round-trip은 그냥 pass (sha256만 검증).
+	ev := []byte(`{"checks":[]}`)
+	opt := Option{JSONPaths: []string{"$.checks[*].status"}}
+	roundTrip(t, ev, opt, ModeEnterpriseFull)
+}
+
 func TestIsMismatch(t *testing.T) {
 	cases := []error{
 		ErrSHA256Mismatch,

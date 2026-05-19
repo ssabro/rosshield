@@ -151,21 +151,28 @@ func Compute(evidence []byte, opt Option) (MultiHash, error) {
 
 	subHashes := make([]SubHash, 0)
 
-	// JSONPath sub-hash.
+	// JSONPath sub-hash — wildcard `[*]` 포함 path는 concrete index path로 expand 후 처리.
 	for _, p := range opt.JSONPaths {
-		raw, extractErr := extractByPath(evidence, p)
-		if extractErr != nil {
-			return MultiHash{}, fmt.Errorf("multihash: jsonpath %q: %w", p, extractErr)
+		concretePaths, expandErr := expandJSONPath(evidence, p)
+		if expandErr != nil {
+			return MultiHash{}, fmt.Errorf("multihash: jsonpath %q: %w", p, expandErr)
 		}
-		h, hashErr := hashBytes(raw, subAlgo)
-		if hashErr != nil {
-			return MultiHash{}, hashErr
+		// 빈 배열에 wildcard 적용 → concretePaths가 빈 슬라이스 → 이 path는 0개 sub-hash 생성.
+		for _, cp := range concretePaths {
+			raw, extractErr := extractByPath(evidence, cp)
+			if extractErr != nil {
+				return MultiHash{}, fmt.Errorf("multihash: jsonpath %q (expanded from %q): %w", cp, p, extractErr)
+			}
+			h, hashErr := hashBytes(raw, subAlgo)
+			if hashErr != nil {
+				return MultiHash{}, hashErr
+			}
+			subHashes = append(subHashes, SubHash{
+				Path: subHashSchemeJSONPath + cp,
+				Hash: h,
+				Algo: subAlgo,
+			})
 		}
-		subHashes = append(subHashes, SubHash{
-			Path: subHashSchemeJSONPath + p,
-			Hash: h,
-			Algo: subAlgo,
-		})
 	}
 
 	// Line sub-hash.

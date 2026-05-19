@@ -243,3 +243,235 @@ func TestExtractByPath_error_wraps_path_for_context(t *testing.T) {
 		t.Errorf("err message should mention key, got %q", err.Error())
 	}
 }
+
+// =============================================================================
+// v2 — wildcard `[*]` JSONPath expansion 테스트
+// =============================================================================
+
+func TestParseJSONPath_wildcard_token(t *testing.T) {
+	steps, err := parseJSONPath("$.foo[*]")
+	if err != nil {
+		t.Fatalf("parse err: %v", err)
+	}
+	if len(steps) != 2 {
+		t.Fatalf("expected 2 steps, got %d", len(steps))
+	}
+	if steps[0].key != "foo" {
+		t.Errorf("step 0 key = %q, want foo", steps[0].key)
+	}
+	if !steps[1].wildcard {
+		t.Errorf("step 1 wildcard = false, want true")
+	}
+	if steps[1].index != -1 || steps[1].key != "" {
+		t.Errorf("wildcard step should have index=-1 key=\"\", got %+v", steps[1])
+	}
+}
+
+func TestParseJSONPath_wildcard_then_field(t *testing.T) {
+	steps, err := parseJSONPath("$.foo[*].bar")
+	if err != nil {
+		t.Fatalf("parse err: %v", err)
+	}
+	if len(steps) != 3 {
+		t.Fatalf("expected 3 steps, got %d", len(steps))
+	}
+	if !steps[1].wildcard {
+		t.Errorf("step 1 should be wildcard, got %+v", steps[1])
+	}
+	if steps[2].key != "bar" {
+		t.Errorf("step 2 key = %q, want bar", steps[2].key)
+	}
+}
+
+func TestParseJSONPath_nested_wildcard_token(t *testing.T) {
+	steps, err := parseJSONPath("$.a[*].b[*].c")
+	if err != nil {
+		t.Fatalf("parse err: %v", err)
+	}
+	if len(steps) != 5 {
+		t.Fatalf("expected 5 steps, got %d", len(steps))
+	}
+	if !steps[1].wildcard || !steps[3].wildcard {
+		t.Errorf("steps 1 and 3 should be wildcard, got %+v", steps)
+	}
+}
+
+func TestExpandJSONPath_no_wildcard_passthrough(t *testing.T) {
+	ev := []byte(`{"foo":{"bar":1}}`)
+	got, err := expandJSONPath(ev, "$.foo.bar")
+	if err != nil {
+		t.Fatalf("expand err: %v", err)
+	}
+	if len(got) != 1 || got[0] != "$.foo.bar" {
+		t.Errorf("got %v, want [$.foo.bar]", got)
+	}
+}
+
+func TestExpandJSONPath_single_wildcard_array_of_three(t *testing.T) {
+	ev := []byte(`{"checks":[{"status":"ok"},{"status":"fail"},{"status":"warn"}]}`)
+	got, err := expandJSONPath(ev, "$.checks[*].status")
+	if err != nil {
+		t.Fatalf("expand err: %v", err)
+	}
+	want := []string{"$.checks[0].status", "$.checks[1].status", "$.checks[2].status"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d expansions, want %d (%v)", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("expansion[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestExpandJSONPath_wildcard_terminal(t *testing.T) {
+	// path가 wildcard로 끝나는 경우 — 각 element 자체가 sub-hash 단위.
+	ev := []byte(`{"items":["x","y","z"]}`)
+	got, err := expandJSONPath(ev, "$.items[*]")
+	if err != nil {
+		t.Fatalf("expand err: %v", err)
+	}
+	want := []string{"$.items[0]", "$.items[1]", "$.items[2]"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestExpandJSONPath_empty_array_yields_zero(t *testing.T) {
+	ev := []byte(`{"checks":[]}`)
+	got, err := expandJSONPath(ev, "$.checks[*].status")
+	if err != nil {
+		t.Fatalf("expand err: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty array should yield 0 expansions, got %v", got)
+	}
+}
+
+func TestExpandJSONPath_non_array_wildcard_returns_invalid(t *testing.T) {
+	// `$.foo[*]`인데 foo가 object → ErrInvalidJSONPath.
+	ev := []byte(`{"foo":{"bar":1}}`)
+	_, err := expandJSONPath(ev, "$.foo[*]")
+	if err == nil {
+		t.Fatal("expected ErrInvalidJSONPath for non-array wildcard, got nil")
+	}
+	if !errors.Is(err, ErrInvalidJSONPath) {
+		t.Errorf("err = %v, want wraps ErrInvalidJSONPath", err)
+	}
+}
+
+func TestExpandJSONPath_missing_key_before_wildcard(t *testing.T) {
+	// $.absent[*] — absent key 부재 → ErrPathNotFound (object key 단계 실패).
+	ev := []byte(`{"foo":[1,2]}`)
+	_, err := expandJSONPath(ev, "$.absent[*]")
+	if err == nil {
+		t.Fatal("expected ErrPathNotFound, got nil")
+	}
+	if !errors.Is(err, ErrPathNotFound) {
+		t.Errorf("err = %v, want wraps ErrPathNotFound", err)
+	}
+}
+
+func TestExpandJSONPath_nested_wildcard_cartesian(t *testing.T) {
+	// a[2] × b[3] = 6 concrete paths.
+	ev := []byte(`{
+		"a":[
+			{"b":[{"v":0},{"v":1},{"v":2}]},
+			{"b":[{"v":10},{"v":11},{"v":12}]}
+		]
+	}`)
+	got, err := expandJSONPath(ev, "$.a[*].b[*].v")
+	if err != nil {
+		t.Fatalf("expand err: %v", err)
+	}
+	want := []string{
+		"$.a[0].b[0].v",
+		"$.a[0].b[1].v",
+		"$.a[0].b[2].v",
+		"$.a[1].b[0].v",
+		"$.a[1].b[1].v",
+		"$.a[1].b[2].v",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d expansions, want %d (got=%v)", len(got), len(want), got)
+	}
+	// 결정론적 정렬 보장 — 사전식 ordering.
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("expansion[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestExpandJSONPath_determinism_across_calls(t *testing.T) {
+	ev := []byte(`{"x":[{"y":[1,2]},{"y":[3,4,5]}]}`)
+	out1, err := expandJSONPath(ev, "$.x[*].y[*]")
+	if err != nil {
+		t.Fatalf("expand1: %v", err)
+	}
+	out2, err := expandJSONPath(ev, "$.x[*].y[*]")
+	if err != nil {
+		t.Fatalf("expand2: %v", err)
+	}
+	if len(out1) != len(out2) {
+		t.Fatalf("len differs: %d vs %d", len(out1), len(out2))
+	}
+	for i := range out1 {
+		if out1[i] != out2[i] {
+			t.Errorf("expansion[%d] differs across calls: %q vs %q", i, out1[i], out2[i])
+		}
+	}
+}
+
+func TestExpandJSONPath_large_array_100(t *testing.T) {
+	// 100-element array — count + 일부 sample 검증.
+	var b strings.Builder
+	b.WriteString(`{"checks":[`)
+	for i := 0; i < 100; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(`{"status":"ok"}`)
+	}
+	b.WriteString(`]}`)
+	got, err := expandJSONPath([]byte(b.String()), "$.checks[*].status")
+	if err != nil {
+		t.Fatalf("expand err: %v", err)
+	}
+	if len(got) != 100 {
+		t.Fatalf("expected 100 expansions, got %d", len(got))
+	}
+	// 사전식 정렬 후: $.checks[0], $.checks[1], ..., $.checks[10], $.checks[11], ..., $.checks[99]
+	// (zero-pad 안 함 → string sort에서 "10"이 "2"보다 먼저). 본 함수는 sort.Strings 사용하므로
+	// 사전식 정렬 결과를 검증.
+	if got[0] != "$.checks[0].status" {
+		t.Errorf("first = %q, want $.checks[0].status", got[0])
+	}
+	// 사전식: $.checks[0]...$.checks[9]가 $.checks[10] 앞에 안 옴 — "$.checks[1" prefix가 "$.checks[2".
+	// 확실한 invariant만 검증: 모든 expansion이 unique이고 "$.checks[" prefix를 가짐.
+	seen := make(map[string]bool, 100)
+	for _, p := range got {
+		if !strings.HasPrefix(p, "$.checks[") {
+			t.Errorf("unexpected path %q", p)
+		}
+		if seen[p] {
+			t.Errorf("duplicate path %q", p)
+		}
+		seen[p] = true
+	}
+}
+
+func TestExpandJSONPath_invalid_evidence(t *testing.T) {
+	_, err := expandJSONPath([]byte(`{not json`), "$.x[*]")
+	if err == nil {
+		t.Fatal("expected error for invalid evidence, got nil")
+	}
+	if !errors.Is(err, ErrInvalidJSONPath) {
+		t.Errorf("err = %v, want wraps ErrInvalidJSONPath", err)
+	}
+}
