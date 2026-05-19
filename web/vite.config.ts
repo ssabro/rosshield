@@ -36,9 +36,9 @@ export default defineConfig({
         enabled: false,
       },
       manifest: {
-        name: 'rosshield Console',
-        short_name: 'rosshield',
-        description: 'ROS2 robot fleet security audit platform',
+        name: 'Lodestar 관리자 콘솔',
+        short_name: 'Lodestar',
+        description: 'Lodestar — ROS2 robot fleet 보안 감사 플랫폼 (codename rosshield)',
         start_url: '/',
         scope: '/',
         display: 'standalone',
