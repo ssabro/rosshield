@@ -43,6 +43,7 @@ import { useT } from '@/i18n/t'
 import { confirm } from '@/lib/confirm'
 import { requirePermission } from '@/lib/route-guards'
 import { toast } from '@/lib/toast'
+import { undoableAction } from '@/lib/undoable'
 
 import type { Fleet, FleetPolicy } from '@/api/hooks'
 import type { FormEvent } from 'react'
@@ -484,13 +485,12 @@ function DeleteFleetButton({ fleet }: { fleet: Fleet }): React.ReactElement {
       destructive: true,
     })
     if (!ok) return
-    del.mutate(fleet.id, {
-      onSuccess: () => {
-        toast.success(t('fleets.row.delete.toast.success'))
-      },
-      onError: (e) => {
-        toast.error(e instanceof Error ? e.message : t('fleets.row.delete.error'))
-      },
+    // D-UI-1 P0 — Undo window: ConfirmDialog 후 5초 보류, undo 시 mutation 미실행.
+    undoableAction({
+      message: t('fleets.row.delete.toast.success'),
+      undoLabel: t('common.undo'),
+      action: () => del.mutateAsync(fleet.id),
+      errorLabel: t('fleets.row.delete.error'),
     })
   }
 

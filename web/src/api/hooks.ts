@@ -453,6 +453,9 @@ export const useRotateCredential = () => {
 //
 // 성공 시 ['robots'] cache invalidate. R3-5: 두 번째 호출 404(멱등 X) — UI는
 // 성공 시 redirect, 404 받으면 이미 사라진 상태.
+//
+// D-UI-1 P0 — Optimistic update: onMutate에서 ['robots'] cache에서 즉시 row를
+// 제거. onError 시 snapshot으로 rollback. onSettled에서 정합 보장 invalidate.
 export const useDeleteRobot = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -468,7 +471,20 @@ export const useDeleteRobot = () => {
         )
       }
     },
-    onSuccess: () => {
+    onMutate: async (robotId) => {
+      await qc.cancelQueries({ queryKey: ['robots'] })
+      const previous = qc.getQueriesData<Robot[]>({ queryKey: ['robots'] })
+      qc.setQueriesData<Robot[]>({ queryKey: ['robots'] }, (old) =>
+        old ? old.filter((r) => r.id !== robotId) : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _robotId, ctx) => {
+      if (ctx?.previous) {
+        for (const [key, data] of ctx.previous) qc.setQueryData(key, data)
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['robots'] })
       qc.invalidateQueries({ queryKey: ['fleets'] }) // robotCount 갱신
     },
@@ -885,6 +901,7 @@ export const useUpdateFleet = () => {
   })
 }
 
+// D-UI-1 P0 — Optimistic update: ['fleets'] cache에서 즉시 row 제거 + rollback.
 export const useDeleteFleet = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -900,7 +917,20 @@ export const useDeleteFleet = () => {
         )
       }
     },
-    onSuccess: () => {
+    onMutate: async (fleetId) => {
+      await qc.cancelQueries({ queryKey: ['fleets'] })
+      const previous = qc.getQueriesData<Fleet[]>({ queryKey: ['fleets'] })
+      qc.setQueriesData<Fleet[]>({ queryKey: ['fleets'] }, (old) =>
+        old ? old.filter((f) => f.id !== fleetId) : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _fleetId, ctx) => {
+      if (ctx?.previous) {
+        for (const [key, data] of ctx.previous) qc.setQueryData(key, data)
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['fleets'] })
     },
   })
@@ -1029,6 +1059,8 @@ export interface CancelScanVars {
   sessionId: string
   reason?: string
 }
+// D-UI-1 P0 — Optimistic update: single session ['scans', sessionId] + list
+// ['scans', {filter}]에서 즉시 status='cancelled'로 표시 + rollback.
 export const useCancelScan = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -1048,8 +1080,32 @@ export const useCancelScan = () => {
       }
       return data as ScanSession
     },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['scans', data.sessionId] })
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: ['scans'] })
+      const previous = qc.getQueriesData({ queryKey: ['scans'] })
+      // 단일 session 캐시 — 즉시 status='cancelled'.
+      qc.setQueryData<ScanSession | undefined>(['scans', vars.sessionId], (old) =>
+        old ? { ...old, status: 'cancelled' } : old,
+      )
+      // 목록 캐시 (filter 조합) — 매칭 row에만 동일 적용.
+      qc.setQueriesData<ScanSession[] | undefined>(
+        { queryKey: ['scans'] },
+        (old) => {
+          if (!Array.isArray(old)) return old
+          return old.map((s) =>
+            s.sessionId === vars.sessionId ? { ...s, status: 'cancelled' } : s,
+          )
+        },
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        for (const [key, data] of ctx.previous) qc.setQueryData(key, data)
+      }
+    },
+    onSettled: (data, _err, vars) => {
+      qc.invalidateQueries({ queryKey: ['scans', data?.sessionId ?? vars.sessionId] })
       qc.invalidateQueries({ queryKey: ['scans'] })
     },
   })
@@ -1108,6 +1164,7 @@ export interface DismissInsightVars {
   reason: string
 }
 
+// D-UI-1 P0 — Optimistic update: ['insights'] cache에서 즉시 row 제거 + rollback.
 export const useDismissInsight = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -1127,7 +1184,20 @@ export const useDismissInsight = () => {
       }
       return data as Insight
     },
-    onSuccess: () => {
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: ['insights'] })
+      const previous = qc.getQueriesData<Insight[]>({ queryKey: ['insights'] })
+      qc.setQueriesData<Insight[]>({ queryKey: ['insights'] }, (old) =>
+        old ? old.filter((i) => i.id !== vars.insightId) : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        for (const [key, data] of ctx.previous) qc.setQueryData(key, data)
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['insights'] })
     },
   })
@@ -1750,6 +1820,7 @@ export const useUpdateWebhook = () => {
   })
 }
 
+// D-UI-1 P0 — Optimistic update: ['webhooks'] cache에서 즉시 row 제거 + rollback.
 export const useDeleteWebhook = () => {
   const qc = useQueryClient()
   return useMutation({
@@ -1765,7 +1836,20 @@ export const useDeleteWebhook = () => {
         )
       }
     },
-    onSuccess: () => {
+    onMutate: async (endpointId) => {
+      await qc.cancelQueries({ queryKey: ['webhooks'] })
+      const previous = qc.getQueriesData<WebhookEndpoint[]>({ queryKey: ['webhooks'] })
+      qc.setQueriesData<WebhookEndpoint[]>({ queryKey: ['webhooks'] }, (old) =>
+        old ? old.filter((w) => w.id !== endpointId) : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _endpointId, ctx) => {
+      if (ctx?.previous) {
+        for (const [key, data] of ctx.previous) qc.setQueryData(key, data)
+      }
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['webhooks'] })
     },
   })

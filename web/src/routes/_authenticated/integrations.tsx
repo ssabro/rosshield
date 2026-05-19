@@ -26,6 +26,7 @@ import { TruncatedId } from '@/components/common/TruncatedId'
 import { useT } from '@/i18n/t'
 import { confirm } from '@/lib/confirm'
 import { toast } from '@/lib/toast'
+import { undoableAction } from '@/lib/undoable'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -282,18 +283,13 @@ function EndpointRow({
       confirmLabel: t('integrations.confirm.delete.confirmLabel'),
     })
     if (!ok) return
-    del.mutate(endpoint.id, {
-      onSuccess: () => {
-        toast.success(t('integrations.toast.delete.success'), {
-          description: name,
-        })
-      },
-      onError: (err) => {
-        toast.error(t('integrations.toast.delete.error'), {
-          description:
-            err instanceof ApiError ? err.message : undefined,
-        })
-      },
+    // D-UI-1 P0 — Undo window: ConfirmDialog 후 5초 보류, undo 시 mutation 미실행.
+    undoableAction({
+      message: t('integrations.toast.delete.success'),
+      description: name,
+      undoLabel: t('common.undo'),
+      action: () => del.mutateAsync(endpoint.id),
+      errorLabel: t('integrations.toast.delete.error'),
     })
   }
   const events = endpoint.events ?? []

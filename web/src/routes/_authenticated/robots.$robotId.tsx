@@ -37,6 +37,7 @@ import { CardSkeleton } from '@/components/ui/skeleton'
 import { useT } from '@/i18n/t'
 import { confirm } from '@/lib/confirm'
 import { toast } from '@/lib/toast'
+import { undoableAction } from '@/lib/undoable'
 
 import type { FormEvent } from 'react'
 
@@ -215,14 +216,16 @@ function DeleteRobotCard({ robot }: { robot: Robot }): React.ReactElement | null
       destructive: true,
     })
     if (!ok) return
-    del.mutate(robot.id, {
-      onSuccess: () => {
-        toast.success(t('robots.detail.delete.toast.success'))
+    // D-UI-1 P0 — Undo window: ConfirmDialog 후 5초 보류. 사용자가 undo를 누를
+    //   가능성 있어 navigate는 즉시가 아닌 mutation 후 onSuccess에서 수행.
+    undoableAction({
+      message: t('robots.detail.delete.toast.success'),
+      undoLabel: t('common.undo'),
+      action: async () => {
+        await del.mutateAsync(robot.id)
         void navigate({ to: '/robots', replace: true })
       },
-      onError: (e) => {
-        toast.error(e instanceof Error ? e.message : t('robots.detail.delete.error'))
-      },
+      errorLabel: t('robots.detail.delete.error'),
     })
   }
 

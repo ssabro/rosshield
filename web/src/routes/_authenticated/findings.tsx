@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { confirm } from '@/lib/confirm'
-import { toast } from '@/lib/toast'
+import { undoableAction } from '@/lib/undoable'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -223,17 +223,20 @@ function InsightRow({ insight }: { insight: Insight }): React.ReactElement {
       destructive: true,
     })
     if (!ok) return
-    dismiss.mutate(
-      { insightId: insight.id, reason: t('findings.prompt.dismiss.default') },
-      {
-        onSuccess: () => {
-          toast.success(t('findings.dismiss.toast.success'))
-        },
-        onError: (err) => {
-          toast.error(err instanceof Error ? err.message : t('findings.error.fallback'))
-        },
-      },
-    )
+    // D-UI-1 P0 — Undo window: ConfirmDialog 통과 후 5초 보류.
+    //   undo 시 mutation 자체를 호출하지 않으므로 optimistic update도 트리거되지
+    //   않아 별도 rollback 불필요. delay 후 mutate → optimistic remove +
+    //   onSettled invalidate.
+    undoableAction({
+      message: t('findings.dismiss.toast.success'),
+      undoLabel: t('common.undo'),
+      action: () =>
+        dismiss.mutateAsync({
+          insightId: insight.id,
+          reason: t('findings.prompt.dismiss.default'),
+        }),
+      errorLabel: t('findings.error.fallback'),
+    })
   }
 
   const scope: string[] = []

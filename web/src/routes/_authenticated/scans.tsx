@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
 import { confirm } from '@/lib/confirm'
 import { toast } from '@/lib/toast'
+import { undoableAction } from '@/lib/undoable'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -800,19 +801,13 @@ function SessionProgressBody({
       destructive: true,
     })
     if (!ok) return
-    cancelScan.mutate(
-      { sessionId: session.sessionId },
-      {
-        onSuccess: () => {
-          toast.success(t('scans.session.cancel.toast.success'))
-        },
-        onError: (err) => {
-          toast.error(
-            err instanceof Error ? err.message : t('scans.session.cancel.error'),
-          )
-        },
-      },
-    )
+    // D-UI-1 P0 — Undo window: ConfirmDialog 후 5초 보류, undo 시 mutation 미실행.
+    undoableAction({
+      message: t('scans.session.cancel.toast.success'),
+      undoLabel: t('common.undo'),
+      action: () => cancelScan.mutateAsync({ sessionId: session.sessionId }),
+      errorLabel: t('scans.session.cancel.error'),
+    })
   }
 
   return (

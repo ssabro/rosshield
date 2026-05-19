@@ -85,6 +85,11 @@ export const ko = {
   'common.role.required.adminOrAuditor': '관리자 또는 감사인 권한이 필요합니다',
   'common.role.disabled.tooltip': '권한이 부족합니다',
 
+  // D-UI-1 P0 — destructive Undo window helper (`lib/undoable`) 공통 키.
+  'common.undo': '되돌리기',
+  'common.cancelled': '취소되었습니다',
+  'common.action.scheduled': '{seconds}초 후 적용됩니다',
+
   // PWA Stage 3 (Phase 5) — offline indicator + update prompt UX.
   // mutationBlocked는 Stage 4 mutation 가드용으로 미리 정의 (design doc §7 Stage 3).
   'pwa.offline.banner': '오프라인 — 마지막 데이터를 표시 중입니다',
@@ -1148,6 +1153,11 @@ export const en: Record<keyof typeof ko, string> = {
   'common.role.required.admin': 'admin role required',
   'common.role.required.adminOrAuditor': 'admin or auditor role required',
   'common.role.disabled.tooltip': 'insufficient permission',
+
+  // D-UI-1 P0 — destructive Undo window helper shared keys.
+  'common.undo': 'Undo',
+  'common.cancelled': 'Cancelled',
+  'common.action.scheduled': 'Applying in {seconds}s',
 
   // PWA Stage 3 (Phase 5) — offline indicator + update prompt UX.
   // mutationBlocked is reserved for the Stage 4 mutation guard (design doc §7 Stage 3).
