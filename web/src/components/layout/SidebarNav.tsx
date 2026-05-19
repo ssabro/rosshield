@@ -24,7 +24,7 @@ export function SidebarNav({
     <nav aria-label={t('app.brand')} className="flex flex-col gap-4 p-3">
       {groups.map((group) => (
         <div key={group.labelKey} className="flex flex-col gap-0.5">
-          <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+          <div className="px-3 pb-1.5 pt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t(group.labelKey)}
           </div>
           {group.items.map((item) => (

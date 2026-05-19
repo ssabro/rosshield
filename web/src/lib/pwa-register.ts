@@ -81,10 +81,11 @@ export function registerServiceWorker(): void {
   // 담아 호출(vitest의 vite-import-analysis가 정적 string을 검사하지 않도록).
   void (async () => {
     try {
-      const virtualModuleId: string = 'virtual:pwa-register'
-      const mod = (await import(
-        /* @vite-ignore */ virtualModuleId
-      )) as {
+      // vite-plugin-pwa가 build 시 transform — @vite-ignore 제거(이 주석이
+      // 있으면 vite가 module path 분석을 skip해서 PWA plugin이 transform을
+      // 수행하지 못함. production build에서 virtual:pwa-register가 실 module
+      // 로 resolve되지 않아 dynamic import가 CORS error로 fail).
+      const mod = (await import('virtual:pwa-register')) as {
         registerSW: (options?: {
           immediate?: boolean
           onNeedRefresh?: () => void
