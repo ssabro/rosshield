@@ -1,0 +1,47 @@
+# C5 — launch/param yaml world-writable 차단 (o+w perm = 0)
+#
+# design doc §2 C5 후보 'launch.no_world_writable_yaml' 정확 일치.
+# Round 2 MVP 우선 후보 — find 단순, site policy 의존 최소.
+# world-writable yaml은 동일 host의 임의 user가 param/launch 값 임의 수정 가능 →
+# 권한 escalation 또는 silent config tamper risk.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C5.no_world_writable_yaml
+  title: Launch/param yaml에 world-writable(o+w) 권한 파일 0건
+  description: |-
+    ROS2 launch는 외부 param yaml을 자주 참조합니다. yaml 파일이 world-writable
+    (other write, o+w)이면 동일 host의 임의 user가 robot 동작 파라미터를 silent
+    하게 수정 가능 — 권한 escalation 또는 안전-critical config tamper risk.
+    본 check는 표준 디렉터리(/etc/ros2/params, /opt/ros/jazzy/share/*/launch,
+    ~/ros2_ws/install/*/share/*/launch)의 .yaml 파일 중 o+w 권한 0건을 검증합니다.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    DIRS=$(ls -d /etc/ros2/params /opt/ros/jazzy/share/*/launch ~/ros2_ws/install/*/share/*/launch 2>/dev/null);
+    if [ -z "$DIRS" ]; then
+      echo "** PASS ** launch/param yaml 디렉터리 부재 (검사 대상 0)";
+      exit 0;
+    fi;
+    HITS=$(find $DIRS -type f -name "*.yaml" -perm /o+w 2>/dev/null | wc -l);
+    if [ "$HITS" = "0" ]; then
+      echo "** PASS ** world-writable yaml 0건";
+    else
+      echo "** FAIL ** world-writable yaml 발견 count=$HITS (chmod o-w 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    yaml 파일 perm o+w(예 0666, 0777)는 동일 host의 임의 user에게 write 권한을
+    부여 — 악의적 또는 실수성 config 변경이 robot 동작 직접 영향. /cmd_vel
+    rate limit, sensor calibration, safety zone 등 안전-critical 값이 silent
+    하게 수정되면 사고 risk. 권한 최소화 원칙(o+w = 0)이 baseline.
+  fixGuidance: |-
+    1. 위반 파일 식별 — find <launch-yaml-dir> -type f -name "*.yaml" -perm /o+w
+    2. 권한 수정 — chmod o-w <file> (또는 chmod 0644 <file>).
+    3. 영구 적용 — packaging 시 install 매니페스트에 정확한 perms 명시
+       (Debian: install -m 0644; ROS package.xml export 시 explicit mode).
+    4. 검증 — 본 check 재실행, find 결과 0건 확인.
+    5. (선택) systemd unit 또는 launch에 ReadOnlyPaths= 추가로 runtime 잠금.
