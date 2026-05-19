@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { useT } from '@/i18n/t'
 import {
   severityClassName,
   severityIcon,
@@ -37,6 +38,7 @@ export function SeverityBadge({
   size = 'md',
   className,
 }: SeverityBadgeProps): React.ReactElement {
+  const t = useT()
   const Icon = severityIcon[severity]
   const sizeCfg = SIZE_CLASSES[size]
   return (
@@ -50,7 +52,7 @@ export function SeverityBadge({
       data-severity={severity}
     >
       {showIcon && <Icon className={sizeCfg.icon} aria-hidden />}
-      {severityLabel[severity]}
+      {t(severityLabel[severity])}
     </span>
   )
 }

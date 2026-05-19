@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 
+import { useLocaleStore } from '@/i18n/store'
 import { SeverityBadge } from './SeverityBadge'
 
 // SeverityBadge — a11y review P0 대응: 색 + icon + text 3중 채널 검증.
 describe('SeverityBadge', () => {
+  beforeEach(() => {
+    useLocaleStore.setState({ locale: 'ko' })
+  })
+
   it('renders Korean label for each severity', () => {
     render(<SeverityBadge severity="critical" />)
     expect(screen.getByText('치명적')).toBeInTheDocument()
