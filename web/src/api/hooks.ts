@@ -1879,6 +1879,33 @@ export const useWebhookDeliveries = (endpointId?: string) => {
   })
 }
 
+// useWebhookDelivery — 단건 delivery 조회 (D-UI-1 carryover).
+//   Backend는 단건 endpoint(`GET /webhook-deliveries/{id}`)를 제공하지 않으므로
+//   query client cache의 `['webhooks', *, 'deliveries']` list query에서 id로 매칭.
+//   - cache hit: 즉시 반환 (network 0)
+//   - cache miss: undefined 반환 (UI에서 "삭제되었거나 캐시 만료" 안내)
+//   Future: backend가 단건 endpoint 추가 시 queryFn으로 교체 가능.
+export const useWebhookDelivery = (
+  deliveryId?: string,
+): { data: WebhookDelivery | undefined; isLoading: boolean } => {
+  const qc = useQueryClient()
+  if (!deliveryId) {
+    return { data: undefined, isLoading: false }
+  }
+  // 모든 `['webhooks', *, 'deliveries']` query에서 id 매칭.
+  const matches = qc.getQueriesData<WebhookDelivery[]>({
+    queryKey: ['webhooks'],
+  })
+  for (const [key, data] of matches) {
+    // key shape: ['webhooks', endpointId|null, 'deliveries']
+    if (Array.isArray(key) && key[2] === 'deliveries' && data) {
+      const found = data.find((d) => d.id === deliveryId)
+      if (found) return { data: found, isLoading: false }
+    }
+  }
+  return { data: undefined, isLoading: false }
+}
+
 // formatWebhookEvent — UI 표기용 EventType 짧은 라벨 매핑 (단위 테스트 가능).
 //   알 수 없는 값은 그대로 반환.
 export function formatWebhookEvent(event: string): string {

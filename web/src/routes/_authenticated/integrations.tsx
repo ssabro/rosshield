@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -16,6 +16,7 @@ import {
   useHasPermission,
   useTestWebhookEndpoint,
   useWebhookDeliveries,
+  useWebhookDelivery,
   useWebhookEndpoints,
   webhookDeliveryStatus,
 } from '@/api/hooks'
@@ -66,6 +67,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
 
 import type {
   WebhookDelivery,
@@ -92,8 +99,27 @@ function IntegrationsPage(): React.ReactElement {
   const isOffline = useIsOffline()
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // D-UI-1 carryover — URL ?delivery=<id>로 delivery 상세 dialog deep link.
+  const search = useSearch({ from: '/_authenticated/integrations' })
+  const navigate = useNavigate()
+  const selectedDeliveryId = search.delivery
 
   const selected = endpoints.data?.find((e) => e.id === selectedId) ?? null
+
+  const openDelivery = (id: string): void => {
+    void navigate({
+      to: '/integrations',
+      search: (prev) => ({ ...prev, delivery: id }),
+      replace: true,
+    })
+  }
+  const closeDelivery = (): void => {
+    void navigate({
+      to: '/integrations',
+      search: (prev) => ({ ...prev, delivery: undefined }),
+      replace: true,
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -131,6 +157,7 @@ function IntegrationsPage(): React.ReactElement {
 
       <DeliveriesSection
         endpoint={selected}
+        onSelectDelivery={openDelivery}
       />
 
       {isAdmin && (
@@ -149,6 +176,11 @@ function IntegrationsPage(): React.ReactElement {
           </DialogContent>
         </Dialog>
       )}
+
+      <DeliveryDetailDialog
+        deliveryId={selectedDeliveryId}
+        onClose={closeDelivery}
+      />
     </div>
   )
 }
@@ -442,8 +474,10 @@ function TestButton({
 // DeliveriesSection — 선택된 endpoint의 최근 deliveries 표 + 통계 카드 (O7).
 function DeliveriesSection({
   endpoint,
+  onSelectDelivery,
 }: {
   endpoint: WebhookEndpoint | null
+  onSelectDelivery: (id: string) => void
 }): React.ReactElement {
   const t = useT()
   const deliveries = useWebhookDeliveries(endpoint?.id)
@@ -521,7 +555,11 @@ function DeliveriesSection({
               {!deliveries.isPending &&
                 !deliveries.isError &&
                 (deliveries.data ?? []).map((d) => (
-                  <DeliveryRow key={d.id} delivery={d} />
+                  <DeliveryRow
+                    key={d.id}
+                    delivery={d}
+                    onSelect={() => onSelectDelivery(d.id)}
+                  />
                 ))}
             </TableBody>
           </Table>
@@ -533,14 +571,29 @@ function DeliveriesSection({
 
 function DeliveryRow({
   delivery,
+  onSelect,
 }: {
   delivery: WebhookDelivery
+  onSelect: () => void
 }): React.ReactElement {
   const t = useT()
   const status = webhookDeliveryStatus(delivery)
   const time = delivery.lastAttemptedAt ?? delivery.createdAt
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onSelect()
+    }
+  }
   return (
-    <TableRow>
+    <TableRow
+      onClick={onSelect}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label={t('integrations.delivery.row.aria')}
+      className="cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+    >
       <TableCell>
         <TruncatedId id={delivery.id} />
       </TableCell>
@@ -569,6 +622,231 @@ function DeliveryRow({
             : '—')}
       </TableCell>
     </TableRow>
+  )
+}
+
+// DeliveryDetailDialog — 단건 delivery 상세 (3 tab: Request | Response | Retries).
+//
+// D-UI-1 carryover. cache fallback 패턴: backend 단건 endpoint 부재로 useWebhookDelivery
+// hook이 list query cache에서 raw item을 가져옴. cache miss(reload·만료) 시 안내.
+//
+// 데이터 모델 한계:
+//   - WebhookDelivery에 requestHeaders/responseBody/retryHistory raw 필드는 미존재.
+//   - Request tab: eventType, eventId, payload(base64 decode JSON).
+//   - Response tab: lastResponseStatus, lastError(짧은 메시지).
+//   - Retries tab: attemptCount 기반 timeline (createdAt + lastAttemptedAt + nextAttemptAt).
+function DeliveryDetailDialog({
+  deliveryId,
+  onClose,
+}: {
+  deliveryId: string | undefined
+  onClose: () => void
+}): React.ReactElement {
+  const t = useT()
+  const { data: delivery } = useWebhookDelivery(deliveryId)
+  return (
+    <Dialog
+      open={Boolean(deliveryId)}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+    >
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{t('integrations.delivery.detail.title')}</DialogTitle>
+          <DialogDescription>
+            {delivery
+              ? `${formatWebhookEvent(String(delivery.eventType))} · ${delivery.eventId}`
+              : (deliveryId ?? '')}
+          </DialogDescription>
+        </DialogHeader>
+        {!delivery ? (
+          <p className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-4 text-xs text-muted-foreground">
+            {t('integrations.delivery.notFound')}
+          </p>
+        ) : (
+          <DeliveryDetailTabs delivery={delivery} />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DeliveryDetailTabs({
+  delivery,
+}: {
+  delivery: WebhookDelivery
+}): React.ReactElement {
+  const t = useT()
+  return (
+    <Tabs defaultValue="request" className="w-full">
+      <TabsList>
+        <TabsTrigger value="request">
+          {t('integrations.delivery.tab.request')}
+        </TabsTrigger>
+        <TabsTrigger value="response">
+          {t('integrations.delivery.tab.response')}
+        </TabsTrigger>
+        <TabsTrigger value="retries">
+          {t('integrations.delivery.tab.retries')}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="request" className="space-y-3">
+        <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+          <div>
+            <div className="text-muted-foreground">
+              {t('integrations.delivery.eventType')}
+            </div>
+            <div className="font-mono">
+              {formatWebhookEvent(String(delivery.eventType))}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground">
+              {t('integrations.delivery.eventId')}
+            </div>
+            <div className="font-mono break-all">{delivery.eventId}</div>
+          </div>
+        </div>
+        <div>
+          <h4 className="mb-1 text-sm font-medium">
+            {t('integrations.delivery.headers')}
+          </h4>
+          <p className="text-[10px] text-muted-foreground">
+            {t('integrations.delivery.headers.note')}
+          </p>
+        </div>
+        <div>
+          <h4 className="mb-1 text-sm font-medium">
+            {t('integrations.delivery.payload')}
+          </h4>
+          <PayloadPreview base64={delivery.payloadBase64} />
+        </div>
+      </TabsContent>
+
+      <TabsContent value="response" className="space-y-3">
+        <p className="text-xs">
+          <span className="text-muted-foreground">
+            {t('integrations.delivery.status')}:{' '}
+          </span>
+          <span className="font-mono">
+            {delivery.lastResponseStatus
+              ? `HTTP ${delivery.lastResponseStatus}`
+              : '—'}
+          </span>
+        </p>
+        <pre className="max-h-96 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap break-all">
+          {delivery.lastError || t('integrations.delivery.no_response')}
+        </pre>
+      </TabsContent>
+
+      <TabsContent value="retries" className="space-y-2">
+        <p className="text-xs">
+          <span className="text-muted-foreground">
+            {t('integrations.delivery.attempt')}:{' '}
+          </span>
+          <span className="font-mono">{delivery.attemptCount}</span>
+        </p>
+        <ol className="space-y-2 border-l-2 border-border pl-3">
+          <RetryTimelineItem
+            label={t('integrations.delivery.firstAttempt')}
+            timestamp={delivery.createdAt}
+          />
+          {delivery.lastAttemptedAt ? (
+            <RetryTimelineItem
+              label={t('integrations.delivery.lastAttempt')}
+              timestamp={delivery.lastAttemptedAt}
+              detail={
+                delivery.lastResponseStatus
+                  ? `HTTP ${delivery.lastResponseStatus}`
+                  : undefined
+              }
+            />
+          ) : null}
+          {delivery.nextAttemptAt &&
+          !delivery.succeeded &&
+          delivery.attemptCount < 5 ? (
+            <RetryTimelineItem
+              label={t('integrations.delivery.nextAttempt')}
+              timestamp={delivery.nextAttemptAt}
+            />
+          ) : null}
+        </ol>
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+function RetryTimelineItem({
+  label,
+  timestamp,
+  detail,
+}: {
+  label: string
+  timestamp: string
+  detail?: string
+}): React.ReactElement {
+  return (
+    <li>
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="font-mono text-xs">
+        {timestamp ? new Date(timestamp).toLocaleString() : '—'}
+      </div>
+      {detail ? <div className="text-xs">{detail}</div> : null}
+    </li>
+  )
+}
+
+// PayloadPreview — base64-encoded payload를 JSON으로 디코드해 pretty-print.
+//   디코딩 실패 시 raw base64를 잘림 표시(fallback).
+//   exported for unit testing.
+export function decodePayload(
+  base64: string | undefined,
+): { kind: 'json'; value: string } | { kind: 'raw'; value: string } | { kind: 'empty' } | { kind: 'error' } {
+  if (!base64) return { kind: 'empty' }
+  try {
+    // atob: browser-native base64 decode. Node test 환경에서도 buffer polyfill로 동작.
+    const raw =
+      typeof atob === 'function'
+        ? atob(base64)
+        : Buffer.from(base64, 'base64').toString('utf-8')
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      return { kind: 'json', value: JSON.stringify(parsed, null, 2) }
+    } catch {
+      return { kind: 'raw', value: raw }
+    }
+  } catch {
+    return { kind: 'error' }
+  }
+}
+
+function PayloadPreview({
+  base64,
+}: {
+  base64: string | undefined
+}): React.ReactElement {
+  const t = useT()
+  const decoded = decodePayload(base64)
+  if (decoded.kind === 'empty') {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {t('integrations.delivery.payload.empty')}
+      </p>
+    )
+  }
+  if (decoded.kind === 'error') {
+    return (
+      <p className="text-xs text-destructive">
+        {t('integrations.delivery.payload.decodeError')}
+      </p>
+    )
+  }
+  return (
+    <pre className="max-h-96 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap break-all">
+      {decoded.value}
+    </pre>
   )
 }
 
@@ -920,4 +1198,8 @@ function StatCell({
 
 export const Route = createFileRoute('/_authenticated/integrations')({
   component: IntegrationsPage,
+  validateSearch: (search: Record<string, unknown>): { delivery?: string } => {
+    const d = typeof search.delivery === 'string' ? search.delivery : undefined
+    return d ? { delivery: d } : {}
+  },
 })

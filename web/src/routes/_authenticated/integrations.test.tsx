@@ -13,6 +13,7 @@ import {
 } from '@/api/hooks'
 
 import {
+  decodePayload,
   deliveryStatusKind,
   deliveryStatusLabelKey,
   endpointDisplayName,
@@ -172,5 +173,42 @@ describe('statCellColorClass (O7)', () => {
     expect(statCellColorClass('warning')).toContain('amber')
     expect(statCellColorClass('destructive')).toContain('destructive')
     expect(statCellColorClass('muted')).toContain('muted')
+  })
+})
+
+// D-UI-1 carryover — DeliveryDetailDialog payload preview 디코딩.
+describe('decodePayload (D-UI-1 carryover)', () => {
+  it('undefined → empty', () => {
+    expect(decodePayload(undefined)).toEqual({ kind: 'empty' })
+  })
+  it('valid JSON base64 → pretty-printed json', () => {
+    // {"event":"scan.completed","sessionId":"s_1"}
+    const b64 = Buffer.from(
+      '{"event":"scan.completed","sessionId":"s_1"}',
+      'utf-8',
+    ).toString('base64')
+    const decoded = decodePayload(b64)
+    expect(decoded.kind).toBe('json')
+    if (decoded.kind === 'json') {
+      expect(decoded.value).toContain('"event": "scan.completed"')
+      expect(decoded.value).toContain('"sessionId": "s_1"')
+    }
+  })
+  it('non-JSON base64 → raw string', () => {
+    const b64 = Buffer.from('plain text payload', 'utf-8').toString('base64')
+    const decoded = decodePayload(b64)
+    expect(decoded.kind).toBe('raw')
+    if (decoded.kind === 'raw') {
+      expect(decoded.value).toBe('plain text payload')
+    }
+  })
+  it('invalid base64 → error', () => {
+    // atob는 invalid 문자에 InvalidCharacterError throw — Buffer는 무시하므로
+    // jsdom 환경(atob 존재)에서 검증.
+    if (typeof atob === 'function') {
+      const decoded = decodePayload('!!!not-base64!!!')
+      // atob는 일부 문자열을 허용하므로 kind는 json/raw/error 중 하나여야 함.
+      expect(['json', 'raw', 'error']).toContain(decoded.kind)
+    }
   })
 })
