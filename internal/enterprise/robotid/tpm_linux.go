@@ -35,11 +35,18 @@ type tpmOpener func() (io.ReadWriteCloser, error)
 // go-tpm-tools/client.EndorsementKeyECC signature와 일치 (io.ReadWriter).
 type ekLoader func(rw io.ReadWriter) (*client.Key, error)
 
-// 본 함수 변수는 test에서만 override됩니다 (tpm_test.go의 newWith*Hook).
+// pcrReader는 rwc로부터 PCR 값을 읽는 hook입니다 — test seam (simulator 주입).
+// nil이면 production 경로(tpm2.ReadPCRs).
+//
+// tpm2.ReadPCRs signature와 일치 (io.ReadWriter, PCRSelection).
+type pcrReader func(rw io.ReadWriter, sel tpm2.PCRSelection) (map[int][]byte, error)
+
+// 본 함수 변수는 test에서만 override됩니다 (tpm_test.go의 withTPMHooks).
 // production 경로는 nil (default 분기).
 var (
 	defaultTPMOpener tpmOpener
 	defaultEKLoader  ekLoader
+	defaultPCRReader pcrReader
 )
 
 // collectEKCertLinux는 TPM EK public key를 DER 형태로 수집합니다.
@@ -93,4 +100,56 @@ func collectEKCertLinux() ([]byte, error) {
 // 인자 없으면 /dev/tpmrm0 → /dev/tpm0 자동 fallback (go-tpm 내부 동작).
 func openTPMDevice() (io.ReadWriteCloser, error) {
 	return tpm2.OpenTPM()
+}
+
+// collectPCRValuesLinux는 지정된 PCR index의 값을 TPM에서 수집합니다 (v2).
+//
+// 흐름:
+//  1. 빈 pcrs slice → 빈 map 즉시 반환 (fast path, TPM 접근 없음).
+//  2. tpm2.OpenTPM() — /dev/tpmrm0 → /dev/tpm0 fallback.
+//  3. tpm2.ReadPCRs(rwc, PCRSelection{Hash: AlgSHA256, PCRs: pcrs}).
+//  4. 결과 map[int][]byte 그대로 반환 (정렬은 Compute의 책임).
+//
+// 알고리즘 결정:
+//   - SHA-256 PCR bank 사용 — TPM 2.0 표준 + Compute의 sha256 결합 일관.
+//   - legacy/tpm2.ReadPCRs는 PCR 8개 제한 — DefaultPCRSelection 4개 충분.
+//     호출자가 9개 이상 요청 시 ReadPCRs 자체가 에러 → 본 함수가 그대로 wrap.
+//
+// 어느 단계라도 실패 시 ErrTPMNotAvailable로 wrap. 호출자는 errors.Is로
+// 분기 후 nil map으로 Compute 진행 가능 (v1 path fallback).
+func collectPCRValuesLinux(pcrs []int) (map[int][]byte, error) {
+	// fast path — 빈 요청은 TPM 접근 없이 빈 map 반환 (호출 안전).
+	if len(pcrs) == 0 {
+		return map[int][]byte{}, nil
+	}
+
+	opener := defaultTPMOpener
+	if opener == nil {
+		opener = openTPMDevice
+	}
+	rwc, err := opener()
+	if err != nil {
+		return nil, fmt.Errorf("%w: open: %v", ErrTPMNotAvailable, err)
+	}
+	defer func() {
+		_ = rwc.Close()
+	}()
+
+	reader := defaultPCRReader
+	if reader == nil {
+		reader = tpm2.ReadPCRs
+	}
+
+	sel := tpm2.PCRSelection{
+		Hash: tpm2.AlgSHA256,
+		PCRs: pcrs,
+	}
+	values, err := reader(rwc, sel)
+	if err != nil {
+		return nil, fmt.Errorf("%w: read PCRs: %v", ErrTPMNotAvailable, err)
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%w: ReadPCRs returned empty map", ErrTPMNotAvailable)
+	}
+	return values, nil
 }

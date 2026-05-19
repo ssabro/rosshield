@@ -32,3 +32,9 @@ func (stubCollector) CollectMACs() ([]string, error) {
 func (stubCollector) CollectCPUSerial() (string, error) {
 	return "", ErrCollectorNotSupported
 }
+
+// CollectPCRValues는 non-Linux stub — TPM 자체가 미지원이므로 nil + sentinel.
+// 호출자는 nil map을 Inputs.PCRValues에 전달하여 v1 path로 fallback 가능.
+func (stubCollector) CollectPCRValues(_ []int) (map[int][]byte, error) {
+	return nil, ErrCollectorNotSupported
+}

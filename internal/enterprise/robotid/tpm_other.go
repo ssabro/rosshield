@@ -15,3 +15,9 @@ package robotid
 func collectEKCertLinux() ([]byte, error) {
 	return nil, ErrTPMNotAvailable
 }
+
+// collectPCRValuesLinux는 non-Linux stub — 실제 호출 경로 없음 (stubCollector가
+// 먼저 ErrCollectorNotSupported 반환). 본 함수는 build symmetry 용도.
+func collectPCRValuesLinux(_ []int) (map[int][]byte, error) {
+	return nil, ErrTPMNotAvailable
+}

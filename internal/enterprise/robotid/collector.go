@@ -40,6 +40,19 @@ var (
 	ErrCPUSerialNotAvailable = errors.New("robotid: CPU serial not available")
 )
 
+// DefaultPCRSelection는 v2 부팅 무결성 결합 시 권장 PCR index 집합입니다.
+//
+// PCR 0 — UEFI/BIOS firmware 코드 측정 (CRTM).
+// PCR 2 — UEFI driver 및 application 측정.
+// PCR 4 — boot loader 측정 (Linux 환경 grub/shim 등).
+// PCR 7 — Secure Boot 정책 및 인증 키 측정.
+//
+// 이 4개는 boot integrity 핵심 — boot loader/kernel/driver/secure boot 변조를
+// 검출하기 위해 충분 (TCG PC Client Platform Firmware Profile spec 기준).
+// 호출자는 운영 정책에 따라 다른 PCR 집합을 전달 가능 (예: PCR 8-9 ima 측정,
+// PCR 14 MOK list 등).
+var DefaultPCRSelection = []int{0, 2, 4, 7}
+
 // Collector는 OS별 robot 식별자 수집 인터페이스입니다.
 //
 // 각 메서드는 부재 sentinel을 반환할 수 있으며 — 호출자는 빈 값과 sentinel
@@ -60,4 +73,10 @@ type Collector interface {
 	// CollectCPUSerial은 CPU/시스템 serial을 수집합니다.
 	// 부재 시 ("", ErrCPUSerialNotAvailable).
 	CollectCPUSerial() (string, error)
+
+	// CollectPCRValues는 지정된 PCR index 집합의 값을 수집합니다 (v2 부팅
+	// 무결성 결합용). pcrs는 sort 불필요 (구현이 PCRSelection 구성 시 사용).
+	// TPM 부재·접근 실패 시 (nil, ErrTPMNotAvailable). 호출자는 nil map을
+	// 그대로 Inputs.PCRValues에 전달하여 v1 path로 fallback 가능.
+	CollectPCRValues(pcrs []int) (map[int][]byte, error)
 }

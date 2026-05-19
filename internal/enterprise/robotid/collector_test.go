@@ -56,6 +56,51 @@ func TestNewCollector_OS별_분기(t *testing.T) {
 		if !errors.Is(cpuErr, ErrCollectorNotSupported) {
 			t.Errorf("stub CollectCPUSerial: want ErrCollectorNotSupported, got %v", cpuErr)
 		}
+		_, pcrErr := c.CollectPCRValues(DefaultPCRSelection)
+		if !errors.Is(pcrErr, ErrCollectorNotSupported) {
+			t.Errorf("stub CollectPCRValues: want ErrCollectorNotSupported, got %v", pcrErr)
+		}
+	}
+}
+
+// TestCollector_v2_PCR_빈_pcrs_fast_path
+//
+// Linux realCollector는 빈 pcrs slice → TPM 접근 없이 빈 map + nil err.
+// non-Linux stubCollector는 빈 pcrs라도 ErrCollectorNotSupported 일관 반환.
+func TestCollector_v2_PCR_빈_pcrs_fast_path(t *testing.T) {
+	c := NewCollector()
+	pcrs, err := c.CollectPCRValues(nil)
+
+	if runtime.GOOS == "linux" {
+		if err != nil {
+			t.Errorf("Linux realCollector: 빈 pcrs는 nil err 기대, got %v", err)
+		}
+		if pcrs == nil {
+			t.Error("Linux realCollector: 빈 pcrs는 빈 map 기대, got nil")
+		}
+		if len(pcrs) != 0 {
+			t.Errorf("Linux realCollector: 빈 pcrs는 길이 0 기대, got %d", len(pcrs))
+		}
+	} else {
+		if !errors.Is(err, ErrCollectorNotSupported) {
+			t.Errorf("non-Linux stub: want ErrCollectorNotSupported, got %v", err)
+		}
+	}
+}
+
+// TestCollector_v2_PCR_DefaultPCRSelection_상수
+//
+// DefaultPCRSelection은 boot integrity 핵심 4개 PCR (0, 2, 4, 7) 고정.
+// 변경 시 외부 검증자 재현성에 영향 — regression guard.
+func TestCollector_v2_PCR_DefaultPCRSelection_상수(t *testing.T) {
+	want := []int{0, 2, 4, 7}
+	if len(DefaultPCRSelection) != len(want) {
+		t.Fatalf("DefaultPCRSelection length=%d, want %d", len(DefaultPCRSelection), len(want))
+	}
+	for i, v := range want {
+		if DefaultPCRSelection[i] != v {
+			t.Errorf("DefaultPCRSelection[%d]=%d, want %d", i, DefaultPCRSelection[i], v)
+		}
 	}
 }
 

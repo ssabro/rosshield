@@ -12,6 +12,7 @@
 package robotid
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -21,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/google/go-tpm-tools/client"
+	"github.com/google/go-tpm/legacy/tpm2"
 )
 
 // fakeRWC는 TPM 디바이스를 흉내내는 io.ReadWriteCloser — 실 호출 없음.
@@ -32,7 +34,8 @@ func (f *fakeRWC) Read(p []byte) (int, error)  { return 0, io.EOF }
 func (f *fakeRWC) Write(p []byte) (int, error) { return len(p), nil }
 func (f *fakeRWC) Close() error                { f.closed = true; return nil }
 
-// withTPMHooks는 default*Hook을 임시 override합니다. defer로 복원 보장.
+// withTPMHooks는 default*Hook (opener + ekLoader)을 임시 override합니다.
+// defer로 복원 보장. pcrReader는 nil 그대로 (해당 테스트에 영향 없음).
 func withTPMHooks(t *testing.T, opener tpmOpener, loader ekLoader, fn func()) {
 	t.Helper()
 	prevOpener := defaultTPMOpener
@@ -43,6 +46,21 @@ func withTPMHooks(t *testing.T, opener tpmOpener, loader ekLoader, fn func()) {
 	}()
 	defaultTPMOpener = opener
 	defaultEKLoader = loader
+	fn()
+}
+
+// withPCRHooks는 default*Hook (opener + pcrReader)을 임시 override합니다.
+// v2 PCR collector 테스트 전용 — ekLoader는 nil 그대로 (해당 테스트에 영향 없음).
+func withPCRHooks(t *testing.T, opener tpmOpener, reader pcrReader, fn func()) {
+	t.Helper()
+	prevOpener := defaultTPMOpener
+	prevReader := defaultPCRReader
+	defer func() {
+		defaultTPMOpener = prevOpener
+		defaultPCRReader = prevReader
+	}()
+	defaultTPMOpener = opener
+	defaultPCRReader = reader
 	fn()
 }
 
@@ -191,4 +209,210 @@ func TestCollectEKCertLinux_fingerprint_integration_ECDSA_keystore_재현(t *tes
 	if len(rsaDER) == 0 {
 		t.Fatal("RSA DER empty")
 	}
+}
+
+// =============================================================================
+// v2 — TPM PCR values collector 단위 테스트 (Linux 한정)
+// =============================================================================
+//
+// 실 TPM hardware 의존을 회피 — 모든 테스트는 hook (defaultTPMOpener +
+// defaultPCRReader)을 override하여 mock으로 동작합니다. 실 PCR 값 검증은
+// E36 burn-in (swtpm simulator 또는 실 hardware) 단계.
+
+// TestCollectPCRValuesLinux_빈_pcrs_fast_path
+//
+// 빈 pcrs slice → TPM 접근 없이 빈 map + nil err. opener가 호출되지 않아야
+// (mock이 panic을 일으키면 호출 감지).
+func TestCollectPCRValuesLinux_빈_pcrs_fast_path(t *testing.T) {
+	openerCalled := false
+	withPCRHooks(t,
+		func() (io.ReadWriteCloser, error) {
+			openerCalled = true
+			return nil, errors.New("should not be called")
+		},
+		nil,
+		func() {
+			pcrs, err := collectPCRValuesLinux(nil)
+			if err != nil {
+				t.Errorf("빈 pcrs는 nil err 기대, got %v", err)
+			}
+			if pcrs == nil {
+				t.Error("빈 pcrs는 빈 map 기대, got nil")
+			}
+			if len(pcrs) != 0 {
+				t.Errorf("빈 pcrs는 길이 0 기대, got %d", len(pcrs))
+			}
+			if openerCalled {
+				t.Error("빈 pcrs는 TPM open 호출 안 해야 (fast path)")
+			}
+		},
+	)
+}
+
+// TestCollectPCRValuesLinux_open_실패_ErrTPMNotAvailable
+//
+// TPM open 실패 시 ErrTPMNotAvailable로 wrap.
+func TestCollectPCRValuesLinux_open_실패_ErrTPMNotAvailable(t *testing.T) {
+	withPCRHooks(t,
+		func() (io.ReadWriteCloser, error) {
+			return nil, errors.New("no such device")
+		},
+		nil,
+		func() {
+			_, err := collectPCRValuesLinux([]int{0, 7})
+			if !errors.Is(err, ErrTPMNotAvailable) {
+				t.Errorf("want ErrTPMNotAvailable, got %v", err)
+			}
+		},
+	)
+}
+
+// TestCollectPCRValuesLinux_ReadPCRs_실패_ErrTPMNotAvailable
+//
+// tpm2.ReadPCRs 실패 시 ErrTPMNotAvailable로 wrap + rwc Close 보장.
+func TestCollectPCRValuesLinux_ReadPCRs_실패_ErrTPMNotAvailable(t *testing.T) {
+	rwc := &fakeRWC{}
+	withPCRHooks(t,
+		func() (io.ReadWriteCloser, error) { return rwc, nil },
+		func(_ io.ReadWriter, _ tpm2.PCRSelection) (map[int][]byte, error) {
+			return nil, errors.New("PCR read failed")
+		},
+		func() {
+			_, err := collectPCRValuesLinux([]int{0, 7})
+			if !errors.Is(err, ErrTPMNotAvailable) {
+				t.Errorf("want ErrTPMNotAvailable, got %v", err)
+			}
+			if !rwc.closed {
+				t.Error("rwc Close 호출 안 됨 (defer Close 누락)")
+			}
+		},
+	)
+}
+
+// TestCollectPCRValuesLinux_빈_결과_ErrTPMNotAvailable
+//
+// tpm2.ReadPCRs가 빈 map 반환 시 (이론상 발생 안 하나 방어) ErrTPMNotAvailable.
+func TestCollectPCRValuesLinux_빈_결과_ErrTPMNotAvailable(t *testing.T) {
+	rwc := &fakeRWC{}
+	withPCRHooks(t,
+		func() (io.ReadWriteCloser, error) { return rwc, nil },
+		func(_ io.ReadWriter, _ tpm2.PCRSelection) (map[int][]byte, error) {
+			return map[int][]byte{}, nil
+		},
+		func() {
+			_, err := collectPCRValuesLinux([]int{0, 7})
+			if !errors.Is(err, ErrTPMNotAvailable) {
+				t.Errorf("want ErrTPMNotAvailable, got %v", err)
+			}
+		},
+	)
+}
+
+// TestCollectPCRValuesLinux_성공_map_반환
+//
+// 정상 path — mock reader가 PCR 값 반환 시 그대로 통과 + PCRSelection
+// Hash=AlgSHA256 + PCRs 일치.
+func TestCollectPCRValuesLinux_성공_map_반환(t *testing.T) {
+	rwc := &fakeRWC{}
+	var receivedSel tpm2.PCRSelection
+	expectedPCRs := []int{0, 2, 4, 7}
+	mockValues := map[int][]byte{
+		0: bytes.Repeat([]byte{0xA0}, 32),
+		2: bytes.Repeat([]byte{0xB0}, 32),
+		4: bytes.Repeat([]byte{0xC0}, 32),
+		7: bytes.Repeat([]byte{0xD0}, 32),
+	}
+
+	withPCRHooks(t,
+		func() (io.ReadWriteCloser, error) { return rwc, nil },
+		func(_ io.ReadWriter, sel tpm2.PCRSelection) (map[int][]byte, error) {
+			receivedSel = sel
+			return mockValues, nil
+		},
+		func() {
+			got, err := collectPCRValuesLinux(expectedPCRs)
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if len(got) != len(mockValues) {
+				t.Errorf("got %d PCR values, want %d", len(got), len(mockValues))
+			}
+			for k, want := range mockValues {
+				gotVal, ok := got[k]
+				if !ok {
+					t.Errorf("PCR %d missing in result", k)
+					continue
+				}
+				if !bytes.Equal(gotVal, want) {
+					t.Errorf("PCR[%d] mismatch", k)
+				}
+			}
+			if receivedSel.Hash != tpm2.AlgSHA256 {
+				t.Errorf("PCRSelection.Hash=%v, want AlgSHA256", receivedSel.Hash)
+			}
+			if len(receivedSel.PCRs) != len(expectedPCRs) {
+				t.Errorf("PCRSelection.PCRs length=%d, want %d",
+					len(receivedSel.PCRs), len(expectedPCRs))
+			}
+			if !rwc.closed {
+				t.Error("rwc Close 호출 안 됨")
+			}
+		},
+	)
+}
+
+// TestCollectPCRValuesLinux_default_경로_production
+//
+// 실 TPM 부재 환경 (CI · dev) 기본 hook으로 호출 시 ErrTPMNotAvailable.
+// 실 TPM이 있는 host에서는 정상 PCR 반환도 허용 — 두 경우 모두 코드 결함 0.
+func TestCollectPCRValuesLinux_default_경로_production(t *testing.T) {
+	if defaultTPMOpener != nil || defaultPCRReader != nil {
+		t.Skip("default hook 이미 override됨 — production 경로 skip")
+	}
+	_, err := collectPCRValuesLinux(DefaultPCRSelection)
+	if err != nil && !errors.Is(err, ErrTPMNotAvailable) {
+		t.Errorf("production 경로: 예상 외 에러 %v", err)
+	}
+}
+
+// TestCollectPCRValuesLinux_Compute_통합
+//
+// PCR collector 결과를 Compute에 주입 → v2 fingerprint 산출까지 통합 흐름
+// 검증 (mock 기반).
+func TestCollectPCRValuesLinux_Compute_통합(t *testing.T) {
+	rwc := &fakeRWC{}
+	mockValues := map[int][]byte{
+		0: {0x01, 0x02},
+		7: {0x07, 0x08},
+	}
+
+	withPCRHooks(t,
+		func() (io.ReadWriteCloser, error) { return rwc, nil },
+		func(_ io.ReadWriter, _ tpm2.PCRSelection) (map[int][]byte, error) {
+			return mockValues, nil
+		},
+		func() {
+			pcrs, err := collectPCRValuesLinux([]int{0, 7})
+			if err != nil {
+				t.Fatalf("collect: %v", err)
+			}
+
+			fp, err := Compute(Inputs{
+				Salt:      []byte("tenant-salt"),
+				PCRValues: pcrs,
+			})
+			if err != nil {
+				t.Fatalf("Compute: %v", err)
+			}
+			if !fp.HasPCRQuote {
+				t.Error("Compute 후 HasPCRQuote=false")
+			}
+			if fp.PCRDigest == "" {
+				t.Error("Compute 후 PCRDigest 비어있음")
+			}
+			if len(fp.PCRDigest) != HashHexLength {
+				t.Errorf("PCRDigest length=%d, want %d", len(fp.PCRDigest), HashHexLength)
+			}
+		},
+	)
 }

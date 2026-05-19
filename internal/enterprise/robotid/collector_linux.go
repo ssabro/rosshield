@@ -47,6 +47,13 @@ func (realCollector) CollectEKCert() ([]byte, error) {
 	return collectEKCertLinux()
 }
 
+// CollectPCRValues는 지정된 PCR index의 값을 TPM에서 수집합니다 (v2 부팅 무결성).
+// 본체는 tpm_linux.go의 collectPCRValuesLinux에 위임. TPM 미장착·권한 부족 시
+// ErrTPMNotAvailable. 빈 pcrs slice → 빈 map 반환 (호출 안전, 결합 안 함).
+func (realCollector) CollectPCRValues(pcrs []int) (map[int][]byte, error) {
+	return collectPCRValuesLinux(pcrs)
+}
+
 // CollectMACs는 활성·비활성 네트워크 인터페이스의 MAC 주소를 수집합니다.
 // 정렬·dedupe는 Compute가 담당 — 본 함수는 stdlib 호출 순서 그대로 반환.
 //
