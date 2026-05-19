@@ -7,7 +7,26 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Optimistic update + Undo window (carryover P0) / D-UI-1 Stage 5 polish (axe-core) / ROS2 Round 3 6 carryover / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Optimistic update + Undo window (carryover P0) / D-UI-1 Stage 5 polish (axe-core) / Phase 5~7 큰 carryover (LLM private · Multi-region HA · Audit rotation · E22-F BOOLEAN) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.2] — 2026-05-19 (patch)
+
+> **요약**: ROS2 baseline pack Round 3 — 8/8 카테고리 cover 깊이 확장 (16→22 check) + 잔여 컴포넌트 hardcoded 영어 정리 6 파일. 회귀 0. 상세는 [docs/releases/v0.6.2.md](docs/releases/v0.6.2.md).
+>
+> **기준 commit**: `2da1e66` (main)
+
+### Added
+- `feat(packs)` ROS2 Round 3 C4+C5 carryover 6 check (`a914735`) — apt_key_valid · colcon_install_hash · signed_packages_only · param_files_owner · argv_no_remote_url · lifecycle_node_used. **22 check 총** (Round 1+2+3 = 8/8 깊이 확장)
+
+### Fixed
+- `fix(web)` 컴포넌트 hardcoded 영어 잔존 i18n 적용 (`5380269`) — packs/scans/system SeverityStats `t('severity.X')` + uppercase className 제거 + advisor opt-in 옵트인
+
+### Notes
+- supply chain 3 layer 직렬 검증 (apt source → key → digest → origin)
+- launch 안전 3 layer (world-writable → owner/perms → remote URL → lifecycle)
+- A sub-agent (Optimistic+Undo) killed — carryover
 
 ---
 
