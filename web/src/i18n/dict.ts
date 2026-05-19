@@ -76,6 +76,9 @@ export const ko = {
   'common.loading': '불러오는 중…',
   'common.empty.generic': '데이터가 없습니다',
   'common.error.unknown': '알 수 없는 오류가 발생했습니다',
+  // D-UI-2 — Dialog 공통 footer 버튼.
+  'common.dialog.cancel': '취소',
+  'common.dialog.close': '닫기',
 
   // RBAC Stage 2-B (Phase 5) — role 부족 시 disabled 버튼 tooltip 메시지.
   'common.role.required.admin': '관리자 권한이 필요합니다',
@@ -203,6 +206,12 @@ export const ko = {
   'robots.detail.rotate.confirm.button': 'rotate',
   'robots.detail.rotate.toast.success': '자격 증명 갱신 완료',
   'robots.detail.rotate.toast.successDescription': 'SSH host key 재신뢰됨 — 새 자격 증명 ID: {id}',
+  // D-UI-2 — robots 페이지 Dialog 분리 + ID 테이블 컬럼.
+  'robots.create.button': '로봇 등록',
+  'robots.create.title': '새 로봇 등록',
+  'robots.create.description': '플릿·인증 정보를 입력하면 즉시 등록되고 SSH 접속이 검증됩니다.',
+  'robots.table.id': 'ID',
+  'robots.table.fleet': '플릿',
 
   'pages.scans.title': '스캔',
   'pages.scans.description': '플릿과 벤치마크 팩을 선택해 새 스캔 세션을 시작합니다.',
@@ -313,6 +322,11 @@ export const ko = {
   'scans.list.count': '{shown}/{total}',
   'scans.list.noMatches': '필터 조건에 맞는 세션이 없습니다.',
   'scans.list.noMatches.cta': '필터 초기화',
+  // D-UI-2 — scans 페이지 Create Dialog (form 분리).
+  'scans.create.button': '새 스캔',
+  'scans.create.title': '새 스캔 시작',
+  'scans.create.description': '플릿과 벤치마크 팩을 선택해 새 스캔 세션을 시작합니다.',
+  'scans.create.toast.success': '스캔이 시작되었습니다',
 
   'pages.findings.title': '탐지·이슈',
   'pages.findings.description':
@@ -1117,6 +1131,9 @@ export const en: Record<keyof typeof ko, string> = {
   'common.loading': 'Loading…',
   'common.empty.generic': 'No data',
   'common.error.unknown': 'An unknown error occurred',
+  // D-UI-2 — Dialog common footer buttons.
+  'common.dialog.cancel': 'Cancel',
+  'common.dialog.close': 'Close',
 
   // RBAC Stage 2-B (Phase 5) — disabled button tooltip messages for missing role.
   'common.role.required.admin': 'admin role required',
@@ -1243,6 +1260,12 @@ export const en: Record<keyof typeof ko, string> = {
   'robots.detail.rotate.confirm.button': 'rotate',
   'robots.detail.rotate.toast.success': 'Credential rotated',
   'robots.detail.rotate.toast.successDescription': 'New SSH host key trusted — new credential ID: {id}',
+  // D-UI-2 — robots page Dialog split + ID table column.
+  'robots.create.button': 'Register robot',
+  'robots.create.title': 'Register a new robot',
+  'robots.create.description': 'Enter fleet and authentication details; registration is verified via SSH immediately.',
+  'robots.table.id': 'ID',
+  'robots.table.fleet': 'Fleet',
 
   'pages.scans.title': 'Scans',
   'pages.scans.description':
@@ -1351,6 +1374,11 @@ export const en: Record<keyof typeof ko, string> = {
   'scans.list.count': '{shown}/{total}',
   'scans.list.noMatches': 'No sessions match the current filters.',
   'scans.list.noMatches.cta': 'Reset filters',
+  // D-UI-2 — scans page Create Dialog (form split out).
+  'scans.create.button': 'New scan',
+  'scans.create.title': 'Start a new scan',
+  'scans.create.description': 'Choose a fleet and benchmark pack to start a new scan session.',
+  'scans.create.toast.success': 'Scan started',
 
   'pages.findings.title': 'Findings',
   'pages.findings.description':

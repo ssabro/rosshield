@@ -1,16 +1,25 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { Server } from 'lucide-react'
+import { Plus, Server } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import { ApiError } from '@/api/errors'
 import { useCreateRobot, useHasPermission, useRobots } from '@/api/hooks'
+import { TruncatedId } from '@/components/common/TruncatedId'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Form,
   FormControl,
@@ -45,19 +54,20 @@ import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import type { CreateRobotVars, Robot } from '@/api/hooks'
 import type { DictKey } from '@/i18n/dict'
 
-// `/robots` — 로봇 목록 + fleet 필터.
+// `/robots` — D-UI-2 리팩토링 (List + Create Dialog 패턴).
 //
-// D-UI-1 Stage 4 (B 그룹) 적용 패턴:
-//   - PageHeader: title/description + actions (등록 토글)
-//   - TableRowSkeleton: 로딩 시 layout shift 0
-//   - EmptyState: 등록 0건 → 직관적 CTA
-//   - 가로 스크롤 (모바일 반응형)
-//   - toast: mutation 성공/실패 비차단 통지
-//   - react-hook-form + zod (form pilot): 검증 자동화 + a11y 자동 결선
+// 기존: list + form 토글(같은 페이지에 펼침). 변경:
+//   - 기본 view = PageHeader (+ "+ 등록" 버튼) + RobotsTable
+//   - "+ 등록" 클릭 → Dialog로 CreateRobotForm 분리
+//   - 테이블 ID 컬럼은 TruncatedId로 축약(prefix ro_/fl_ + ellipsis + 마지막 4자)
+//   - row click은 기존 detail 페이지로 drill-down 유지 (이력·credential 등 dialog로
+//     부적합한 양이라 Link 유지)
+//
+// 기존 hook · API mutation · 라우팅 변경 0. zod schema·useCreateRobot 호출 그대로.
 
 function RobotsPage(): React.ReactElement {
   const [fleetId, setFleetId] = useState('')
-  const [showForm, setShowForm] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const trimmed = fleetId.trim()
   const robots = useRobots(trimmed.length > 0 ? trimmed : undefined)
   const t = useT()
@@ -74,9 +84,8 @@ function RobotsPage(): React.ReactElement {
         description={t('pages.robots.description')}
         actions={
           <Button
-            variant={showForm ? 'outline' : 'default'}
             size="sm"
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => setCreateOpen(true)}
             disabled={!canCreate || isOffline}
             title={mutationGuardTitle({
               isOffline,
@@ -84,12 +93,11 @@ function RobotsPage(): React.ReactElement {
               fallback: !canCreate ? t('common.role.required.admin') : undefined,
             })}
           >
-            {showForm ? t('robots.form.toggle.hide') : t('robots.form.toggle.show')}
+            <Plus className="size-4" aria-hidden />
+            {t('robots.create.button')}
           </Button>
         }
       />
-
-      {showForm && canCreate && <CreateRobotForm onCreated={() => setShowForm(false)} />}
 
       <div className="flex max-w-sm flex-col gap-2">
         <Label htmlFor="fleet-filter">{t('robots.filter.fleet')}</Label>
@@ -106,6 +114,8 @@ function RobotsPage(): React.ReactElement {
           <TableHeader>
             <TableRow>
               <TableHead>{t('robots.table.name')}</TableHead>
+              <TableHead>{t('robots.table.id')}</TableHead>
+              <TableHead>{t('robots.table.fleet')}</TableHead>
               <TableHead>{t('robots.table.host')}</TableHead>
               <TableHead>{t('robots.table.auth')}</TableHead>
               <TableHead>{t('robots.table.criticality')}</TableHead>
@@ -115,14 +125,14 @@ function RobotsPage(): React.ReactElement {
           <TableBody>
             {robots.isPending && (
               <TableRow>
-                <TableCell colSpan={5} className="p-3">
-                  <TableRowSkeleton rows={5} columns={5} />
+                <TableCell colSpan={7} className="p-3">
+                  <TableRowSkeleton rows={5} columns={7} />
                 </TableCell>
               </TableRow>
             )}
             {robots.isError && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-destructive">
+                <TableCell colSpan={7} className="text-center text-destructive">
                   {robots.error instanceof ApiError
                     ? robots.error.message
                     : t('robots.error.fallback')}
@@ -131,15 +141,15 @@ function RobotsPage(): React.ReactElement {
             )}
             {robots.isSuccess && robots.data.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="p-0">
+                <TableCell colSpan={7} className="p-0">
                   <EmptyState
                     icon={Server}
                     title={t('robots.empty.title')}
                     description={t('robots.empty.description')}
                     action={
-                      canCreate && !showForm ? (
-                        <Button size="sm" onClick={() => setShowForm(true)}>
-                          {t('robots.form.toggle.show')}
+                      canCreate ? (
+                        <Button size="sm" onClick={() => setCreateOpen(true)}>
+                          {t('robots.create.button')}
                         </Button>
                       ) : undefined
                     }
@@ -155,6 +165,11 @@ function RobotsPage(): React.ReactElement {
           </TableBody>
         </Table>
       </div>
+
+      <CreateRobotDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+      />
     </div>
   )
 }
@@ -171,6 +186,12 @@ function RobotRow({ robot }: { robot: Robot }): React.ReactElement {
         >
           {robot.name}
         </Link>
+      </TableCell>
+      <TableCell>
+        <TruncatedId id={robot.id} prefixLen={3} />
+      </TableCell>
+      <TableCell>
+        <TruncatedId id={robot.fleetId} prefixLen={3} />
       </TableCell>
       <TableCell className="font-mono text-xs">
         {robot.host}:{robot.port}
@@ -193,6 +214,32 @@ function RobotRow({ robot }: { robot: Robot }): React.ReactElement {
         </div>
       </TableCell>
     </TableRow>
+  )
+}
+
+// CreateRobotDialog — "+ 등록" 클릭 시 열리는 Dialog. CreateRobotForm을 본 dialog
+// body에 mount하여 form pilot(RHF + zod) 그대로 재사용. submit 성공 → dialog close.
+function CreateRobotDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}): React.ReactElement {
+  const t = useT()
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t('robots.create.title')}</DialogTitle>
+          <DialogDescription>{t('robots.create.description')}</DialogDescription>
+        </DialogHeader>
+        <CreateRobotForm
+          onCreated={() => onOpenChange(false)}
+          onCancel={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -246,8 +293,10 @@ type RobotFormValues = z.infer<typeof robotFormSchema>
 
 function CreateRobotForm({
   onCreated,
+  onCancel,
 }: {
   onCreated: () => void
+  onCancel: () => void
 }): React.ReactElement {
   const t = useT()
   const create = useCreateRobot()
@@ -321,14 +370,10 @@ function CreateRobotForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-2"
+        className="grid grid-cols-1 gap-3 md:grid-cols-2"
         aria-label={t('robots.form.title')}
         noValidate
       >
-        <div className="md:col-span-2">
-          <h3 className="text-sm font-medium">{t('robots.form.title')}</h3>
-        </div>
-
         <FormField
           control={form.control}
           name="fleetId"
@@ -541,7 +586,15 @@ function CreateRobotForm({
           </p>
         )}
 
-        <div className="md:col-span-2 flex justify-end">
+        <DialogFooter className="md:col-span-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={create.isPending}
+          >
+            {t('common.dialog.cancel')}
+          </Button>
           <Button
             type="submit"
             disabled={create.isPending || !canCreate || isOffline}
@@ -553,7 +606,7 @@ function CreateRobotForm({
           >
             {create.isPending ? t('robots.form.submitting') : t('robots.form.submit')}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Form>
   )
