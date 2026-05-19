@@ -11,6 +11,7 @@ import {
   usePacks,
   useUpdateFleet,
 } from '@/api/hooks'
+import { TruncatedId } from '@/components/common/TruncatedId'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +22,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -45,9 +53,11 @@ const CRITICALITY_VALUES = ['', 'low', 'medium', 'high', 'critical'] as const
 // `/fleets` — fleet 등록·이름 변경·삭제 페이지 (admin).
 //
 // D-UI-1 Stage 4 적용 패턴:
-//   - PageHeader: actions에 "Fleet 생성" 토글 (canCreate 시)
+//   - PageHeader: actions에 "+ Fleet 생성" 버튼 (canCreate 시)
+//   - Dialog: "+ Fleet 생성" 클릭 시 모달로 분리 (UI v0.6 pattern)
 //   - TableRowSkeleton: list 로딩 시 layout shift 0
-//   - EmptyState: 등록 0건 → "첫 fleet 생성" CTA
+//   - EmptyState: 등록 0건 → "첫 fleet 생성" CTA → Dialog open
+//   - TruncatedId: fleet.id를 짧게 + hover 시 원본 표시
 //   - ConfirmDialog: delete typing confirmation (fleet 이름)
 //   - toast: create/update/delete 성공·실패 비차단 통지
 //
@@ -58,7 +68,7 @@ function FleetsPage(): React.ReactElement {
   const t = useT()
   const canCreate = useHasPermission('fleet', 'admin')
   const fleetsQuery = useFleets()
-  const [showCreate, setShowCreate] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -67,20 +77,12 @@ function FleetsPage(): React.ReactElement {
         description={t('pages.fleets.description')}
         actions={
           canCreate && (
-            <Button
-              variant={showCreate ? 'outline' : 'default'}
-              size="sm"
-              onClick={() => setShowCreate((v) => !v)}
-            >
-              {showCreate ? t('fleets.row.cancel') : t('fleets.action.create')}
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              {t('fleets.action.create')}
             </Button>
           )
         }
       />
-
-      {canCreate && showCreate && (
-        <CreateFleetCard onCreated={() => setShowCreate(false)} />
-      )}
 
       <Card>
         <CardHeader>
@@ -100,8 +102,8 @@ function FleetsPage(): React.ReactElement {
               icon={Network}
               title={t('fleets.list.empty')}
               action={
-                canCreate && !showCreate ? (
-                  <Button size="sm" onClick={() => setShowCreate(true)}>
+                canCreate ? (
+                  <Button size="sm" onClick={() => setCreateOpen(true)}>
                     {t('fleets.empty.cta')}
                   </Button>
                 ) : undefined
@@ -116,11 +118,27 @@ function FleetsPage(): React.ReactElement {
           )}
         </CardContent>
       </Card>
+
+      {canCreate && (
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{t('fleets.form.title')}</DialogTitle>
+              <DialogDescription>
+                {t('fleets.form.dialog.description')}
+              </DialogDescription>
+            </DialogHeader>
+            <CreateFleetForm onCreated={() => setCreateOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
 
-function CreateFleetCard({
+// CreateFleetForm — Dialog body 안의 fleet 생성 form.
+//   Card·Header·Title은 상위 Dialog가 담당하므로 form만 렌더.
+function CreateFleetForm({
   onCreated,
 }: {
   onCreated: () => void
@@ -160,45 +178,40 @@ function CreateFleetCard({
   }
 
   return (
-    <Card className="max-w-xl">
-      <CardHeader>
-        <CardTitle>{t('fleets.form.title')}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="fleet-name">{t('fleets.form.name')}</Label>
-            <Input
-              id="fleet-name"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('fleets.form.name.placeholder')}
-              maxLength={200}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="fleet-description">{t('fleets.form.description')}</Label>
-            <Input
-              id="fleet-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('fleets.form.description.placeholder')}
-              maxLength={500}
-            />
-          </div>
-          <PolicyFormFields policy={policy} onChange={setPolicy} idPrefix="create" />
-          {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
-          )}
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? t('fleets.form.submitting') : t('fleets.form.submit')}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="space-y-2">
+        <Label htmlFor="fleet-name">{t('fleets.form.name')}</Label>
+        <Input
+          id="fleet-name"
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t('fleets.form.name.placeholder')}
+          maxLength={200}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="fleet-description">{t('fleets.form.description')}</Label>
+        <Input
+          id="fleet-description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={t('fleets.form.description.placeholder')}
+          maxLength={500}
+        />
+      </div>
+      <PolicyFormFields policy={policy} onChange={setPolicy} idPrefix="create" />
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <Button type="submit" disabled={create.isPending}>
+          {create.isPending ? t('fleets.form.submitting') : t('fleets.form.submit')}
+        </Button>
+      </div>
+    </form>
   )
 }
 
@@ -359,7 +372,7 @@ function FleetRow({
           <Badge variant="secondary" className="text-xs">
             {t('fleets.row.robotCount', { count: fleet.robotCount })}
           </Badge>
-          <span className="font-mono text-xs text-muted-foreground">{fleet.id}</span>
+          <TruncatedId id={fleet.id} className="text-muted-foreground" />
         </div>
         {fleet.description && (
           <p className="mt-0.5 text-xs text-muted-foreground">{fleet.description}</p>

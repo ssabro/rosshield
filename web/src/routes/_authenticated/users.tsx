@@ -18,6 +18,7 @@ import {
   useInvitations,
 } from '@/api/hooks'
 import { StatusBadge, type StatusKind } from '@/components/common/StatusBadge'
+import { TruncatedId } from '@/components/common/TruncatedId'
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useT } from '@/i18n/t'
@@ -27,6 +28,13 @@ import { toast } from '@/lib/toast'
 import { cn } from '@/lib/utils'
 import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -69,6 +77,7 @@ function UsersPage(): React.ReactElement {
   const isAdmin = useHasPermission('tenant_admin', 'admin')
   const isOffline = useIsOffline()
   const [created, setCreated] = useState<CreateInvitationResponse | null>(null)
+  const [inviteOpen, setInviteOpen] = useState(false)
 
   const totalCount = invitations.data?.length ?? 0
 
@@ -84,12 +93,20 @@ function UsersPage(): React.ReactElement {
             </span>
           ) : null
         }
-      />
-
-      <CreateInvitationForm
-        onCreated={(res) => setCreated(res)}
-        canCreate={isAdmin}
-        isOffline={isOffline}
+        actions={
+          <Button
+            size="sm"
+            onClick={() => setInviteOpen(true)}
+            disabled={!isAdmin || isOffline}
+            title={mutationGuardTitle({
+              isOffline,
+              offlineLabel: t('pwa.offline.mutationBlocked'),
+              fallback: !isAdmin ? t('common.role.required.admin') : undefined,
+            })}
+          >
+            {t('users.action.invite')}
+          </Button>
+        }
       />
 
       {created && (
@@ -107,7 +124,30 @@ function UsersPage(): React.ReactElement {
         onRetry={() => void invitations.refetch()}
         canRevoke={isAdmin}
         isOffline={isOffline}
+        canInvite={isAdmin && !isOffline}
+        onRequestInvite={() => setInviteOpen(true)}
       />
+
+      {isAdmin && (
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{t('users.invite.section')}</DialogTitle>
+              <DialogDescription>
+                {t('users.invite.dialog.description')}
+              </DialogDescription>
+            </DialogHeader>
+            <CreateInvitationForm
+              onCreated={(res) => {
+                setCreated(res)
+                setInviteOpen(false)
+              }}
+              canCreate={isAdmin}
+              isOffline={isOffline}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
@@ -159,13 +199,9 @@ function CreateInvitationForm({
     <form
       id="invite-form"
       onSubmit={handleSubmit}
-      className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-4"
+      className="grid grid-cols-1 gap-3 md:grid-cols-4"
       aria-label={t('users.invite.section')}
     >
-      <div className="md:col-span-4">
-        <h3 className="text-sm font-medium">{t('users.invite.section')}</h3>
-      </div>
-
       <div className="flex flex-col gap-1.5 md:col-span-2">
         <Label htmlFor="inv-email">{t('users.invite.email')}</Label>
         <Input
@@ -306,6 +342,8 @@ function InvitationsTable({
   onRetry,
   canRevoke,
   isOffline,
+  canInvite,
+  onRequestInvite,
 }: {
   invitations: InvitationView[]
   isPending: boolean
@@ -314,6 +352,8 @@ function InvitationsTable({
   onRetry: () => void
   canRevoke: boolean
   isOffline: boolean
+  canInvite: boolean
+  onRequestInvite: () => void
 }): React.ReactElement {
   const t = useT()
   return (
@@ -372,12 +412,11 @@ function InvitationsTable({
                     title={t('users.empty.title')}
                     description={t('users.empty.description')}
                     action={
-                      <a
-                        href="#invite-form"
-                        className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-                      >
-                        {t('users.empty.cta')}
-                      </a>
+                      canInvite ? (
+                        <Button size="sm" onClick={onRequestInvite}>
+                          {t('users.empty.cta')}
+                        </Button>
+                      ) : undefined
                     }
                     className="rounded-none border-0 bg-transparent"
                   />
@@ -444,8 +483,8 @@ function InvitationRow({
 
   return (
     <TableRow>
-      <TableCell className="font-mono text-xs" title={invitation.id}>
-        {shortId(invitation.id)}
+      <TableCell>
+        <TruncatedId id={invitation.id} />
       </TableCell>
       <TableCell className="text-sm">{invitation.email}</TableCell>
       <TableCell>
@@ -457,11 +496,8 @@ function InvitationRow({
           label={t(invitationStatusLabelKey(status))}
         />
       </TableCell>
-      <TableCell
-        className="font-mono text-xs text-muted-foreground"
-        title={invitation.invitedBy}
-      >
-        {shortId(invitation.invitedBy)}
+      <TableCell>
+        <TruncatedId id={invitation.invitedBy} className="text-muted-foreground" />
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {invitation.createdAt
@@ -626,12 +662,6 @@ export function invitationStatusLabelKey(status: InvitationStatus): DictKey {
 export function acceptUrl(token: string, origin: string): string {
   const cleanOrigin = origin.replace(/\/+$/, '')
   return `${cleanOrigin}/invitations/accept/${encodeURIComponent(token)}`
-}
-
-// shortId — ULID/UUID 같은 ID를 표시용으로 짧게 자른다.
-function shortId(id: string): string {
-  if (id.length <= 12) return id
-  return `${id.slice(0, 8)}…${id.slice(-4)}`
 }
 
 // createInvitationErrorMessage — 백엔드 에러를 친화 메시지로 매핑.

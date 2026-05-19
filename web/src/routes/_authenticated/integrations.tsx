@@ -22,6 +22,7 @@ import {
 import { EmptyState } from '@/components/layout/EmptyState'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StatusBadge, type StatusKind } from '@/components/common/StatusBadge'
+import { TruncatedId } from '@/components/common/TruncatedId'
 import { useT } from '@/i18n/t'
 import { confirm } from '@/lib/confirm'
 import { toast } from '@/lib/toast'
@@ -29,6 +30,13 @@ import { mutationGuardTitle, useIsOffline } from '@/lib/use-is-offline'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Form,
   FormControl,
@@ -81,7 +89,7 @@ function IntegrationsPage(): React.ReactElement {
   // RBAC Stage 5 — webhook은 tenant_admin.admin (§2.2 ID 3 — sso/webhook/users 통합).
   const isAdmin = useHasPermission('tenant_admin', 'admin')
   const isOffline = useIsOffline()
-  const [showForm, setShowForm] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const selected = endpoints.data?.find((e) => e.id === selectedId) ?? null
@@ -93,9 +101,8 @@ function IntegrationsPage(): React.ReactElement {
         description={t('pages.integrations.description')}
         actions={
           <Button
-            variant={showForm ? 'outline' : 'default'}
             size="sm"
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => setCreateOpen(true)}
             disabled={!isAdmin || isOffline}
             title={mutationGuardTitle({
               isOffline,
@@ -103,21 +110,10 @@ function IntegrationsPage(): React.ReactElement {
               fallback: !isAdmin ? t('common.role.required.admin') : undefined,
             })}
           >
-            {showForm
-              ? t('integrations.form.toggle.hide')
-              : t('integrations.form.toggle.show')}
+            {t('integrations.form.toggle.show')}
           </Button>
         }
       />
-
-      {showForm && isAdmin && (
-        <CreateEndpointForm
-          onCreated={() => {
-            setShowForm(false)
-          }}
-          isOffline={isOffline}
-        />
-      )}
 
       <EndpointsTable
         endpoints={endpoints.data ?? []}
@@ -128,13 +124,30 @@ function IntegrationsPage(): React.ReactElement {
         onSelect={(id) => setSelectedId(id)}
         canMutate={isAdmin}
         isOffline={isOffline}
-        canShowForm={!showForm}
-        onRequestCreate={() => setShowForm(true)}
+        canShowForm={isAdmin && !isOffline}
+        onRequestCreate={() => setCreateOpen(true)}
       />
 
       <DeliveriesSection
         endpoint={selected}
       />
+
+      {isAdmin && (
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{t('integrations.form.section')}</DialogTitle>
+              <DialogDescription>
+                {t('integrations.form.dialog.description')}
+              </DialogDescription>
+            </DialogHeader>
+            <CreateEndpointForm
+              onCreated={() => setCreateOpen(false)}
+              isOffline={isOffline}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
@@ -169,6 +182,7 @@ function EndpointsTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>{t('integrations.table.id')}</TableHead>
             <TableHead>{t('integrations.table.name')}</TableHead>
             <TableHead>{t('integrations.table.url')}</TableHead>
             <TableHead>{t('integrations.table.events')}</TableHead>
@@ -183,14 +197,14 @@ function EndpointsTable({
         <TableBody>
           {isPending && (
             <TableRow>
-              <TableCell colSpan={7} className="p-3">
+              <TableCell colSpan={8} className="p-3">
                 <TableRowSkeleton rows={3} columns={5} />
               </TableCell>
             </TableRow>
           )}
           {isError && (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-destructive">
+              <TableCell colSpan={8} className="text-center text-destructive">
                 {error instanceof ApiError
                   ? error.message
                   : t('integrations.error.fallback')}
@@ -199,7 +213,7 @@ function EndpointsTable({
           )}
           {!isPending && !isError && endpoints.length === 0 && (
             <TableRow>
-              <TableCell colSpan={7} className="p-0">
+              <TableCell colSpan={8} className="p-0">
                 <EmptyState
                   icon={Webhook}
                   title={t('integrations.empty.title')}
@@ -290,6 +304,9 @@ function EndpointRow({
   })
   return (
     <TableRow data-selected={selected ? 'true' : undefined}>
+      <TableCell>
+        <TruncatedId id={endpoint.id} />
+      </TableCell>
       <TableCell className="font-medium">{name}</TableCell>
       <TableCell className="max-w-[20rem] truncate font-mono text-xs" title={endpoint.url}>
         {endpoint.url}
@@ -465,6 +482,7 @@ function DeliveriesSection({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>{t('integrations.deliveries.id')}</TableHead>
                 <TableHead>{t('integrations.deliveries.time')}</TableHead>
                 <TableHead>{t('integrations.deliveries.event')}</TableHead>
                 <TableHead>{t('integrations.deliveries.status')}</TableHead>
@@ -475,7 +493,7 @@ function DeliveriesSection({
             <TableBody>
               {deliveries.isPending && (
                 <TableRow>
-                  <TableCell colSpan={5} className="p-3">
+                  <TableCell colSpan={6} className="p-3">
                     <TableRowSkeleton rows={3} columns={4} />
                   </TableCell>
                 </TableRow>
@@ -483,7 +501,7 @@ function DeliveriesSection({
               {deliveries.isError && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-center text-destructive"
                   >
                     {deliveries.error instanceof ApiError
@@ -497,7 +515,7 @@ function DeliveriesSection({
                 (deliveries.data ?? []).length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="text-center text-muted-foreground"
                     >
                       {t('integrations.deliveries.empty')}
@@ -527,6 +545,9 @@ function DeliveryRow({
   const time = delivery.lastAttemptedAt ?? delivery.createdAt
   return (
     <TableRow>
+      <TableCell>
+        <TruncatedId id={delivery.id} />
+      </TableCell>
       <TableCell className="font-mono text-xs">
         {time ? new Date(time).toLocaleString() : '—'}
       </TableCell>
@@ -643,13 +664,9 @@ function CreateEndpointForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="grid grid-cols-1 gap-3 rounded-md border p-4 md:grid-cols-2"
+        className="grid grid-cols-1 gap-3 md:grid-cols-2"
         aria-label={t('integrations.form.section')}
       >
-        <div className="md:col-span-2">
-          <h3 className="text-sm font-medium">{t('integrations.form.section')}</h3>
-        </div>
-
         <FormField
           control={form.control}
           name="name"
