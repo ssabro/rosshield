@@ -331,13 +331,13 @@ function SeverityStats({
       counts[ins.severity]!++
     }
   }
-  // 표시 순서: critical → info (위험도 desc)
-  const order: Array<{ severity: string; label: string; bg: string; text: string }> = [
-    { severity: 'critical', label: 'critical', bg: 'bg-destructive/10', text: 'text-destructive' },
-    { severity: 'high', label: 'high', bg: 'bg-destructive/10', text: 'text-destructive' },
-    { severity: 'medium', label: 'medium', bg: 'bg-primary/10', text: 'text-primary' },
-    { severity: 'low', label: 'low', bg: 'bg-yellow-500/10', text: 'text-yellow-700 dark:text-yellow-400' },
-    { severity: 'info', label: 'info', bg: 'bg-muted', text: 'text-muted-foreground' },
+  // 표시 순서: critical → info (위험도 desc). label은 i18n severity dict 사용.
+  const order: Array<{ severity: Severity; bg: string; text: string }> = [
+    { severity: 'critical', bg: 'bg-destructive/10', text: 'text-destructive' },
+    { severity: 'high', bg: 'bg-destructive/10', text: 'text-destructive' },
+    { severity: 'medium', bg: 'bg-primary/10', text: 'text-primary' },
+    { severity: 'low', bg: 'bg-yellow-500/10', text: 'text-yellow-700 dark:text-yellow-400' },
+    { severity: 'info', bg: 'bg-muted', text: 'text-muted-foreground' },
   ]
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
@@ -355,7 +355,7 @@ function SeverityStats({
               isActive ? 'ring-2 ring-foreground/40' : ''
             }`}
           >
-            <span className={`text-xs font-medium uppercase ${o.text}`}>{o.label}</span>
+            <span className={`text-xs font-medium ${o.text}`}>{t(`severity.${o.severity}` as never)}</span>
             <span className="text-2xl font-bold leading-none">{count}</span>
           </button>
         )
