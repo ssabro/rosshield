@@ -7,7 +7,42 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — ROS2 Round 3 6 carryover (apt_key 만료·colcon_install_hash digest 등) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — D-UI-1 Stage 5 polish (axe-core + visual rhythm) / Optimistic update + Undo window (carryover P0) / ROS2 Round 3 6 carryover / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.0] — 2026-05-19
+
+> **요약**: UI/UX 전면 개선. 4 페르소나 전문가 리뷰 → D-UI-1 통합 design doc → Stage 1+2+3+4 (token + 7 컴포넌트 + 4 그룹 layout + 17 페이지) — **18 P0 중 16건 cover (88.9%)**. 비즈니스 로직·API·라우팅 변경 0. 회귀 0. 상세는 [docs/releases/v0.6.0.md](docs/releases/v0.6.0.md).
+>
+> **기준 commit**: `6458a75` (main)
+
+### Added
+
+#### Design System
+- design token 20 (severity 5×2 + status 5×2, WCAG AA 4.5:1) + Pretendard Variable self-host
+- shared component 7 신규 (Toast/sonner + ConfirmDialog + Skeleton + EmptyState 보강 + SeverityBadge + StatusBadge + Form rhf+zod + PageHeader 보강)
+- layout 8 신규 (Sidebar 4 그룹 + Header role+tenant + theme/locale toggle + UserMenu + Skip-to-content + Mobile Sheet drawer + Breadcrumbs 일관 + html lang 동적)
+
+#### Stage 4 페이지 적용 (17 페이지)
+- 운영: overview (카드 4→6) + scans + findings + robots (Form pilot) + robots/:id (credential rotate typing) + fleets + fleets/:id
+- 컴플라이언스: compliance + reports (audit evidence download P0 fix) + audit + packs/:key + packs/:key/checks/:id (VerifyButton 보존)
+- 지능화: advisor (LLM opt-in badge)
+- 관리: license + integrations (webhook Form pilot) + users (RoleBadge a11y P0) + system (4 카드 polish)
+
+#### 신규 dep
+- pretendard (한국어 font) · sonner (toast) · react-hook-form · zod · @hookform/resolvers
+
+### Fixed
+- `44b139f` Sidebar 그룹 헤더 visibility (text-xs + opacity 100%) + 한국어 nav 6건 (Findings→탐지·이슈 등) + brand/version stale + virtual:pwa-register CORS
+- `173d6e7` alert.tsx hardcoded `bg-red-50`/`bg-slate-50` → token (다크 모드 정상 대비)
+- `6458a75` PWA manifest "rosshield Console" → "Lodestar 관리자 콘솔"
+- `29e857b` run-data/ git untrack + .gitignore (실수 commit 정리)
+
+### Notes
+- 16/18 4 리뷰 P0 cover (Optimistic update + Undo window carryover)
+- 회귀 0 (vitest 420/420 PASS, enterprise 264+ PASS 그대로)
+- sub-agent worktree pattern 50+회 누적, 본 release 12 sub-agent 활용
 
 ---
 
