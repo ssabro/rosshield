@@ -224,9 +224,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libssl-dev
 
       - name: Run TPM integration tests (simulator)
+        # robotid quote_simulator_test.go는 `rosshield_enterprise` 빌드 태그
+        # 함께 필요 — 결합 tag로 한 번에 실행. keystore/tpm은 enterprise tag
+        # 무관(파일 build 절이 `linux && tpm_integration`만)이라 영향 없음.
         env:
           CGO_ENABLED: '1'
-        run: go test -tags=tpm_integration -count=1 -timeout=4m ./internal/platform/keystore/tpm/...
+        run: go test -tags="tpm_integration rosshield_enterprise" -count=1 -timeout=4m ./internal/platform/keystore/tpm/... ./internal/enterprise/robotid/...
 
   e2e:
     name: Playwright E2E (smoke)
