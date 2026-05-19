@@ -38,6 +38,24 @@ var (
 	// ErrCPUSerialNotAvailable은 dmi/cpuinfo 부재·권한 부족 시 반환됩니다.
 	// 호출자는 빈 string으로 Compute 가능 (CPUSerial 0-length normalize).
 	ErrCPUSerialNotAvailable = errors.New("robotid: CPU serial not available")
+
+	// ErrQuoteSignatureInvalid는 VerifyQuote가 AK 서명 검증에 실패할 때 반환됩니다 (v3).
+	// 원인: signature 변조, AKPublic mismatch, 잘못된 알고리즘, parse 실패 등.
+	// 호출자는 attestation을 reject 해야 합니다 (TPM Quote 신뢰 불가).
+	ErrQuoteSignatureInvalid = errors.New("robotid: TPM quote signature verification failed")
+
+	// ErrQuoteNonceMismatch는 VerifyQuote가 quote 내부 nonce(ExtraData)와 호출자가
+	// 기대하는 nonce가 일치하지 않을 때 반환됩니다 (v3). Replay 공격 차단의 핵심.
+	ErrQuoteNonceMismatch = errors.New("robotid: TPM quote nonce mismatch (potential replay)")
+
+	// ErrQuotePCRMismatch는 VerifyQuote가 quote의 PCR digest와 첨부된 PCR 값으로
+	// 재계산한 digest가 일치하지 않을 때 반환됩니다 (v3). PCR 값 위조 또는 quote
+	// 위조 시 검출.
+	ErrQuotePCRMismatch = errors.New("robotid: TPM quote PCR digest mismatch")
+
+	// ErrQuoteInfoParse는 QuoteInfo / AKPublic / Signature 등 TPM wire format 파싱
+	// 실패 시 반환됩니다 (v3). 입력 손상·잘못된 algorithm·구조 mismatch 등.
+	ErrQuoteInfoParse = errors.New("robotid: TPM quote info parse failed")
 )
 
 // DefaultPCRSelection는 v2 부팅 무결성 결합 시 권장 PCR index 집합입니다.
