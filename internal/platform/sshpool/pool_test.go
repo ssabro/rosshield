@@ -137,6 +137,10 @@ func TestSSHPoolRespectsTenantLimit(t *testing.T) {
 }
 
 // 두 tenant는 서로 limit 영향 X.
+//
+// 결정론 보장: sync.Barrier 패턴 — 4 goroutine이 모두 Acquire 완료 후 main이
+// release 신호를 줄 때까지 holder 유지. CI runner goroutine scheduling race로
+// 일부 goroutine이 acquire 전에 다른 goroutine이 release하던 flaky를 제거.
 func TestSSHPoolTenantsIsolated(t *testing.T) {
 	t.Parallel()
 	srv := sshpooltest.New(t, func(cmd string) sshpooltest.ExecResponse {
@@ -165,16 +169,20 @@ func TestSSHPoolTenantsIsolated(t *testing.T) {
 		current       atomic.Int32
 		maxConcurrent atomic.Int32
 	)
+	const N = 4
+	acquired := make(chan struct{}, N) // 각 goroutine acquire 완료 신호
+	release := make(chan struct{})     // main → goroutine 동시 release 신호
 	mk := func(key sshpool.PoolKey) {
 		defer wg.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, release, err := pool.Acquire(ctx, key, target)
+		_, releaseFn, err := pool.Acquire(ctx, key, target)
 		if err != nil {
 			t.Errorf("Acquire: %v", err)
+			acquired <- struct{}{} // main의 N 카운트가 막히지 않게
 			return
 		}
-		defer release()
+		defer releaseFn()
 		cur := current.Add(1)
 		for {
 			peak := maxConcurrent.Load()
@@ -182,14 +190,28 @@ func TestSSHPoolTenantsIsolated(t *testing.T) {
 				break
 			}
 		}
-		time.Sleep(80 * time.Millisecond)
+		// 1) Acquire 완료 신호 → main이 모든 N개 확인 후 release 신호 전달
+		acquired <- struct{}{}
+		// 2) release 신호 대기 — 모든 goroutine이 holder인 상태가 결정론적으로 유지됨
+		<-release
 		current.Add(-1)
 	}
-	wg.Add(4)
+	wg.Add(N)
 	go mk(keyA)
 	go mk(keyA)
 	go mk(keyB)
 	go mk(keyB)
+
+	// 모든 N개의 goroutine이 acquire 완료될 때까지 대기 (또는 ctx timeout으로 실패 보고).
+	// 이 시점에 maxConcurrent peak이 정확히 N으로 측정됨이 결정론적으로 보장됨.
+	for i := 0; i < N; i++ {
+		select {
+		case <-acquired:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timeout waiting for %d goroutines to Acquire (got %d)", N, i)
+		}
+	}
+	close(release) // 모든 goroutine 동시 release
 	wg.Wait()
 
 	peak := maxConcurrent.Load()
