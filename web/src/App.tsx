@@ -2,7 +2,9 @@ import { QueryClient } from '@tanstack/react-query'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
+import { Toaster } from 'sonner'
 
+import { ConfirmDialogHost } from './components/common/ConfirmDialog'
 import {
   PERSIST_OPTIONS_BASE,
   createPersister,
@@ -65,6 +67,9 @@ export default function App(): React.ReactElement {
       persistOptions={{ persister, ...PERSIST_OPTIONS_BASE }}
     >
       <RouterProvider router={router} />
+      {/* D-UI-1 Stage 2 — global toast + confirm host. */}
+      <Toaster richColors closeButton position="top-right" />
+      <ConfirmDialogHost />
     </PersistQueryClientProvider>
   )
 }
