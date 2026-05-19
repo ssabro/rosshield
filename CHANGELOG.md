@@ -7,7 +7,33 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — D-UI-1 Stage 5 polish (axe-core + visual rhythm) / Optimistic update + Undo window (carryover P0) / ROS2 Round 3 6 carryover / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Optimistic update + Undo window (carryover P0) / D-UI-1 Stage 5 polish (axe-core) / ROS2 Round 3 6 carryover / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.1] — 2026-05-19 (patch)
+
+> **요약**: UI/UX 사용자 피드백 반영 round — 한국어 페이지 영어 단어 mix 139건 일괄 한국어 + D-UI-2 List+Dialog 패턴 5 페이지 적용 (scans + robots + fleets + integrations + users) + 긴 ID 축약 (`TruncatedId` 신규). 회귀 0. 상세는 [docs/releases/v0.6.1.md](docs/releases/v0.6.1.md).
+>
+> **기준 commit**: `1290d4c` (main)
+
+### Fixed
+- `fix(i18n)` ko dict 60건 영어 → 한국어 일괄 (`c87b0af`) — 도메인 용어 · 상태 라벨 · severity 약어 (CRIT→치명 등)
+- `fix(web)` findings 페이지 SeverityStats 한국어 + description 영어 단어 제거 (`3ade9ab`)
+- `fix(i18n)` ko 영역 한국어 문장 안 영어 단어 mix 79건 일괄 (`0becb26`) — Python script 2 round (Insight/Robot/Tenant/Fleet/Scan/Session/credential/drift/anomaly/peer/detector/dismiss 등)
+
+### Added
+- `refactor(web)` D-UI-2 A — scans + robots List+Dialog 패턴 + TruncatedId 신규 (`fa2c039`)
+  - scans: CreateScanDialog + SessionDetailDialog (`?session=` query param)
+  - robots: CreateRobotDialog (RHF+zod)
+  - TruncatedId: prefix+…+suffix + tooltip full + clipboard copy
+- `refactor(web)` D-UI-2 B — fleets + integrations + users Dialog 패턴 (`0e46737`)
+  - 각 Create Dialog + 긴 ID truncate (endpoint.id · delivery.id · invitation.id 등)
+
+### Notes
+- 회귀 0 (vitest 425+ PASS)
+- 신규 dep 0
+- carryover Phase 8 — Optimistic update + Undo window + hardcoded 영어 잔존 5 파일
 
 ---
 
