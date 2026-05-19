@@ -10,10 +10,13 @@ export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
   ({ className = '', variant = 'default', ...props }, ref) => {
+    // Visual review P0 #2 fix — hardcoded bg-red-50/bg-slate-50 제거.
+    // 다크 모드 token (--destructive, --muted, --border, --foreground)으로 교체해
+    // light·dark 모두 정상 대비.
     const variantClasses =
       variant === 'destructive'
-        ? 'border-red-200 bg-red-50 text-red-800'
-        : 'border-slate-200 bg-slate-50 text-slate-800'
+        ? 'border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground'
+        : 'border-border bg-muted text-foreground'
 
     return (
       <div
