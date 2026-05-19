@@ -1,0 +1,6 @@
+import{r as u,j as e,g as y}from"./index-iZ2New7V.js";import{t as a}from"./toast-CY1iX65G.js";import{C as d}from"./check-eHfMKG9t.js";import{c as h}from"./createLucideIcon-BZpN5_RA.js";/**
+ * @license lucide-react v0.469.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const x=h("Copy",[["rect",{width:"14",height:"14",x:"8",y:"8",rx:"2",ry:"2",key:"17jyea"}],["path",{d:"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",key:"zix9uf"}]]);function v({id:t,prefixLen:r=4,suffixLen:s=4,showCopy:n=!0,className:i}){const[p,c]=u.useState(!1),l=t.length<=r+s+2?t:`${t.slice(0,r)}…${t.slice(-s)}`,m=async o=>{if(o.stopPropagation(),o.preventDefault(),typeof navigator>"u"||!navigator.clipboard){a.error("clipboard 접근 실패");return}try{await navigator.clipboard.writeText(t),c(!0),a.success("ID 복사됨",{description:t}),setTimeout(()=>c(!1),2e3)}catch{a.error("clipboard 접근 실패")}};return e.jsxs("span",{className:y("inline-flex items-center gap-1 font-mono text-xs",i),title:t,"data-truncated-id":t,children:[e.jsx("span",{children:l}),n&&e.jsx("button",{type:"button",onClick:o=>{m(o)},className:"opacity-50 transition-opacity hover:opacity-100","aria-label":`${t} 복사`,children:p?e.jsx(d,{className:"size-3 text-green-600"}):e.jsx(x,{className:"size-3"})})]})}export{v as T};
