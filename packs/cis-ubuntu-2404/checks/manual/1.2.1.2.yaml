@@ -1,0 +1,48 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 1.2.1.2
+    title: 1.2.1.2 Ensure package manager repositories are configured (Manual)
+    description: |-
+        시스템이 최신 패치와 업데이트를 받을 수 있도록 패키지 매니저 저장소가 site policy에
+        맞게 구성돼 있는지 확인한다. 허용 저장소 목록은 환경(공식 Ubuntu archive, 사내 mirror,
+        ROS2, NVIDIA 등)에 따라 다르므로 자동 PASS/FAIL 부여가 불가능하다.
+
+        본 check는 customer-supplied env var ROSSHIELD_CIS_1_2_1_2_POLICY 가
+        정의돼 있으면 audit cmd가 허용 저장소 목록과 현재 apt 구성을 대조하고, 미정의 시
+        SKIP marker를 emit한 뒤 운영자 정성 검토(INDETERMINATE)로 분류된다.
+    severity: medium
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 1.2.1.2 — apt 저장소 site policy 검토.
+
+            확인 절차:
+              1. `apt-cache policy` — 현재 활성 저장소 우선순위/원본 확인
+              2. `grep -rh ^deb /etc/apt/sources.list /etc/apt/sources.list.d/` — 등록된 저장소 라인
+              3. site 허용 저장소 목록(예: archive.ubuntu.com, security.ubuntu.com, ROS2 mirror)과 대조
+
+            판정 기준:
+              PASS  — 모든 활성 저장소가 site 허용 목록에 포함
+              FAIL  — 미승인(rogue) 저장소 또는 만료/서명 오류 저장소 검출
+              REVIEW — site 허용 저장소 목록 미정의(default)
+
+            자동화 옵션:
+              env $ROSSHIELD_CIS_1_2_1_2_POLICY 에 쉼표 구분 허용 도메인 목록을 정의하면
+              fleet scan 시 audit cmd가 자동 PASS/FAIL marker를 emit하고 운영자 정성 검토는
+              생략 가능. 미정의 시 본 prompt에 따라 직접 판정.
+        defaultVerdict: review
+    rationale: |-
+        패키지 저장소가 잘못 설정되면 중요한 패치를 식별하지 못하거나 rogue 저장소를 통해
+        손상된 소프트웨어가 도입될 수 있다. site별 허용 저장소 정책 정의가 1차 통제다.
+    fixGuidance: |-
+        1. site policy 정의: 허용 저장소 도메인 목록 결정 (예: archive.ubuntu.com,
+           security.ubuntu.com, ros2 mirror).
+        2. env var ROSSHIELD_CIS_1_2_1_2_POLICY 에 쉼표 구분 목록 정의 (fleet 분산 시
+           secret manager 또는 systemd EnvironmentFile).
+        3. 미승인 저장소 제거:
+             sed -i '/<rogue-domain>/d' /etc/apt/sources.list.d/*.list
+             apt update
+        4. 본 check 재실행으로 PASS marker 확인.

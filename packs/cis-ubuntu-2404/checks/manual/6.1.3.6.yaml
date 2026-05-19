@@ -1,0 +1,49 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.3.6
+    title: 6.1.3.6 Ensure rsyslog is configured to send logs to a remote log host (Manual)
+    description: |-
+        rsyslog는 수집한 log event를 원격 log host로 전송하거나 원격 host로부터 메시지를
+        수신하는 기능을 지원한다. 중앙 집중 로그 관리에 필수다. 원격 log host 도메인·포트는
+        customer 환경에 의존하므로 자동 PASS/FAIL 부여가 불가능하다.
+
+        본 check는 customer-supplied env var ROSSHIELD_CIS_6_1_3_6_POLICY 가
+        정의돼 있으면 audit cmd가 forward rule을 검증하고, 미정의 시 SKIP marker를 emit한
+        뒤 운영자 정성 검토(INDETERMINATE)로 분류된다.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 6.1.3.6 — rsyslog 원격 log host 전송 규칙 검토.
+
+            확인 절차:
+              1. `grep -E '^\\*\\.\\* (@|@@|action.*omfwd)' /etc/rsyslog.conf /etc/rsyslog.d/*.conf`
+                 — UDP(@), TCP(@@), 또는 omfwd action 규칙
+              2. site 원격 log host(도메인·포트·프로토콜) 정책과 대조
+              3. `nc -zv <host> <port>` — 원격 host 도달성 확인
+
+            판정 기준:
+              PASS  — site 원격 log host로 전송 규칙 활성 + 도달성 확인
+              FAIL  — forward 규칙 부재 또는 잘못된 host
+              REVIEW — site 중앙 로그 관리 정책 미정의(default)
+
+            자동화 옵션:
+              env $ROSSHIELD_CIS_6_1_3_6_POLICY 에 "<loghost>:<port>" 형식으로 정의하면
+              audit cmd가 grep으로 자동 검증한다.
+        defaultVerdict: review
+    rationale: |-
+        log 데이터를 원격 host에 저장하면 local 공격으로부터 log 무결성을 보호한다.
+        공격자가 local root 권한 획득 시 local log를 변조·삭제할 수 있으므로 외부 host로의
+        중복 저장이 사고 대응에 결정적이다.
+    fixGuidance: |-
+        1. site 원격 log host 정의 (예: loghost.example.com:514, 프로토콜 TCP 권장).
+        2. env var ROSSHIELD_CIS_6_1_3_6_POLICY 에 "<loghost>:<port>" 형식으로 정의.
+        3. drop-in 파일 `/etc/rsyslog.d/60-rsyslog.conf` 작성 예시:
+             *.* action(type="omfwd" target="loghost.example.com"
+                       port="514" protocol="tcp"
+                       action.resumeRetryCount="100"
+                       queue.type="LinkedList" queue.size="1000")
+        4. `systemctl reload-or-restart rsyslog.service` 후 본 check 재실행.

@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 1.2.1.2
+spec:
+    cases:
+        - name: "SKIP — env var 미정의 (default verdict = review)"
+          input:
+              stdout: "** INDETERMINATE ** customer policy 미정의 (env ROSSHIELD_CIS_1_2_1_2_POLICY 필요)"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "PASS marker — site policy 일치 (audit input ignored — verdict still review)"
+          input:
+              stdout: "** PASS ** apt repo allow-list (archive.ubuntu.com,security.ubuntu.com) 매칭"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "FAIL marker — site policy 위반 (audit input ignored — verdict still review)"
+          input:
+              stdout: "** FAIL ** apt repo 중 site policy(archive.ubuntu.com) 외 항목 검출"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE

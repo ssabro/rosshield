@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 6.1.2.1.2
+spec:
+    cases:
+        - name: "SKIP — env var 미정의 (default verdict = review)"
+          input:
+              stdout: "** INDETERMINATE ** customer policy 미정의 (env ROSSHIELD_CIS_6_1_2_1_2_POLICY 필요)"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "PASS marker — URL+cert 일치 (audit input ignored — verdict still review)"
+          input:
+              stdout: "** PASS ** journal-upload URL=https://logs.example.com:443 + cert=/etc/ssl/journal.pem 일치"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "FAIL marker — 구성 불일치 (audit input ignored — verdict still review)"
+          input:
+              stdout: "** FAIL ** journal-upload 구성 불일치 (URL=https://logs.example.com:443 cert=/etc/ssl/journal.pem)"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE

@@ -1,0 +1,24 @@
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+    checkId: 6.1.3.8
+spec:
+    cases:
+        - name: "SKIP — env var 미정의 (default verdict = review)"
+          input:
+              stdout: "** INDETERMINATE ** customer policy 미정의 (env ROSSHIELD_CIS_6_1_3_8_POLICY 필요)"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "PASS marker — 주기·보존 정책 충족 (audit input ignored — verdict still review)"
+          input:
+              stdout: "** PASS ** logrotate weekly + rotate 7 적용"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE
+        - name: "FAIL marker — 주기·보존 불일치 (audit input ignored — verdict still review)"
+          input:
+              stdout: "** FAIL ** logrotate 주기/개수 불일치 (요구: weekly/7)"
+              stderr: ""
+              exitCode: 0
+          expectedOutcome: INDETERMINATE

@@ -1,0 +1,55 @@
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+    id: 6.1.2.1.2
+    title: 6.1.2.1.2 Ensure systemd-journal-upload authentication is configured (Manual)
+    description: |-
+        systemd-journal-upload는 수집한 log event를 원격 log host로 전송할 수 있다. 무단
+        조작 방지를 위해 URL·서버 인증서·키 파일이 site 정책에 맞게 구성돼야 한다.
+        구체 URL·인증서 경로는 customer 환경에 의존하므로 자동 PASS/FAIL 부여가 불가능하다.
+
+        본 check는 customer-supplied env var ROSSHIELD_CIS_6_1_2_1_2_POLICY 가
+        정의돼 있으면 audit cmd가 URL·cert 경로를 검증하고, 미정의 시 SKIP marker를
+        emit한 뒤 운영자 정성 검토(INDETERMINATE)로 분류된다.
+
+        Note: 본 권고는 client-side logging이 journald인 경우에만 해당. rsyslog 사용 시
+        해당 없음.
+    severity: high
+spec:
+    auditCommand: "true"
+    evaluationRule:
+        op: manual
+        prompt: |-
+            CIS 6.1.2.1.2 — systemd-journal-upload 인증 구성 검토.
+
+            확인 절차:
+              1. `cat /etc/systemd/journal-upload.conf /etc/systemd/journal-upload.conf.d/*.conf 2>/dev/null`
+              2. URL=, ServerKeyFile=, ServerCertificateFile=, TrustedCertificateFile= 라인 확인
+              3. site 원격 log host 인증 정책(인증서 경로·만료·CA 신뢰)과 대조
+              4. `systemctl status systemd-journal-upload` — 서비스 실행 상태
+
+            판정 기준:
+              PASS  — URL + cert 경로 + 권한 모두 site policy 충족
+              FAIL  — URL 미설정 또는 cert 부재·만료·world-readable
+              REVIEW — site 원격 log host 정책 미정의(default)
+              N/A   — client-side logging이 rsyslog인 환경
+
+            자동화 옵션:
+              env $ROSSHIELD_CIS_6_1_2_1_2_POLICY 에 "<URL>,<cert-path>" 형식으로
+              정의하면 audit cmd가 자동 PASS/FAIL marker를 emit한다.
+        defaultVerdict: review
+    rationale: |-
+        log 데이터를 원격 host에 저장하면 local 공격으로부터 log 무결성을 보호할 수 있다.
+        공격자가 local root 권한 획득 시 local에 저장된 log를 변조·삭제할 수 있으므로,
+        인증된 원격 전송 채널 구성이 중요하다.
+    fixGuidance: |-
+        1. site 원격 log host URL·인증서 경로·CA 신뢰 정책 정의.
+        2. env var ROSSHIELD_CIS_6_1_2_1_2_POLICY 에 "<URL>,<cert-path>" 형식으로 정의.
+        3. `/etc/systemd/journal-upload.conf` 또는 drop-in `/etc/systemd/journal-upload.conf.d/60-journald_upload.conf`
+           작성:
+             [Upload]
+             URL=https://logs.example.com:443
+             ServerKeyFile=/etc/ssl/private/journal-upload.pem
+             ServerCertificateFile=/etc/ssl/certs/journal-upload.pem
+             TrustedCertificateFile=/etc/ssl/ca/trusted.pem
+        4. `systemctl reload-or-restart systemd-journal-upload` 후 본 check 재실행.
