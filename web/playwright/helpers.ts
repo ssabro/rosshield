@@ -35,3 +35,26 @@ export async function resetClientState(page: Page): Promise<void> {
   })
   await page.context().clearCookies()
 }
+
+// applyThemeMode는 zustand persist 형식과 동일하게 localStorage 'rosshield-theme' 키를
+// 세팅하고 즉시 document.documentElement.classList의 'dark' 토글까지 적용한다.
+//
+// 사용 예:
+//   await applyThemeMode(page, 'dark')  // → html.dark 클래스 추가
+//   await applyThemeMode(page, 'light') // → html.dark 클래스 제거
+//
+// theme.ts의 applyTheme()을 직접 호출하지 않고 DOM 토글로 끝내는 이유:
+//   - color-contrast 측정만 목적이므로 zustand store rehydrate를 기다릴 필요 없음.
+//   - light/dark 두 모드 모두에서 globals.css의 :root / .dark CSS variable이 적용됨.
+//
+// 호출 시점: page.goto() 후 (localStorage same-origin 접근 가능 시점).
+export async function applyThemeMode(page: Page, mode: 'light' | 'dark'): Promise<void> {
+  await page.evaluate((m) => {
+    try {
+      window.localStorage.setItem('rosshield-theme', JSON.stringify({ state: { theme: m }, version: 0 }))
+    } catch {
+      // ignore — persist storage 실패해도 DOM 토글은 진행
+    }
+    document.documentElement.classList.toggle('dark', m === 'dark')
+  }, mode)
+}

@@ -18,7 +18,8 @@ web/playwright/
    ├─ compliance.spec.ts      # /compliance — ISMS-P 프로필 추가
    ├─ audit.spec.ts           # /audit — ChainHead seq + hash 노출
    ├─ i18n.spec.ts            # 헤더 Globe 토글 → en 라벨 노출
-   └─ theme.spec.ts           # 헤더 sun/moon/monitor 토글 → .dark 클래스 변화
+   ├─ theme.spec.ts           # 헤더 sun/moon/monitor 토글 → .dark 클래스 변화
+   └─ color-contrast.spec.ts  # 5 페이지 × light/dark = 10 케이스 WCAG AA 실측
 ```
 
 `web/playwright.config.ts`는:
@@ -101,6 +102,47 @@ PLAYWRIGHT_E2E_KEEP_DATA=1 pnpm exec playwright test
 - `pnpm exec playwright install --with-deps chromium`.
 - `pnpm exec playwright test`.
 - 실패 시 `playwright/playwright-report/` HTML 리포트를 artifact로 업로드.
+
+## color-contrast 실측 (Stage 5b)
+
+`color-contrast.spec.ts`는 axe-core의 color-contrast rule을 실 chromium에서 평가한다.
+jsdom 기반 vitest-axe는 computed style 한계로 contrast rule을 비활성하지만(`web/src/test/axe.ts`),
+실 브라우저는 정확한 픽셀 측정이 가능하므로 WCAG 2.2 AA 4.5:1을 실측한다.
+
+### 실행
+
+```bash
+cd web
+pnpm exec playwright test playwright/tests/color-contrast.spec.ts
+```
+
+5 페이지(`/overview`, `/findings`, `/scans`, `/robots`, `/fleets`) × light/dark 2 모드
+= 총 10 케이스.
+
+### 추가 의존성
+
+- `@axe-core/playwright` — devDep로 설치 (Playwright fixture에 axe scan 주입).
+
+### 다크 모드 강제 적용
+
+Playwright의 `colorScheme: 'dark'` project를 분리하지 않고, helper
+`applyThemeMode(page, 'dark')`로 `html.dark` 클래스를 직접 토글한다.
+근거:
+- rosshield는 `prefers-color-scheme` 자동 감지가 아니라 zustand persist + DOM 클래스 모델.
+- spec 안에서 모드를 토글하면 페이지 reload 없이도 light/dark 두 측정이 가능.
+
+### 위반 발견 시
+
+`results.violations` JSON이 spec stdout에 출력된다:
+
+```json
+[{ "id": "color-contrast", "impact": "serious",
+   "nodes": [{ "target": ["button.outline"],
+                "failureSummary": "Fix any of the following: ..." }] }]
+```
+
+→ 해당 컴포넌트의 색상 token 또는 className을 수정한다. `globals.css`의 `--*` HSL token
+또는 컴포넌트별 `text-muted-foreground` 등 utility class가 1차 의심.
 
 ## 트러블슈팅
 
