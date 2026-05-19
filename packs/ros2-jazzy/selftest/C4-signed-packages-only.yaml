@@ -1,0 +1,32 @@
+# selftest — ros2.C4.signed_packages_only
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C4.signed_packages_only
+spec:
+  cases:
+    - name: PASS — origin 모두 화이트리스트
+      input:
+        stdout: '** PASS ** ros-jazzy-* origin 모두 화이트리스트 (packages.ros.org · ubuntu.com)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — ros-jazzy-* 설치 0건 (비대상 site)
+      input:
+        stdout: '** PASS ** ros-jazzy-* 설치 패키지 0건 (본 check 비대상 site)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — apt-cache origin 미발견 (offline cache)
+      input:
+        stdout: '** PASS ** apt-cache policy origin host 미발견 (offline cache only)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — 비공식 PPA origin 검출
+      input:
+        stdout: '** FAIL ** ros-jazzy-* origin 화이트리스트 외: http://ppa.launchpad.net (비공식 mirror 또는 개인 PPA 의심)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

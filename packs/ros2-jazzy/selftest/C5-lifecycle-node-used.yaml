@@ -1,0 +1,32 @@
+# selftest — ros2.C5.lifecycle_node_used
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C5.lifecycle_node_used
+spec:
+  cases:
+    - name: PASS — safety-critical 노드 모두 lifecycle 사용
+      input:
+        stdout: '** PASS ** safety-critical 노드 모두 managed lifecycle 사용'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — env var 미설정 (site policy skip)
+      input:
+        stdout: '** PASS ** safety-critical 노드 목록 미설정 (env ROSSHIELD_SAFETY_CRITICAL_NODES 정의 필요 — site policy skip)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — unmanaged Node 사용 의심
+      input:
+        stdout: '** FAIL ** safety-critical 노드에 unmanaged Node 사용 의심: motion_controller emergency_stop (LifecycleNode 권장)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — source 디렉터리 부재 (검사 불가)
+      input:
+        stdout: '** FAIL ** source/launch 디렉터리 부재 — safety-critical 노드 정의되었으나 검사 대상 source 없음'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

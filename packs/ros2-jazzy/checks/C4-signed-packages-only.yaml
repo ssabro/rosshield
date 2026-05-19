@@ -1,0 +1,75 @@
+# C4 — apt-cache policy ros-jazzy-* 에 알 수 없는 origin 0건 (서명 origin 화이트리스트)
+#
+# design doc §2 C4 후보 'binary.signed_packages_only' 정확 일치.
+# Round 3 carryover — apt source list + GPG key 검증의 third layer (런타임 origin 검증).
+# apt source URL · GPG key 둘 다 정상이라도 다른 repo가 우선순위 높게 등록되면 비공식 binary 설치 risk.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C4.signed_packages_only
+  title: ros-jazzy-* 패키지 origin — 화이트리스트 host만
+  description: |-
+    `apt-cache policy ros-jazzy-*` 결과의 origin URL이 화이트리스트
+    (`packages.ros.org` · `archive.ubuntu.com` · `security.ubuntu.com`) 안에만
+    있어야 합니다. apt source list와 GPG key가 정상이라도 다른 repo(예 개인
+    PPA, internal mirror)가 우선순위 더 높게 등록되면 그 쪽 binary가 설치됩니다 —
+    runtime origin 검증이 supply chain 신뢰의 마지막 layer.
+
+    본 check는:
+      1. 설치된 ros-jazzy-* 패키지 목록 추출(`dpkg -l`)
+      2. 각 패키지의 apt-cache policy origin host 수집
+      3. host가 화이트리스트 안에만 있는지 검증
+
+    설치된 ros-jazzy 패키지 0건이면 비대상 PASS. 화이트리스트 외 host 0건이면 PASS.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    PKGS=$(dpkg -l ros-jazzy-* 2>/dev/null | awk "/^ii/{print \$2}" | head -n 50);
+    if [ -z "$PKGS" ]; then
+      echo "** PASS ** ros-jazzy-* 설치 패키지 0건 (본 check 비대상 site)";
+      exit 0;
+    fi;
+    HOSTS=$(apt-cache policy $PKGS 2>/dev/null | grep -oE "http[s]?://[^/ ]+" | sort -u);
+    if [ -z "$HOSTS" ]; then
+      echo "** PASS ** apt-cache policy origin host 미발견 (offline cache only)";
+      exit 0;
+    fi;
+    UNAUTHORIZED="";
+    for h in $HOSTS; do
+      case "$h" in
+        http://packages.ros.org|https://packages.ros.org) ;;
+        http://archive.ubuntu.com|https://archive.ubuntu.com) ;;
+        http://security.ubuntu.com|https://security.ubuntu.com) ;;
+        *) UNAUTHORIZED="$UNAUTHORIZED $h";;
+      esac;
+    done;
+    if [ -z "$UNAUTHORIZED" ]; then
+      echo "** PASS ** ros-jazzy-* origin 모두 화이트리스트 (packages.ros.org · ubuntu.com)";
+    else
+      echo "** FAIL ** ros-jazzy-* origin 화이트리스트 외:$UNAUTHORIZED (비공식 mirror 또는 개인 PPA 의심)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    apt는 동일 패키지가 여러 repo에 있을 때 Pin-Priority가 높은 쪽을 선택 —
+    공식 source list 옆에 개인 PPA가 더 높은 priority로 등록되면 비공식
+    binary가 silently 설치됩니다. runtime origin 검증(`apt-cache policy`)이
+    이 가능성을 차단. 화이트리스트는 공식 ROS2 + Ubuntu base만 — internal
+    mirror 운영 site는 별 정책(서명 검증 강제 + audit) 후 화이트리스트 확장이
+    필요하며 그 경우 본 check audit cmd 수정 또는 carryover로 환경변수
+    `ROSSHIELD_APT_ORIGIN_WHITELIST` 도입을 검토합니다.
+  fixGuidance: |-
+    1. 위반 origin 식별:
+         apt-cache policy ros-jazzy-ros-base | grep -oE "http[s]?://[^/ ]+"
+    2. 비공식 repo 제거:
+         sudo rm /etc/apt/sources.list.d/<unauthorized>.list
+         sudo apt update
+    3. apt Pin-Priority 정책 명시 (공식만 허용):
+         echo "Package: ros-jazzy-*\nPin: origin packages.ros.org\nPin-Priority: 1001" \
+           | sudo tee /etc/apt/preferences.d/ros-jazzy
+    4. 비공식 출처에서 이미 설치된 패키지 재설치:
+         sudo apt install --reinstall ros-jazzy-<package>
+    5. internal mirror 운영 site는 별 carryover로 화이트리스트 확장 절차 수립.

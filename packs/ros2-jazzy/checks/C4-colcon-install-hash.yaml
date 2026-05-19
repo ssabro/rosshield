@@ -1,0 +1,68 @@
+# C4 — colcon install/setup.bash sha256 = customer baseline digest 일치
+#
+# design doc §2 C4 후보 'binary.colcon_install_hash' 정확 일치.
+# Round 3 carryover — site policy 의존 check (env var 미설정 시 PASS skip).
+# customer가 배포 직전 install/ 디렉터리의 setup.bash digest를 기록 → 이후 스캔에서 drift 검출.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C4.colcon_install_hash
+  title: colcon install/setup.bash — customer baseline sha256 일치
+  description: |-
+    `~/ros2_ws/install/setup.bash` 또는 customer-build workspace의 setup.bash
+    sha256 digest가 customer가 배포 직전 기록한 baseline과 일치해야 합니다.
+    일치 안 하면 build 산출물 변조 또는 비공식 빌드 의심 — supply chain 신뢰
+    경로 외 binary 실행 risk.
+
+    본 check는 site policy 의존:
+      1. env `ROSSHIELD_COLCON_BASELINE_SHA256` 미설정 시 PASS skip(false positive 회피)
+      2. 설정 시 setup.bash 존재 확인 + sha256sum 계산 + baseline 일치 비교
+      3. install 디렉터리 자체 부재 시 PASS(비대상 site)
+
+    customer가 baseline digest를 env로 정의해야 실 검증 활성화.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    if [ -z "$ROSSHIELD_COLCON_BASELINE_SHA256" ]; then
+      echo "** PASS ** baseline digest 미설정 (env ROSSHIELD_COLCON_BASELINE_SHA256 정의 필요 — site policy skip)";
+      exit 0;
+    fi;
+    SETUP=$(ls ~/ros2_ws/install/setup.bash 2>/dev/null | head -n 1);
+    if [ -z "$SETUP" ]; then
+      echo "** PASS ** colcon install/setup.bash 부재 (본 check 비대상 site)";
+      exit 0;
+    fi;
+    ACTUAL=$(sha256sum "$SETUP" 2>/dev/null | awk "{print \$1}");
+    if [ -z "$ACTUAL" ]; then
+      echo "** FAIL ** sha256sum 계산 실패: $SETUP";
+      exit 0;
+    fi;
+    if [ "$ACTUAL" = "$ROSSHIELD_COLCON_BASELINE_SHA256" ]; then
+      echo "** PASS ** colcon install/setup.bash digest 일치 ($ACTUAL)";
+    else
+      echo "** FAIL ** colcon install/setup.bash digest mismatch: actual=$ACTUAL baseline=$ROSSHIELD_COLCON_BASELINE_SHA256";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    `colcon build` 산출물은 customer workspace에 종속 — 공식 apt mirror 검증
+    (`binary.apt_source_official`, `binary.apt_key_valid`)만으로는 cover 불가.
+    배포 직전 setup.bash 또는 install/ 트리의 대표 파일 sha256을 baseline으로
+    기록 후 본 check가 drift 검출. site별 baseline 정의가 필수이므로 env var
+    미설정 시 PASS skip(false positive 회피) — customer onboarding 시 baseline
+    digest 등록 절차 추가 필요. 향후 carryover로 install/ 트리 전체의 Merkle
+    digest 비교(plugin check)로 강화 예정.
+  fixGuidance: |-
+    1. 배포 직전 baseline digest 기록:
+         sha256sum ~/ros2_ws/install/setup.bash
+    2. 결과 hex string을 env로 등록:
+         export ROSSHIELD_COLCON_BASELINE_SHA256=<hex>
+       또는 scan profile에 환경변수로 inject.
+    3. drift 발생 시 actual digest 확인 후:
+       - 의도된 rebuild → baseline 갱신.
+       - 미의도 변경 → install/ 트리 재build + 원인 추적(잘못된 deploy script·corrupted artifact).
+    4. (carryover) install/ 트리 전체의 Merkle digest 비교 plugin check 검토.
+    5. customer onboarding 절차에 본 env var 정의 단계 명시 — 미정의 시 본 check skip 안내.

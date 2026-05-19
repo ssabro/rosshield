@@ -1,0 +1,32 @@
+# selftest — ros2.C4.colcon_install_hash
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C4.colcon_install_hash
+spec:
+  cases:
+    - name: PASS — baseline digest 일치
+      input:
+        stdout: '** PASS ** colcon install/setup.bash digest 일치 (a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — env var 미설정 (site policy skip)
+      input:
+        stdout: '** PASS ** baseline digest 미설정 (env ROSSHIELD_COLCON_BASELINE_SHA256 정의 필요 — site policy skip)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — colcon install 디렉터리 부재 (비대상 site)
+      input:
+        stdout: '** PASS ** colcon install/setup.bash 부재 (본 check 비대상 site)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — digest mismatch (drift 검출)
+      input:
+        stdout: '** FAIL ** colcon install/setup.bash digest mismatch: actual=deadbeef baseline=cafebabe'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
