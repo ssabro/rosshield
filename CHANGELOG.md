@@ -7,7 +7,26 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — R-D8 v3(Sigstore keyless + TPM Quote signature 검증) / ROS2 pack Round 2 C4·C5 carryover (paying customer trigger 권장) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — TPM simulator integration test (tpm_integration build tag) / ROS2 pack Round 2 C4·C5 carryover (paying customer trigger 권장) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.5.1] — 2026-05-19 (patch)
+
+> **요약**: R-D8 v3 후속 보강 2/2 (C-1 Sigstore keyless + D-3 TPM Quote signature) + SSHPool flaky 결정론화. enterprise 단위 +47 (217+ → 264+). 회귀 0. 상세는 [docs/releases/v0.5.1.md](docs/releases/v0.5.1.md).
+>
+> **기준 commit**: `c60d9eb` (main)
+
+### Fixed
+- `fix(sshpool)` TestSSHPoolTenantsIsolated flaky race 제거 (`fba42f3`) — sync.Barrier 패턴, 10/10 결정론 PASS
+
+### Added
+- `feat(enterprise)` C-1 wasmrt v3 cosign Sigstore keyless 통합 (`0929995`) — CosignSigstoreVerifier + Fulcio + Rekor + OIDC + VirtualSigstore in-memory test + sigstore-go v1.1.4 dep + 23 신규 단위
+- `feat(enterprise)` D-3 robotid v3 TPM Quote signature attestation flow (`b2a02c3`) — QuoteAttestation + VerifyQuote OS-agnostic + Linux QuoteLinux + AK ECC P-256 + ConstantTimeCompare + 24 신규 단위 + dep 0
+
+### Notes
+- enterprise 누적 264+ 단위 PASS (v2 217+ → v3 +47)
+- sub-agent worktree pattern 39회 누적, 본 round 3 sub-agent 동시 dispatch (메모리 정책 일관)
 
 ---
 
