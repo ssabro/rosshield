@@ -29,9 +29,15 @@ function AuthenticatedLayout(): React.ReactElement {
       <OfflineIndicator />
       <UpdatePrompt />
       <Sidebar />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-auto p-6">
+        {/* D-UI-1 Stage 3 — Skip-to-content target. tabIndex={-1}로 anchor 점프 시
+            screen-reader가 main으로 포커스 이동 가능. */}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-auto p-4 outline-none focus:outline-none md:p-6"
+        >
           <Outlet />
         </main>
       </div>

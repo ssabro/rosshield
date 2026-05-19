@@ -28,6 +28,19 @@ export const ko = {
   'nav.license': '라이선스',
   'nav.system': '시스템',
   'nav.settings': '설정',
+  // D-UI-1 Stage 3 — sidebar 4 그룹 헤더.
+  'nav.group.operations': '운영',
+  'nav.group.compliance': '컴플라이언스',
+  'nav.group.intelligence': '지능화',
+  'nav.group.admin': '관리',
+  'nav.advisor.optIn': '옵트인',
+  'nav.menu.open': '메뉴 열기',
+  'nav.menu.close': '메뉴 닫기',
+  'nav.sidebar.collapse': '사이드바 접기',
+  'nav.sidebar.expand': '사이드바 펼치기',
+
+  // D-UI-1 Stage 3 — 본문 건너뛰기 링크 (KWCAG/공공 입찰 P0).
+  'a11y.skipToContent': '본문으로 건너뛰기',
 
   'header.theme.light': '라이트',
   'header.theme.dark': '다크',
@@ -38,6 +51,18 @@ export const ko = {
   'header.locale.aria': '언어 ({label})',
   'header.logout': '로그아웃',
   'header.user.aria': '현재 사용자',
+  // D-UI-1 Stage 3 — Header 개편 (tenant·role badge, search, user menu).
+  'header.search.aria': '전체 검색 (Ctrl+K)',
+  'header.search.placeholder': '검색 (준비 중)',
+  'header.role.admin': 'admin',
+  'header.role.auditor': 'auditor',
+  'header.role.operator': 'operator',
+  'header.role.viewer': 'viewer',
+  'header.role.member': 'member',
+  'header.tenantRole.aria': '현재 테넌트 · 역할',
+  'header.user.menu.aria': '사용자 메뉴',
+  'header.user.menu.profile': '설정',
+  'header.user.menu.signedInAs': '로그인 계정',
 
   'login.title': 'rosshield Console',
   'login.description': '로봇 플릿 보안 감사 콘솔에 로그인합니다.',
@@ -908,6 +933,19 @@ export const en: Record<keyof typeof ko, string> = {
   'nav.license': 'License',
   'nav.system': 'System',
   'nav.settings': 'Settings',
+  // D-UI-1 Stage 3 — sidebar 4 group headers.
+  'nav.group.operations': 'Operations',
+  'nav.group.compliance': 'Compliance',
+  'nav.group.intelligence': 'Intelligence',
+  'nav.group.admin': 'Administration',
+  'nav.advisor.optIn': 'opt-in',
+  'nav.menu.open': 'Open menu',
+  'nav.menu.close': 'Close menu',
+  'nav.sidebar.collapse': 'Collapse sidebar',
+  'nav.sidebar.expand': 'Expand sidebar',
+
+  // D-UI-1 Stage 3 — skip-to-content link (KWCAG / public-sector P0).
+  'a11y.skipToContent': 'Skip to main content',
 
   'header.theme.light': 'Light',
   'header.theme.dark': 'Dark',
@@ -918,6 +956,18 @@ export const en: Record<keyof typeof ko, string> = {
   'header.locale.aria': 'Language ({label})',
   'header.logout': 'Sign out',
   'header.user.aria': 'Current user',
+  // D-UI-1 Stage 3 — Header overhaul (tenant/role badge, search, user menu).
+  'header.search.aria': 'Global search (Ctrl+K)',
+  'header.search.placeholder': 'Search (coming soon)',
+  'header.role.admin': 'admin',
+  'header.role.auditor': 'auditor',
+  'header.role.operator': 'operator',
+  'header.role.viewer': 'viewer',
+  'header.role.member': 'member',
+  'header.tenantRole.aria': 'Current tenant and role',
+  'header.user.menu.aria': 'User menu',
+  'header.user.menu.profile': 'Settings',
+  'header.user.menu.signedInAs': 'Signed in as',
 
   'login.title': 'rosshield Console',
   'login.description': 'Sign in to the robot fleet security audit console.',

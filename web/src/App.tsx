@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Toaster } from 'sonner'
 
 import { ConfirmDialogHost } from './components/common/ConfirmDialog'
+import { SkipToContent } from './components/layout/SkipToContent'
+import { useLocaleStore } from './i18n/store'
 import {
   PERSIST_OPTIONS_BASE,
   createPersister,
@@ -61,11 +63,22 @@ export default function App(): React.ReactElement {
     return () => mq.removeEventListener('change', onChange)
   }, [theme])
 
+  // D-UI-1 Stage 3 — locale 변경 시 <html lang> 동적 갱신.
+  // index.html 기본은 lang="ko"지만, 사용자가 EN 토글 시 screen-reader/검색엔진
+  // 언어 추정이 정확해지도록 documentElement.lang 동기.
+  const locale = useLocaleStore((s) => s.locale)
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.documentElement.lang = locale
+  }, [locale])
+
   return (
     <PersistQueryClientProvider
       client={queryClient}
       persistOptions={{ persister, ...PERSIST_OPTIONS_BASE }}
     >
+      {/* D-UI-1 Stage 3 — KWCAG/WCAG 2.4.1: skip link는 모든 페이지 첫 focusable. */}
+      <SkipToContent />
       <RouterProvider router={router} />
       {/* D-UI-1 Stage 2 — global toast + confirm host. */}
       <Toaster richColors closeButton position="top-right" />

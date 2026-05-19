@@ -1,4 +1,6 @@
 <!doctype html>
+<!-- lang="ko"는 초기 default — App.tsx의 useLocaleStore effect가 사용자 toggle 시
+     `document.documentElement.lang`을 'ko'/'en'으로 동기 갱신한다 (KWCAG 1.3.1). -->
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
@@ -11,7 +13,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- 브라우저 chrome theme 컬러 — manifest theme_color 일관 (#0a0a0a). -->
     <meta name="theme-color" content="#0a0a0a" />
-    <title>rosshield Console</title>
+    <title>Lodestar Console</title>
   </head>
   <body>
     <div id="root"></div>

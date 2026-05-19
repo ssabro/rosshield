@@ -12,6 +12,11 @@ import type { LinkProps } from '@tanstack/react-router'
 //   - separator: lucide ChevronRight 14px
 //   - 호버 가능한 링크는 underline
 //   - 마지막 항목은 foreground color (현재 위치 강조)
+//
+// D-UI-1 Stage 3 — 본 컴포넌트는 이미 다음 drill-down 라우트에서 일관 사용 중:
+//   - robots/$robotId, fleets/$fleetId, packs/$packKey, packs/$packKey/checks/$checkId
+//   layout에서 자동 매핑(routeContext 기반)은 Stage 4 페이지 정비와 묶어 처리 —
+//   본 Stage는 layout만 손대 페이지 회귀 0 목표.
 
 export interface BreadcrumbItem {
   label: string
