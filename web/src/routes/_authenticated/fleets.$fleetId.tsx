@@ -34,7 +34,8 @@ function FleetDetailPage(): React.ReactElement {
 
   if (fleetQuery.isPending) {
     return (
-      <div className="space-y-6">
+      // D-UI-1 Stage 5b — 페이지 root 표준 `space-y-4` (drill-down 일관화).
+      <div className="space-y-4">
         <PageHeader title={t('pages.fleets.title')} />
         <CardSkeleton />
         <p className="sr-only">{t('fleets.list.loading')}</p>
@@ -43,7 +44,7 @@ function FleetDetailPage(): React.ReactElement {
   }
   if (!fleet || fleetQuery.isError) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <PageHeader title={t('pages.fleets.title')} />
         <Card>
           <CardContent className="py-6 text-sm text-destructive">
@@ -58,7 +59,7 @@ function FleetDetailPage(): React.ReactElement {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title={fleet.name}
         description={fleet.description || t('fleets.detail.noDescription')}

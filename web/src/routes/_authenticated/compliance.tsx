@@ -87,7 +87,8 @@ function CompliancePage(): React.ReactElement {
     ) : undefined
 
   return (
-    <div className="space-y-6">
+    // D-UI-1 Stage 5b — 페이지 root 표준 `space-y-4` (drill-down/일반 일관화).
+    <div className="space-y-4">
       <PageHeader
         title={t('pages.compliance.title')}
         description={t('pages.compliance.description')}
