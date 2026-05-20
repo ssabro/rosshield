@@ -44,6 +44,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # workflow_dispatch 경로는 git checkout이 안 된 상태 — gh CLI가 base repo를
+          # 인식 못 함. GH_REPO env로 명시 주입.
+          GH_REPO: ${{ github.repository }}
         run: |
           # 가장 최근 성공한 Snap Build run에서 artifact 다운로드.
           mkdir -p ./snap-artifact
