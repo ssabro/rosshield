@@ -134,11 +134,22 @@ func (s *CosignSigner) Sign(ctx context.Context, archive []byte) ([]byte, error)
 		binary = "cosign"
 	}
 
-	// `cosign sign-blob --bundle=- --yes [--fulcio-url=...] [--rekor-url=...] -`
+	// cosign 2.x: `--bundle=-` (stdout) 옵션은 신뢰할 수 없음 — stdout에 base64 signature
+	// (`MEUC...` ECDSA DER) + bundle JSON이 혼재될 수 있어 verify-blob의 JSON parser가
+	// "invalid character 'M'" 에러. 표준 패턴: 임시 파일에 bundle 받은 후 ReadFile.
+	bundleFile, err := os.CreateTemp("", "rosshield-cosign-bundle-*.json")
+	if err != nil {
+		return nil, fmt.Errorf("rotation: cosign sign-blob: tmp file: %w", err)
+	}
+	bundlePath := bundleFile.Name()
+	_ = bundleFile.Close() // cosign이 직접 write — 우리는 path만 전달.
+	defer func() { _ = os.Remove(bundlePath) }()
+
+	// `cosign sign-blob --bundle <tmpfile> --yes [--fulcio-url=...] [--rekor-url=...] -`
 	// --yes — interactive confirmation 우회 (server 배포에서 필수)
-	// --bundle=- — bundle을 stdout으로 출력
+	// --bundle <file> — bundle JSON을 별 파일에 작성
 	// trailing `-` — stdin에서 blob 읽기
-	args := []string{"sign-blob", "--yes", "--bundle=-"}
+	args := []string{"sign-blob", "--yes", "--bundle=" + bundlePath}
 	if s.fulcioURL != "" {
 		args = append(args, "--fulcio-url="+s.fulcioURL)
 	}
@@ -151,7 +162,7 @@ func (s *CosignSigner) Sign(ctx context.Context, archive []byte) ([]byte, error)
 	cmd.Stdin = bytes.NewReader(archive)
 
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	cmd.Stdout = &stdout // 의도적으로 capture — base64 signature가 들어가지만 본 함수는 무시.
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
@@ -159,9 +170,12 @@ func (s *CosignSigner) Sign(ctx context.Context, archive []byte) ([]byte, error)
 			err, strings.TrimSpace(stderr.String()))
 	}
 
-	bundle := stdout.Bytes()
+	bundle, err := os.ReadFile(bundlePath)
+	if err != nil {
+		return nil, fmt.Errorf("rotation: cosign sign-blob: read bundle file: %w", err)
+	}
 	if len(bundle) == 0 {
-		return nil, errors.New("rotation: cosign sign-blob: empty bundle (stdout)")
+		return nil, errors.New("rotation: cosign sign-blob: empty bundle file")
 	}
 	return bundle, nil
 }
