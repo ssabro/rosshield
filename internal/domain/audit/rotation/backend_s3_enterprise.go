@@ -215,8 +215,12 @@ func (b *S3Backend) ApplyLifecyclePolicy(ctx context.Context) error {
 		}
 	}
 
+	// MinIO 등 S3 호환 storage는 PutBucketLifecycleConfiguration에 Content-MD5 헤더를
+	// 강제 요구합니다. AWS SDK v2는 ChecksumAlgorithm을 명시하면 SHA256/CRC32 등을
+	// 자동 계산해 헤더에 채워줍니다 — AWS 본가는 양쪽 모두 허용.
 	_, err := b.client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
-		Bucket: aws.String(b.cfg.Bucket),
+		Bucket:            aws.String(b.cfg.Bucket),
+		ChecksumAlgorithm: s3types.ChecksumAlgorithmSha256,
 		LifecycleConfiguration: &s3types.BucketLifecycleConfiguration{
 			Rules: []s3types.LifecycleRule{rule},
 		},
