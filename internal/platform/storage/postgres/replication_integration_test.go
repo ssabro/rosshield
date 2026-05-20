@@ -504,7 +504,7 @@ func TestAuditChainHeadSHACrossRegion(t *testing.T) {
 				tenant_id, seq, occurred_at, actor_type, actor_id,
 				action, target_type, target_id, payload_digest, outcome,
 				prev_hash, hash
-			) VALUES ($1, $2, NOW()::TEXT, 'system', 'sys', 'test.event', 't', $3, $4, 'success', $5, $6)
+			) VALUES ($1, $2, NOW(), 'system', 'sys', 'test.event', 't', $3, $4, 'success', $5, $6)
 		`
 		prev := []byte(fmt.Sprintf("h%d", seq-1))
 		hash := []byte(fmt.Sprintf("h%d", seq))
@@ -525,7 +525,7 @@ func TestAuditChainHeadSHACrossRegion(t *testing.T) {
 	err = fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		_, err := tx.Exec(c, `
 			INSERT INTO audit_chain_heads (tenant_id, seq, hash, updated_at)
-			VALUES ($1, $2, $3, NOW()::TEXT)
+			VALUES ($1, $2, $3, NOW())
 			ON CONFLICT (tenant_id) DO UPDATE SET seq = EXCLUDED.seq, hash = EXCLUDED.hash, updated_at = EXCLUDED.updated_at
 		`, tenantID, int64(5), expectedHeadHash)
 		return err
@@ -604,7 +604,7 @@ func TestLeaderEpochSchemaPropagates(t *testing.T) {
 				tenant_id, seq, occurred_at, actor_type, actor_id,
 				action, target_type, target_id, payload_digest, outcome,
 				prev_hash, hash, leader_epoch
-			) VALUES ($1, 1, NOW()::TEXT, 'system', 'sys', 'test.epoch', 't', 'tgt', $2, 'success', $3, $4, 42)
+			) VALUES ($1, 1, NOW(), 'system', 'sys', 'test.epoch', 't', 'tgt', $2, 'success', $3, $4, 42)
 		`, tenantID, []byte("digest"), []byte("prev"), []byte("hash"))
 		return err
 	})
