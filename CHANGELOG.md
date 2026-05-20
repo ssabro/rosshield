@@ -11,7 +11,29 @@
 
 ---
 
-## [0.8.4] — 2026-05-21 (patch)
+## [0.8.5] — 2026-05-21 (patch — v0.8.4 hot fix)
+
+> **요약**: v0.8.4 check-health hook이 snapd 30s hard timeout을 정확히 hit하여 `snap install` 자체가 fail되는 회귀 hot fix. polling을 10s margin으로 축소 + snap-smoke workflow에 `snap run --hook=check-health rosshield` 외부 trigger 패턴 추가. v0.8.4 release는 broken(snap install fail) — 본 release로 회복. Breaking 0, 회귀 0 (v0.8.3 이하 환경 영향 0). 상세는 [docs/releases/v0.8.5.md](docs/releases/v0.8.5.md).
+>
+> **기준 commit**: `96305be` (main)
+
+### Fixed
+- `fix(snap)` check-health hook 30s hard timeout 회피 (`96305be`) — snapd가 check-health hook에 30s hard timeout을 강제하며, 초과 시 install/refresh 자체가 fail. CHECK_TIMEOUT 30s → 10s 축소 + polling interval 2s → 1s + curl max-time 5s → 3s. daemon ready 안 됐으면 waiting으로 빠르게 종료, snapd 주기 재호출 또는 외부 trigger에서 catch up.
+- `ci(snap-smoke)` 외부 hook trigger 패턴 (`96305be`) — `snap health — trigger + verify check-health` (첫 install 후) + `snap health — trigger + verify after refresh` (refresh round-trip 후) 양쪽 step에서 매 polling iteration마다 `sudo snap run --hook=check-health rosshield` 직접 호출. 30s 안에 daemon ready + okay 도달 cover.
+
+### Changed
+- `docs(design)` e35-refresh-rollback-redesign.md §2 hook lifecycle 표 (`96305be`) — check-health row에 30s hard timeout 정확치 행 추가. v0.8.4 첫 실 검증에서 확정한 사실 반영.
+
+### Notes
+- v0.8.4 release는 broken — snap install이 30s hard timeout으로 fail. v0.8.4 snap binary 사용자는 v0.8.5로 즉시 upgrade 필요. Kubernetes/Docker/systemd 사용자는 영향 0(snap hook은 snap 배포 한정). v0.8.4 GitHub release attach는 그대로 보존(Semantic Versioning history 일관, broken release 인정 + 다음 patch fix).
+
+---
+
+## [0.8.4] — 2026-05-21 (patch — broken release)
+
+> **주의**: 본 release는 broken 상태입니다. snap `check-health` hook이 snapd의 30s hard timeout을 정확히 hit하여 `snap install` 자체가 fail됩니다. v0.8.5 patch로 즉시 fix. Kubernetes·Docker·systemd 사용자는 영향 0. 자세한 회복 절차는 [v0.8.5 release notes](docs/releases/v0.8.5.md) 참조.
+>
+
 
 > **요약**: E35-refresh redesign — snap `post-refresh` hook이 services start **전** 호출되는 lifecycle 표준 사실 확정 후, 기존 healthz polling 설계의 architectural mismatch 마감. post-refresh는 binary 무결성 + configure sanity만 cover로 단순화하고, 신규 `check-health` hook이 daemon healthz polling + `snapctl set-health` 담당. 자동 rollback 범위는 catastrophic case로 축소되고 daemon unhealthy는 운영자/Prometheus alert로 위임. snap-smoke CI의 refresh round-trip step에서 `continue-on-error: true` 제거 — E35-refresh carryover 마감. 회귀 0, Breaking 0. 상세는 [docs/releases/v0.8.4.md](docs/releases/v0.8.4.md).
 >

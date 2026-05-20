@@ -89,6 +89,7 @@ snap refresh 시 hook 호출 sequence:
 | `post-refresh` | refresh 시, services **모두 stopped** + 새 revision unpack 직후 | refresh 실패 → 이전 revision으로 자동 복원 | ✅ 트리거 |
 | `configure` | `snap set` 호출 시 | snap set 거부 (값 미반영) | n/a |
 | `check-health` | refresh/install/revert 완료 후 + 주기적 (~5분) | exit status 무시 — `snapctl set-health` 호출 결과만 활용 | ❌ unhealthy 표시만, revert 안 함 |
+| `check-health` (hard timeout) | 위와 동일 | **snapd 30s hard timeout 강제** — 초과 시 install/refresh 자체 fail | (timeout 시 hook 종료 + install/refresh abort) |
 | `install-device` | (Ubuntu Core gadget 전용) | 미사용 | n/a |
 
 **핵심 발견**:
