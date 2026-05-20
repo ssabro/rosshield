@@ -271,9 +271,9 @@ func TestReplicationLagWithin1Second(t *testing.T) {
 	insertStart := time.Now()
 	err := fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		_, err := tx.Exec(c, `
-			INSERT INTO tenants (id, slug, display_name, status, created_at, updated_at)
-			VALUES ($1, $2, $3, 'active', NOW(), NOW())
-		`, tenantID, "mrtest-t1", "MR.T1 Tenant")
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, tenantID, "MR.T1 Tenant")
 		return err
 	})
 	if err != nil {
@@ -307,16 +307,15 @@ func TestTenantMetaReplicated(t *testing.T) {
 
 	const (
 		tenantID   = "tn-mrtest-t7"
-		tenantSlug = "mrtest-t7"
 		tenantName = "MR.T7 Cross-region Tenant"
 	)
 
 	// Primary에 tenant INSERT (실 tenant.Service 우회 — schema 직접 사용으로 단순화).
 	err := fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		_, err := tx.Exec(c, `
-			INSERT INTO tenants (id, slug, display_name, status, created_at, updated_at)
-			VALUES ($1, $2, $3, 'active', NOW(), NOW())
-		`, tenantID, tenantSlug, tenantName)
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, tenantID, tenantName)
 		return err
 	})
 	if err != nil {
@@ -326,26 +325,21 @@ func TestTenantMetaReplicated(t *testing.T) {
 	// Standby에서 tenant 조회 (replication propagation 대기 포함).
 	waitForReplication(t, fix, tenantID)
 
-	var (
-		gotSlug, gotName, gotStatus string
-	)
+	var gotName, gotPlan string
 	err = fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		return tx.QueryRow(c, `
-			SELECT slug, display_name, status FROM tenants WHERE id = $1
-		`, tenantID).Scan(&gotSlug, &gotName, &gotStatus)
+			SELECT name, plan FROM tenants WHERE id = $1
+		`, tenantID).Scan(&gotName, &gotPlan)
 	})
 	if err != nil {
 		t.Fatalf("standby SELECT tenant: %v", err)
 	}
 
-	if gotSlug != tenantSlug {
-		t.Errorf("standby tenant.slug = %q, want %q", gotSlug, tenantSlug)
-	}
 	if gotName != tenantName {
-		t.Errorf("standby tenant.display_name = %q, want %q", gotName, tenantName)
+		t.Errorf("standby tenant.name = %q, want %q", gotName, tenantName)
 	}
-	if gotStatus != "active" {
-		t.Errorf("standby tenant.status = %q, want active", gotStatus)
+	if gotPlan != "desktop_free" {
+		t.Errorf("standby tenant.plan = %q, want desktop_free", gotPlan)
 	}
 }
 
@@ -416,9 +410,9 @@ func TestFailoverPromotesStandby(t *testing.T) {
 	const seedTenant = "tn-mrtest-t4-seed"
 	err := fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		_, err := tx.Exec(c, `
-			INSERT INTO tenants (id, slug, display_name, status, created_at, updated_at)
-			VALUES ($1, $2, $3, 'active', NOW(), NOW())
-		`, seedTenant, "mrtest-t4-seed", "MR.T4 Seed")
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, seedTenant, "MR.T4 Seed")
 		return err
 	})
 	if err != nil {
@@ -436,9 +430,9 @@ func TestFailoverPromotesStandby(t *testing.T) {
 	const newTenant = "tn-mrtest-t4-postpromote"
 	err = fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		_, err := tx.Exec(c, `
-			INSERT INTO tenants (id, slug, display_name, status, created_at, updated_at)
-			VALUES ($1, $2, $3, 'active', NOW(), NOW())
-		`, newTenant, "mrtest-t4-postpromote", "MR.T4 Post-Promote")
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, newTenant, "MR.T4 Post-Promote")
 		return err
 	})
 	if err != nil {
@@ -492,9 +486,9 @@ func TestAuditChainHeadSHACrossRegion(t *testing.T) {
 	// Primary: tenant 시드 (audit_entries는 tenant FK 없지만 일관성)
 	err := fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		_, err := tx.Exec(c, `
-			INSERT INTO tenants (id, slug, display_name, status, created_at, updated_at)
-			VALUES ($1, $2, $3, 'active', NOW(), NOW())
-		`, tenantID, "mrtest-t5", "MR.T5")
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, tenantID, "MR.T5")
 		return err
 	})
 	if err != nil {
@@ -600,9 +594,9 @@ func TestLeaderEpochSchemaPropagates(t *testing.T) {
 	// 시드 + audit_entries INSERT with leader_epoch
 	err := fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		if _, err := tx.Exec(c, `
-			INSERT INTO tenants (id, slug, display_name, status, created_at, updated_at)
-			VALUES ($1, $2, $3, 'active', NOW(), NOW())
-		`, tenantID, "mrtest-t6", "MR.T6"); err != nil {
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, tenantID, "MR.T6"); err != nil {
 			return err
 		}
 		_, err := tx.Exec(c, `
@@ -662,9 +656,9 @@ func TestReplicationLagMeasurable(t *testing.T) {
 	const tenantID = "tn-mrtest-t8"
 	err := fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 		_, err := tx.Exec(c, `
-			INSERT INTO tenants (id, slug, display_name, status, created_at, updated_at)
-			VALUES ($1, $2, $3, 'active', NOW(), NOW())
-		`, tenantID, "mrtest-t8", "MR.T8")
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, tenantID, "MR.T8")
 		return err
 	})
 	if err != nil {
