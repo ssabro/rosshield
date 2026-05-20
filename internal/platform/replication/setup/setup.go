@@ -16,8 +16,10 @@
 //   - Route53 DNS hook 실 SDK 호출
 //   - 자동 failover (heartbeat timeout)
 //   - cross-region audit witness fold-in
-//   - publication tables 변경 자동 동기화 (현재는 첫 생성만 처리)
-//   - replication slot cleanup 자동화
+//
+// Stage 3 후속 (본 round에서 결선 완료):
+//   - publication tables 변경 자동 동기화 (publication_sync.go)
+//   - replication slot cleanup 자동화 (slot_cleanup.go)
 package setup
 
 import (
@@ -37,6 +39,9 @@ type Executor interface {
 	Exec(ctx context.Context, sql string, args ...any) error
 	// QueryBool은 단일 boolean 값을 반환하는 SELECT를 실행합니다.
 	QueryBool(ctx context.Context, sql string, args ...any) (bool, error)
+	// QueryStrings는 단일 string 컬럼을 여러 row로 반환하는 SELECT를 실행합니다.
+	// publication tables 조회 + replication slot 후보 조회에 사용.
+	QueryStrings(ctx context.Context, sql string, args ...any) ([]string, error)
 }
 
 // PublicationSpec은 primary 인스턴스가 publish할 테이블 spec입니다.
@@ -77,6 +82,7 @@ var (
 	ErrEmptyTables             = errors.New("setup: tables empty (use AllTables=true for all)")
 	ErrEmptyConnString         = errors.New("setup: primary conn string is required")
 	ErrEmptyPublicationName    = errors.New("setup: publication name is required")
+	ErrEmptySlotPrefix         = errors.New("setup: slot prefix is required (안전 가드)")
 )
 
 // Setup은 role에 따라 publication 또는 subscription을 idempotent하게 생성합니다.

@@ -7,13 +7,14 @@ import (
 
 // ensurePublication은 publication이 없으면 생성합니다 (idempotent).
 //
-//  1. pg_publication에 같은 이름 존재 확인 → 있으면 skip
-//  2. AllTables=true → `CREATE PUBLICATION <name> FOR ALL TABLES`
+//  1. pg_publication에 같은 이름 존재 확인.
+//     - 존재 + AllTables=true → no-op (FOR ALL TABLES는 자동 추적)
+//     - 존재 + AllTables=false → syncPublicationTables(ctx, exec, spec) 호출하여
+//     ALTER PUBLICATION ADD/DROP TABLE로 spec과 동기화 (Stage 3 후속).
+//  2. 없으면 AllTables=true → `CREATE PUBLICATION <name> FOR ALL TABLES`,
 //     AllTables=false → `CREATE PUBLICATION <name> FOR TABLE <t1>, <t2>, ...`
 //
-// 본 함수는 publication tables 변경을 추적하지 않습니다 (Stage 3 범위 외). 운영자가
-// 테이블 목록을 바꿀 때는 수동 `ALTER PUBLICATION ... ADD/DROP TABLE`이 필요합니다
-// — 향후 별 epic에서 ALTER 동기화 자동화 고려.
+// 운영 중 spec.Tables가 바뀌면 두 번째 부팅에서 자동으로 ALTER가 발생합니다.
 func ensurePublication(ctx context.Context, exec Executor, spec PublicationSpec) error {
 	if err := validateName(spec.Name); err != nil {
 		return fmt.Errorf("ensurePublication: %w", err)
@@ -27,7 +28,8 @@ func ensurePublication(ctx context.Context, exec Executor, spec PublicationSpec)
 		return fmt.Errorf("ensurePublication: check existence: %w", err)
 	}
 	if exists {
-		return nil
+		// AllTables=true는 syncPublicationTables가 no-op 처리하므로 안전하게 호출.
+		return syncPublicationTables(ctx, exec, spec)
 	}
 
 	var sqlStmt string

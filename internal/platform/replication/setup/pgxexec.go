@@ -43,3 +43,31 @@ func (e *PgxExecutor) QueryBool(ctx context.Context, sql string, args ...any) (b
 	}
 	return b, nil
 }
+
+// QueryStrings는 단일 string 컬럼을 여러 row로 반환하는 SELECT를 실행합니다.
+//
+// publication tables 동기화·replication slot cleanup에서 사용. row가 없으면
+// 빈 slice + nil error.
+func (e *PgxExecutor) QueryStrings(ctx context.Context, sql string, args ...any) ([]string, error) {
+	if e.pool == nil {
+		return nil, fmt.Errorf("setup: PgxExecutor pool is nil")
+	}
+	rows, err := e.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]string, 0)
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

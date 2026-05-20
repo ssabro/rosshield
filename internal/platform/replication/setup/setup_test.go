@@ -3,14 +3,18 @@ package setup
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ssabro/rosshield/internal/platform/replication"
 )
 
-// fakeExecutor는 Exec/QueryBool 호출을 기록하는 in-memory test fixture입니다.
+// fakeExecutor는 Exec/QueryBool/QueryStrings 호출을 기록하는 in-memory test
+// fixture입니다.
 type fakeExecutor struct {
 	mu sync.Mutex
 
@@ -18,12 +22,17 @@ type fakeExecutor struct {
 	boolReturns []bool
 	boolErrs    []error
 
+	// stringsReturns: 다음 QueryStrings 호출이 반환할 slice (FIFO). 비어있으면 nil.
+	stringsReturns [][]string
+	stringsErrs    []error
+
 	// execErr: 모든 Exec 호출이 반환할 에러 (nil이면 성공).
 	execErr error
 
 	// 기록.
-	execCalls      []execCall
-	queryBoolCalls []queryCall
+	execCalls         []execCall
+	queryBoolCalls    []queryCall
+	queryStringsCalls []queryCall
 }
 
 type execCall struct {
@@ -60,6 +69,25 @@ func (f *fakeExecutor) QueryBool(_ context.Context, sql string, args ...any) (bo
 		return v, nil
 	}
 	return false, nil
+}
+
+func (f *fakeExecutor) QueryStrings(_ context.Context, sql string, args ...any) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queryStringsCalls = append(f.queryStringsCalls, queryCall{sql: sql, args: args})
+	if len(f.stringsErrs) > 0 {
+		err := f.stringsErrs[0]
+		f.stringsErrs = f.stringsErrs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(f.stringsReturns) > 0 {
+		v := f.stringsReturns[0]
+		f.stringsReturns = f.stringsReturns[1:]
+		return v, nil
+	}
+	return nil, nil
 }
 
 func (f *fakeExecutor) lastExecSQL() string {
@@ -222,6 +250,315 @@ func TestEnsurePublication_CreateError(t *testing.T) {
 	err := Setup(context.Background(), fake, replication.RolePrimary, &spec, nil)
 	if err == nil || !errors.Is(err, wantErr) {
 		t.Fatalf("want wrap of %v, got %v", wantErr, err)
+	}
+}
+
+// --- syncPublicationTables (publication tables 변경 자동 동기화) ---------
+
+func TestSyncPublicationTables_AllTables_NoOp(t *testing.T) {
+	t.Parallel()
+	fake := &fakeExecutor{}
+	spec := PublicationSpec{Name: "rosshield_main", AllTables: true}
+
+	if err := syncPublicationTables(context.Background(), fake, spec); err != nil {
+		t.Fatalf("syncPublicationTables: %v", err)
+	}
+	if got := len(fake.queryStringsCalls); got != 0 {
+		t.Fatalf("AllTables=true 경로는 QueryStrings 호출하지 않습니다, got %d", got)
+	}
+	if got := len(fake.execCalls); got != 0 {
+		t.Fatalf("AllTables=true 경로는 ALTER 호출하지 않습니다, got %d", got)
+	}
+}
+
+func TestSyncPublicationTables_AddTable(t *testing.T) {
+	t.Parallel()
+	// 기존 publication에는 tenants만 있고 spec은 tenants+audit_entries 요구 →
+	// audit_entries ADD TABLE 1건.
+	fake := &fakeExecutor{stringsReturns: [][]string{{"tenants"}}}
+	spec := PublicationSpec{
+		Name:      "rosshield_main",
+		AllTables: false,
+		Tables:    []string{"tenants", "audit_entries"},
+	}
+
+	if err := syncPublicationTables(context.Background(), fake, spec); err != nil {
+		t.Fatalf("syncPublicationTables: %v", err)
+	}
+	if got := len(fake.execCalls); got != 1 {
+		t.Fatalf("want 1 ALTER (ADD), got %d", got)
+	}
+	got := fake.lastExecSQL()
+	if !strings.Contains(got, "ALTER PUBLICATION") {
+		t.Fatalf("missing ALTER PUBLICATION: %q", got)
+	}
+	if !strings.Contains(got, "ADD TABLE") {
+		t.Fatalf("missing ADD TABLE: %q", got)
+	}
+	if !strings.Contains(got, `"audit_entries"`) {
+		t.Fatalf("missing audit_entries: %q", got)
+	}
+	if strings.Contains(got, `"tenants"`) {
+		t.Fatalf("기존 tenants가 ADD 절에 포함되면 안 됩니다: %q", got)
+	}
+}
+
+func TestSyncPublicationTables_DropTable(t *testing.T) {
+	t.Parallel()
+	// 기존 publication: tenants+audit_entries, spec: tenants → audit_entries
+	// DROP TABLE.
+	fake := &fakeExecutor{stringsReturns: [][]string{{"tenants", "audit_entries"}}}
+	spec := PublicationSpec{
+		Name:      "rosshield_main",
+		AllTables: false,
+		Tables:    []string{"tenants"},
+	}
+
+	if err := syncPublicationTables(context.Background(), fake, spec); err != nil {
+		t.Fatalf("syncPublicationTables: %v", err)
+	}
+	if got := len(fake.execCalls); got != 1 {
+		t.Fatalf("want 1 ALTER (DROP), got %d", got)
+	}
+	got := fake.lastExecSQL()
+	if !strings.Contains(got, "DROP TABLE") {
+		t.Fatalf("missing DROP TABLE: %q", got)
+	}
+	if !strings.Contains(got, `"audit_entries"`) {
+		t.Fatalf("missing audit_entries in DROP: %q", got)
+	}
+}
+
+func TestSyncPublicationTables_BothAddAndDrop(t *testing.T) {
+	t.Parallel()
+	// 기존: tenants, scans / spec: tenants, audit_entries → ADD audit_entries +
+	// DROP scans. 두 ALTER 호출 발생.
+	fake := &fakeExecutor{stringsReturns: [][]string{{"tenants", "scans"}}}
+	spec := PublicationSpec{
+		Name:      "rosshield_main",
+		AllTables: false,
+		Tables:    []string{"tenants", "audit_entries"},
+	}
+
+	if err := syncPublicationTables(context.Background(), fake, spec); err != nil {
+		t.Fatalf("syncPublicationTables: %v", err)
+	}
+	if got := len(fake.execCalls); got != 2 {
+		t.Fatalf("want 2 ALTER (ADD+DROP), got %d", got)
+	}
+	addFound, dropFound := false, false
+	for _, c := range fake.execCalls {
+		if strings.Contains(c.sql, "ADD TABLE") && strings.Contains(c.sql, `"audit_entries"`) {
+			addFound = true
+		}
+		if strings.Contains(c.sql, "DROP TABLE") && strings.Contains(c.sql, `"scans"`) {
+			dropFound = true
+		}
+	}
+	if !addFound {
+		t.Fatalf("ADD audit_entries 누락: %+v", fake.execCalls)
+	}
+	if !dropFound {
+		t.Fatalf("DROP scans 누락: %+v", fake.execCalls)
+	}
+}
+
+func TestSyncPublicationTables_NoChange(t *testing.T) {
+	t.Parallel()
+	// 기존과 spec이 동일 → ALTER 0회.
+	fake := &fakeExecutor{stringsReturns: [][]string{{"tenants", "audit_entries"}}}
+	spec := PublicationSpec{
+		Name:      "rosshield_main",
+		AllTables: false,
+		Tables:    []string{"audit_entries", "tenants"}, // 순서 무관해야 함
+	}
+
+	if err := syncPublicationTables(context.Background(), fake, spec); err != nil {
+		t.Fatalf("syncPublicationTables: %v", err)
+	}
+	if got := len(fake.execCalls); got != 0 {
+		t.Fatalf("동일 set → 0 ALTER expected, got %d", got)
+	}
+}
+
+func TestEnsurePublication_ExistsAndExplicitTables_TriggersSync(t *testing.T) {
+	t.Parallel()
+	// publication exists=true + AllTables=false → sync 경로로 진입해야 함.
+	fake := &fakeExecutor{
+		boolReturns:    []bool{true},
+		stringsReturns: [][]string{{"tenants"}},
+	}
+	spec := PublicationSpec{
+		Name:      "rosshield_main",
+		AllTables: false,
+		Tables:    []string{"tenants", "audit_entries"},
+	}
+
+	if err := Setup(context.Background(), fake, replication.RolePrimary, &spec, nil); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if got := len(fake.queryStringsCalls); got != 1 {
+		t.Fatalf("want 1 QueryStrings (sync trigger), got %d", got)
+	}
+	if got := len(fake.execCalls); got != 1 {
+		t.Fatalf("want 1 ALTER (ADD audit_entries), got %d", got)
+	}
+	if !strings.Contains(fake.lastExecSQL(), "ADD TABLE") {
+		t.Fatalf("missing ADD TABLE: %q", fake.lastExecSQL())
+	}
+}
+
+// --- CleanupInactiveSlots (replication slot 자동 cleanup) -----------------
+
+func TestCleanupInactiveSlots_DropsOne(t *testing.T) {
+	t.Parallel()
+	fake := &fakeExecutor{stringsReturns: [][]string{{"rosshield_main_sub"}}}
+	opts := CleanupInactiveSlotsOptions{
+		MinInactiveAge: 24 * time.Hour,
+		SlotPrefix:     "rosshield_",
+	}
+
+	removed, err := CleanupInactiveSlots(context.Background(), fake, opts)
+	if err != nil {
+		t.Fatalf("CleanupInactiveSlots: %v", err)
+	}
+	if len(removed) != 1 || removed[0] != "rosshield_main_sub" {
+		t.Fatalf("removed list want [rosshield_main_sub], got %v", removed)
+	}
+	if got := len(fake.execCalls); got != 1 {
+		t.Fatalf("want 1 pg_drop_replication_slot exec, got %d", got)
+	}
+	call := fake.execCalls[0]
+	if !strings.Contains(call.sql, "pg_drop_replication_slot") {
+		t.Fatalf("missing pg_drop_replication_slot: %q", call.sql)
+	}
+	// bind parameter로 slot 이름 전달 (SQL injection 방지)
+	if len(call.args) != 1 {
+		t.Fatalf("want 1 bind arg (slot name), got %d (%v)", len(call.args), call.args)
+	}
+	if call.args[0] != "rosshield_main_sub" {
+		t.Fatalf("missing slot name in args: %v", call.args)
+	}
+}
+
+func TestCleanupInactiveSlots_DryRun_NoDrop(t *testing.T) {
+	t.Parallel()
+	fake := &fakeExecutor{stringsReturns: [][]string{{"rosshield_main_sub"}}}
+	opts := CleanupInactiveSlotsOptions{
+		MinInactiveAge: 24 * time.Hour,
+		SlotPrefix:     "rosshield_",
+		DryRun:         true,
+	}
+
+	removed, err := CleanupInactiveSlots(context.Background(), fake, opts)
+	if err != nil {
+		t.Fatalf("CleanupInactiveSlots: %v", err)
+	}
+	if len(removed) != 1 || removed[0] != "rosshield_main_sub" {
+		t.Fatalf("DryRun도 candidate list 반환 — want [rosshield_main_sub], got %v", removed)
+	}
+	if got := len(fake.execCalls); got != 0 {
+		t.Fatalf("DryRun=true → 0 Exec expected, got %d", got)
+	}
+}
+
+func TestCleanupInactiveSlots_PrefixMismatch_Skip(t *testing.T) {
+	t.Parallel()
+	// PG가 prefix 필터링을 했지만, 방어적으로 client측에서도 prefix 검증해야 함.
+	// 만약 PG가 반환한 slot이 prefix를 만족하지 않으면 skip.
+	fake := &fakeExecutor{stringsReturns: [][]string{{"other_app_slot", "rosshield_legit"}}}
+	opts := CleanupInactiveSlotsOptions{
+		MinInactiveAge: 24 * time.Hour,
+		SlotPrefix:     "rosshield_",
+	}
+
+	removed, err := CleanupInactiveSlots(context.Background(), fake, opts)
+	if err != nil {
+		t.Fatalf("CleanupInactiveSlots: %v", err)
+	}
+	if len(removed) != 1 || removed[0] != "rosshield_legit" {
+		t.Fatalf("prefix-mismatch slot은 skip — want [rosshield_legit], got %v", removed)
+	}
+	if got := len(fake.execCalls); got != 1 {
+		t.Fatalf("want 1 drop exec (legit만), got %d", got)
+	}
+	call := fake.execCalls[0]
+	if len(call.args) != 1 || call.args[0] != "rosshield_legit" {
+		t.Fatalf("legit slot 누락 in bind args: %v", call.args)
+	}
+}
+
+func TestCleanupInactiveSlots_EmptyList_Graceful(t *testing.T) {
+	t.Parallel()
+	fake := &fakeExecutor{stringsReturns: [][]string{nil}}
+	opts := CleanupInactiveSlotsOptions{
+		MinInactiveAge: 24 * time.Hour,
+		SlotPrefix:     "rosshield_",
+	}
+
+	removed, err := CleanupInactiveSlots(context.Background(), fake, opts)
+	if err != nil {
+		t.Fatalf("CleanupInactiveSlots: %v", err)
+	}
+	if len(removed) != 0 {
+		t.Fatalf("empty list want 0, got %v", removed)
+	}
+	if got := len(fake.execCalls); got != 0 {
+		t.Fatalf("want 0 exec, got %d", got)
+	}
+}
+
+func TestCleanupInactiveSlots_EmptyPrefix_Error(t *testing.T) {
+	t.Parallel()
+	// 안전 가드 — prefix가 비면 모든 slot이 drop 후보가 되므로 explicit error.
+	fake := &fakeExecutor{}
+	opts := CleanupInactiveSlotsOptions{
+		MinInactiveAge: 24 * time.Hour,
+		SlotPrefix:     "",
+	}
+
+	_, err := CleanupInactiveSlots(context.Background(), fake, opts)
+	if !errors.Is(err, ErrEmptySlotPrefix) {
+		t.Fatalf("want ErrEmptySlotPrefix, got %v", err)
+	}
+}
+
+func TestCleanupInactiveSlots_DefaultMinAge(t *testing.T) {
+	t.Parallel()
+	// MinInactiveAge=0 → default 24h 적용. SQL에 86400 (24*3600) seconds 노출 확인.
+	fake := &fakeExecutor{stringsReturns: [][]string{nil}}
+	opts := CleanupInactiveSlotsOptions{
+		SlotPrefix: "rosshield_",
+	}
+
+	if _, err := CleanupInactiveSlots(context.Background(), fake, opts); err != nil {
+		t.Fatalf("CleanupInactiveSlots: %v", err)
+	}
+	if got := len(fake.queryStringsCalls); got != 1 {
+		t.Fatalf("want 1 QueryStrings, got %d", got)
+	}
+	args := fake.queryStringsCalls[0].args
+	if len(args) < 2 {
+		t.Fatalf("want >=2 args (prefix, age), got %d (%v)", len(args), args)
+	}
+}
+
+func TestCleanupInactiveSlots_WithLogger(t *testing.T) {
+	t.Parallel()
+	fake := &fakeExecutor{stringsReturns: [][]string{{"rosshield_main_sub"}}}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	opts := CleanupInactiveSlotsOptions{
+		MinInactiveAge: 1 * time.Hour,
+		SlotPrefix:     "rosshield_",
+		Logger:         logger,
+	}
+
+	removed, err := CleanupInactiveSlots(context.Background(), fake, opts)
+	if err != nil {
+		t.Fatalf("CleanupInactiveSlots: %v", err)
+	}
+	if len(removed) != 1 {
+		t.Fatalf("want 1 removed, got %d", len(removed))
 	}
 }
 
