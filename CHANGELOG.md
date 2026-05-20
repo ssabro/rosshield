@@ -11,6 +11,21 @@
 
 ---
 
+## [0.8.3] — 2026-05-21 (patch)
+
+> **요약**: Snap Build 회복 patch — v0.8.2 Snap Build가 snapcraft `App commands must consist of only ...` validation으로 실패(`=` 문자 거부). server가 `ROSSHIELD_ADDR` env로 default 재정의 가능하게 갱신 + snapcraft.yaml env 주입. 부수로 Kubernetes/Docker/systemd 운영 환경 동시 cover. 회귀 0, Breaking 0. 상세는 [docs/releases/v0.8.3.md](docs/releases/v0.8.3.md).
+>
+> **기준 commit**: `7bb7b9b` (main)
+
+### Fixed
+- `fix(snap)` snapcraft App command `=` 거부 회피 — `ROSSHIELD_ADDR` env 패턴 (`7bb7b9b`) — server가 env로 default 재정의 가능(main.go) + snapcraft.yaml `environment.ROSSHIELD_ADDR=127.0.0.1:8080` 주입. CLI `--addr=...` 플래그는 env보다 우선(Go flag 표준).
+
+### Notes
+- v0.8.2의 `--addr` 직접 명시(`4929a7b`)가 snapcraft 8.x validation 부적합 — env 패턴이 정공.
+- `ROSSHIELD_ADDR` env 패턴은 Kubernetes ConfigMap·Docker `-e`·systemd `Environment=` 동시 cover.
+
+---
+
 ## [0.8.2] — 2026-05-20 (patch)
 
 > **요약**: CI baseline 안정화 patch 시리즈 — 누적 4 CI job(PG integration / MinIO S3 / Playwright E2E / Snap Smoke)의 flaky/회귀를 한 release로 마감. Phase 9.5 testcontainers e2e Patroni 진입 전 baseline 안정성 회복. 회귀 0, Breaking 0, customer-facing 변경 0(snap daemon `--addr` default 명시는 운영자 가이드와 일관성 회복). 상세는 [docs/releases/v0.8.2.md](docs/releases/v0.8.2.md).
