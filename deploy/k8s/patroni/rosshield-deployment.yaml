@@ -1,0 +1,167 @@
+# rosshield-server Kubernetes Deployment — Patroni 통합 예시 (Phase 9 Stage 9.2).
+#
+# 본 manifest는 Patroni cluster(values-example.yaml)와 함께 배포되는 application
+# Deployment 예시입니다. customer 환경에 맞춰 image tag · resources · ingress 등 수정.
+#
+# 참조: docs/operations/patroni-deployment.md §3.2
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rosshield-pg-secret
+  namespace: rosshield-ha
+type: Opaque
+stringData:
+  password: "REPLACE_WITH_STRONG_PASSWORD" # production은 ExternalSecrets Operator 권장
+  postgres-password: "REPLACE_WITH_STRONG_ADMIN_PASSWORD"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rosshield-server
+  namespace: rosshield-ha
+  labels:
+    app.kubernetes.io/name: rosshield-server
+    app.kubernetes.io/version: v0.7.9
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rosshield-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rosshield-server
+    spec:
+      containers:
+        - name: rosshield-server
+          image: ssabro/rosshield-server:v0.7.9 # 또는 customer 자체 image
+          imagePullPolicy: IfNotPresent
+
+          env:
+            # === Lodestar HA 설정 ===
+            - name: ROSSHIELD_HA_ENABLED
+              value: "1"
+            - name: ROSSHIELD_HA_RP
+              value: "patroni" # D-AF-2: Patroni REST로 RoleProvider swap
+            - name: ROSSHIELD_HA_PATRONI_URL
+              value: "http://rosshield-patroni-postgresql-ha-postgresql:8008"
+            - name: ROSSHIELD_HA_PATRONI_POLL_INTERVAL
+              value: "1s"
+
+            # === Lodestar Multi-region 설정 (Phase 8) ===
+            - name: ROSSHIELD_REPLICATION_ENABLED
+              value: "1"
+            - name: ROSSHIELD_REPLICATION_ROLE
+              value: "primary" # Patroni가 실 leader 결정 — flag는 hint
+            - name: ROSSHIELD_REPLICATION_AUTO_SETUP
+              value: "1"
+            - name: ROSSHIELD_REPLICATION_LAG_METRIC_ENABLED
+              value: "1"
+            - name: ROSSHIELD_REPLICATION_LAG_METRIC_INTERVAL
+              value: "30s"
+
+            # === PG DSN (Patroni service 경유) ===
+            - name: ROSSHIELD_DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: rosshield-pg-secret
+                  key: dsn # postgres://rosshield:<password>@host:5432/rosshield?sslmode=require
+
+            # === 운영 설정 ===
+            - name: ROSSHIELD_LOG_LEVEL
+              value: "info"
+            - name: ROSSHIELD_METRICS_ENABLED
+              value: "1"
+
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+
+      affinity:
+        # Pod anti-affinity — 같은 node에 2 pod 안 배치
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values: [rosshield-server]
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rosshield-server
+  namespace: rosshield-ha
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: rosshield-server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+---
+# Ingress example (Nginx) — customer 환경에 맞춰 IngressClass + TLS 수정
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rosshield-server
+  namespace: rosshield-ha
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - audit-seoul.acme.com
+      secretName: rosshield-tls
+  rules:
+    - host: audit-seoul.acme.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rosshield-server
+                port:
+                  number: 80

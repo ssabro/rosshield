@@ -1,0 +1,131 @@
+# Bitnami PostgreSQL-HA (Patroni) Helm chart values 예시 — Phase 9 Stage 9.2.
+#
+# 본 파일을 values-prod.yaml로 복사 후 customer 환경에 맞춰 편집.
+# helm install rosshield-patroni bitnami/postgresql-ha --namespace rosshield-ha -f values-prod.yaml
+#
+# 참조: docs/operations/patroni-deployment.md
+
+# === PostgreSQL 설정 ===
+postgresql:
+  replicaCount: 3 # 1 primary + 2 standby (quorum 권장 최소)
+
+  # PG version + image
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql-repmgr
+    tag: "16.4.0"
+
+  # 자원 — customer load에 맞춰 조정
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+
+  # Persistent volume — region-local SSD 권장
+  persistence:
+    enabled: true
+    storageClass: "fast-ssd" # customer cluster의 StorageClass 이름
+    size: 100Gi
+    accessModes:
+      - ReadWriteOnce
+
+  # PG 인증
+  username: rosshield
+  database: rosshield
+  existingSecret: rosshield-pg-secret # password는 별 Secret으로 관리
+  # 또는: password: <plaintext>  # production 금지
+
+  # WAL 설정 — logical replication 호환 (Phase 8 Stage 1 가정)
+  postgresqlSharedPreloadLibraries: pg_stat_statements,repmgr
+  postgresqlMaxConnections: 200
+
+  # Phase 8 logical replication 활성 — primary publication FOR ALL TABLES
+  postgresqlExtendedConf: |
+    wal_level = logical
+    max_wal_senders = 10
+    max_replication_slots = 10
+    max_logical_replication_workers = 4
+
+# === Patroni 자체 설정 ===
+patroni:
+  # leader lease TTL (failover detection 속도 직결)
+  ttl: 30 # 초 — minimum 권장
+  loopWait: 10
+  retryTimeout: 10
+
+  # split-brain 방어 — watchdog STONITH (Linux kernel softdog 필요)
+  watchdog:
+    enabled: false # production은 true 권장 (단 Linux softdog 활성 환경)
+    mode: optional # required → softdog 부재 시 promote 거부
+
+  # REST endpoint 인증 (옵션)
+  restApiPort: 8008
+  # restApiSslCaCert: ...  # production은 mTLS 권장
+
+# === etcd 설정 ===
+etcd:
+  # Bitnami chart는 자체 etcd subchart 포함 — Kubernetes 자체 etcd 재사용은 별 설정
+  enabled: true
+  replicaCount: 3 # quorum (≥2/3) 최소
+
+  auth:
+    rbac:
+      enabled: true
+    # production은 TLS 권장
+    # tls:
+    #   enabled: true
+
+  persistence:
+    enabled: true
+    storageClass: "fast-ssd"
+    size: 10Gi
+
+# === Pgpool (옵션 — read load balancing) ===
+pgpool:
+  # 본 Lodestar v0.7.x 단계에서는 read replica 활용 안 함 (D-MR-5 Phase 9+ deferral)
+  # → pgpool 비활성, application이 직접 Patroni REST로 primary 호출
+  replicaCount: 0
+
+# === metrics (Prometheus exporter sidecar) ===
+metrics:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnami/postgres-exporter
+    tag: "0.16.0"
+
+  # ServiceMonitor for Prometheus Operator (customer 사용 시)
+  serviceMonitor:
+    enabled: true
+    namespace: monitoring
+    interval: 30s
+
+# === Network ===
+service:
+  type: ClusterIP # 내부 통신만. external은 별 Ingress
+  ports:
+    postgresql: 5432
+
+# === Pod 배치 (region-local 강제) ===
+affinity:
+  # Pod anti-affinity — 같은 node에 2 pod 안 배치 (HA 효과)
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values: [postgresql-ha]
+        topologyKey: kubernetes.io/hostname
+
+  # region-local 강제 (multi-region cluster 시 같은 region에 모든 pod)
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.kubernetes.io/region
+              operator: In
+              values: [ap-northeast-2] # primary region (Seoul)
