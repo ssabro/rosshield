@@ -7,7 +7,26 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (C5b-6 Invitation accept 분기 / C5b-7 3rd party widget axe scan / C5b-8 키보드 navigation / C5b-9 인터랙션 후 분기) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Multi-region HA Stage 4.4 (Cloudflare Terraform module) / Stage 4.5 (BIND/PowerDNS Terraform sample 분리) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 7 testcontainers e2e (MR.T1~T8) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.4] — 2026-05-20 (patch)
+
+> **요약**: Phase 8 Multi-region cutover 운영 단위 완성 — design + ops + Terraform IaC + failover runbook 4 종을 한 release에 묶어 customer가 cross-region failover 환경을 자체 구축·운영 가능. 코드 변경 0건, Breaking 0. 상세는 [docs/releases/v0.7.4.md](docs/releases/v0.7.4.md).
+>
+> **기준 commit**: `24fb4e6` (main)
+
+### Added
+- `design(phase8)` Multi-region HA Stage 4 DNS routing + failover records (`1f1d192`) — `docs/design/notes/multi-region-ha-stage4-design.md` (12 섹션) + 4 DNS provider 비교 + RTO ≤ 5분 분해 + D-MR-4 sub-decisions 5종.
+- `docs(ops)` Stage 4.2 multi-region-dns.md (`c0b1222`) — Route53 setup + 운영자 cutover 절차 + Cloudflare alternative + 자체 DNS BIND/PowerDNS + Prometheus 메트릭.
+- `feat(deploy)` Stage 4.3 Terraform IaC sample (`9a59732`) — `deploy/terraform/multi-region-ha/` 9 파일 + Route53 failover module + envs/example.tfvars. customer plan/apply 즉시 가능.
+- `docs(ops)` Stage 5 failover runbook (`24fb4e6`) — `docs/operations/multi-region-failover-runbook.md` (11 섹션) + 운영자 step-by-step + escalation + roll-back + Primary 복구 + 사후 분석 + Quick reference card.
+
+### Notes
+- Phase 8 cross-region cutover 운영 단위 완성: design + ops + IaC + runbook 4 종이 한 release에서 customer가 자체 환경 구축·운영 가능.
+- D-MR-4 권장 default 5종 수용 (Route53 / 60s TTL / 3회 연속 fail / DNS 자동 + application manual / Terraform).
+- 잔여 Phase 8 carryover: Stage 4.4 Cloudflare module, Stage 6 자동 failover research, Stage 7 testcontainers e2e (모두 후속).
 
 ---
 
