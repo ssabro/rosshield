@@ -69,6 +69,7 @@ import (
 	replicationrepo "github.com/ssabro/rosshield/internal/platform/replication/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
+	"github.com/ssabro/rosshield/internal/platform/scheduler/replicationcleanupjob"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/rotationjob"
 	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/signer/soft"
@@ -257,6 +258,21 @@ type Config struct {
 	// design doc default = 월 1회 (`@every 720h` 또는 `0 0 1 * *`). 빈 chain·신규 entry 없는
 	// tenant는 silent skip. HA 활성 시 leader 단일 인스턴스만 수행 (cronsched RoleProvider gate).
 	AuditRotationSchedule string
+
+	// E-MR Stage 3 후속 — 정기 PG replication slot cleanup cron (v0.6.9 carryover 해소).
+	//
+	// ReplicationSlotCleanupSchedule이 비지 않으면 cronsched에 cleanup job 등록 — 매 tick에
+	// pg_replication_slots에서 비활성·stale slot을 detect + drop. 빈 값 = 자동 cleanup 비활성
+	// (manual setup.CleanupInactiveSlots 호출만).
+	//
+	// HA 활성 시 leader 단일 인스턴스만 수행. SlotPrefix는 다른 application slot 실수 drop
+	// 방지를 위한 안전 가드 — 자동 cleanup 활성 시 prefix 명시 필수.
+	//
+	// 권장 default: 일 1회 (`@every 24h`), prefix "rosshield_", MinInactiveAge 24h.
+	ReplicationSlotCleanupSchedule       string        // cron spec. 빈 값 = 자동 cleanup 비활성.
+	ReplicationSlotCleanupPrefix         string        // "rosshield_" 권장. 자동 활성 시 필수.
+	ReplicationSlotCleanupMinInactiveAge time.Duration // default 24h (0이면 setup 패키지 기본).
+	ReplicationSlotCleanupDryRun         bool          // true면 후보만 logging (운영자 검토용).
 
 	// D-AR-4 cosign keyless 서명 옵션 (Audit rotation).
 	//
@@ -1353,6 +1369,37 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		}
 		logger.Info("audit rotation auto-schedule active",
 			"spec", cfg.AuditRotationSchedule, "backend", rotBackendDesc)
+	}
+
+	// E-MR Stage 3 후속 — 정기 PG replication slot cleanup cron 등록 (v0.6.9 carryover).
+	//
+	// 조건:
+	//   - ReplicationSlotCleanupSchedule != ""
+	//   - ReplicationConfig.Enabled = true (PG replication 활성)
+	//   - ReplicationConfig.Role = primary (slot은 primary에만 존재)
+	//   - PG storage (sqlite는 logical replication 미지원)
+	//
+	// 위 조건이 모두 만족돼야 cron 등록. 그 외에는 silent skip (운영자 의도와 무관한 등록 회피).
+	// HA 활성 시 cronsched RoleProvider gate가 follower tick을 silent skip.
+	if cfg.ReplicationSlotCleanupSchedule != "" &&
+		cfg.ReplicationConfig.Enabled &&
+		cfg.ReplicationConfig.Role == replication.RolePrimary {
+		if pg, ok := store.(*postgres.Postgres); ok {
+			if err := replicationcleanupjob.Register(sch, replicationcleanupjob.Deps{
+				Executor:       replicationsetup.NewPgxExecutor(pg.Pool()),
+				SlotPrefix:     cfg.ReplicationSlotCleanupPrefix,
+				MinInactiveAge: cfg.ReplicationSlotCleanupMinInactiveAge,
+				DryRun:         cfg.ReplicationSlotCleanupDryRun,
+				Logger:         logger,
+			}, replicationcleanupjob.DefaultJobID, cfg.ReplicationSlotCleanupSchedule); err != nil {
+				_ = sch.Close(ctx)
+				_ = store.Close()
+				return nil, fmt.Errorf("bootstrap: register replication slot cleanup: %w", err)
+			}
+		} else {
+			logger.Warn("replication slot cleanup schedule set but storage is not PG — silent skip",
+				"schedule", cfg.ReplicationSlotCleanupSchedule)
+		}
 	}
 
 	// FleetPolicy.ScanSchedule cron — best-effort 등록.
