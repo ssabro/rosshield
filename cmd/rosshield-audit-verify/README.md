@@ -40,7 +40,33 @@ rosshield-audit-verify rotation chain \
     [--format table|json]
 ```
 
-상세 가이드: [`docs/onboarding/audit-rotation-verify.md`](../../docs/onboarding/audit-rotation-verify.md).
+### Rotation + cosign keyless 통합 검증
+
+archive 무결성과 cosign keyless 서명(Sigstore Fulcio + Rekor)을 한 번에 검증합니다. cosign
+binary가 PATH에 있어야 하며, 검증 자체는 외부 `cosign verify-blob`을 위임 호출합니다.
+
+```bash
+# 단일 segment + bundle
+rosshield-audit-verify rotation \
+    --archive-uri file:///path/to/seg-000005.tar.gz \
+    --cosign-bundle /path/to/seg-000005.cosign.bundle \
+    --cosign-identity ci@example.com \
+    --cosign-oidc-issuer https://accounts.google.com
+
+# chain mode (각 segment 옆 seg-NNNNNN.cosign.bundle 자동 검색)
+rosshield-audit-verify rotation chain \
+    --backend file:///path/to/audit-archives/<tenant>/ \
+    --from-segment 1 --to-segment 10 \
+    --cosign-bundle-dir /path/to/bundles/ \
+    --cosign-identity ci@example.com \
+    --cosign-oidc-issuer https://accounts.google.com
+```
+
+cosign flag가 모두 비어 있으면 verify는 skip되고 `cosignVerifyMatch=true(skipped)`로 표시됩니다.
+
+상세 가이드:
+- [`docs/onboarding/audit-rotation-verify.md`](../../docs/onboarding/audit-rotation-verify.md) — segment 무결성
+- [`docs/onboarding/audit-rotation-cosign.md`](../../docs/onboarding/audit-rotation-cosign.md) — cosign keyless
 
 옵션:
 

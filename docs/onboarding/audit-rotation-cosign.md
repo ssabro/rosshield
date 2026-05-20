@@ -109,7 +109,32 @@ cosign keyless는 서명 시 OIDC identity token이 필요. 다음 중 하나:
 
 ## 6. bundle 검증 (감사인 단독 절차)
 
-archive와 bundle 두 파일 확보 후:
+archive와 bundle 두 파일 확보 후 두 가지 방법:
+
+### 6.1 권장 — `rosshield-audit-verify` 통합 (segment + cosign 한 번에)
+
+```bash
+# rosshield-audit-verify는 release page에서 standalone binary로 배포 (R30-4 외부 검증).
+rosshield-audit-verify rotation \
+  --archive-uri file://$PWD/seg-000005.tar.gz \
+  --expected-segment-hash <hex64> \
+  --cosign-bundle seg-000005.bundle \
+  --cosign-identity admin@example.com \
+  --cosign-oidc-issuer https://accounts.google.com
+
+# chain mode — 여러 segment + bundle 일괄 검증:
+rosshield-audit-verify rotation chain \
+  --backend file:///var/lib/rosshield/audit-archives/tn_acme/ \
+  --from-segment 1 --to-segment 10 \
+  --cosign-bundle-dir ./bundles/ \
+  --cosign-identity admin@example.com \
+  --cosign-oidc-issuer https://accounts.google.com
+```
+
+verify CLI는 segment_hash + prev_segment_hash chain + cosign verify-blob을 한 번에 수행하고
+JSON/table 양쪽 출력으로 stepResult를 노출 — `cosignVerifyMatch: true` 필드로 자동 처리 가능.
+
+### 6.2 기본 `cosign verify-blob` 직접 (외부 인프라 + binary만)
 
 ```bash
 # 1) hot DB에서 segment row 추출 (운영자 협조 또는 backup dump).
@@ -150,6 +175,7 @@ cosign verify-blob \
 
 - `rosshield-server`는 `cosign sign-blob` 외부 CLI execution. binary 부재 시 rotation Tx rollback →
   운영 모니터링 권장.
-- `rosshield-audit-verify` CLI에 cosign verify 통합은 별 epic — 본 round는 cosign CLI 직접 실행.
+- `rosshield-audit-verify` CLI도 `cosign verify-blob`을 외부 호출 — verify 도구는 stdlib + 도메인 hash
+  만 의존하는 원칙(E30) 유지를 위해 sigstore-go SDK 임베드 회피. cosign binary는 감사인 환경에 별도 설치 필요.
 - e2e 자동 test는 build tag `cosign_e2e`로 격리(CI default skip).
 - in-process sigstore-go SDK 임베드(옵션 B)는 future round — binary 의존 0이 강하게 요구되면 검토.

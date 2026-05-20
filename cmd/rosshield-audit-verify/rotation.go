@@ -37,6 +37,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -46,6 +47,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -53,6 +55,78 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/audit"
 	"github.com/ssabro/rosshield/internal/domain/audit/rotation"
 )
+
+// cosignConfig는 rotation verify 단계에서 cosign verify-blob 호출 옵션을 묶습니다.
+//
+// design doc D-AR-4의 sign 측 옵션 A(외부 cosign CLI)와 일관 — verify CLI는 stdlib만
+// 의존하는 게 원칙이므로 sigstore-go SDK 의존을 피하고 `cosign verify-blob`을 spawn.
+//
+// 활성 조건: Identity가 비어있지 않으면 활성(bundle 경로 부재 시 FAIL). 둘 다 빈
+// 값이면 skip — 기존 archive sha256 + segment_hash + prev chain 검증만 수행.
+//
+// chain mode(`rotation chain`)에선 BundlePath 대신 BundleDir만 지정하고 각 segment의
+// bundle을 자동 검색합니다(seg-NNNNNN.cosign.bundle 명명 규약).
+type cosignConfig struct {
+	BundlePath  string // single mode bundle 파일 경로
+	BundleDir   string // chain mode bundle 디렉터리 (auto detect)
+	Identity    string // --certificate-identity
+	OIDCIssuer  string // --certificate-oidc-issuer
+	Binary      string // cosign binary path (default "cosign")
+	RekorURL    string // --rekor-url (선택)
+	SegmentNum  int64  // chain mode 각 segment에서 채워짐 — bundle path resolve용
+}
+
+// active는 cosign verify 단계를 실행해야 하는지 리턴합니다.
+//
+// Identity 또는 BundlePath 둘 중 하나라도 있으면 활성 — 외부 감사인은 보통 둘 다 함께
+// 받지만 신뢰 채널로 identity만 받은 경우 verify CLI가 bundle을 자동 찾도록 허용.
+func (c cosignConfig) active() bool {
+	return c.Identity != "" || c.BundlePath != "" || c.BundleDir != ""
+}
+
+// cosignRunArgs는 runCosignVerify에 전달되는 인자 묶음 (test 가독성 + swap 용이).
+type cosignRunArgs struct {
+	Binary     string
+	BundlePath string
+	Identity   string
+	OIDCIssuer string
+	RekorURL   string
+	Archive    []byte
+}
+
+// cosignRunner는 cosign verify-blob 호출 함수 타입 — test에서 swap 가능.
+type cosignRunner func(args cosignRunArgs) error
+
+// runCosignVerify는 실제 `cosign verify-blob` 외부 호출을 수행합니다.
+//
+// 본 변수는 test에서 fake로 swap되어 외부 cosign binary 의존을 회피합니다.
+// 운영 binary는 default 구현(실 cosign exec)을 사용 — 본 패키지는 cosign 의존 0.
+var runCosignVerify cosignRunner = func(a cosignRunArgs) error {
+	binary := a.Binary
+	if binary == "" {
+		binary = "cosign"
+	}
+	args := []string{"verify-blob", "--bundle=" + a.BundlePath}
+	if a.Identity != "" {
+		args = append(args, "--certificate-identity="+a.Identity)
+	}
+	if a.OIDCIssuer != "" {
+		args = append(args, "--certificate-oidc-issuer="+a.OIDCIssuer)
+	}
+	if a.RekorURL != "" {
+		args = append(args, "--rekor-url="+a.RekorURL)
+	}
+	args = append(args, "-")
+
+	cmd := exec.CommandContext(context.Background(), binary, args...)
+	cmd.Stdin = bytes.NewReader(a.Archive)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("cosign verify-blob: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
 
 // rotationOutput은 rotation verify 결과 와이어 형식 (single archive).
 type rotationOutput struct {
@@ -69,6 +143,8 @@ type rotationOutput struct {
 	EntryCount         int64        `json:"entryCount"`
 	SegmentNumber      int64        `json:"segmentNumber,omitempty"`
 	ManifestVersion    string       `json:"manifestVersion"`
+	CosignVerifyMatch  bool         `json:"cosignVerifyMatch"`         // cosign 비활성 시 true(skip)
+	CosignBundlePath   string       `json:"cosignBundlePath,omitempty"`
 	Steps              []stepResult `json:"steps"`
 }
 
@@ -102,6 +178,11 @@ func runRotationSingle(args []string) int {
 	expectedSHA := fs.String("expected-sha256", "", "archive 본문 sha256 hex (옵션; 외부 채널로 받음)")
 	expectedSegHash := fs.String("expected-segment-hash", "", "manifest segment_hash hex (옵션)")
 	expectedPrev := fs.String("prev-segment-hash", "", "manifest prev_segment_hash hex (옵션; 첫 segment 검증 시 생략)")
+	cosignBundle := fs.String("cosign-bundle", "", "cosign signature bundle 파일 경로 (옵션; identity와 함께 활성화)")
+	cosignIdentity := fs.String("cosign-identity", "", "cosign certificate-identity (예: ci@example.com 또는 regex)")
+	cosignOIDCIssuer := fs.String("cosign-oidc-issuer", "", "cosign certificate-oidc-issuer (예: https://accounts.google.com)")
+	cosignBinary := fs.String("cosign-binary", "", "cosign binary 경로 (default: PATH의 'cosign')")
+	cosignRekorURL := fs.String("cosign-rekor-url", "", "cosign --rekor-url (옵션, default Sigstore public)")
 	format := fs.String("format", "table", "table | json")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "rosshield-audit-verify: rotation flag parse: %v\n", err)
@@ -118,7 +199,15 @@ func runRotationSingle(args []string) int {
 		return 2
 	}
 
-	out := verifyOneArchive(*archiveURI, *expectedSHA, *expectedSegHash, *expectedPrev)
+	cs := cosignConfig{
+		BundlePath: *cosignBundle,
+		Identity:   *cosignIdentity,
+		OIDCIssuer: *cosignOIDCIssuer,
+		Binary:     *cosignBinary,
+		RekorURL:   *cosignRekorURL,
+	}
+
+	out := verifyOneArchive(*archiveURI, *expectedSHA, *expectedSegHash, *expectedPrev, cs)
 	emitRotationOutput(*format, out)
 	if !out.OK {
 		return 1
@@ -132,6 +221,11 @@ func runRotationChain(args []string) int {
 	backend := fs.String("backend", "", "backend root URI (file:///path/to/audit-archives/<tenant>/) — 필수")
 	from := fs.Int64("from-segment", 1, "검증 시작 segmentNumber")
 	to := fs.Int64("to-segment", 0, "검증 종료 segmentNumber (포함). 0이면 from 만 검증")
+	cosignBundleDir := fs.String("cosign-bundle-dir", "", "chain mode bundle 디렉터리 (각 segment seg-NNNNNN.cosign.bundle 자동 검색)")
+	cosignIdentity := fs.String("cosign-identity", "", "cosign certificate-identity (모든 segment 공통)")
+	cosignOIDCIssuer := fs.String("cosign-oidc-issuer", "", "cosign certificate-oidc-issuer")
+	cosignBinary := fs.String("cosign-binary", "", "cosign binary 경로 (default: PATH의 'cosign')")
+	cosignRekorURL := fs.String("cosign-rekor-url", "", "cosign --rekor-url (옵션, default Sigstore public)")
 	format := fs.String("format", "table", "table | json")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "rosshield-audit-verify: rotation chain flag parse: %v\n", err)
@@ -165,6 +259,14 @@ func runRotationChain(args []string) int {
 		Backend:     *backend,
 	}
 
+	csBase := cosignConfig{
+		BundleDir:  *cosignBundleDir,
+		Identity:   *cosignIdentity,
+		OIDCIssuer: *cosignOIDCIssuer,
+		Binary:     *cosignBinary,
+		RekorURL:   *cosignRekorURL,
+	}
+
 	var prevHashHex string // segment 1의 prev는 ""; 이후 단계에서 forward.
 	for n := *from; n <= *to; n++ {
 		uri, err := segmentArchiveURI(*backend, n)
@@ -182,7 +284,12 @@ func runRotationChain(args []string) int {
 			// chain check 시작점 — manifest 값으로 prev forward 시작.
 			expectedPrev = ""
 		}
-		segOut := verifyOneArchive(uri, "", "", expectedPrev)
+		cs := csBase
+		cs.SegmentNum = n
+		if cs.BundleDir != "" {
+			cs.BundlePath = filepath.Join(cs.BundleDir, fmt.Sprintf("seg-%06d.cosign.bundle", n))
+		}
+		segOut := verifyOneArchive(uri, "", "", expectedPrev, cs)
 		segOut.SegmentNumber = n
 		out.Segments = append(out.Segments, segOut)
 		if !segOut.OK {
@@ -205,7 +312,8 @@ func runRotationChain(args []string) int {
 // verifyOneArchive는 한 segment archive를 검증해 rotationOutput을 반환합니다.
 //
 // expectedSHA / expectedSegHash / expectedPrev는 빈 문자열이면 skip (해당 단계 무조건 match=true).
-func verifyOneArchive(archiveURI, expectedSHA, expectedSegHash, expectedPrev string) rotationOutput {
+// cs.active()=true면 cosign verify-blob step도 수행 — bundle 파일 부재 또는 runner error → 전체 FAIL.
+func verifyOneArchive(archiveURI, expectedSHA, expectedSegHash, expectedPrev string, cs cosignConfig) rotationOutput {
 	out := rotationOutput{ArchiveURI: archiveURI}
 
 	body, err := fetchArchive(archiveURI)
@@ -287,6 +395,45 @@ func verifyOneArchive(archiveURI, expectedSHA, expectedSegHash, expectedPrev str
 	} else {
 		out.Steps = append(out.Steps, stepResult{Name: "prevChain", OK: true,
 			Detail: "no expected — skip compare"})
+	}
+
+	// cosign verify-blob step (옵션). cs.active()=false면 skip + CosignVerifyMatch=true.
+	if !cs.active() {
+		out.CosignVerifyMatch = true
+		out.Steps = append(out.Steps, stepResult{Name: "cosignVerify", OK: true,
+			Detail: "skipped (no --cosign-identity/--cosign-bundle)"})
+	} else {
+		bundlePath := cs.BundlePath
+		out.CosignBundlePath = bundlePath
+		if bundlePath == "" {
+			out.Result = "FAIL"
+			out.Reason = "cosign verify requested but --cosign-bundle empty"
+			out.Steps = append(out.Steps, stepResult{Name: "cosignVerify", OK: false, Detail: out.Reason})
+			return out
+		}
+		if _, statErr := os.Stat(bundlePath); statErr != nil {
+			out.Result = "FAIL"
+			out.Reason = fmt.Sprintf("cosign bundle missing: %v", statErr)
+			out.Steps = append(out.Steps, stepResult{Name: "cosignVerify", OK: false, Detail: out.Reason})
+			return out
+		}
+		runErr := runCosignVerify(cosignRunArgs{
+			Binary:     cs.Binary,
+			BundlePath: bundlePath,
+			Identity:   cs.Identity,
+			OIDCIssuer: cs.OIDCIssuer,
+			RekorURL:   cs.RekorURL,
+			Archive:    body,
+		})
+		if runErr != nil {
+			out.Result = "FAIL"
+			out.Reason = runErr.Error()
+			out.Steps = append(out.Steps, stepResult{Name: "cosignVerify", OK: false, Detail: runErr.Error()})
+			return out
+		}
+		out.CosignVerifyMatch = true
+		out.Steps = append(out.Steps, stepResult{Name: "cosignVerify", OK: true,
+			Detail: "cosign verify-blob OK (bundle=" + bundlePath + ")"})
 	}
 
 	out.OK = true
@@ -447,6 +594,9 @@ func emitRotationOutput(format string, out rotationOutput) {
 	}
 	fmt.Printf("entryCount      %d\n", out.EntryCount)
 	fmt.Printf("manifestVersion %s\n", out.ManifestVersion)
+	if out.CosignBundlePath != "" {
+		fmt.Printf("cosignBundle    %s\n", out.CosignBundlePath)
+	}
 	if out.Reason != "" {
 		fmt.Printf("reason          %s\n", out.Reason)
 	}
@@ -525,11 +675,21 @@ func rotationUsage() {
   --expected-sha256        archive 본문 sha256 hex (외부 채널의 expected; 옵션)
   --expected-segment-hash  manifest segment_hash hex (옵션)
   --prev-segment-hash      manifest prev_segment_hash hex (옵션)
+  --cosign-bundle          cosign signature bundle 파일 (옵션; identity와 함께 활성화)
+  --cosign-identity        cosign certificate-identity (예: ci@example.com)
+  --cosign-oidc-issuer     cosign certificate-oidc-issuer (예: https://accounts.google.com)
+  --cosign-binary          cosign binary 경로 (default: PATH의 cosign)
+  --cosign-rekor-url       cosign --rekor-url (default: Sigstore public)
 
 옵션 (chain):
   --backend                backend root URI (file:///path/to/tenant/) — 필수
   --from-segment           검증 시작 segmentNumber (기본 1)
-  --to-segment             검증 종료 segmentNumber (기본 from 만)`)
+  --to-segment             검증 종료 segmentNumber (기본 from 만)
+  --cosign-bundle-dir      chain mode bundle 디렉터리 (각 segment seg-NNNNNN.cosign.bundle)
+  --cosign-identity        cosign certificate-identity (모든 segment 공통)
+  --cosign-oidc-issuer     cosign certificate-oidc-issuer
+  --cosign-binary          cosign binary 경로
+  --cosign-rekor-url       cosign --rekor-url`)
 }
 
 // ifExpected는 details 출력 보조 (expected가 빈 문자열이면 suffix 안 붙임).

@@ -30,6 +30,10 @@ linters:
             - "!**/cmd/**"
             - "!**/internal/api/**"
             - "!**/internal/domain/audit/**"
+            # rotationjob: application service composer (cmd-equivalent) — cmd/* bootstrap이
+            # audit.Service + rotation.Rotator를 inject. cycle 회피를 위해 platform sub-package
+            # 로 위치하지만 책임은 결선이므로 예외.
+            - "!**/internal/platform/scheduler/rotationjob/**"
             - "!**/*_test.go"
           deny:
             - pkg: github.com/ssabro/rosshield/internal/domain/audit

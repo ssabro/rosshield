@@ -440,3 +440,184 @@ func TestFileURIRoundTrip(t *testing.T) {
 		t.Errorf("url.Parse: %v", err)
 	}
 }
+
+// === cosign verify 통합 (Phase 8 audit rotation 마무리) ===
+
+// swapCosignRunner는 test 동안 runCosignVerify를 fake로 교체합니다.
+//
+// 외부 cosign binary 의존을 피하기 위해 function var를 swap하고 Cleanup으로 복원.
+// 본 함수의 signature는 cosignRunner 정의와 정확히 일치해야 합니다.
+func swapCosignRunner(t *testing.T, fn cosignRunner) {
+	t.Helper()
+	orig := runCosignVerify
+	runCosignVerify = fn
+	t.Cleanup(func() { runCosignVerify = orig })
+}
+
+// T_Cosign1 — cosign-bundle 비활성(둘 다 빈 값) → cosignVerify step "skipped" + PASS.
+func TestVerifyRotation_CosignSkipWhenInactive(t *testing.T) {
+	fix := buildRotationFixture(t, 1, 2)
+	uri := pathToFileURI(segmentArchivePath(fix, 1))
+
+	called := false
+	swapCosignRunner(t, func(_ cosignRunArgs) error {
+		called = true
+		return nil
+	})
+
+	stdout, _ := captureStdio(t, func() {
+		if code := run([]string{"rotation",
+			"--archive-uri", uri,
+		}); code != 0 {
+			t.Errorf("exit=%d, want 0", code)
+		}
+	})
+	if called {
+		t.Error("runCosignVerify called when bundle/identity not set")
+	}
+	if !strings.Contains(stdout, "PASS") {
+		t.Fatalf("missing PASS: %q", stdout)
+	}
+}
+
+// T_Cosign2 — bundle + identity 설정 + runner exit 0 → cosignVerify step PASS + 전체 PASS.
+func TestVerifyRotation_CosignVerifyPASS(t *testing.T) {
+	fix := buildRotationFixture(t, 1, 2)
+	uri := pathToFileURI(segmentArchivePath(fix, 1))
+	bundlePath := filepath.Join(t.TempDir(), "seg-000001.cosign.bundle")
+	_ = os.WriteFile(bundlePath, []byte("fake-bundle"), 0o644)
+
+	var gotArgs cosignRunArgs
+	swapCosignRunner(t, func(a cosignRunArgs) error {
+		gotArgs = a
+		return nil
+	})
+
+	stdout, _ := captureStdio(t, func() {
+		if code := run([]string{"rotation",
+			"--archive-uri", uri,
+			"--cosign-bundle", bundlePath,
+			"--cosign-identity", "ci@example.com",
+			"--cosign-oidc-issuer", "https://accounts.google.com",
+			"--format", "json",
+		}); code != 0 {
+			t.Errorf("exit=%d, want 0", code)
+		}
+	})
+	if gotArgs.BundlePath != bundlePath {
+		t.Errorf("BundlePath=%q, want %q", gotArgs.BundlePath, bundlePath)
+	}
+	if gotArgs.Identity != "ci@example.com" {
+		t.Errorf("Identity=%q", gotArgs.Identity)
+	}
+	if gotArgs.OIDCIssuer != "https://accounts.google.com" {
+		t.Errorf("OIDCIssuer=%q", gotArgs.OIDCIssuer)
+	}
+	if len(gotArgs.Archive) == 0 {
+		t.Error("Archive bytes empty (stdin)")
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw=%q", err, stdout)
+	}
+	if got, _ := parsed["cosignVerifyMatch"].(bool); !got {
+		t.Errorf("cosignVerifyMatch=%v, want true", parsed["cosignVerifyMatch"])
+	}
+	if got, _ := parsed["result"].(string); got != "PASS" {
+		t.Errorf("result=%q, want PASS", got)
+	}
+}
+
+// T_Cosign3 — runner error → cosignVerify step FAIL + 전체 FAIL + exit 1.
+func TestVerifyRotation_CosignVerifyFAIL(t *testing.T) {
+	fix := buildRotationFixture(t, 1, 2)
+	uri := pathToFileURI(segmentArchivePath(fix, 1))
+	bundlePath := filepath.Join(t.TempDir(), "seg-000001.cosign.bundle")
+	_ = os.WriteFile(bundlePath, []byte("fake-bundle"), 0o644)
+
+	swapCosignRunner(t, func(_ cosignRunArgs) error {
+		return fmt.Errorf("cosign exit 1: certificate identity mismatch")
+	})
+
+	stdout, _ := captureStdio(t, func() {
+		if code := run([]string{"rotation",
+			"--archive-uri", uri,
+			"--cosign-bundle", bundlePath,
+			"--cosign-identity", "ci@example.com",
+		}); code != 1 {
+			t.Errorf("exit=%d, want 1", code)
+		}
+	})
+	if !strings.Contains(stdout, "FAIL") {
+		t.Fatalf("missing FAIL: %q", stdout)
+	}
+	if !strings.Contains(stdout, "cosign") {
+		t.Errorf("FAIL reason missing 'cosign': %q", stdout)
+	}
+}
+
+// T_Cosign4 — bundle 파일 부재 + required(default true when identity set) → FAIL.
+func TestVerifyRotation_CosignBundleMissingFAIL(t *testing.T) {
+	fix := buildRotationFixture(t, 1, 2)
+	uri := pathToFileURI(segmentArchivePath(fix, 1))
+	missingPath := filepath.Join(t.TempDir(), "does-not-exist.bundle")
+
+	called := false
+	swapCosignRunner(t, func(_ cosignRunArgs) error {
+		called = true
+		return nil
+	})
+
+	stdout, _ := captureStdio(t, func() {
+		if code := run([]string{"rotation",
+			"--archive-uri", uri,
+			"--cosign-bundle", missingPath,
+			"--cosign-identity", "ci@example.com",
+		}); code != 1 {
+			t.Errorf("exit=%d, want 1", code)
+		}
+	})
+	if called {
+		t.Error("runCosignVerify called even though bundle file missing")
+	}
+	if !strings.Contains(stdout, "FAIL") {
+		t.Fatalf("missing FAIL: %q", stdout)
+	}
+}
+
+// T_Cosign5 — chain mode + cosign-bundle-dir + 각 segment 옆 bundle 자동 검색 PASS.
+func TestVerifyRotation_ChainCosignBundleDirPASS(t *testing.T) {
+	fix := buildRotationFixture(t, 2, 2)
+	backend := pathToFileURI(filepath.Join(fix.backendRoot, string(fix.tenantID)))
+	bundleDir := t.TempDir()
+	// 각 segment 옆 bundle (seg-NNNNNN.cosign.bundle) 작성.
+	for n := 1; n <= 2; n++ {
+		p := filepath.Join(bundleDir, fmt.Sprintf("seg-%06d.cosign.bundle", n))
+		_ = os.WriteFile(p, []byte(fmt.Sprintf("bundle-%d", n)), 0o644)
+	}
+
+	var bundlePaths []string
+	swapCosignRunner(t, func(a cosignRunArgs) error {
+		bundlePaths = append(bundlePaths, a.BundlePath)
+		return nil
+	})
+
+	stdout, _ := captureStdio(t, func() {
+		if code := run([]string{"rotation", "chain",
+			"--backend", backend,
+			"--from-segment", "1",
+			"--to-segment", "2",
+			"--cosign-bundle-dir", bundleDir,
+			"--cosign-identity", "ci@example.com",
+		}); code != 0 {
+			t.Errorf("exit=%d, want 0", code)
+		}
+	})
+	if len(bundlePaths) != 2 {
+		t.Errorf("bundle path count=%d, want 2 (got %v)", len(bundlePaths), bundlePaths)
+	}
+	if !strings.Contains(stdout, "PASS") {
+		t.Fatalf("missing PASS: %q", stdout)
+	}
+}
