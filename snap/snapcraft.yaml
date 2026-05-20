@@ -120,10 +120,19 @@ parts:
       go build -trimpath -ldflags "$LDFLAGS" -o "$CRAFT_PART_INSTALL/bin/rosshield" ./cmd/rosshield
       go build -trimpath -ldflags "$LDFLAGS" -o "$CRAFT_PART_INSTALL/bin/rosshield-audit-verify" ./cmd/rosshield-audit-verify
 
-# E35 — snap hooks (post-refresh + configure)는 snap/hooks/ 디렉터리에서 자동 인식.
-# plugs는 명시 필요:
+# E35 — snap hooks (post-refresh + check-health + configure)는 snap/hooks/ 디렉터리에서
+# 자동 인식. 본 설계(redesign 2026-05-21):
+#   - post-refresh: 파일 무결성 + configure sanity check만. services start 전에 호출되므로
+#     healthz polling 불가능 (snap lifecycle 표준 제약).
+#   - check-health: services start 후 호출 + 주기적. healthz polling + snapctl set-health.
+#                   자동 revert는 안 함 — unhealthy 시 운영자/Prometheus alert로 대응.
+#   - configure: snap set 호출 시 값 검증.
+# 설계: docs/design/notes/e35-refresh-rollback-redesign.md.
 hooks:
   post-refresh:
+    plugs:
+      - network    # logger 호출 + 추후 무결성 검증 확장 가능 (HTTP 미사용)
+  check-health:
     plugs:
       - network    # curl localhost healthz
   # configure hook 자체는 snap/hooks/configure script로 자동 인식 (snapd가

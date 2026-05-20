@@ -1,44 +1,41 @@
 #!/bin/sh
-# E35 — snap post-refresh hook (Phase 5 A/B OTA + 자동 rollback).
+# E35 — snap post-refresh hook (재설계 후).
 #
-# snap이 새 revision을 install한 직후 실행됩니다. healthz 폴링으로 새 revision의
-# 정상 부팅을 검증 — 실패 시 exit 1로 종료하면 snapd가 자동으로 이전 revision으로
-# 복원 (snap의 standard rollback 메커니즘).
+# 호출 시점: snap이 새 revision을 unpack한 직후, **services start 전**.
+# 이 시점에는 새 daemon이 아직 시작되지 않았으므로 healthz polling은 architecturally 불가능.
+# 본 hook은 catastrophic 무결성 위반(예: binary corruption, configure 값 invalid)만 cover —
+# exit != 0이면 snapd가 자동으로 이전 revision으로 복원(snap 표준 rollback).
 #
-# 검증 절차:
-#   1. snap services rosshield.server가 active되기까지 최대 SNAP_HEALTHZ_TIMEOUT 대기.
-#   2. /healthz 응답에 "status":"ok" 포함 확인.
-#   3. SNAP_HEALTHZ_TIMEOUT (기본 60s) 안에 OK 못 받으면 exit 1 → snapd 자동 rollback.
+# daemon health 검증은 별 hook(`check-health`)에서 수행 — services start 후 호출.
 #
-# 환경 변수 (snap set rosshield <key>=<value>로 설정):
-#   - healthz-url    (기본 http://127.0.0.1:8080/healthz)
-#   - healthz-timeout (기본 60s)
-#
-# 권한:
-#   - plugs: [network] — curl localhost healthz 가능 (snap interface 자동 연결)
-#
-# snap docs: post-refresh hook이 비정상 종료(exit != 0)하면 snapd가 refresh 자체를
-# 실패로 간주하고 이전 revision으로 자동 복원. 운영자가 snap revert 명령 호출 불필요.
-#
-# 설계: docs/design/phase5-backlog.md §E35.
+# 설계: docs/design/notes/e35-refresh-rollback-redesign.md §5 Stage 1.
 
 set -e
 
-HEALTHZ_URL="$(snapctl get healthz-url 2>/dev/null || true)"
-HEALTHZ_URL="${HEALTHZ_URL:-http://127.0.0.1:8080/healthz}"
-HEALTHZ_TIMEOUT="$(snapctl get healthz-timeout 2>/dev/null || true)"
-HEALTHZ_TIMEOUT="${HEALTHZ_TIMEOUT:-60}"
+# 1. binary 무결성 — server binary가 실행 가능 + 비어있지 않음.
+SERVER_BIN="$SNAP/bin/rosshield-server"
+if [ ! -x "$SERVER_BIN" ]; then
+	logger -t rosshield-post-refresh "FATAL: $SERVER_BIN not executable — refusing refresh"
+	exit 1
+fi
+if [ ! -s "$SERVER_BIN" ]; then
+	logger -t rosshield-post-refresh "FATAL: $SERVER_BIN is empty — refusing refresh"
+	exit 1
+fi
 
-logger -t rosshield-post-refresh "checking $HEALTHZ_URL with ${HEALTHZ_TIMEOUT}s timeout"
+# 2. configure 값 sanity — healthz-url이 정의되어 있다면 http(s):// prefix.
+# configure hook이 set 시점에 이미 검증하나, 이전 revision에서 set된 값이
+# 새 revision의 검증과 충돌 가능성에 대비.
+URL="$(snapctl get healthz-url 2>/dev/null || true)"
+if [ -n "$URL" ]; then
+	case "$URL" in
+		http://*|https://*) : ;;
+		*)
+			logger -t rosshield-post-refresh "FATAL: invalid healthz-url ($URL) — refusing refresh"
+			exit 1
+			;;
+	esac
+fi
 
-deadline=$(( $(date +%s) + HEALTHZ_TIMEOUT ))
-while [ "$(date +%s)" -lt "$deadline" ]; do
-	if curl -fsS --max-time 5 "$HEALTHZ_URL" 2>/dev/null | grep -q '"status":"ok"'; then
-		logger -t rosshield-post-refresh "healthz OK after refresh"
-		exit 0
-	fi
-	sleep 2
-done
-
-logger -t rosshield-post-refresh "healthz did not return ok within ${HEALTHZ_TIMEOUT}s — refusing refresh (snapd will auto-revert)"
-exit 1
+logger -t rosshield-post-refresh "post-refresh sanity OK — services will start next"
+exit 0

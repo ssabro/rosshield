@@ -1,0 +1,41 @@
+#!/bin/sh
+# E35 — snap check-health hook (재설계 후 신규).
+#
+# 호출 시점: snap install/refresh/revert 완료 직후 + 이후 주기적(약 5분 간격).
+# 새 revision의 services가 모두 start된 후 호출되므로 healthz polling이 의미 있음.
+#
+# 동작:
+#   1. snapctl get healthz-url / healthz-timeout (configure 값 또는 default).
+#   2. 짧은 polling (최대 30s, 2s 간격) — daemon이 막 부팅 중일 수 있으므로 grace 허용.
+#      check-health는 짧고 idempotent해야 하므로 최대 30s로 cap (snapd docs 권장).
+#   3. healthz 200 + status=ok → `snapctl set-health okay`.
+#   4. timeout → `snapctl set-health waiting "healthz timeout — daemon not ready"`.
+#
+# 운영자는 `snap health rosshield`로 status 직접 확인 가능. 자동 revert는 안 함 —
+# unhealthy 지속 시 운영자가 `snap revert rosshield` 또는 외부 monitor(Prometheus)
+# 알람으로 대응. broken refresh 절차는 docs/operations/snap-deployment.md §7 참조.
+#
+# 설계: docs/design/notes/e35-refresh-rollback-redesign.md §5 Stage 2.
+
+set -e
+
+HEALTHZ_URL="$(snapctl get healthz-url 2>/dev/null || true)"
+HEALTHZ_URL="${HEALTHZ_URL:-http://127.0.0.1:8080/healthz}"
+
+# check-health hook은 빠르고 idempotent 해야 하므로 max 30s로 cap.
+# 운영자가 configure로 더 큰 값 설정해도 본 hook은 30s 상한.
+CHECK_TIMEOUT=30
+
+deadline=$(( $(date +%s) + CHECK_TIMEOUT ))
+while [ "$(date +%s)" -lt "$deadline" ]; do
+	if curl -fsS --max-time 5 "$HEALTHZ_URL" 2>/dev/null | grep -q '"status":"ok"'; then
+		snapctl set-health okay
+		exit 0
+	fi
+	sleep 2
+done
+
+# unhealthy — `waiting`은 transient 가능 의미 (snapd가 주기 재호출). 영구 unhealthy는
+# 운영자/Prometheus alert이 별 채널로 처리.
+snapctl set-health waiting "healthz did not return ok within ${CHECK_TIMEOUT}s — daemon may still be starting"
+exit 0
