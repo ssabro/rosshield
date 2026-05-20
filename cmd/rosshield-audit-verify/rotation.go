@@ -67,13 +67,13 @@ import (
 // chain mode(`rotation chain`)에선 BundlePath 대신 BundleDir만 지정하고 각 segment의
 // bundle을 자동 검색합니다(seg-NNNNNN.cosign.bundle 명명 규약).
 type cosignConfig struct {
-	BundlePath  string // single mode bundle 파일 경로
-	BundleDir   string // chain mode bundle 디렉터리 (auto detect)
-	Identity    string // --certificate-identity
-	OIDCIssuer  string // --certificate-oidc-issuer
-	Binary      string // cosign binary path (default "cosign")
-	RekorURL    string // --rekor-url (선택)
-	SegmentNum  int64  // chain mode 각 segment에서 채워짐 — bundle path resolve용
+	BundlePath string // single mode bundle 파일 경로
+	BundleDir  string // chain mode bundle 디렉터리 (auto detect)
+	Identity   string // --certificate-identity
+	OIDCIssuer string // --certificate-oidc-issuer
+	Binary     string // cosign binary path (default "cosign")
+	RekorURL   string // --rekor-url (선택)
+	SegmentNum int64  // chain mode 각 segment에서 채워짐 — bundle path resolve용
 }
 
 // active는 cosign verify 단계를 실행해야 하는지 리턴합니다.
@@ -143,7 +143,7 @@ type rotationOutput struct {
 	EntryCount         int64        `json:"entryCount"`
 	SegmentNumber      int64        `json:"segmentNumber,omitempty"`
 	ManifestVersion    string       `json:"manifestVersion"`
-	CosignVerifyMatch  bool         `json:"cosignVerifyMatch"`         // cosign 비활성 시 true(skip)
+	CosignVerifyMatch  bool         `json:"cosignVerifyMatch"` // cosign 비활성 시 true(skip)
 	CosignBundlePath   string       `json:"cosignBundlePath,omitempty"`
 	Steps              []stepResult `json:"steps"`
 }

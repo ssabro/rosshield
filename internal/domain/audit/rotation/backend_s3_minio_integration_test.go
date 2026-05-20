@@ -41,9 +41,9 @@ import (
 )
 
 const (
-	minioImage     = "minio/minio:RELEASE.2024-12-18T13-15-44Z"
-	minioRootUser  = "minio_root"
-	minioRootPass  = "minio_test_secret"
+	minioImage      = "minio/minio:RELEASE.2024-12-18T13-15-44Z"
+	minioRootUser   = "minio_root"
+	minioRootPass   = "minio_test_secret"
 	minioTestBucket = "rosshield-audit-it"
 )
 
