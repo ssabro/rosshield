@@ -1,0 +1,11 @@
+# customer 환경별 변수 — secret 또는 customer-specific config 포함 가능
+envs/*.tfvars
+!envs/example.tfvars
+
+# Terraform state + plan 산출
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+crash.log
+*.tfplan
