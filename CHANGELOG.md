@@ -7,7 +7,27 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Multi-region HA Stage 4.4 (Cloudflare Terraform module) / MR.T4/T6/T8 application integration (leader-election restart · fence token enforcement · `rosshield_replication_lag_seconds` Prometheus emit) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Multi-region HA Stage 4.4 (Cloudflare Terraform module) / MR.T4/T6 application integration (leader-election restart · fence token enforcement) / HA leader-only metric gate / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.6] — 2026-05-20 (patch)
+
+> **요약**: Phase 8 MR.T8 `rosshield_replication_lag_seconds` Prometheus metric emit + v0.7.5 schema drift fix. Primary PG에서 30초 간격 pg_stat_replication 폴링 — Prometheus + Alertmanager로 즉시 RPO 모니터링 가능. 회귀 0, Breaking 0. 상세는 [docs/releases/v0.7.6.md](docs/releases/v0.7.6.md).
+>
+> **기준 commit**: `1ee429e` (main)
+
+### Added
+- `feat(metrics)` rosshield_replication_lag_seconds Prometheus emit (`c834388`) — `metrics.go`에 `ReplicationLagSeconds *prometheus.GaugeVec` (label: application_name) + 신규 패키지 `internal/platform/replication/lagmetric/` (Querier interface + Collector + ticker goroutine, Gauge.Reset로 stale label cleanup) + bootstrap 결선 (primary PG + replication enabled 조합 silent gate) + CLI flag 2 + env 2 + 9 단위 test.
+
+### Fixed
+- `fix(replication)` audit_entries TIMESTAMPTZ 호환 (`1ee429e`) — 마이그레이션 0024가 `occurred_at` + `audit_chain_heads.updated_at`을 TEXT → TIMESTAMPTZ로 변경. testcontainers test의 `NOW()::TEXT` cast 거부 fix (MR.T5/T6 PG integration CI fail 해소).
+- `chore(deps)` go.mod tidy smithy-go direct 승격 (`1ee429e`) — v0.7.2 cosign middleware의 smithymiddleware/smithyhttp import 누락 fix.
+
+### Notes
+- MR.T8 metric으로 Phase 8 cross-region replication 운영 가시성 완성 — Prometheus dashboard + Alertmanager rule 즉시 활용 가능.
+- HA leader-only metric gate(cronsched RoleProvider 패턴)는 별 carryover — 현재 single primary 가정.
+- v0.7.5 Stage 7 schema drift 2건 fix로 PG integration CI 그린 회복.
 
 ---
 
