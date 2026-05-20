@@ -8,12 +8,25 @@
 
 ### Added
 - (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.8.4] — 2026-05-21 (patch)
+
+> **요약**: E35-refresh redesign — snap `post-refresh` hook이 services start **전** 호출되는 lifecycle 표준 사실 확정 후, 기존 healthz polling 설계의 architectural mismatch 마감. post-refresh는 binary 무결성 + configure sanity만 cover로 단순화하고, 신규 `check-health` hook이 daemon healthz polling + `snapctl set-health` 담당. 자동 rollback 범위는 catastrophic case로 축소되고 daemon unhealthy는 운영자/Prometheus alert로 위임. snap-smoke CI의 refresh round-trip step에서 `continue-on-error: true` 제거 — E35-refresh carryover 마감. 회귀 0, Breaking 0. 상세는 [docs/releases/v0.8.4.md](docs/releases/v0.8.4.md).
+>
+> **기준 commit**: `3419191` (main)
+
+### Added
 - `feat(snap)` E35-refresh redesign — post-refresh hook 단순화 + check-health hook 신규 (Stage 1+2 `3b8e36c`). snap lifecycle 표준 정합: post-refresh는 catastrophic case(binary corruption + configure schema)만 cover, check-health가 daemon healthz polling + snapctl set-health 담당.
 - `ci(snap-smoke)` E35-refresh redesign Stage 3 (`02a8f6c`) — refresh round-trip step `continue-on-error: true` 제거 + `snap health` polling 신규 step 2개. E35-refresh carryover 마감.
 
 ### Changed
-- `docs(ops)` E35-refresh redesign Stage 4 — snap-deployment.md §7 rewrite: hook 책임 분리 표 + 자동 rollback 범위 축소 명시(catastrophic case만) + broken refresh 운영 절차(§7.5) + channel staged rollout 권장(§7.6) + §9 한계 갱신.
+- `docs(ops)` E35-refresh redesign Stage 4 (`3419191`) — snap-deployment.md §7 rewrite: hook 책임 분리 표 + 자동 rollback 범위 축소 명시(catastrophic case만) + broken refresh 운영 절차(§7.5) + channel staged rollout 권장(§7.6) + §9 한계 갱신.
   - 설계 배경: `docs/design/notes/e35-refresh-rollback-redesign.md` — D-E35R-1 옵션 A(post-refresh 단순화 + check-health 신규) + D-E35R-2 포기(운영 절차 위임) + D-E35R-3 순차 Stage 1·2·3·4.
+
+### Notes
+- 자동 rollback 가정 변경 (customer-facing): v0.8.3 이전은 "post-refresh healthz polling 실패 시 snapd 자동 revert"가 daemon unhealthy 전반을 cover한다는 가정. v0.8.4부터는 catastrophic case(binary corruption + configure schema)만 cover. daemon unhealthy 1차 방어선은 channel staged rollout(edge → candidate burn-in → stable), 2차 방어선은 운영자가 `snap health rosshield` 확인 후 `snap revert rosshield`. 자세한 절차는 `docs/operations/snap-deployment.md` §7.5·§7.6 참조.
 
 ---
 
