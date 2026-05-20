@@ -27,6 +27,8 @@ package rotation
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -37,6 +39,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithymiddleware "github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // s3API는 S3Backend가 호출하는 AWS SDK v2 s3.Client의 최소 표면입니다.
@@ -215,20 +219,74 @@ func (b *S3Backend) ApplyLifecyclePolicy(ctx context.Context) error {
 		}
 	}
 
-	// MinIO 등 S3 호환 storage는 PutBucketLifecycleConfiguration에 Content-MD5 헤더를
-	// 강제 요구합니다. AWS SDK v2는 ChecksumAlgorithm을 명시하면 SHA256/CRC32 등을
-	// 자동 계산해 헤더에 채워줍니다 — AWS 본가는 양쪽 모두 허용.
+	// MinIO 등 S3 호환 storage는 PutBucketLifecycleConfiguration에 RFC 1864 Content-MD5
+	// 헤더를 strict 요구합니다. AWS SDK v2의 modern ChecksumAlgorithm 모델은 MinIO가
+	// 인식 못 하므로 본 호출에 한해 legacy Content-MD5 middleware를 주입합니다.
+	// AWS 본가는 ChecksumAlgorithm·Content-MD5 양쪽 모두 허용 — middleware 적용에도
+	// 동작 영향 0.
 	_, err := b.client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
-		Bucket:            aws.String(b.cfg.Bucket),
-		ChecksumAlgorithm: s3types.ChecksumAlgorithmSha256,
+		Bucket: aws.String(b.cfg.Bucket),
 		LifecycleConfiguration: &s3types.BucketLifecycleConfiguration{
 			Rules: []s3types.LifecycleRule{rule},
 		},
+	}, func(o *s3.Options) {
+		o.APIOptions = append(o.APIOptions, addLegacyContentMD5Middleware)
 	})
 	if err != nil {
 		return fmt.Errorf("rotation: S3Backend ApplyLifecyclePolicy: %w", err)
 	}
 	return nil
+}
+
+// addLegacyContentMD5Middleware는 request body의 MD5를 계산해 Content-MD5 헤더를
+// 자동으로 추가하는 smithy-go finalize middleware입니다.
+//
+// 도입 배경 (D-AR-9 후속, v0.6.9 carryover):
+//
+//	AWS SDK v2는 modern checksum 모델(x-amz-checksum-* 헤더)을 기본으로 사용하지만
+//	MinIO는 PutBucketLifecycleConfiguration에 RFC 1864 Content-MD5만 받습니다.
+//	본 middleware는 finalize 단계에서 request body를 in-memory로 한 번 읽어 MD5를
+//	계산하고 base64 헤더를 추가합니다.
+//
+// AWS 본가는 Content-MD5 + ChecksumAlgorithm 양쪽 모두 허용 — middleware 적용 시
+// 본가 동작 영향 0.
+//
+// 본 middleware는 PutBucketLifecycleConfiguration 같이 작은 XML body(< 수십 KB)에서만
+// 사용 — io.ReadAll로 전체 body를 in-memory에 올리는 비용이 무시 가능.
+func addLegacyContentMD5Middleware(stack *smithymiddleware.Stack) error {
+	return stack.Finalize.Add(smithymiddleware.FinalizeMiddlewareFunc(
+		"rosshieldLegacyContentMD5",
+		func(
+			ctx context.Context,
+			in smithymiddleware.FinalizeInput,
+			next smithymiddleware.FinalizeHandler,
+		) (smithymiddleware.FinalizeOutput, smithymiddleware.Metadata, error) {
+			req, ok := in.Request.(*smithyhttp.Request)
+			if !ok {
+				return next.HandleFinalize(ctx, in)
+			}
+			stream := req.GetStream()
+			if stream == nil {
+				return next.HandleFinalize(ctx, in)
+			}
+			data, err := io.ReadAll(stream)
+			if err != nil {
+				return smithymiddleware.FinalizeOutput{}, smithymiddleware.Metadata{},
+					fmt.Errorf("rotation: ContentMD5 middleware: read body: %w", err)
+			}
+			sum := md5.Sum(data)
+			req.Header.Set("Content-MD5", base64.StdEncoding.EncodeToString(sum[:]))
+			// stream 재설정 — finalize 이후 transport가 body를 다시 읽음.
+			// SetStream은 clone request를 반환 (smithy-go API) — in.Request 갱신 필수.
+			newReq, err := req.SetStream(bytes.NewReader(data))
+			if err != nil {
+				return smithymiddleware.FinalizeOutput{}, smithymiddleware.Metadata{},
+					fmt.Errorf("rotation: ContentMD5 middleware: rewind body: %w", err)
+			}
+			in.Request = newReq
+			return next.HandleFinalize(ctx, in)
+		},
+	), smithymiddleware.Before)
 }
 
 // Exists는 s3:// URI 객체 존재 여부를 반환합니다 (HEAD 요청 — body 다운로드 없음).

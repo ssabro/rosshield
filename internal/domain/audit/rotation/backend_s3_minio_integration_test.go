@@ -10,17 +10,16 @@
 // 본 파일은 build tag `rosshield_enterprise && integration` 양쪽이 모두 켜져야 컴파일됩니다.
 // docker daemon 부재 시 testcontainers-go가 즉시 fail — t.Skip 가드로 CI 외 환경 우회.
 //
-// 검증 항목 (v0.6.8 한계 carryover):
+// 검증 항목 (v0.6.8 한계 carryover + v0.6.9 후속):
 //
 //   - MinIOPutGetRoundTrip: 실 S3 호환 endpoint에 PUT → GET round-trip + 본문 정확성
 //   - MinIOExists: HEAD/Exists 동작
+//   - MinIOLifecycle: ApplyLifecyclePolicy 통신 성공 (Content-MD5 middleware 검증)
 //   - MinIONotFound: 부재 객체 → Exists=false, Get → ErrNotExist
 //
 // 본 테스트는 fake s3API mock(backend_s3_enterprise_test.go)을 보완 — fake가 잡지 못하는
-// AWS SDK ↔ MinIO 실 wire 호환성 (Region/PathStyle/Auth signature)을 검증합니다.
-//
-// 한계: PutBucketLifecycleConfiguration은 MinIO가 Content-MD5 strict 모드라 SDK ChecksumAlgorithm
-// 으로 만족 안 됨 — lifecycle 자체 검증은 fake mock + AWS 본가 환경에 위임.
+// AWS SDK ↔ MinIO 실 wire 호환성 (Region/PathStyle/Auth signature + legacy Content-MD5)을
+// 검증합니다.
 
 package rotation_test
 
@@ -171,12 +170,6 @@ func TestS3Backend_MinIOPutGetRoundTrip(t *testing.T) {
 }
 
 // TestS3Backend_MinIOExists — Exists round-trip 동작.
-//
-// MinIO 호환성 한계 (별 epic): PutBucketLifecycleConfiguration이 Content-MD5 strict
-// 모드라 AWS SDK v2의 ChecksumAlgorithm=SHA256 헤더로는 만족 못함(MinIO는 modern
-// checksum 모델 미지원). 따라서 본 통합 테스트는 lifecycle 검증을 분리하고 Exists/Put/Get
-// round-trip만 확인. lifecycle 자체 동작은 fake mock 단위 test 6건 + AWS 본가 실 환경에서
-// 검증. MinIO Content-MD5 SDK middleware 추가는 후속 carryover.
 func TestS3Backend_MinIOExists(t *testing.T) {
 	fix := setupMinIO(t)
 	cfg := rotation.S3Config{Prefix: "existence/"}
@@ -193,6 +186,32 @@ func TestS3Backend_MinIOExists(t *testing.T) {
 	}
 	if !exists {
 		t.Error("Exists = false right after Put")
+	}
+}
+
+// TestS3Backend_MinIOLifecycle — ApplyLifecyclePolicy 실 wire 검증.
+//
+// MinIO는 RFC 1864 Content-MD5 헤더를 strict 요구 — backend의 legacy MD5 middleware
+// 가 자동으로 헤더를 채워줍니다. 본 테스트는 NewS3Backend의 LifecycleEnabled 자동 적용
+// 경로 + 명시 재호출 idempotency 모두 검증.
+//
+// MinIO가 GLACIER·DEEP_ARCHIVE transition을 silent ignore해도 rule 등록 자체는 성공 —
+// 통신 layer 검증 목적이라 storage class 실효는 검증 대상 아님.
+func TestS3Backend_MinIOLifecycle(t *testing.T) {
+	fix := setupMinIO(t)
+	cfg := rotation.S3Config{
+		Prefix:               "lifecycle/",
+		LifecycleEnabled:     true,
+		LifecycleTransitions: []rotation.S3Transition{{Days: 30, StorageClass: "STANDARD_IA"}},
+		LifecycleExpireDays:  365,
+	}
+	// LifecycleEnabled=true라 NewS3Backend가 ApplyLifecyclePolicy를 자동 호출.
+	// 성공해야 backend 생성 (middleware Content-MD5 헤더 정상 → MinIO 통과).
+	b := newMinIOBackend(t, fix, cfg)
+
+	// 명시 재호출도 idempotent — 검증 차원.
+	if err := b.ApplyLifecyclePolicy(context.Background()); err != nil {
+		t.Errorf("ApplyLifecyclePolicy (idempotent re-apply): %v", err)
 	}
 }
 
