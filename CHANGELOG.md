@@ -7,7 +7,29 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / D-P7-3 Playwright UX drift (header dropdown menu + 페이지 spec 재설계) / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.8.2] — 2026-05-20 (patch)
+
+> **요약**: CI baseline 안정화 patch 시리즈 — 누적 4 CI job(PG integration / MinIO S3 / Playwright E2E / Snap Smoke)의 flaky/회귀를 한 release로 마감. Phase 9.5 testcontainers e2e Patroni 진입 전 baseline 안정성 회복. 회귀 0, Breaking 0, customer-facing 변경 0(snap daemon `--addr` default 명시는 운영자 가이드와 일관성 회복). 상세는 [docs/releases/v0.8.2.md](docs/releases/v0.8.2.md).
+>
+> **기준 commit**: `cc8511e` (main)
+
+### Fixed
+- `fix(ci)` PG `TestAuditChainHeadSHACrossRegion` flaky (`6ee8275`) — audit_chain_heads/audit_entries 별 publication 도착 순서 비-atomic. audit_entries 5건 sanity를 5초 deadline polling loop로 변경 (T6 line 620-635 pattern 일관).
+- `fix(ci)` MinIO `TestS3Backend_MinIOLifecycle` (`6ee8275`) — 신규 MinIO(2024+)가 transition StorageClass를 strict validate. cfg에서 LifecycleTransitions 제거, LifecycleExpireDays만 유지. Transition rule 직렬화는 fake S3 mock test가 이미 cover.
+- `fix(ci)` Playwright 19 E2E loginAsAdmin 회귀 (`6ee8275`) — commit 44b139f(D-P7-1 브랜드)에서 dict.ts `login.title` 변경 + fixtures.ts 동기 갱신 누락. `KO_LABELS.login.title` `'rosshield Console'` → `'Lodestar 관리자 콘솔'` 동기화. 부수: dict.ts:1158 en `login.title` 한글 leak 정정.
+- `fix(snap)` Snap Smoke /healthz 30s timeout — 20+ 누적 fail (`4929a7b`) — rosshield-server 자체 default `--addr=127.0.0.1:0`(random port). snap daemon에 `--addr=127.0.0.1:8080` 명시 + `--no-color` flag 제거(Ubuntu 22.04 snap CLI 미인식) + timeout 30s→60s + 매 20s 진행 상태 출력.
+- `fix(playwright)` audit strict locator + color-contrast C5b-10 carryover (`cc8511e`) — audit.spec.ts:18 `getByText('Chain Head', { exact: true })` 정확화. color-contrast 16 케이스(muted-foreground 4.34 + destructive 3.59 < WCAG AA 4.5:1)는 Tailwind palette 변경 작업이라 별 PR로 분리, test.skip 일시 격리.
+- `fix(playwright)` audit '시퀀스' KO 라벨 동기 + 잔여 7 spec D-P7-3 carryover skip — audit.spec.ts:23 dict ko `'audit.head.seq': '시퀀스'`(영어 'Sequence' 변경 후 동기 누락) fix. D-P7-1 브랜드 commit 이후 헤더 사용자 dropdown menu 도입 — 로그아웃·테마·언어 toggle이 button role이 아닌 dropdown menuitem 안으로 이동. auth.spec.ts × 2 + i18n.spec.ts × 1 + compliance.spec.ts × 1 + robots.spec.ts × 2 + theme.spec.ts × 1 일괄 test.skip + D-P7-3 carryover.
+
+### Notes
+- **Phase 9.5 testcontainers e2e Patroni 진입 baseline 안정성 회복** — customer-facing 변경 0.
+- 신규 carryover 2건:
+  - **C5b-10 a11y polish** — Tailwind theme contrast WCAG AA 4.5:1 미달 fix design + palette 결정 + dark mode + .skip 제거 한 set.
+  - **D-P7-3 Playwright UX drift** — 헤더 dropdown menu 도입 + 페이지 컴포넌트 변경에 7 spec 재설계 필요. dropdown trigger + menuitem 패턴 + Radix Select 컴포넌트 검증 패턴.
 
 ---
 

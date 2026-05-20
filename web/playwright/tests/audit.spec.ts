@@ -19,8 +19,8 @@ test('audit page renders chain head seq + hash', async ({ page }) => {
   await expect(page.getByText('Chain Head', { exact: true })).toBeVisible()
 
   // Sequence 라벨이 있고 옆에 숫자가 표시된다.
-  // dict.ts: 'audit.head.seq': 'Sequence'
-  await expect(page.getByText('Sequence')).toBeVisible()
+  // dict.ts ko: 'audit.head.seq': '시퀀스' (영어 'Sequence'에서 한글로 변경됨)
+  await expect(page.getByText('시퀀스')).toBeVisible()
 
   // hash 라벨도 존재 — sha256은 16진 64자로 노출.
   await expect(page.getByText('Hash (sha256)')).toBeVisible()
