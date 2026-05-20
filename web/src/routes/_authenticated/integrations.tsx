@@ -91,7 +91,8 @@ import type { DictKey } from '@/i18n/dict'
 // D-UI-1 Stage 4 — `window.confirm` / `window.alert` 제거 후 confirm()/toast 통합,
 // delivery status는 StatusBadge로, CreateEndpointForm은 react-hook-form + zod pilot,
 // 로딩은 TableRowSkeleton.
-function IntegrationsPage(): React.ReactElement {
+// a11y-drilldown.test.tsx mount용 named export.
+export function IntegrationsPage(): React.ReactElement {
   const t = useT()
   const endpoints = useWebhookEndpoints()
   // RBAC Stage 5 — webhook은 tenant_admin.admin (§2.2 ID 3 — sso/webhook/users 통합).

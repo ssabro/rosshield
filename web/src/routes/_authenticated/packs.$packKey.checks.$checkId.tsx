@@ -19,6 +19,11 @@ import { CardSkeleton } from '@/components/ui/skeleton'
 
 function CheckDetailPage(): React.ReactElement {
   const { packKey, checkId } = Route.useParams()
+  return <CheckDetailView packKey={packKey} checkId={checkId} />
+}
+
+// a11y-drilldown.test.tsx mount용 named export — Route.useParams 의존 분리.
+export function CheckDetailView({ packKey, checkId }: { packKey: string; checkId: string }): React.ReactElement {
   const t = useT()
   const detailQuery = useCheck(packKey, checkId)
   const packQuery = usePack(packKey)

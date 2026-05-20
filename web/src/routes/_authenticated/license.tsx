@@ -35,7 +35,8 @@ import type { DictKey } from '@/i18n/dict'
 //
 // 데이터: useLicenseInfo (E24 GET /api/v1/license — 모든 인증 사용자 read-only).
 // 백엔드 응답에는 licenseId 필드가 없어 본 페이지도 표시하지 않는다.
-function LicensePage(): React.ReactElement {
+// a11y-drilldown.test.tsx mount용 named export.
+export function LicensePage(): React.ReactElement {
   const t = useT()
   const license = useLicenseInfo()
 

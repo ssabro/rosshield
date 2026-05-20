@@ -20,7 +20,8 @@ import { TextSkeleton } from '@/components/ui/skeleton'
 // `/audit` — 감사 체인의 현재 head를 표시 (B1).
 //   - GET /api/v1/audit/head → ChainHead 메타.
 //   - 외부 검증(verify)은 Phase 3 — 현재는 CLI(`rosshield report verify`).
-function AuditPage(): React.ReactElement {
+// a11y-drilldown.test.tsx mount용 named export.
+export function AuditPage(): React.ReactElement {
   const t = useT()
   const head = useAuditHead()
 

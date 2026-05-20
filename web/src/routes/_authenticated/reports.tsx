@@ -38,7 +38,8 @@ import type { Report } from '@/api/hooks'
 //   - 미리보기: PreviewButton이 같은 endpoint로 blob URL을 iframe에 inline 렌더.
 //   - 검증: VerifyButton이 POST /api/v1/reports/{id}/verify (signed report 한정).
 // 컬럼: ID·session·생성일·서명 여부·SHA256(앞 16자)·액션(preview/download/verify).
-function ReportsPage(): React.ReactElement {
+// a11y-drilldown.test.tsx mount용 named export.
+export function ReportsPage(): React.ReactElement {
   const reports = useReports()
   const t = useT()
 

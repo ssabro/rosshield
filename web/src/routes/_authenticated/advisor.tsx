@@ -35,7 +35,8 @@ const EXAMPLE_PROMPT_KEYS: ReadonlyArray<DictKey> = [
 //
 // D-UI-1 Stage 4 — PageHeader badge로 "opt-in" 명시, EmptyState로 disabled UX
 // 일관화, mutation feedback에 toast 추가.
-function AdvisorPage(): React.ReactElement {
+// a11y-drilldown.test.tsx mount용 named export.
+export function AdvisorPage(): React.ReactElement {
   const conversations = useAdvisorConversations()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const t = useT()

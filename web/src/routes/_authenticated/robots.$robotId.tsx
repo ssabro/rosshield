@@ -45,8 +45,13 @@ import type { Robot, RobotResult } from '@/api/hooks'
 
 // `/robots/$robotId` — 단일 robot 상세 (모든 인증 사용자).
 function RobotDetailPage(): React.ReactElement {
-  const t = useT()
   const { robotId } = Route.useParams()
+  return <RobotDetailView robotId={robotId} />
+}
+
+// a11y-drilldown.test.tsx mount용 named export — Route.useParams 의존 분리.
+export function RobotDetailView({ robotId }: { robotId: string }): React.ReactElement {
+  const t = useT()
   const robotQuery = useRobot(robotId)
   const robot = robotQuery.data
   // fleetId는 robot fetch 후에만 알 수 있음 — useFleet은 enabled !!fleetId.

@@ -25,8 +25,13 @@ import type { Robot } from '@/api/hooks'
 //   - CardSkeleton: 로딩 시 layout shift 0
 //   - EmptyState: 소속 robot 0 → "이 fleet에 robot 없음" + 등록 가이드
 function FleetDetailPage(): React.ReactElement {
-  const t = useT()
   const { fleetId } = Route.useParams()
+  return <FleetDetailView fleetId={fleetId} />
+}
+
+// a11y-drilldown.test.tsx mount용 named export — Route.useParams 의존 분리.
+export function FleetDetailView({ fleetId }: { fleetId: string }): React.ReactElement {
+  const t = useT()
   const fleetQuery = useFleet(fleetId)
   const robotsQuery = useRobots(fleetId)
 

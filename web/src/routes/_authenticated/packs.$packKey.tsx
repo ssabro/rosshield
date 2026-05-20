@@ -27,7 +27,9 @@ import type { PackCheck } from '@/api/hooks'
 //   - checks: id, code, severity, title (CheckID 알파벳 정렬)
 //   - 운영자가 어떤 검사가 포함되어 있는지, 어떤 문제 영역을 cover하는지 한눈에 확인.
 
-function PackDetailPage(): React.ReactElement {
+// a11y-drilldown.test.tsx mount용 named export.
+// Route.useParams 의존을 갖지만 mocked useParams가 packKey를 제공하므로 mount 가능.
+export function PackDetailPage(): React.ReactElement {
   const { packKey } = Route.useParams()
   const t = useT()
   const detailQuery = usePack(packKey)

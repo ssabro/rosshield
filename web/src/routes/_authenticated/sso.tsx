@@ -57,7 +57,8 @@ import type { DictKey } from '@/i18n/dict'
 // Backend HTTP 표면(E20-D)이 머지된 상태로 hooks.ts는 raw fetch wrapper.
 // type=oidc/saml에 따라 동적 config 폼을 렌더링하고, 에러 매핑(409·404 등)을
 // 친화 메시지로 변환한다.
-function SSOPage(): React.ReactElement {
+// a11y-drilldown.test.tsx mount용 named export.
+export function SSOPage(): React.ReactElement {
   const t = useT()
   const providers = useSSOProviders()
   // RBAC Stage 5 — sso provider 관리는 tenant_admin.admin (§2.2 ID 2).
