@@ -65,6 +65,7 @@ import (
 	llmvllm "github.com/ssabro/rosshield/internal/platform/llm/vllm"
 	"github.com/ssabro/rosshield/internal/platform/metrics"
 	"github.com/ssabro/rosshield/internal/platform/replication"
+	replicationsetup "github.com/ssabro/rosshield/internal/platform/replication/setup"
 	replicationrepo "github.com/ssabro/rosshield/internal/platform/replication/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
@@ -197,6 +198,38 @@ type Config struct {
 	// ReplicationConfig.Enabled=false (default)면 single-region 동작 그대로 — 본 코드 도입으로
 	// 동작 변경 없음. true + Role=standby면 write API가 standby middleware로 차단.
 	ReplicationConfig replication.Config
+
+	// E-MR Stage 3 — PG logical replication publication/subscription 자동 setup.
+	//
+	// ReplicationConfig.Enabled=true + StorageDriver=postgres 조합에서만 결선.
+	// sqlite·single-region·standalone 배포에는 영향 0.
+	//
+	// 동작:
+	//   - Role=primary → bootstrap 시 CREATE PUBLICATION (idempotent)
+	//   - Role=standby → bootstrap 시 CREATE SUBSCRIPTION (idempotent)
+	//
+	// 자동 setup 비활성: ReplicationAutoSetup=false (default). 운영자가 수동으로
+	// PUBLICATION/SUBSCRIPTION을 생성한 환경(권장 — 권한 분리)에서는 false 유지.
+	// 부팅 시 자동 생성을 원할 때만 true로.
+	ReplicationAutoSetup bool
+
+	// ReplicationPublicationName은 primary가 publish할 PUBLICATION 이름입니다.
+	// 빈 값이면 default "rosshield_main".
+	ReplicationPublicationName string
+
+	// ReplicationPublicationAllTables=true (권장 default)면 `FOR ALL TABLES` —
+	// 신규 application 테이블 자동 포함 (multi-region-ha-design §4.5).
+	ReplicationPublicationAllTables bool
+
+	// ReplicationSubscriptionName은 standby가 생성할 SUBSCRIPTION 이름입니다.
+	// 빈 값이면 default "rosshield_main_sub".
+	ReplicationSubscriptionName string
+
+	// ReplicationPrimaryConnString은 standby가 primary PG에 logical replication
+	// 연결할 때 사용하는 conn string. Role=standby + AutoSetup=true 시 필수.
+	// password 포함 — env(ROSSHIELD_REPLICATION_PRIMARY_CONN_STRING)에만 두고
+	// 파일로 dump 금지.
+	ReplicationPrimaryConnString string
 
 	// E34 — KeyStore 어댑터 선택 (Phase 5 어플라이언스 트랙).
 	//
@@ -1440,6 +1473,16 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		ReplicationConfig: cfg.ReplicationConfig,
 	}
 
+	// E-MR Stage 3 — PG logical replication publication/subscription 자동 setup.
+	// cfg.ReplicationAutoSetup=true + PG storage 조합에서만 실행 (sqlite는 logical
+	// replication 지원 X). 실패 시 부팅 fail-fast — 부분 setup 상태 회피.
+	if cfg.ReplicationConfig.Enabled && cfg.ReplicationAutoSetup {
+		if err := runReplicationSetup(ctx, cfg, store, logger); err != nil {
+			_ = platform.Shutdown(ctx)
+			return nil, fmt.Errorf("bootstrap: replication setup: %w", err)
+		}
+	}
+
 	// E25 — HA leader-election (R30-2 = PG advisory lock + leader/follower).
 	// HAEnabled=true + storage=postgres 조합에서만 결선 (sqlite 거부는 위에서 체크).
 	if cfg.HAEnabled {
@@ -1515,6 +1558,75 @@ func buildKeystore(cfg Config) (keystore.KeyStore, error) {
 		return store, nil
 	default:
 		return nil, fmt.Errorf("%w: %q (allowed: file|tpm)", keystore.ErrUnsupportedDriver, cfg.KeystoreType)
+	}
+}
+
+// runReplicationSetup은 PG logical replication publication/subscription을 자동
+// 생성합니다 (E-MR Stage 3).
+//
+// 조건:
+//   - cfg.ReplicationConfig.Enabled=true
+//   - cfg.ReplicationAutoSetup=true
+//   - storage가 PG 어댑터 (sqlite 거부 — logical replication 미지원)
+//
+// idempotent: 이미 존재하면 skip. 부팅 반복에 안전.
+//
+// fail-fast: setup 실패 시 에러 반환 → 호출자(Bootstrap)가 platform.Shutdown 후
+// 부팅 중단. 부분 setup 상태(publication만 있고 subscription 없음)는 운영자가
+// 수동 점검 필요.
+func runReplicationSetup(ctx context.Context, cfg Config, store storage.Storage, logger *slog.Logger) error {
+	pg, ok := store.(*postgres.Postgres)
+	if !ok {
+		return errors.New("replication auto-setup requires postgres storage (sqlite has no logical replication)")
+	}
+
+	exec := replicationsetup.NewPgxExecutor(pg.Pool())
+
+	pubName := cfg.ReplicationPublicationName
+	if pubName == "" {
+		pubName = replicationsetup.DefaultPublicationSpec().Name
+	}
+	subName := cfg.ReplicationSubscriptionName
+	if subName == "" {
+		subName = replicationsetup.DefaultSubscriptionSpec("").Name
+	}
+
+	switch cfg.ReplicationConfig.Role {
+	case replication.RolePrimary:
+		pubSpec := &replicationsetup.PublicationSpec{
+			Name:      pubName,
+			AllTables: cfg.ReplicationPublicationAllTables,
+		}
+		if err := replicationsetup.Setup(ctx, exec, replication.RolePrimary, pubSpec, nil); err != nil {
+			return err
+		}
+		logger.Info("replication primary publication ensured",
+			"name", pubSpec.Name,
+			"allTables", pubSpec.AllTables,
+			"region", cfg.ReplicationConfig.Region)
+		return nil
+
+	case replication.RoleStandby:
+		if cfg.ReplicationPrimaryConnString == "" {
+			return errors.New("replication standby auto-setup requires --replication-primary-conn-string (ROSSHIELD_REPLICATION_PRIMARY_CONN_STRING)")
+		}
+		subSpec := &replicationsetup.SubscriptionSpec{
+			Name:              subName,
+			PublicationName:   pubName,
+			PrimaryConnString: cfg.ReplicationPrimaryConnString,
+			Copy:              false, // 운영 default: 초기 데이터 복사는 사전 완료 가정
+		}
+		if err := replicationsetup.Setup(ctx, exec, replication.RoleStandby, nil, subSpec); err != nil {
+			return err
+		}
+		logger.Info("replication standby subscription ensured",
+			"name", subSpec.Name,
+			"publication", subSpec.PublicationName,
+			"region", cfg.ReplicationConfig.Region)
+		return nil
+
+	default:
+		return fmt.Errorf("unknown replication role: %q", cfg.ReplicationConfig.Role)
 	}
 }
 

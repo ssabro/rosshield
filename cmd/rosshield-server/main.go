@@ -291,6 +291,12 @@ func main() {
 	haHeartbeat := flag.Duration("ha-heartbeat-interval", 0, "HA heartbeat interval (E25). 0 = default 5s.")
 	haLeaderID := flag.String("ha-leader-id", "", "HA instance identifier (E25). Empty = auto (hostname:pid).")
 	haAdvertised := flag.String("ha-advertised-addr", "", "HA advertised URL for redirect from followers (E25, optional).")
+	// E-MR Stage 3 — PG logical replication 자동 setup (env override 권장).
+	replicationAutoSetup := flag.Bool("replication-auto-setup", false, "Auto-create PG PUBLICATION/SUBSCRIPTION on boot (E-MR Stage 3). Requires --storage=postgres + replication.Enabled=true. Default: false (operators provision manually).")
+	replicationPubName := flag.String("replication-publication-name", "", "PUBLICATION name for primary role. Empty = default 'rosshield_main'.")
+	replicationPubAllTables := flag.Bool("replication-publication-all-tables", true, "PUBLICATION FOR ALL TABLES (recommended — auto-includes new tables). false = use explicit table list (advanced).")
+	replicationSubName := flag.String("replication-subscription-name", "", "SUBSCRIPTION name for standby role. Empty = default 'rosshield_main_sub'.")
+	replicationPrimaryConnStr := flag.String("replication-primary-conn-string", "", "Standby PG conn string to primary (required when --replication-auto-setup=true + role=standby). Prefer env ROSSHIELD_REPLICATION_PRIMARY_CONN_STRING.")
 	keystoreType := flag.String("keystore", "file", "KeyStore adapter (E34): file (default, soft.LoadOrCreate) | tpm (Stage 1 placeholder — Stage 2+ TPM 2.0 PCR-sealed).")
 	backupSchedule := flag.String("backup-schedule", "", "Auto backup cron spec (B7 후속). Empty = disabled. Examples: '@every 24h', '0 15 3 * * *' (daily 03:15 UTC).")
 	backupDir := flag.String("backup-dir", "", "Auto backup output directory (B7 후속). Empty = <data-dir>/backups.")
@@ -396,46 +402,84 @@ func main() {
 		os.Exit(1)
 	}
 
+	// E-MR Stage 3 — auto-setup env override (flag default 시에만 env).
+	// 비밀 정보(conn string)는 env-only가 권장 — flag 사용 시 process 목록 노출.
+	replAutoSetup := *replicationAutoSetup
+	if !replAutoSetup {
+		if s := os.Getenv("ROSSHIELD_REPLICATION_AUTO_SETUP"); s == "1" || strings.EqualFold(s, "true") {
+			replAutoSetup = true
+		}
+	}
+	replPubName := *replicationPubName
+	if replPubName == "" {
+		replPubName = os.Getenv("ROSSHIELD_REPLICATION_PUBLICATION_NAME")
+	}
+	replPubAllTables := *replicationPubAllTables
+	if s := os.Getenv("ROSSHIELD_REPLICATION_PUBLICATION_ALL_TABLES"); s != "" {
+		switch strings.ToLower(s) {
+		case "1", "true", "yes", "on":
+			replPubAllTables = true
+		case "0", "false", "no", "off":
+			replPubAllTables = false
+		default:
+			logger.Error("invalid ROSSHIELD_REPLICATION_PUBLICATION_ALL_TABLES", "value", s)
+			os.Exit(1)
+		}
+	}
+	replSubName := *replicationSubName
+	if replSubName == "" {
+		replSubName = os.Getenv("ROSSHIELD_REPLICATION_SUBSCRIPTION_NAME")
+	}
+	replPrimaryConnStr := *replicationPrimaryConnStr
+	if replPrimaryConnStr == "" {
+		replPrimaryConnStr = os.Getenv("ROSSHIELD_REPLICATION_PRIMARY_CONN_STRING")
+	}
+
 	platform, err := Bootstrap(bootCtx, Config{
-		DataDir:                *dataDir,
-		Logger:                 logger,
-		StorageDriver:          *storageDriver,
-		StorageDSN:             dsn,
-		LLMProvider:            llmProviderVal,
-		LLMModel:               llmModelVal,
-		LLMBaseURL:             llmBaseURLVal,
-		LLMAPIKey:              apiKey,
-		LLMTimeout:             llmTimeoutVal,
-		LLMMaxTokens:           llmMaxTokensVal,
-		LLMKeepAlive:           llmKeepAliveVal,
-		LLMAutoPull:            llmAutoPullVal,
-		LicenseToken:           licTok,
-		LicensePublicKeyHex:    licPub,
-		WebhookTickInterval:    *webhookTick,
-		EmailProvider:          *emailProvider,
-		SMTPHost:               *smtpHost,
-		SMTPPort:               *smtpPort,
-		SMTPUsername:           *smtpUser,
-		SMTPPassword:           smtpPw,
-		SMTPFrom:               *smtpFrom,
-		PublicBaseURL:          *publicBaseURL,
-		HAEnabled:              *haEnabled,
-		HALockID:               *haLockID,
-		HAHeartbeatInterval:    *haHeartbeat,
-		HALeaderID:             *haLeaderID,
-		HAAdvertisedAddr:       *haAdvertised,
-		ReplicationConfig:      replicationCfg,
-		KeystoreType:           *keystoreType,
-		BackupSchedule:         *backupSchedule,
-		BackupDir:              *backupDir,
-		BackupSkipEvidence:     *backupSkipEvidence,
-		AuditRotationSchedule:  resolveAuditRotationSchedule(*auditRotationSchedule),
-		CosignEnabled:          cosignCfg.Enabled,
-		CosignBinaryPath:       cosignCfg.BinaryPath,
-		CosignIdentity:         cosignCfg.Identity,
-		CosignFulcioURL:        cosignCfg.FulcioURL,
-		CosignRekorURL:         cosignCfg.RekorURL,
-		CheckTimeoutDefaultSec: *checkTimeoutDefaultSec,
+		DataDir:                         *dataDir,
+		Logger:                          logger,
+		StorageDriver:                   *storageDriver,
+		StorageDSN:                      dsn,
+		LLMProvider:                     llmProviderVal,
+		LLMModel:                        llmModelVal,
+		LLMBaseURL:                      llmBaseURLVal,
+		LLMAPIKey:                       apiKey,
+		LLMTimeout:                      llmTimeoutVal,
+		LLMMaxTokens:                    llmMaxTokensVal,
+		LLMKeepAlive:                    llmKeepAliveVal,
+		LLMAutoPull:                     llmAutoPullVal,
+		LicenseToken:                    licTok,
+		LicensePublicKeyHex:             licPub,
+		WebhookTickInterval:             *webhookTick,
+		EmailProvider:                   *emailProvider,
+		SMTPHost:                        *smtpHost,
+		SMTPPort:                        *smtpPort,
+		SMTPUsername:                    *smtpUser,
+		SMTPPassword:                    smtpPw,
+		SMTPFrom:                        *smtpFrom,
+		PublicBaseURL:                   *publicBaseURL,
+		HAEnabled:                       *haEnabled,
+		HALockID:                        *haLockID,
+		HAHeartbeatInterval:             *haHeartbeat,
+		HALeaderID:                      *haLeaderID,
+		HAAdvertisedAddr:                *haAdvertised,
+		ReplicationConfig:               replicationCfg,
+		ReplicationAutoSetup:            replAutoSetup,
+		ReplicationPublicationName:      replPubName,
+		ReplicationPublicationAllTables: replPubAllTables,
+		ReplicationSubscriptionName:     replSubName,
+		ReplicationPrimaryConnString:    replPrimaryConnStr,
+		KeystoreType:                    *keystoreType,
+		BackupSchedule:                  *backupSchedule,
+		BackupDir:                       *backupDir,
+		BackupSkipEvidence:              *backupSkipEvidence,
+		AuditRotationSchedule:           resolveAuditRotationSchedule(*auditRotationSchedule),
+		CosignEnabled:                   cosignCfg.Enabled,
+		CosignBinaryPath:                cosignCfg.BinaryPath,
+		CosignIdentity:                  cosignCfg.Identity,
+		CosignFulcioURL:                 cosignCfg.FulcioURL,
+		CosignRekorURL:                  cosignCfg.RekorURL,
+		CheckTimeoutDefaultSec:          *checkTimeoutDefaultSec,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())
