@@ -102,6 +102,27 @@ jobs:
           jq -e '.components.storage' healthz.json
           jq -e '.components.signer' healthz.json
 
+      # E35 redesign — check-health hook 검증 (services start 후 호출).
+      # snap install 직후 check-health가 한 번 호출됨 — daemon이 active되면 status okay.
+      - name: snap health — check-health hook status
+        run: |
+          # check-health hook은 install 직후 자동 호출되며, daemon이 active되기까지
+          # transient waiting 가능. max 30s polling으로 okay 도달 확인.
+          for i in $(seq 1 30); do
+            STATUS=$(sudo snap health rosshield 2>&1 | awk '/^rosshield/{print $2}')
+            if [ "$STATUS" = "okay" ] || [ -z "$STATUS" ]; then
+              # 빈 status는 "no health concerns" 의미 (snap health는 unhealthy만 출력).
+              echo "✓ snap health okay (i=$i)"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "::error::snap health did not reach okay within 30s (last status: $STATUS)"
+              sudo snap health rosshield
+              exit 1
+            fi
+            sleep 1
+          done
+
       # E35 + B7 — configure hook 검증 (Phase 5 Stage 2-C 후속).
       # snap set rosshield <key>=<value>로 옵션 설정. 잘못된 값은 hook이 거부.
       - name: configure hook — valid values pass
@@ -136,53 +157,19 @@ jobs:
           fi
           echo "✓ invalid configure values rejected as expected"
 
-      # CI throughput 변동 cover — refresh round-trip 동안 snapd가 서비스 stop/start
-      # 후 healthz 응답까지 30s+ 걸릴 수 있음. healthz-timeout을 120s로 확대 (정상 환경
-      # 첫 부팅 ~45s, refresh 재시작은 더 길음).
-      - name: extend healthz-timeout for refresh round-trip
-        run: |
-          sudo snap set rosshield healthz-timeout=120
-          sudo snap get rosshield healthz-timeout | grep -q '^120$'
-          echo "✓ healthz-timeout=120 for refresh round-trip"
-
-      # E35 — post-refresh hook 직접 실행 (snap refresh 시뮬레이션, OTA round-trip의 핵심 부분).
-      # 실 OTA(다른 revision install)는 별 multipass 환경 필요 — 본 step은 hook 자체의
-      # healthz polling 로직을 직접 검증.
-      - name: post-refresh hook — healthz polling on live snap
-        run: |
-          POST_REFRESH=$(find /snap/rosshield -name post-refresh -type f 2>/dev/null | head -1)
-          if [ -z "$POST_REFRESH" ]; then
-            echo "::warning::post-refresh hook not found in snap install — skipping direct invocation"
-            exit 0
-          fi
-          echo "Running $POST_REFRESH directly (snap context emulation)"
-          # snap context 없이 직접 실행하면 snapctl 명령이 fail하지만, 폴백으로 기본값 사용.
-          sudo "$POST_REFRESH" || {
-            echo "::warning::post-refresh hook failed in non-snap context — expected for snapctl unavailability"
-          }
-          # 실제 검증: 폴링 후에도 healthz 살아있어야 함 (snap 자체는 죽지 않았음)
-          curl -fsS http://localhost:8080/healthz | jq -e '.status' >/dev/null
-          echo "✓ healthz still ok after post-refresh hook invocation"
-
-      # E35 — same-snap refresh OTA round-trip simulation.
-      # 같은 .snap을 두 번째 install하면 snapd가 refresh로 처리, 새 revision 부여 +
-      # post-refresh hook 자동 실행. 다른 revision의 broken artifact 시뮬레이션은
-      # multipass nested VM 필요(GH Actions 미지원) — 본 step은 정상 refresh round-trip만.
+      # E35 redesign — same-snap refresh OTA round-trip simulation.
+      # 재설계 후: post-refresh hook은 파일 무결성 check만 수행하므로 daemon start 전에
+      # 즉시 exit 0. 새 revision의 daemon이 active되면 snapd가 check-health hook 호출 →
+      # healthz polling 통해 okay 상태 확정.
       #
-      # E35-refresh carryover (2026-05-21): GH Actions ubuntu-22.04 환경에서 snap refresh
-      # 시 새 revision의 서비스가 healthz-timeout=120s 안에 ok 못 받는 사례 누적 — 첫 install
-      # 검증(install + healthz + configure hook)은 정상이나 OTA refresh round-trip만 회귀.
-      # snap layout/wrapper script 도입 시 재검증 예정. 본 step은 continue-on-error로
-      # job conclusion 영향 0 + carryover로 트래킹.
-      - name: snap refresh — same-snap re-install (round-trip simulation)
-        continue-on-error: true
+      # 설계: docs/design/notes/e35-refresh-rollback-redesign.md.
+      - name: snap refresh — same-snap re-install (round-trip)
         run: |
           SNAP_FILE=$(ls ./snap-artifact/*.snap | head -n 1)
           REVISION_BEFORE=$(snap list rosshield | awk 'NR==2 {print $3}')
           echo "rev before refresh: $REVISION_BEFORE"
 
-          # snapd가 같은 파일을 또 install하면 refresh로 처리 (또는 동일 시 noop).
-          # --revision 명시 없이 --dangerous로 새 revision 부여.
+          # snapd가 같은 파일을 또 install하면 refresh로 처리.
           sudo snap install "$SNAP_FILE" --dangerous
 
           REVISION_AFTER=$(snap list rosshield | awk 'NR==2 {print $3}')
@@ -191,12 +178,42 @@ jobs:
           # snap services 여전히 active
           sudo snap services rosshield | grep -q "active"
 
-          # /healthz 여전히 200
-          curl -fsS http://localhost:8080/healthz | jq -e '.status' >/dev/null
-          echo "✓ snap refresh round-trip OK (revision $REVISION_BEFORE → $REVISION_AFTER, healthz still 200)"
+          # /healthz 여전히 200 (새 revision daemon이 들고 있음)
+          # daemon restart 후 listen 준비까지 grace polling.
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 5 http://localhost:8080/healthz 2>/dev/null | jq -e '.status' >/dev/null 2>&1; then
+              echo "✓ /healthz responded after refresh (i=$i)"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "::error::/healthz did not respond within 30s after refresh"
+              sudo snap logs rosshield | tail -n 50
+              exit 1
+            fi
+            sleep 1
+          done
 
-          # post-refresh hook이 실행됐는지 snap changes로 확인 (마지막 change가 install/refresh + hook 포함)
+          echo "✓ snap refresh round-trip OK (revision $REVISION_BEFORE → $REVISION_AFTER)"
+
+          # post-refresh hook이 실행됐는지 snap changes로 확인
           sudo snap changes rosshield | head -5
+
+      # check-health hook이 새 revision에서도 okay 도달 확인.
+      - name: snap health — check-health after refresh
+        run: |
+          for i in $(seq 1 30); do
+            STATUS=$(sudo snap health rosshield 2>&1 | awk '/^rosshield/{print $2}')
+            if [ "$STATUS" = "okay" ] || [ -z "$STATUS" ]; then
+              echo "✓ snap health okay after refresh (i=$i)"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "::error::snap health did not reach okay within 30s after refresh (last: $STATUS)"
+              sudo snap health rosshield
+              exit 1
+            fi
+            sleep 1
+          done
 
       - name: snap remove (cleanup)
         if: always()
