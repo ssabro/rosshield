@@ -7,7 +7,23 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — MR.T4/T6 application integration (leader-election restart · fence token enforcement) / HA leader-only metric gate / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc §6에 기본 cover) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — MR.T4/T6 application integration (leader-election restart · fence token enforcement) / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc §6에 기본 cover) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.8] — 2026-05-20 (patch)
+
+> **요약**: HA leader-only metric gate — `rosshield_replication_lag_seconds` collector가 HA cluster의 follower instance에서 metric 중복 emit + 불필요 DB polling을 자동 차단. Phase 8 v0.7.x 폴리시 마감. 회귀 0, Breaking 0. 상세는 [docs/releases/v0.7.8.md](docs/releases/v0.7.8.md).
+>
+> **기준 commit**: `99c8257` (main)
+
+### Added
+- `feat(metrics)` lagmetric HA leader-only gate (`99c8257`) — `RoleProvider` interface (ha.Manager 자동 만족) + `Deps.Role` 옵션 + `Collector.SetRoleProvider(rp)` lazy 주입 (cronsched 패턴 일관) + atomic.Value race-safe + bootstrap HA Manager 결선 직후 자동 주입 + 단위 test 4 (leader/follower/transition/nil). follower instance는 Querier 호출 0회 + Gauge.Reset.
+
+### Notes
+- HA 비활성 환경 (single-instance): 동작 변경 0 — v0.7.6 동작 유지.
+- HA 활성 환경: leader instance만 `rosshield_replication_lag_seconds` emit, follower는 metric 0 라인 + DB polling 0.
+- **Phase 8 인프라 + monitoring 완전 마감** — customer는 design + ops + IaC (Route53/Cloudflare) + runbook + e2e + Prometheus monitoring (HA gate 포함) 한 set으로 production-grade.
 
 ---
 
