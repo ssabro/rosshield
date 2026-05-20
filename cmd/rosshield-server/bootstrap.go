@@ -372,6 +372,7 @@ type Platform struct {
 	Metrics           *metrics.Registry        // E27 — Prometheus exposition (옵트인)
 	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
 	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
+	HotGC             *rotation.HotGC          // E32 Stage 4 — audit hot GC (sqlite marker mode + PG GUC 양쪽)
 	Replication       replication.Repository   // E-MR Stage 1 — replication metadata 어댑터 (sqlite/PG 양쪽)
 	ReplicationConfig replication.Config       // E-MR Stage 1~2 — 본 인스턴스의 region·role + standby middleware 활성 여부
 	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
@@ -1390,6 +1391,23 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 			"spec", cfg.AuditRotationSchedule, "backend", rotBackendDesc)
 	}
 
+	// E32 Stage 4 — audit hot GC 생성 (v0.7.x carryover).
+	//
+	// 항상 HotGC 생성 (handler가 nil이면 503 응답). cfg.StorageDriver로 분기 — sqlite는
+	// 0036 marker 모드 (audit_gc_mode marker row), PG는 0034 GUC 모드 (SET LOCAL).
+	// platform 변수는 본 위치에서 아직 선언 전이라 hotGC 변수만 만들고 결선은 후속 단계.
+	hotGC, err := rotation.NewHotGC(rotation.HotGCDeps{
+		Policy:        rotation.DefaultPolicy(),
+		Appender:      auditSvc,
+		Clock:         clk,
+		UseMarkerMode: cfg.StorageDriver == "sqlite" || cfg.StorageDriver == "",
+	})
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: NewHotGC: %w", err)
+	}
+
 	// E-MR Stage 3 후속 — 정기 PG replication slot cleanup cron 등록 (v0.6.9 carryover).
 	//
 	// 조건:
@@ -1542,6 +1560,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Invitation:        invitationSvc,
 		Metrics:           metricsReg,
 		MetricsBridge:     metricsBridge,
+		HotGC:             hotGC,
 		Keystore:          ks,
 		BackupDir:         resolvedBackupDir,
 		FleetScanSched:    fleetScanSch,

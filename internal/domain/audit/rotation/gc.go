@@ -64,10 +64,14 @@ type HotGCResult struct {
 //   - policy: HotRetention만 사용 (다른 필드는 cron / scheduler 책임).
 //   - appender: audit.gc.complete entry emit (nil 허용 — emit skip, 진단 용도).
 //   - clock: now 추출.
+//   - useMarkerMode: sqlite 환경에서 true. SET LOCAL GUC 대신 audit_gc_mode marker
+//     table을 INSERT/DELETE로 활성/비활성하여 sqlite 트리거 WHEN 절 통과 (0036 마이그레이션).
+//     PG는 false (default) — SET LOCAL rosshield.audit_gc_mode = 'on' 사용.
 type HotGC struct {
-	policy   RotationPolicy
-	appender AuditAppender
-	clock    clock.Clock
+	policy        RotationPolicy
+	appender      AuditAppender
+	clock         clock.Clock
+	useMarkerMode bool
 }
 
 // HotGCDeps는 HotGC 의존성입니다.
@@ -75,6 +79,9 @@ type HotGCDeps struct {
 	Policy   RotationPolicy
 	Appender AuditAppender // nil 허용 — emit skip
 	Clock    clock.Clock
+	// UseMarkerMode=true이면 sqlite-호환 audit_gc_mode marker table을 INSERT/DELETE로
+	// 활성/비활성 (0036 마이그레이션). bootstrap이 sqlite storage 감지 시 true 주입.
+	UseMarkerMode bool
 }
 
 // NewHotGC는 HotGC를 만듭니다.
@@ -86,9 +93,10 @@ func NewHotGC(deps HotGCDeps) (*HotGC, error) {
 		return nil, errors.New("rotation: NewHotGC: Clock required")
 	}
 	return &HotGC{
-		policy:   deps.Policy,
-		appender: deps.Appender,
-		clock:    deps.Clock,
+		policy:        deps.Policy,
+		appender:      deps.Appender,
+		clock:         deps.Clock,
+		useMarkerMode: deps.UseMarkerMode,
 	}, nil
 }
 
@@ -135,10 +143,24 @@ func (g *HotGC) Run(ctx context.Context, tx storage.Tx, tenantID storage.TenantI
 		return result, nil
 	}
 
-	// session-local GC mode 활성화 — tx 끝에서 자동 reset.
-	// PG 만 — sqlite 는 트리거가 그대로 RAISE(ABORT) 차단.
-	if _, err := tx.Exec(ctx, "SET LOCAL rosshield.audit_gc_mode = 'on'"); err != nil {
-		return nil, fmt.Errorf("rotation: HotGC.Run: SET LOCAL: %w", err)
+	// GC mode 활성화 — driver 분기:
+	//   - PG (useMarkerMode=false): SET LOCAL rosshield.audit_gc_mode = 'on' (tx 끝에서 자동 reset)
+	//   - sqlite (useMarkerMode=true): audit_gc_mode marker row INSERT (defer로 cleanup)
+	// 같은 Tx 안에서 trigger의 WHEN 절이 marker row를 read-your-writes로 확인.
+	if g.useMarkerMode {
+		if _, err := tx.Exec(ctx,
+			`INSERT OR REPLACE INTO audit_gc_mode (id, active) VALUES (1, 1)`); err != nil {
+			return nil, fmt.Errorf("rotation: HotGC.Run: enable marker: %w", err)
+		}
+		// defer로 marker 정리 — Tx COMMIT 직전에 active=0으로 reset (COMMIT 후 다른 Tx 영향 0).
+		// Tx ROLLBACK 시 INSERT/DELETE 모두 자동 rollback이라 안전.
+		defer func() {
+			_, _ = tx.Exec(ctx, `DELETE FROM audit_gc_mode WHERE id = 1`)
+		}()
+	} else {
+		if _, err := tx.Exec(ctx, "SET LOCAL rosshield.audit_gc_mode = 'on'"); err != nil {
+			return nil, fmt.Errorf("rotation: HotGC.Run: SET LOCAL: %w", err)
+		}
 	}
 
 	for _, seg := range segments {
