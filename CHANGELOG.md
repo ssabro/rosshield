@@ -7,7 +7,32 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Audit rotation 후속 (sqlite hot GC · verify CLI cosign 통합 · S3 lifecycle · MinIO testcontainer) / Multi-region HA Stage 4~7 (DNS hook · 자동 failover · cross-region witness · pilot) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / Bundle size 최적화 / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Audit rotation 잔여 (sqlite hot GC) / e2e cosign 실 CLI test · cosign_e2e build tag CI / rotationjob bootstrap cron 결선 (slot cleanup 정기 실행) / Multi-region HA Stage 4~7 (DNS hook · 자동 failover · cross-region witness · pilot) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.9] — 2026-05-20 (patch)
+
+> **요약**: v0.6.8 한계 carryover 4건 일괄 해소 — audit-verify CLI cosign 통합 + S3 lifecycle + MinIO testcontainer 통합 검증 + HA replication 후속 (publication tables sync · slot cleanup) + Web bundle code-splitting (835KB → 239KB main chunk). 회귀 0. 상세는 [docs/releases/v0.6.9.md](docs/releases/v0.6.9.md).
+>
+> **기준 commit**: `d9a2df4` (main)
+
+### Added
+- `feat(audit-verify)` rotation CLI cosign verify 통합 (`7e19a9f`) — single + chain 모드 모두 cosign 5/6 flag (`--cosign-bundle`/`--bundle-dir`/`--identity`/`--oidc-issuer`/`--binary`/`--rekor-url`) + cosignVerify step (skip/PASS/FAIL/bundle 부재 분기) + function var pattern test (5 신규)
+- `feat(audit)` S3 lifecycle 자동 적용 (`42d44cc`) — S3Config 확장 (LifecycleEnabled + LifecycleTransitions + LifecycleExpireDays + S3Transition) + ApplyLifecyclePolicy (Rule ID "rosshield-rotation" 고정 + Filter.Prefix) + NewS3Backend 자동 호출 + 단위 6 신규
+- `feat(audit)` MinIO testcontainer 통합 검증 (`42d44cc`) — `backend_s3_minio_integration_test.go` (`rosshield_enterprise && integration`) + minio-integration CI job 신규
+- `feat(replication)` E-MR Stage 3 후속 (`905fbf8`) — publication tables 자동 sync (ensurePublication exists 경로 + syncPublicationTables + diffTables) + dead slot cleanup (CleanupInactiveSlots + SlotPrefix 강제 + DryRun) + Executor.QueryStrings 추가 + 단위 13 신규
+- `perf(web)` bundle code-splitting (`2c8c8e9`) — vite.config.ts manualChunks 8 vendor chunk 분리 (react/router/query/radix/form/ui/state/vendor) + 단일 main 835KB → 239KB + 500KB warning 0
+
+### Fixed
+- `fix(ci)` web vitest + Go lint 그린화 (`b86eb86`) — manifest 기대값 Lodestar 적용 + `pwa-virtual.ts` 격리 + vi.mock + gofmt 3 + errcheck 5 (v0.6.7~v0.6.8 누적 27 commit 회귀 일소)
+- `chore(fmt)` gofmt 2 파일 정정 (`d9a2df4`) — rotation.go + backend_s3_minio_integration_test.go 정렬
+
+### Notes
+- sub-agent 2 병렬 dispatch + 메인 1 병렬 = 3 영역 동시 진행 (HA replication + Web code-splitting + S3 lifecycle/MinIO)
+- 도메인 격리 P5 보존 — rotationjob lint 예외 추가 (cmd-equivalent composer 명시)
+- AWS SDK PutBucketLifecycleConfiguration이 s3API interface에 추가 — fake mock 단순 유지
+- MinIO RELEASE.2024-12-18 pin (renovate 후속)
 
 ---
 
