@@ -96,7 +96,7 @@ terraform plan -var-file=envs/staging.tfvars
 
 ## Cloudflare alternative
 
-Stage 4.4 후속에서 `modules/cloudflare-loadbalancer/` 추가 예정. 본 round는 Route53만.
+Stage 4.4 마감 — `modules/cloudflare-loadbalancer/` + root example [`deploy/terraform/multi-region-ha-cloudflare/`](../multi-region-ha-cloudflare/) 신규. customer가 이미 Cloudflare 사용 중이면 그쪽으로 plan/apply.
 
 ## 참조
 

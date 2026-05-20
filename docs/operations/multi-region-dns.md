@@ -229,6 +229,24 @@ Steering policy: Random (다중 healthy pool 시) / Failover (Primary first)
 
 **Cloudflare 강점**: TTL 30s (Route53 60s보다 빠른 cutover) + Global Anycast 200+ POP + DDoS 무료.
 
+### 5.4 Terraform 자동화
+
+[`deploy/terraform/multi-region-ha-cloudflare/`](../../deploy/terraform/multi-region-ha-cloudflare/) IaC sample 사용:
+
+```bash
+export CLOUDFLARE_API_TOKEN=<your-api-token>
+cd deploy/terraform/multi-region-ha-cloudflare
+
+cp envs/example.tfvars envs/prod.tfvars
+# prod.tfvars 편집 (account_id·zone_id·hostname·endpoint)
+
+terraform init
+terraform plan -var-file=envs/prod.tfvars
+terraform apply -var-file=envs/prod.tfvars
+```
+
+Module은 `multi-region-ha/modules/cloudflare-loadbalancer/`에 있고 Pool 2개 + Monitor + Load Balancer를 자동 결선.
+
 ---
 
 ## 6. 자체 DNS guide (on-prem · air-gap)
