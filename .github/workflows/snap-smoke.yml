@@ -133,6 +133,15 @@ jobs:
           fi
           echo "✓ invalid configure values rejected as expected"
 
+      # CI throughput 변동 cover — refresh round-trip 동안 snapd가 서비스 stop/start
+      # 후 healthz 응답까지 30s+ 걸릴 수 있음. healthz-timeout을 120s로 확대 (정상 환경
+      # 첫 부팅 ~45s, refresh 재시작은 더 길음).
+      - name: extend healthz-timeout for refresh round-trip
+        run: |
+          sudo snap set rosshield healthz-timeout=120
+          sudo snap get rosshield healthz-timeout | grep -q '^120$'
+          echo "✓ healthz-timeout=120 for refresh round-trip"
+
       # E35 — post-refresh hook 직접 실행 (snap refresh 시뮬레이션, OTA round-trip의 핵심 부분).
       # 실 OTA(다른 revision install)는 별 multipass 환경 필요 — 본 step은 hook 자체의
       # healthz polling 로직을 직접 검증.
