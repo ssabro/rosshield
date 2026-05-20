@@ -12,9 +12,7 @@ test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page)
 })
 
-// D-P7-3 carryover (2026-05-20): D-P7-1 브랜드 commit 이후 헤더 dropdown 도입 — 테마
-// button이 헤더 dropdown menu 안으로 이동. dropdown trigger + menuitem 패턴으로 재설계 필요.
-test.skip('theme toggle changes html.dark class state', async ({ page }) => {
+test('theme toggle changes html.dark class state', async ({ page }) => {
   // 초기 상태 — system 모드일 가능성 (CI는 보통 light).
   const initialDark = await page.locator('html').evaluate((el) => el.classList.contains('dark'))
 

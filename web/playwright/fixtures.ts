@@ -21,6 +21,8 @@ export const KO_LABELS = {
   },
   header: {
     logout: '로그아웃',
+    userMenu: '사용자 메뉴', // D-P7-1: UserMenu DropdownMenuTrigger aria-label
+    userProfile: '설정', // D-P7-1: dropdown menuitem '/settings'
   },
   nav: {
     overview: '개요',
@@ -28,11 +30,22 @@ export const KO_LABELS = {
     audit: '감사',
     compliance: 'Compliance',
   },
+  compliance: {
+    frameworkLabel: '프레임워크',
+    frameworkVersionLabel: '프레임워크 버전',
+    profileAdd: '프로필 추가',
+  },
+  robots: {
+    heading: '로봇',
+    createButton: '로봇 등록',
+    createDialogHeading: '새 로봇 등록',
+  },
 } as const
 
 export const EN_LABELS = {
   header: {
     logout: 'Sign out',
+    userMenu: 'User menu',
   },
   nav: {
     overview: 'Overview',

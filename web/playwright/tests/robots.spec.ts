@@ -13,8 +13,7 @@ test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page)
 })
 
-// D-P7-3 carryover (2026-05-20): heading 텍스트 또는 seed demo 동작 변경. spec 재검증.
-test.skip('robots page shows seeded robots from seed demo', async ({ page }) => {
+test('robots page shows seeded robots from seed demo', async ({ page }) => {
   await page.goto('/robots')
 
   // PageHeader title + 테이블 헤더가 있어야 한다.
@@ -24,21 +23,16 @@ test.skip('robots page shows seeded robots from seed demo', async ({ page }) => 
   await expect(page.getByText('demo-robot-1')).toBeVisible({ timeout: 10_000 })
 })
 
-// D-P7-3 carryover (2026-05-20): '로봇 등록' button 또는 폼 UX 변경 영향. spec 재검증.
-test.skip('toggle create form reveals fleet/name/host inputs', async ({ page }) => {
+test('toggle create form reveals fleet/name/host inputs', async ({ page }) => {
   await page.goto('/robots')
 
-  // "로봇 등록" 버튼 클릭 → 폼이 열림.
+  // D-P7-1: '로봇 등록' button 클릭 → Dialog 모달 열림 (종전 inline 폼에서 마이그레이션).
   await page.getByRole('button', { name: '로봇 등록' }).click()
 
   await expect(page.getByRole('heading', { name: '새 로봇 등록' })).toBeVisible()
-  // 폼 안 라벨 — "Fleet ID"(form)와 "Fleet ID 필터"(filter)가 둘 다 있어 exact 매칭으로
-  // form 쪽만 잡는다.
+  // Dialog 안 폼 라벨 — Fleet ID(form)와 Fleet ID 필터(filter) 분리 exact 매칭.
   await expect(page.getByLabel('Fleet ID', { exact: true })).toBeVisible()
-  // "이름"·"호스트"는 폼에서 한 곳뿐.
   await expect(page.getByLabel('이름')).toBeVisible()
   await expect(page.getByLabel('호스트')).toBeVisible()
-
-  // 다시 "폼 닫기" 버튼이 노출됨.
-  await expect(page.getByRole('button', { name: '폼 닫기' })).toBeVisible()
+  // '폼 닫기' 버튼은 Dialog 마이그레이션 후 삭제 — ESC/X 아이콘이 dialog close.
 })

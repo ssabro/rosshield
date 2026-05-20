@@ -13,10 +13,7 @@ test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page)
 })
 
-// D-P7-3 carryover (2026-05-20): 헤더 사용자 dropdown menu 도입 후 로그아웃은 menuitem 안에 위치.
-// 본 spec은 ko/en nav 라벨 토글 + EN_LABELS.header.logout button 검증을 동시에 수행 — dropdown
-// 재설계 시 spec 분리(nav 토글만 검증) + 별 spec(menu open + menuitem 라벨) 권장.
-test.skip('language toggle switches ko nav labels to en', async ({ page }) => {
+test('language toggle switches ko nav labels to en', async ({ page }) => {
   // ko 기본 — Sidebar에 "개요" 노출.
   await expect(page.getByRole('link', { name: KO_LABELS.nav.overview })).toBeVisible()
 
@@ -28,6 +25,7 @@ test.skip('language toggle switches ko nav labels to en', async ({ page }) => {
     timeout: 5_000,
   })
 
-  // 헤더 로그아웃 라벨도 영어로.
-  await expect(page.getByRole('button', { name: EN_LABELS.header.logout })).toBeVisible()
+  // D-P7-1: 영어 전환 후 헤더 UserMenu trigger 열고 menuitem 'Sign out' 노출 확인.
+  await page.getByRole('button', { name: EN_LABELS.header.userMenu }).click()
+  await expect(page.getByRole('menuitem', { name: EN_LABELS.header.logout })).toBeVisible()
 })

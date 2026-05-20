@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 
+import { KO_LABELS } from '../fixtures'
 import { loginAsAdmin, resetClientState } from '../helpers'
 
 // compliance.spec — ISMS-P 프로필 추가 → 테이블 노출.
@@ -12,24 +13,20 @@ test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page)
 })
 
-// D-P7-3 carryover (2026-05-20): Framework combobox(Radix Select) 동작 변경 또는
-// 컴포넌트 마이그레이션 영향 — combobox click + option click 30s timeout. Phase 7 후속
-// shadcn/Radix dropdown UX 정착 후 spec 재설계.
-test.skip('add ISMS-P profile and see it listed', async ({ page }) => {
+test('add ISMS-P profile and see it listed', async ({ page }) => {
   await page.goto('/compliance')
 
   await expect(page.getByRole('heading', { name: 'Compliance' }).first()).toBeVisible()
 
   // Framework Select — "ISMS-P" 옵션 선택.
-  // dict.ts:
-  //   'compliance.profile.framework' = 'Framework'      → combobox 라벨
-  //   'compliance.profile.version'   = 'Framework 버전' → 'Framework' 부분일치를 피하려고 exact 사용.
-  await page.getByRole('combobox', { name: 'Framework', exact: true }).click()
+  // dict.ts ko: 'compliance.profile.framework' = '프레임워크' (영어 'Framework'에서 한글로 변경)
+  await page
+    .getByRole('combobox', { name: KO_LABELS.compliance.frameworkLabel, exact: true })
+    .click()
   await page.getByRole('option', { name: 'ISMS-P' }).click()
 
-  await page.getByLabel('Framework 버전').fill('2024')
-  // dict.ts: 'compliance.profile.add' = '프로필 추가'.
-  await page.getByRole('button', { name: '프로필 추가' }).click()
+  await page.getByLabel(KO_LABELS.compliance.frameworkVersionLabel).fill('2024')
+  await page.getByRole('button', { name: KO_LABELS.compliance.profileAdd }).click()
 
   // 프로필 테이블에 isms-p 행이 등장.
   // framework 컬럼은 raw value 노출 ("isms-p").
