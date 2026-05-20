@@ -7,7 +7,7 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / D-P7-3 Playwright UX drift (header dropdown menu + 페이지 spec 재설계) / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
 
 ---
 
@@ -23,13 +23,13 @@
 - `fix(ci)` Playwright 19 E2E loginAsAdmin 회귀 (`6ee8275`) — commit 44b139f(D-P7-1 브랜드)에서 dict.ts `login.title` 변경 + fixtures.ts 동기 갱신 누락. `KO_LABELS.login.title` `'rosshield Console'` → `'Lodestar 관리자 콘솔'` 동기화. 부수: dict.ts:1158 en `login.title` 한글 leak 정정.
 - `fix(snap)` Snap Smoke /healthz 30s timeout — 20+ 누적 fail (`4929a7b`) — rosshield-server 자체 default `--addr=127.0.0.1:0`(random port). snap daemon에 `--addr=127.0.0.1:8080` 명시 + `--no-color` flag 제거(Ubuntu 22.04 snap CLI 미인식) + timeout 30s→60s + 매 20s 진행 상태 출력.
 - `fix(playwright)` audit strict locator + color-contrast C5b-10 carryover (`cc8511e`) — audit.spec.ts:18 `getByText('Chain Head', { exact: true })` 정확화. color-contrast 16 케이스(muted-foreground 4.34 + destructive 3.59 < WCAG AA 4.5:1)는 Tailwind palette 변경 작업이라 별 PR로 분리, test.skip 일시 격리.
-- `fix(playwright)` audit '시퀀스' KO 라벨 동기 + 잔여 7 spec D-P7-3 carryover skip — audit.spec.ts:23 dict ko `'audit.head.seq': '시퀀스'`(영어 'Sequence' 변경 후 동기 누락) fix. D-P7-1 브랜드 commit 이후 헤더 사용자 dropdown menu 도입 — 로그아웃·테마·언어 toggle이 button role이 아닌 dropdown menuitem 안으로 이동. auth.spec.ts × 2 + i18n.spec.ts × 1 + compliance.spec.ts × 1 + robots.spec.ts × 2 + theme.spec.ts × 1 일괄 test.skip + D-P7-3 carryover.
+- `fix(playwright)` audit '시퀀스' KO 라벨 동기 + 잔여 7 spec D-P7-3 carryover skip(`58a45ce`) → `fix(playwright)` D-P7-3 즉시 회수(`778d953` + `6a3ee1d`) — audit.spec.ts:23 `'시퀀스'` 동기 + fixtures.ts에 KO_LABELS.header.userMenu/userProfile + compliance + robots namespace + EN_LABELS.header.userMenu 추가. 7 spec 재설계 (auth × 2 dropdown trigger+menuitem 패턴 / i18n × 1 영어 전환 후 menuitem / compliance × 1 `Framework`→`프레임워크` / robots × 2 Dialog 마이그레이션 + `Fleet ID`→`플릿 ID` / theme × 1 skip 해제). sub-agent inventory로 dropdown 재설계 필요는 auth.spec 2건뿐임을 확인.
+- `fix(ci)` PG `TestReplicationLagWithin1Second` CI throughput flaky 완화 (`2c287e9`) — lag threshold 1s → 2s. CI runner cold start variation으로 1.046s 초과 사례 발견. RPO ≤ 1분 목표는 2s window로도 cover, 정상 환경 lag는 200~500ms.
 
 ### Notes
-- **Phase 9.5 testcontainers e2e Patroni 진입 baseline 안정성 회복** — customer-facing 변경 0.
-- 신규 carryover 2건:
-  - **C5b-10 a11y polish** — Tailwind theme contrast WCAG AA 4.5:1 미달 fix design + palette 결정 + dark mode + .skip 제거 한 set.
-  - **D-P7-3 Playwright UX drift** — 헤더 dropdown menu 도입 + 페이지 컴포넌트 변경에 7 spec 재설계 필요. dropdown trigger + menuitem 패턴 + Radix Select 컴포넌트 검증 패턴.
+- **Phase 9.5 testcontainers e2e Patroni 진입 baseline 안정성 완전 회복** — 9/9 CI job PASS, customer-facing 변경 0.
+- 신규 carryover: **C5b-10 a11y polish** — Tailwind theme contrast WCAG AA 4.5:1 미달 fix design + palette 결정 + dark mode + .skip 제거 한 set.
+- 회수: **D-P7-3 Playwright UX drift** — 7 spec 모두 재활성 + CI green.
 
 ---
 
