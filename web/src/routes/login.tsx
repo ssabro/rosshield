@@ -22,7 +22,11 @@ import type { FormEvent } from 'react'
 // - 자체 풀스크린 레이아웃(Sidebar/Header 없음).
 // - 성공 시 `/robots`로 navigate. 실패 시 ApiError 내용을 한국어 메시지로 매핑.
 // - 인증 가드 적용 X — `_authenticated`만 token 체크한다.
-function LoginPage(): React.ReactElement {
+//
+// D-UI-1 Stage 5b additional — axe scan 테스트 mount용 named export.
+//   route component는 그대로 (createFileRoute가 내부 참조). 외부 호출은
+//   `__tests__/a11y-additional.test.tsx` 만.
+export function LoginPage(): React.ReactElement {
   const navigate = useNavigate()
   const login = useLogin()
   const t = useT()

@@ -29,9 +29,18 @@ import type { DictKey } from '@/i18n/dict'
 //   - active: 폼(email, displayName, password) → POST accept → /login navigate.
 //   - expired/used: 안내 박스 + /login 링크.
 //   - notfound: 404 안내.
+//
+// AcceptInvitationPage — route component. Route param에서 token 추출 후 View로 위임.
 function AcceptInvitationPage(): React.ReactElement {
-  const t = useT()
   const { token } = Route.useParams()
+  return <AcceptInvitationView token={token} />
+}
+
+// AcceptInvitationView — token을 prop으로 받는 inner view.
+//   D-UI-1 Stage 5b additional — axe scan mount용 named export. 라우터/route param
+//   의존이 없어 jsdom에서 그대로 mount 가능.
+export function AcceptInvitationView({ token }: { token: string }): React.ReactElement {
+  const t = useT()
   const preview = useInvitationByToken(token)
 
   return (

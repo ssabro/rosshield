@@ -77,7 +77,8 @@ function useHealthz() {
   })
 }
 
-function SystemPage(): React.ReactElement {
+// D-UI-1 Stage 5b additional — axe scan mount용 named export.
+export function SystemPage(): React.ReactElement {
   const t = useT()
 
   return (

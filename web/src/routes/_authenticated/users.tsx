@@ -70,7 +70,9 @@ import type { DictKey } from '@/i18n/dict'
 //   - 초대 생성 시 token이 1회 노출 → URL 형식으로 사용자에게 전달 + toast 알림.
 //   - role 컬럼은 색·아이콘·텍스트 3중 채널로 표시 (색만 의존 금지 — WCAG 1.4.1).
 //   - 취소(revoke)는 비차단 dialog로 confirm + destructive 스타일 + toast 결과.
-function UsersPage(): React.ReactElement {
+//
+// D-UI-1 Stage 5b additional — axe scan mount용 named export.
+export function UsersPage(): React.ReactElement {
   const t = useT()
   const invitations = useInvitations()
   // RBAC Stage 5 — invitation 관리는 tenant_admin.admin (§2.2 ID 1).

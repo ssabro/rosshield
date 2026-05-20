@@ -17,7 +17,9 @@ import type { DictKey } from '@/i18n/dict'
 
 // `/settings` — 사용자/테넌트/클라이언트 설정 + 빌드 정보 (B1).
 //   - 토글(테마·언어)은 헤더에서 — 본 페이지는 위치 안내만.
-function SettingsPage(): React.ReactElement {
+//
+// D-UI-1 Stage 5b additional — axe scan mount용 named export.
+export function SettingsPage(): React.ReactElement {
   const t = useT()
   const me = useMe()
   const storeUser = useAuthStore((s) => s.user)
