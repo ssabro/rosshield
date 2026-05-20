@@ -53,6 +53,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
 	"github.com/ssabro/rosshield/internal/platform/ha"
+	"github.com/ssabro/rosshield/internal/platform/ha/patroni"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
 	"github.com/ssabro/rosshield/internal/platform/keystore"
 	keystorefile "github.com/ssabro/rosshield/internal/platform/keystore/file"
@@ -190,6 +191,19 @@ type Config struct {
 	HAHeartbeatInterval time.Duration // leader heartbeat 주기. 0이면 5초.
 	HALeaderID          string        // 본 인스턴스 식별자 ("hostname:pid"). 빈 값이면 자동 생성.
 	HAAdvertisedAddr    string        // 다른 인스턴스가 redirect 시 사용할 URL (옵션, Stage 3 사용).
+
+	// Phase 9 Stage 9.4 — RoleProvider provider 선택 (D-AF-1·D-AF-2 결정).
+	//
+	// HARP = "e25" (default) → 기존 PG advisory lock 기반 ha.Manager 사용 (air-gap customer).
+	// HARP = "patroni"        → Kubernetes Patroni REST polling 사용 (enterprise customer).
+	//
+	// "patroni" 선택 시 PatroniURL + PatroniLocalHostname 필수. ha.Manager는 생성되지 않고
+	// patroni.RoleProvider가 audit/lagmetric/cronsched 3 layer 모두에 주입.
+	HARP                  string        // "e25"|"patroni" — default "e25"
+	PatroniURL            string        // 예: http://patroni:8008
+	PatroniLocalHostname  string        // 본 Pod name (Kubernetes downward API로 주입)
+	PatroniPollInterval   time.Duration // 0이면 patroni.DefaultPollInterval (1s)
+	PatroniRequestTimeout time.Duration // 0이면 patroni.DefaultRequestTimeout (3s)
 
 	// E-MR (Phase 8) — Multi-region HA (옵션 A = PG logical replication + Route53 DNS).
 	//
@@ -1623,39 +1637,72 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		}
 	}
 
-	// E25 — HA leader-election (R30-2 = PG advisory lock + leader/follower).
-	// HAEnabled=true + storage=postgres 조합에서만 결선 (sqlite 거부는 위에서 체크).
+	// HA leader-election 결선 — D-AF-1·D-AF-2 따라 cfg.HARP에 따라 분기.
+	//
+	//   HARP="patroni" (Phase 9): patroni.RoleProvider가 audit/lagmetric/cronsched 3 layer
+	//                              모두에 주입. ha.Manager 미사용 (platform.HA = nil).
+	//   HARP="e25" (default, air-gap): 기존 E25 ha.Manager (PG advisory lock 기반).
 	if cfg.HAEnabled {
-		haMgr, err := buildHAManager(cfg, store, logger)
-		if err != nil {
+		switch strings.ToLower(strings.TrimSpace(cfg.HARP)) {
+		case "patroni":
+			patroniRP, err := patroni.New(patroni.Deps{
+				PatroniURL:     cfg.PatroniURL,
+				LocalHostname:  cfg.PatroniLocalHostname,
+				PollInterval:   cfg.PatroniPollInterval,
+				RequestTimeout: cfg.PatroniRequestTimeout,
+				Logger:         logger,
+			})
+			if err != nil {
+				_ = platform.Shutdown(ctx)
+				return nil, fmt.Errorf("bootstrap: patroni RoleProvider: %w", err)
+			}
+			patroniRP.Start(context.Background())
+			// 3 layer 모두에 동일 RoleProvider 주입 — 단일 source of truth (D-AF-2).
+			auditSvc.SetRoleProvider(patroniRP)
+			sch.SetRoleProvider(patroniRP)
+			if lagCollector != nil {
+				lagCollector.SetRoleProvider(patroniRP)
+			}
+			logger.Info("ha enabled — Patroni RoleProvider",
+				"patroniUrl", cfg.PatroniURL,
+				"localHostname", cfg.PatroniLocalHostname,
+				"pollInterval", cfg.PatroniPollInterval)
+
+		case "", "e25":
+			// E25 default — HAEnabled=true + storage=postgres 조합에서만 결선 (sqlite 거부는 위에서 체크).
+			haMgr, err := buildHAManager(cfg, store, logger)
+			if err != nil {
+				_ = platform.Shutdown(ctx)
+				return nil, fmt.Errorf("bootstrap: ha manager: %w", err)
+			}
+			platform.HA = haMgr
+			// E25 Stage 2 — audit append/checkpoint leader-gate. Start() 전에 주입해
+			// heartbeat goroutine이 promote 콜백으로 진입하기 전부터 follower 상태에서 차단.
+			auditSvc.SetRoleProvider(haMgr)
+			// E25 Stage 4a — scheduler tick leader-gate. follower는 cron tick silent skip.
+			sch.SetRoleProvider(haMgr)
+			// Phase 8 MR.T8 후속 — lagmetric collector HA leader-only gate (v0.7.x carryover).
+			if lagCollector != nil {
+				lagCollector.SetRoleProvider(haMgr)
+			}
+			// E25 Stage 4 잔여 — HA metric bridge (Grafana dashboard placeholder 활성).
+			// promote/demote callback에서 rosshield_ha_role/leader_epoch/failover_total 갱신.
+			haMgr.OnLeaderAcquired(func() {
+				metricsReg.OnHAPromoted(haMgr.CurrentEpoch())
+			})
+			haMgr.OnLeaderLost(func() {
+				metricsReg.OnHADemoted()
+			})
+			platform.HA.Start(context.Background())
+			logger.Info("ha enabled — E25 PG advisory lock",
+				"lockId", haCfgLockID(cfg),
+				"interval", haCfgInterval(cfg),
+				"leaderId", haMgr.LeaderID())
+
+		default:
 			_ = platform.Shutdown(ctx)
-			return nil, fmt.Errorf("bootstrap: ha manager: %w", err)
+			return nil, fmt.Errorf("bootstrap: unknown HARP %q (allowed: e25|patroni)", cfg.HARP)
 		}
-		platform.HA = haMgr
-		// E25 Stage 2 — audit append/checkpoint leader-gate. Start() 전에 주입해
-		// heartbeat goroutine이 promote 콜백으로 진입하기 전부터 follower 상태에서 차단.
-		auditSvc.SetRoleProvider(haMgr)
-		// E25 Stage 4a — scheduler tick leader-gate. follower는 cron tick silent skip.
-		sch.SetRoleProvider(haMgr)
-		// Phase 8 MR.T8 후속 — lagmetric collector HA leader-only gate (v0.7.x carryover).
-		// HA cluster에서 follower instance의 metric 중복 emit 방지. lagCollector가 nil이면
-		// (replication lag metric 비활성 또는 storage non-PG) 호출 skip.
-		if lagCollector != nil {
-			lagCollector.SetRoleProvider(haMgr)
-		}
-		// E25 Stage 4 잔여 — HA metric bridge (Grafana dashboard placeholder 활성).
-		// promote/demote callback에서 rosshield_ha_role/leader_epoch/failover_total 갱신.
-		haMgr.OnLeaderAcquired(func() {
-			metricsReg.OnHAPromoted(haMgr.CurrentEpoch())
-		})
-		haMgr.OnLeaderLost(func() {
-			metricsReg.OnHADemoted()
-		})
-		platform.HA.Start(context.Background())
-		logger.Info("ha enabled — leader-election started",
-			"lockId", haCfgLockID(cfg),
-			"interval", haCfgInterval(cfg),
-			"leaderId", haMgr.LeaderID())
 	}
 
 	return platform, nil

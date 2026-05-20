@@ -292,6 +292,11 @@ func main() {
 	haHeartbeat := flag.Duration("ha-heartbeat-interval", 0, "HA heartbeat interval (E25). 0 = default 5s.")
 	haLeaderID := flag.String("ha-leader-id", "", "HA instance identifier (E25). Empty = auto (hostname:pid).")
 	haAdvertised := flag.String("ha-advertised-addr", "", "HA advertised URL for redirect from followers (E25, optional).")
+	haRP := flag.String("ha-rp", "e25", "RoleProvider: 'e25' (default, PG advisory lock, air-gap) | 'patroni' (Phase 9, Kubernetes Patroni REST polling). Env: ROSSHIELD_HA_RP.")
+	patroniURL := flag.String("ha-patroni-url", "", "Patroni REST endpoint base URL (예: http://patroni:8008). Required when --ha-rp=patroni. Env: ROSSHIELD_HA_PATRONI_URL.")
+	patroniHostname := flag.String("ha-patroni-local-hostname", "", "Local pod/host name for Patroni leader match (Kubernetes Pod name). Required when --ha-rp=patroni. Env: ROSSHIELD_HA_PATRONI_LOCAL_HOSTNAME 또는 HOSTNAME.")
+	patroniPoll := flag.Duration("ha-patroni-poll-interval", 0, "Patroni /cluster polling interval. 0 = default 1s.")
+	patroniTimeout := flag.Duration("ha-patroni-request-timeout", 0, "Patroni REST request timeout. 0 = default 3s.")
 	// E-MR Stage 3 — PG logical replication 자동 setup (env override 권장).
 	replicationAutoSetup := flag.Bool("replication-auto-setup", false, "Auto-create PG PUBLICATION/SUBSCRIPTION on boot (E-MR Stage 3). Requires --storage=postgres + replication.Enabled=true. Default: false (operators provision manually).")
 	replicationPubName := flag.String("replication-publication-name", "", "PUBLICATION name for primary role. Empty = default 'rosshield_main'.")
@@ -479,6 +484,11 @@ func main() {
 		SMTPFrom:                              *smtpFrom,
 		PublicBaseURL:                         *publicBaseURL,
 		HAEnabled:                             *haEnabled,
+		HARP:                                  resolveEnvFallback(*haRP, "ROSSHIELD_HA_RP"),
+		PatroniURL:                            resolveEnvFallback(*patroniURL, "ROSSHIELD_HA_PATRONI_URL"),
+		PatroniLocalHostname:                  resolvePatroniHostname(*patroniHostname),
+		PatroniPollInterval:                   *patroniPoll,
+		PatroniRequestTimeout:                 *patroniTimeout,
 		HALockID:                              *haLockID,
 		HAHeartbeatInterval:                   *haHeartbeat,
 		HALeaderID:                            *haLeaderID,
@@ -631,6 +641,20 @@ func resolveEnvFallback(flagVal, envKey string) string {
 		return flagVal
 	}
 	return os.Getenv(envKey)
+}
+
+// resolvePatroniHostname은 Patroni RoleProvider의 LocalHostname을 결정합니다.
+//
+// 우선순위: flag → ROSSHIELD_HA_PATRONI_LOCAL_HOSTNAME → HOSTNAME (Kubernetes downward API
+// 또는 OS default). 모두 빈 값이면 빈 문자열 반환 — bootstrap이 validation으로 부팅 거부.
+func resolvePatroniHostname(flagVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if v := os.Getenv("ROSSHIELD_HA_PATRONI_LOCAL_HOSTNAME"); v != "" {
+		return v
+	}
+	return os.Getenv("HOSTNAME")
 }
 
 // resolveBoolEnvFallback는 flag가 false일 때만 env로 fallback합니다.
