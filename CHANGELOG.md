@@ -7,7 +7,22 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — MR.T4/T6 application integration (leader-election restart · fence token enforcement) / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc §6에 기본 cover) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — MR.T4 application restart integration (rosshield-server systemd/k8s restart 후 leader-election 자동 검증) / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc §6에 기본 cover) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.9] — 2026-05-20 (patch)
+
+> **요약**: MR.T6 application integration — audit.Service의 fence token enforcement(leader_epoch 자동 저장 + follower ErrNotLeader 거부)가 cross-region replication 환경에서 정확 동작함을 testcontainers 자동 회귀 방어. Phase 8 Stage 7 MR.T6 양쪽 layer(schema + application) cover 완료. 회귀 0, Breaking 0. 상세는 [docs/releases/v0.7.9.md](docs/releases/v0.7.9.md).
+>
+> **기준 commit**: `04dfb56` (main)
+
+### Added
+- `test(replication)` MR.T6 application integration (`04dfb56`) — `fakeAuditRole` mock + `TestAuditFenceEpochPropagatesCrossRegion` (primary leader epoch=42 Append → standby leader_epoch=42 propagation 5초 대기) + `TestAuditFollowerRejectsAppend` (follower Role → audit.ErrNotLeader). split-brain 방어 application-level 자동 회귀 방어.
+
+### Notes
+- **Phase 8 Multi-region HA 사실상 마감** — design + ops + IaC + runbook + e2e (PG + application) + monitoring + HA gate + fence enforcement. customer는 production-grade 환경 자체 구축·운영·incident 대응·회귀 방어·monitoring·split-brain 방어까지 한 set.
+- 잔여 carryover (MR.T4 application restart integration · Stage 6 자동 failover Phase 9+ · 외부 트랙)만 남음.
 
 ---
 
