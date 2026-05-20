@@ -7,7 +7,24 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Multi-region HA Stage 4.4 (Cloudflare Terraform module) / Stage 4.5 (BIND/PowerDNS Terraform sample 분리) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 7 testcontainers e2e (MR.T1~T8) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Multi-region HA Stage 4.4 (Cloudflare Terraform module) / MR.T4/T6/T8 application integration (leader-election restart · fence token enforcement · `rosshield_replication_lag_seconds` Prometheus emit) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.5] — 2026-05-20 (patch)
+
+> **요약**: Phase 8 Stage 7 testcontainers e2e cover — 2 PG container fixture + MR.T1·T4·T5·T6·T7·T8 6/8 test 자동 회귀 방어 마련. v0.7.4 운영 docs/IaC/runbook과 결합해 **Phase 8 Multi-region HA 사실상 완성**. 코드 변경 0건, Breaking 0. 상세는 [docs/releases/v0.7.5.md](docs/releases/v0.7.5.md).
+>
+> **기준 commit**: `d842583` (main)
+
+### Added
+- `test(replication)` Phase 8 Stage 7 testcontainers fixture + MR.T1·T7 (`3803369`) — `internal/platform/storage/postgres/replication_integration_test.go` 신규 (build tag `integration`) + 2 PG container(Docker network) + wal_level=logical + PUBLICATION/SUBSCRIPTION 자동 setup. MR.T1 replication lag < 1s + MR.T7 tenant cross-region 검증.
+- `test(replication)` MR.T4·T5·T6·T8 추가 (`d842583`) — MR.T4 failover promote (ALTER SUBSCRIPTION DISABLE + standby isolation) + MR.T5 audit chain head_hash cross-region 일치 + MR.T6 leader_epoch column replicate (split-brain 방어 base) + MR.T8 pg_stat_replication lag 측정 가능. MR.T1~T8 6/8 cover (T2/T3는 기존 unit test).
+
+### Notes
+- Phase 8 Multi-region HA 사실상 완성: design + ops + IaC + runbook + 6/8 e2e test로 customer가 production-grade 환경 자체 구축·운영·incident 대응·회귀 방어까지 가능.
+- MR.T4 leader-election restart / MR.T6 fence token enforcement / MR.T8 metric emit은 application-level integration carryover.
+- 기존 pg-integration CI job(timeout 8분)이 본 test 자동 cover — 추가 인프라 변경 없음.
 
 ---
 
