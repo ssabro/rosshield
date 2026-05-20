@@ -20,20 +20,24 @@ import (
 const ActionRotateComplete = "audit.rotate.complete"
 
 // SegmentRecord는 audit_rotation_segments 한 row의 메타데이터입니다.
+//
+// PrevSegmentHash는 segment_number-1 segment의 SegmentHash (Stage 5 chain link).
+// 첫 segment(segment_number=1)는 nil. 기록 후 P9 불변성으로 변경 불가.
 type SegmentRecord struct {
-	ID            int64
-	TenantID      storage.TenantID
-	SegmentNumber int64
-	StartedAt     time.Time
-	EndedAt       time.Time
-	FirstEntryID  int64
-	LastEntryID   int64
-	EntryCount    int64
-	SegmentHash   audit.Hash
-	ArchiveURI    string
-	ArchiveSHA256 []byte
-	CosignBundle  []byte
-	CreatedAt     time.Time
+	ID              int64
+	TenantID        storage.TenantID
+	SegmentNumber   int64
+	StartedAt       time.Time
+	EndedAt         time.Time
+	FirstEntryID    int64
+	LastEntryID     int64
+	EntryCount      int64
+	SegmentHash     audit.Hash
+	PrevSegmentHash []byte // 직전 segment hash (chain link). 첫 segment는 nil. len 0 또는 32.
+	ArchiveURI      string
+	ArchiveSHA256   []byte
+	CosignBundle    []byte
+	CreatedAt       time.Time
 }
 
 // AuditAppender는 rotation이 의존하는 audit.Service의 최소 표면입니다.
@@ -80,13 +84,17 @@ func New(deps Deps) (*Rotator, error) {
 // 까지 단일 Tx에 묶어 수행합니다.
 //
 // 동일 Tx 안에서:
-//  1. BuildSegment → in-memory entries + hash.
-//  2. Archive → backend.Put (Tx scope 외 I/O — backend 실패 시 Tx rollback 안전).
-//  3. INSERT audit_rotation_segments.
-//  4. AuditAppender.Append(ActionRotateComplete) — chain link.
+//  1. (Stage 5) 직전 segment_hash 조회 — segmentNumber > 1이면 (segmentNumber-1) segment의 hash.
+//  2. BuildSegmentWithPrev → in-memory entries + hash + prevHash.
+//  3. Archive → backend.Put (Tx scope 외 I/O — backend 실패 시 Tx rollback 안전).
+//     archive 내 manifest.prevSegmentHash 도 함께 직렬화됨.
+//  4. INSERT audit_rotation_segments (prev_segment_hash column 포함).
+//  5. AuditAppender.Append(ActionRotateComplete) — chain link.
 //
 // segmentNumber는 tenant 내 단조 증가 — 호출자가 (직전 segment + 1) 또는 1 (첫 rotation) 전달.
 // 동일 (tenantID, segmentNumber) 중복 INSERT는 UNIQUE 제약 위반.
+//
+// segmentNumber > 1인데 (segmentNumber-1) segment가 DB에 없으면 error (chain gap 차단).
 func (r *Rotator) Rotate(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, segmentNumber, fromSeq, toSeq int64) (*SegmentRecord, error) {
 	if tenantID == "" {
 		return nil, fmt.Errorf("rotation: Rotate: tenantID required")
@@ -95,7 +103,21 @@ func (r *Rotator) Rotate(ctx context.Context, tx storage.Tx, tenantID storage.Te
 		return nil, fmt.Errorf("rotation: Rotate: segmentNumber must be > 0, got %d", segmentNumber)
 	}
 
-	segment, err := BuildSegment(ctx, tx, tenantID, fromSeq, toSeq)
+	// Stage 5 — 직전 segment hash 조회 (segmentNumber > 1).
+	var prevSegmentHash []byte
+	if segmentNumber > 1 {
+		prev, err := GetSegment(ctx, tx, tenantID, segmentNumber-1)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, fmt.Errorf("rotation: Rotate: prev segment %d not found (chain gap)", segmentNumber-1)
+			}
+			return nil, fmt.Errorf("rotation: Rotate: fetch prev segment %d: %w", segmentNumber-1, err)
+		}
+		prevSegmentHash = make([]byte, audit.HashSize)
+		copy(prevSegmentHash, prev.SegmentHash[:])
+	}
+
+	segment, err := BuildSegmentWithPrev(ctx, tx, tenantID, fromSeq, toSeq, prevSegmentHash)
 	if err != nil {
 		return nil, err
 	}
@@ -109,17 +131,18 @@ func (r *Rotator) Rotate(ctx context.Context, tx storage.Tx, tenantID storage.Te
 	}
 
 	rec := SegmentRecord{
-		TenantID:      tenantID,
-		SegmentNumber: segmentNumber,
-		StartedAt:     segment.StartedAt,
-		EndedAt:       segment.EndedAt,
-		FirstEntryID:  segment.FirstEntryID,
-		LastEntryID:   segment.LastEntryID,
-		EntryCount:    segment.EntryCount,
-		SegmentHash:   segment.Hash,
-		ArchiveURI:    uri,
-		ArchiveSHA256: sum,
-		CreatedAt:     now,
+		TenantID:        tenantID,
+		SegmentNumber:   segmentNumber,
+		StartedAt:       segment.StartedAt,
+		EndedAt:         segment.EndedAt,
+		FirstEntryID:    segment.FirstEntryID,
+		LastEntryID:     segment.LastEntryID,
+		EntryCount:      segment.EntryCount,
+		SegmentHash:     segment.Hash,
+		PrevSegmentHash: prevSegmentHash,
+		ArchiveURI:      uri,
+		ArchiveSHA256:   sum,
+		CreatedAt:       now,
 	}
 
 	id, err := insertSegment(ctx, tx, rec, now)
@@ -152,10 +175,12 @@ func LatestSegmentNumber(ctx context.Context, tx storage.Tx, tenantID storage.Te
 }
 
 // GetSegment는 (tenantID, segmentNumber)로 SegmentRecord를 조회합니다. 없으면 storage.ErrNotFound.
+//
+// Stage 5 — prev_segment_hash column 포함 (첫 segment 또는 마이그레이션 전 row는 nil).
 func GetSegment(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, segmentNumber int64) (*SegmentRecord, error) {
 	row := tx.QueryRow(ctx, `
 SELECT id, started_at, ended_at, first_entry_id, last_entry_id, entry_count,
-       segment_hash, archive_uri, archive_sha256, cosign_bundle, created_at
+       segment_hash, prev_segment_hash, archive_uri, archive_sha256, cosign_bundle, created_at
   FROM audit_rotation_segments
  WHERE tenant_id = ? AND segment_number = ?`,
 		string(tenantID), segmentNumber)
@@ -168,13 +193,14 @@ SELECT id, started_at, ended_at, first_entry_id, last_entry_id, entry_count,
 		lastID        int64
 		count         int64
 		segHash       []byte
+		prevSegHash   []byte
 		archiveURI    sql.NullString
 		archiveSHA256 []byte
 		cosignBundle  []byte
 		createdStr    string
 	)
 	if err := row.Scan(&id, &startedStr, &endedStr, &firstID, &lastID, &count,
-		&segHash, &archiveURI, &archiveSHA256, &cosignBundle, &createdStr); err != nil {
+		&segHash, &prevSegHash, &archiveURI, &archiveSHA256, &cosignBundle, &createdStr); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
@@ -195,6 +221,9 @@ SELECT id, started_at, ended_at, first_entry_id, last_entry_id, entry_count,
 	if len(segHash) != audit.HashSize {
 		return nil, fmt.Errorf("rotation: segment_hash size = %d, want %d", len(segHash), audit.HashSize)
 	}
+	if len(prevSegHash) != 0 && len(prevSegHash) != audit.HashSize {
+		return nil, fmt.Errorf("rotation: prev_segment_hash size = %d, want 0 or %d", len(prevSegHash), audit.HashSize)
+	}
 	rec := &SegmentRecord{
 		ID:            id,
 		TenantID:      tenantID,
@@ -210,6 +239,10 @@ SELECT id, started_at, ended_at, first_entry_id, last_entry_id, entry_count,
 		CreatedAt:     createdAt,
 	}
 	copy(rec.SegmentHash[:], segHash)
+	if len(prevSegHash) == audit.HashSize {
+		rec.PrevSegmentHash = make([]byte, audit.HashSize)
+		copy(rec.PrevSegmentHash, prevSegHash)
+	}
 	return rec, nil
 }
 
@@ -281,13 +314,14 @@ func insertSegment(ctx context.Context, tx storage.Tx, rec SegmentRecord, now ti
 INSERT INTO audit_rotation_segments (
     tenant_id, segment_number, started_at, ended_at,
     first_entry_id, last_entry_id, entry_count,
-    segment_hash, archive_uri, archive_sha256, cosign_bundle, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    segment_hash, prev_segment_hash, archive_uri, archive_sha256, cosign_bundle, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(rec.TenantID), rec.SegmentNumber,
 		rec.StartedAt.UTC().Format(time.RFC3339Nano),
 		rec.EndedAt.UTC().Format(time.RFC3339Nano),
 		rec.FirstEntryID, rec.LastEntryID, rec.EntryCount,
 		rec.SegmentHash[:],
+		nullableBytes(rec.PrevSegmentHash),
 		nullableString(rec.ArchiveURI),
 		nullableBytes(rec.ArchiveSHA256),
 		nullableBytes(rec.CosignBundle),

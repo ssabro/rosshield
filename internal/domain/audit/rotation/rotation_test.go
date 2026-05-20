@@ -304,8 +304,13 @@ func TestArchive_TarGzManifestSegmentHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readArchive: %v", err)
 	}
-	if manifest["version"] != "1" {
-		t.Errorf("manifest.version = %v, want \"1\"", manifest["version"])
+	// Stage 5 — manifest version bumped to "2" (prevSegmentHash 필드 추가).
+	if manifest["version"] != "2" {
+		t.Errorf("manifest.version = %v, want \"2\"", manifest["version"])
+	}
+	// 첫 segment 또는 PrevHash 미설정 — prevSegmentHash 필드는 omitempty 적용.
+	if v, ok := manifest["prevSegmentHash"]; ok && v != "" {
+		t.Errorf("manifest.prevSegmentHash = %v, want absent/empty for prev-less segment", v)
 	}
 	wantHash := hex.EncodeToString(seg.Hash[:])
 	if manifest["segmentHash"] != wantHash {
@@ -448,6 +453,117 @@ func TestRotate_LatestSegmentNumber_Increment(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatalf("verify latest: %v", err)
+	}
+}
+
+// TestRotate_ChainPrevSegmentHash — Stage 5: segment N+1의 prev_segment_hash가 segment N의
+// segment_hash와 일치하는지, 첫 segment는 NULL인지 검증.
+func TestRotate_ChainPrevSegmentHash(t *testing.T) {
+	t.Parallel()
+
+	store, repo := newTestStorage(t)
+	seedEntries(t, store, repo, 4)
+
+	be, _ := rotation.NewFileBackend(t.TempDir())
+	rot, _ := rotation.New(rotation.Deps{Clock: clock.System(), Backend: be, Appender: repo})
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+
+	// 1차 rotation: segment 1 (seq 1~2).
+	var seg1 *rotation.SegmentRecord
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := rot.Rotate(ctx, tx, testTenant, 1, 1, 2)
+		seg1 = r
+		return err
+	}); err != nil {
+		t.Fatalf("first rotate: %v", err)
+	}
+	if len(seg1.PrevSegmentHash) != 0 {
+		t.Errorf("first segment PrevSegmentHash len = %d, want 0 (nil)", len(seg1.PrevSegmentHash))
+	}
+
+	// 2차 rotation: segment 2 (seq 3~4) — prev_segment_hash = seg1.SegmentHash.
+	var seg2 *rotation.SegmentRecord
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		r, err := rot.Rotate(ctx, tx, testTenant, 2, 3, 4)
+		seg2 = r
+		return err
+	}); err != nil {
+		t.Fatalf("second rotate: %v", err)
+	}
+	if len(seg2.PrevSegmentHash) != 32 {
+		t.Fatalf("seg2.PrevSegmentHash len = %d, want 32", len(seg2.PrevSegmentHash))
+	}
+	if !bytes.Equal(seg2.PrevSegmentHash, seg1.SegmentHash[:]) {
+		t.Errorf("seg2.PrevSegmentHash != seg1.SegmentHash:\n  prev=%x\n  hash=%x",
+			seg2.PrevSegmentHash, seg1.SegmentHash[:])
+	}
+
+	// GetSegment 재조회 — PrevSegmentHash 직렬화·역직렬화 round-trip.
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		got1, err := rotation.GetSegment(ctx, tx, testTenant, 1)
+		if err != nil {
+			return err
+		}
+		if len(got1.PrevSegmentHash) != 0 {
+			t.Errorf("GetSegment(1).PrevSegmentHash len = %d, want 0", len(got1.PrevSegmentHash))
+		}
+		got2, err := rotation.GetSegment(ctx, tx, testTenant, 2)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(got2.PrevSegmentHash, seg1.SegmentHash[:]) {
+			t.Errorf("GetSegment(2).PrevSegmentHash mismatch")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("GetSegment chain: %v", err)
+	}
+
+	// archive manifest 안에도 prevSegmentHash가 들어있는지 확인 — Stage 5 핵심.
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		body, err := be.Get(ctx, seg2.ArchiveURI)
+		if err != nil {
+			return err
+		}
+		manifest, _, err := readArchive(body)
+		if err != nil {
+			return err
+		}
+		wantPrev := hex.EncodeToString(seg1.SegmentHash[:])
+		if manifest["prevSegmentHash"] != wantPrev {
+			t.Errorf("manifest.prevSegmentHash = %v, want %s", manifest["prevSegmentHash"], wantPrev)
+		}
+		if manifest["version"] != "2" {
+			t.Errorf("manifest.version = %v, want 2", manifest["version"])
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("verify seg2 archive: %v", err)
+	}
+}
+
+// TestRotate_GapInSegmentNumberFails — segmentNumber N>1인데 N-1이 DB에 없으면 chain gap 차단.
+func TestRotate_GapInSegmentNumberFails(t *testing.T) {
+	t.Parallel()
+
+	store, repo := newTestStorage(t)
+	seedEntries(t, store, repo, 2)
+
+	be, _ := rotation.NewFileBackend(t.TempDir())
+	rot, _ := rotation.New(rotation.Deps{Clock: clock.System(), Backend: be, Appender: repo})
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		// segment 1을 skip하고 segment 2를 만들려 시도 — chain gap.
+		_, err := rot.Rotate(ctx, tx, testTenant, 2, 1, 2)
+		return err
+	})
+	if err == nil {
+		t.Fatal("expected chain gap error when segmentNumber=2 but segment 1 missing")
+	}
+	if !strings.Contains(err.Error(), "chain gap") {
+		t.Errorf("error %q does not mention 'chain gap'", err.Error())
 	}
 }
 

@@ -17,6 +17,7 @@
 | [`walkthrough.md`](./walkthrough.md) | PoC 단계별 명령 + 예상 결과 + 검증 + 트러블슈팅 12개. | T+0 ~ T+7 (1주차 동행 가이드) |
 | [`customer-info-template.md`](./customer-info-template.md) | customer가 채워서 보내줄 intake yaml. | T-7일 (계약 직전 수집) |
 | [`demo-script.md`](./demo-script.md) | 시연 시나리오·내레이션 스크립트(11 단계 30분, 영상 미제작·텍스트만). | T+14일 (run-through 직전) 또는 sales pitch |
+| [`audit-rotation-verify.md`](./audit-rotation-verify.md) | 외부 감사인용 audit rotation segment archive 검증 가이드 (E32 Stage 5). | 첫 rotation 발생 후 (월 1회 default) |
 
 ---
 

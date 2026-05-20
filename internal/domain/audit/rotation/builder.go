@@ -15,6 +15,10 @@ import (
 //
 // Entries는 NDJSON 직렬화 후 Archiver가 tar.gz로 wrap.
 // Hash는 entry 들의 hash 를 sequential fold한 sha256 (자세한 fold 정의는 ComputeSegmentHash).
+//
+// PrevHash는 직전 segment(segment_number-1)의 Hash. 첫 segment(segment_number=1)는 nil — segment
+// 간 chain link layer (entry-level prev_hash와 별도). 외부 감사인은 archive manifest 들에 포함된
+// prevSegmentHash 필드와 비교해 cold 영역 chain 무결성을 검증합니다.
 type Segment struct {
 	TenantID     storage.TenantID
 	FirstEntryID int64
@@ -23,6 +27,7 @@ type Segment struct {
 	StartedAt    time.Time // 첫 entry occurred_at
 	EndedAt      time.Time // 마지막 entry occurred_at
 	Hash         audit.Hash
+	PrevHash     []byte // 직전 segment의 segment_hash (첫 segment는 nil). len 0 또는 32.
 	Entries      []audit.Entry
 }
 
@@ -49,7 +54,19 @@ func ComputeSegmentHash(entries []audit.Entry) audit.Hash {
 // 범위 내 entry가 1개도 없으면 error (rotation 의미 없음).
 //
 // 본 함수는 tx scope tenant와 인자 tenantID 일치를 강제합니다.
+//
+// PrevHash는 호출자가 별도로 설정합니다 (BuildSegmentWithPrev 또는 Rotator.Rotate가
+// LatestSegmentHash 조회 후 채움). 본 함수는 PrevHash=nil 인 Segment를 반환합니다 — 호환 유지.
 func BuildSegment(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64) (*Segment, error) {
+	return BuildSegmentWithPrev(ctx, tx, tenantID, fromSeq, toSeq, nil)
+}
+
+// BuildSegmentWithPrev는 BuildSegment와 동일하되 prevSegmentHash를 함께 설정합니다.
+//
+// prevSegmentHash가 nil이 아니면 길이 32(audit.HashSize)여야 합니다 — 그 외 길이는 error.
+// 본 함수는 단지 메타에 PrevHash를 set 할 뿐 hash 재계산하지 않습니다.
+// Segment.Hash는 segment 내 entry 들로만 결정되므로 PrevHash 변경이 Hash에 영향을 주지 않습니다.
+func BuildSegmentWithPrev(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64, prevSegmentHash []byte) (*Segment, error) {
 	if tenantID == "" {
 		return nil, fmt.Errorf("rotation: BuildSegment: tenantID required")
 	}
@@ -94,6 +111,18 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 		return nil, fmt.Errorf("rotation: BuildSegment: no entries in range [%d, %d]", fromSeq, toSeq)
 	}
 
+	if prevSegmentHash != nil && len(prevSegmentHash) != audit.HashSize {
+		return nil, fmt.Errorf("rotation: BuildSegment: prevSegmentHash size = %d, want %d (or nil)",
+			len(prevSegmentHash), audit.HashSize)
+	}
+
+	// defensive copy — caller가 buffer 재사용해도 segment가 안전.
+	var prevCopy []byte
+	if len(prevSegmentHash) == audit.HashSize {
+		prevCopy = make([]byte, audit.HashSize)
+		copy(prevCopy, prevSegmentHash)
+	}
+
 	return &Segment{
 		TenantID:     tenantID,
 		FirstEntryID: entries[0].Seq,
@@ -102,6 +131,7 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 		StartedAt:    entries[0].OccurredAt,
 		EndedAt:      entries[len(entries)-1].OccurredAt,
 		Hash:         ComputeSegmentHash(entries),
+		PrevHash:     prevCopy,
 		Entries:      entries,
 	}, nil
 }

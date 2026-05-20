@@ -62,7 +62,14 @@ type verifyOutput struct {
 }
 
 // run은 args를 받아 exit code를 반환합니다 (테스트 친화 분리).
+//
+// Stage 5: args[0]가 'rotation'이면 rotation 서브커맨드로 분기. 그 외는 기존 bundle verify.
+// rotation 서브커맨드는 cold archive (tar.gz)의 segment_hash + prev_segment_hash chain을
+// 검증합니다 — `rotation.go` 참조.
 func run(args []string) int {
+	if len(args) > 0 && args[0] == "rotation" {
+		return runRotation(args[1:])
+	}
 	fs := flag.NewFlagSet("rosshield-audit-verify", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // flag 자체 stderr 메시지 억제 — 본 binary 메시지로 통일.
 	bundlePath := fs.String("bundle", "", "report tar.gz 번들 경로 (필수)")

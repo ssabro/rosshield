@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/ssabro/rosshield/internal/platform/storage"
 )
 
 // ExportEntryLine은 NDJSON 한 라인 직렬화 결과입니다.
@@ -76,6 +78,71 @@ func MarshalEntryLine(e Entry) ([]byte, error) {
 		TenantID: string(e.TenantID),
 	}
 	return json.Marshal(line)
+}
+
+// UnmarshalEntryLine은 NDJSON 한 라인을 Entry로 역직렬화합니다 (MarshalEntryLine의 역).
+//
+// 외부 검증 도구 (rosshield-audit-verify rotation)는 entries.ndjson을 읽어 Entry를
+// 복원한 뒤 ComputeSegmentHash로 segment hash를 재계산해 manifest 값과 비교합니다.
+//
+// hash·payloadDigest·prevHash는 hex 디코드 + 32 byte 길이 검증.
+// 시간 필드는 RFC3339Nano.
+func UnmarshalEntryLine(line []byte) (Entry, error) {
+	var raw ExportEntryLine
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return Entry{}, fmt.Errorf("audit: unmarshal entry line: %w", err)
+	}
+
+	occurredAt, err := time.Parse(time.RFC3339Nano, raw.OccurredAt)
+	if err != nil {
+		return Entry{}, fmt.Errorf("audit: parse occurredAt %q: %w", raw.OccurredAt, err)
+	}
+
+	payloadDigest, err := decodeHex32(raw.PayloadDigest, "payloadDigest")
+	if err != nil {
+		return Entry{}, err
+	}
+	prevHash, err := decodeHex32(raw.PrevHash, "prevHash")
+	if err != nil {
+		return Entry{}, err
+	}
+	hash, err := decodeHex32(raw.Hash, "hash")
+	if err != nil {
+		return Entry{}, err
+	}
+
+	e := Entry{
+		TenantID:   storage.TenantID(raw.TenantID),
+		Seq:        raw.Seq,
+		OccurredAt: occurredAt,
+		Actor: Actor{
+			Type:      ActorType(raw.Actor.Type),
+			ID:        raw.Actor.ID,
+			IP:        raw.Actor.IP,
+			UserAgent: raw.Actor.UserAgent,
+		},
+		Action:        raw.Action,
+		Target:        Target{Type: raw.Target.Type, ID: raw.Target.ID},
+		PayloadDigest: payloadDigest,
+		Outcome:       Outcome(raw.Outcome),
+		PrevHash:      prevHash,
+		Hash:          hash,
+		Error:         raw.Error,
+	}
+	return e, nil
+}
+
+func decodeHex32(s, field string) (Hash, error) {
+	var h Hash
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return h, fmt.Errorf("audit: decode %s hex: %w", field, err)
+	}
+	if len(b) != HashSize {
+		return h, fmt.Errorf("audit: %s size = %d, want %d", field, len(b), HashSize)
+	}
+	copy(h[:], b)
+	return h, nil
 }
 
 // SignedDigest는 ExportSignatureLine.SignedDigest 계산을 캡슐화합니다.

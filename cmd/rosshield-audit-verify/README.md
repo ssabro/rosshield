@@ -16,9 +16,31 @@ stdlib + `crypto/ed25519`만 사용 — 외부 의존 0.
 
 ## 사용법
 
+### Bundle 검증 (E30 본체)
+
 ```bash
 rosshield-audit-verify --bundle <path.tar.gz> [--format json|table] [--strict]
 ```
+
+### Rotation segment 검증 (E32 Stage 5)
+
+```bash
+# 단일 segment archive
+rosshield-audit-verify rotation \
+    --archive-uri file:///path/to/seg-000005.tar.gz \
+    [--expected-sha256 <hex64>] \
+    [--expected-segment-hash <hex64>] \
+    [--prev-segment-hash <hex64>] \
+    [--format table|json]
+
+# chain batch (segment 간 prev_segment_hash 일관성)
+rosshield-audit-verify rotation chain \
+    --backend file:///path/to/audit-archives/<tenant>/ \
+    --from-segment <N> [--to-segment <M>] \
+    [--format table|json]
+```
+
+상세 가이드: [`docs/onboarding/audit-rotation-verify.md`](../../docs/onboarding/audit-rotation-verify.md).
 
 옵션:
 

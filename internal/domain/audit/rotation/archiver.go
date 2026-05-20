@@ -15,20 +15,30 @@ import (
 )
 
 // archiveManifestVersion은 manifest.json 형식 호환 버전입니다.
-const archiveManifestVersion = "1"
+//
+// "1" — Stage 1~3 형식 (prev_segment_hash 없음).
+// "2" — Stage 5 형식: prevSegmentHash 추가. version "1" archive와 ManifestV1Versions에
+//
+//	포함된 verifier 호환 — verify CLI는 두 버전 모두 수용 (PrevSegmentHash가
+//	빈 문자열이면 첫 segment 또는 v1으로 해석).
+const archiveManifestVersion = "2"
 
 // archiveManifest는 tar.gz 내 manifest.json의 직렬화 형태입니다 (외부 검증 도구 contract).
+//
+// Stage 5 — prevSegmentHash 추가. version "2".
+// 첫 segment(segment_number=1) 또는 호환 모드에서 PrevSegmentHash="" (omitempty 적용).
 type archiveManifest struct {
-	Version      string `json:"version"`
-	TenantID     string `json:"tenantId"`
-	FirstEntryID int64  `json:"firstEntryId"`
-	LastEntryID  int64  `json:"lastEntryId"`
-	EntryCount   int64  `json:"entryCount"`
-	StartedAt    string `json:"startedAt"`   // RFC3339Nano UTC
-	EndedAt      string `json:"endedAt"`     // RFC3339Nano UTC
-	SegmentHash  string `json:"segmentHash"` // hex (32B → 64 chars)
-	EntriesFile  string `json:"entriesFile"` // "entries.ndjson"
-	CreatedAt    string `json:"createdAt"`   // RFC3339Nano UTC (archive 생성 시각)
+	Version         string `json:"version"`
+	TenantID        string `json:"tenantId"`
+	FirstEntryID    int64  `json:"firstEntryId"`
+	LastEntryID     int64  `json:"lastEntryId"`
+	EntryCount      int64  `json:"entryCount"`
+	StartedAt       string `json:"startedAt"`                 // RFC3339Nano UTC
+	EndedAt         string `json:"endedAt"`                   // RFC3339Nano UTC
+	SegmentHash     string `json:"segmentHash"`               // hex (32B → 64 chars)
+	PrevSegmentHash string `json:"prevSegmentHash,omitempty"` // hex (32B → 64 chars); 첫 segment는 omit
+	EntriesFile     string `json:"entriesFile"`               // "entries.ndjson"
+	CreatedAt       string `json:"createdAt"`                 // RFC3339Nano UTC (archive 생성 시각)
 }
 
 // Archive는 segment를 tar.gz로 직렬화하고 backend에 업로드합니다.
@@ -97,6 +107,9 @@ func buildTarGz(segment *Segment, now time.Time) ([]byte, error) {
 		SegmentHash:  hex.EncodeToString(segment.Hash[:]),
 		EntriesFile:  "entries.ndjson",
 		CreatedAt:    now.UTC().Format(time.RFC3339Nano),
+	}
+	if len(segment.PrevHash) > 0 {
+		manifest.PrevSegmentHash = hex.EncodeToString(segment.PrevHash)
 	}
 	manifestJSON, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
