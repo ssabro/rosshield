@@ -49,4 +49,31 @@ type S3Config struct {
 	ServerSideEncryption string
 	// KMSKeyID는 SSE-KMS 사용 시 CMK ARN/ID. ServerSideEncryption="aws:kms"일 때만 유효.
 	KMSKeyID string
+	// LifecycleEnabled가 true이면 NewS3Backend·bootstrap에서 ApplyLifecyclePolicy를 자동 호출합니다.
+	// false이면 lifecycle 미적용 (호출자가 별도로 ApplyLifecyclePolicy 호출 가능).
+	LifecycleEnabled bool
+	// LifecycleTransitions는 storage class 단계별 전환 규칙입니다 (S3 표준).
+	// 빈 슬라이스 + LifecycleExpireDays=0 + LifecycleEnabled=true → ApplyLifecyclePolicy
+	// 는 빈 rule을 만들지 않고 ErrLifecycleEmpty를 반환.
+	// 일반 audit retention: [{Days: 365, Class: "STANDARD_IA"}, {Days: 1825, Class: "GLACIER"}].
+	LifecycleTransitions []S3Transition
+	// LifecycleExpireDays는 object 삭제까지 일수. 0이면 만료 없음(영구 보존).
+	// 일부 customer는 컴플라이언스 요구로 N년 후 자동 삭제 필요.
+	LifecycleExpireDays int32
 }
+
+// S3Transition은 lifecycle storage class 전환 규칙입니다.
+//
+// AWS S3 lifecycle Days 의미: object creation 후 N일 (transition 후 N일이 아님).
+// StorageClass 허용값 (AWS SDK enum 그대로): "STANDARD_IA", "ONEZONE_IA",
+// "INTELLIGENT_TIERING", "GLACIER", "GLACIER_IR", "DEEP_ARCHIVE".
+//
+// MinIO 등 S3 호환 storage는 GLACIER·DEEP_ARCHIVE 미지원 — STANDARD_IA만 처리하거나 silent ignore.
+type S3Transition struct {
+	Days         int32
+	StorageClass string
+}
+
+// ErrLifecycleEmpty는 lifecycle 적용 시 transition + expire 모두 비어 있을 때 반환.
+var ErrLifecycleEmpty = errors.New(
+	"rotation: S3 lifecycle empty (LifecycleTransitions and LifecycleExpireDays both empty — nothing to apply)")

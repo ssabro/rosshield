@@ -32,13 +32,16 @@ type fakeS3 struct {
 	mu      sync.Mutex
 	objects map[string][]byte // key: "<bucket>/<key>"
 
-	// putErr·getErr·headErr이 nil이 아니면 해당 메서드 호출 시 강제 반환 — 에러 경로 검증.
-	putErr  error
-	getErr  error
-	headErr error
+	// putErr·getErr·headErr·lifecycleErr이 nil이 아니면 해당 메서드 호출 시 강제 반환 — 에러 경로 검증.
+	putErr       error
+	getErr       error
+	headErr      error
+	lifecycleErr error
 
 	// lastPut은 마지막 PutObject 입력을 보관 — SSE·Bucket·Key assertion.
 	lastPut *s3.PutObjectInput
+	// lastLifecycle은 마지막 PutBucketLifecycleConfiguration 입력을 보관 — rule assertion.
+	lastLifecycle *s3.PutBucketLifecycleConfigurationInput
 }
 
 func newFakeS3() *fakeS3 {
@@ -86,6 +89,16 @@ func (f *fakeS3) HeadObject(_ context.Context, in *s3.HeadObjectInput, _ ...func
 		return nil, &s3types.NotFound{}
 	}
 	return &s3.HeadObjectOutput{}, nil
+}
+
+func (f *fakeS3) PutBucketLifecycleConfiguration(_ context.Context, in *s3.PutBucketLifecycleConfigurationInput, _ ...func(*s3.Options)) (*s3.PutBucketLifecycleConfigurationOutput, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.lifecycleErr != nil {
+		return nil, f.lifecycleErr
+	}
+	f.lastLifecycle = in
+	return &s3.PutBucketLifecycleConfigurationOutput{}, nil
 }
 
 // === construction ===
@@ -367,5 +380,140 @@ func TestIsS3NotFound_RejectsOtherError(t *testing.T) {
 	t.Parallel()
 	if isS3NotFound(errors.New("AccessDenied")) {
 		t.Error("AccessDenied incorrectly recognized as NotFound")
+	}
+}
+
+// === ApplyLifecyclePolicy ===
+
+func TestS3Backend_ApplyLifecycle_EmptyConfigErr(t *testing.T) {
+	t.Parallel()
+	fake := newFakeS3()
+	b := newS3BackendWithClient(fake, S3Config{Bucket: "b", Region: "r"})
+
+	if err := b.ApplyLifecyclePolicy(context.Background()); !errors.Is(err, ErrLifecycleEmpty) {
+		t.Errorf("err = %v, want ErrLifecycleEmpty", err)
+	}
+	if fake.lastLifecycle != nil {
+		t.Error("PutBucketLifecycleConfiguration called for empty policy")
+	}
+}
+
+func TestS3Backend_ApplyLifecycle_TransitionsOnly(t *testing.T) {
+	t.Parallel()
+	fake := newFakeS3()
+	cfg := S3Config{
+		Bucket: "audit-bucket", Region: "us-west-2", Prefix: "archives/",
+		LifecycleTransitions: []S3Transition{
+			{Days: 365, StorageClass: "STANDARD_IA"},
+			{Days: 1825, StorageClass: "GLACIER"},
+		},
+	}
+	b := newS3BackendWithClient(fake, cfg)
+
+	if err := b.ApplyLifecyclePolicy(context.Background()); err != nil {
+		t.Fatalf("ApplyLifecyclePolicy: %v", err)
+	}
+	if fake.lastLifecycle == nil {
+		t.Fatal("PutBucketLifecycleConfiguration not called")
+	}
+	if got := aws.ToString(fake.lastLifecycle.Bucket); got != "audit-bucket" {
+		t.Errorf("Bucket = %q", got)
+	}
+	rules := fake.lastLifecycle.LifecycleConfiguration.Rules
+	if len(rules) != 1 {
+		t.Fatalf("rules = %d, want 1", len(rules))
+	}
+	rule := rules[0]
+	if aws.ToString(rule.ID) != "rosshield-rotation" {
+		t.Errorf("rule.ID = %q", aws.ToString(rule.ID))
+	}
+	if rule.Status != s3types.ExpirationStatusEnabled {
+		t.Errorf("Status = %q", rule.Status)
+	}
+	if rule.Filter == nil || aws.ToString(rule.Filter.Prefix) != "archives/" {
+		t.Errorf("Filter.Prefix = %v", rule.Filter)
+	}
+	if len(rule.Transitions) != 2 {
+		t.Fatalf("Transitions = %d, want 2", len(rule.Transitions))
+	}
+	if aws.ToInt32(rule.Transitions[0].Days) != 365 || rule.Transitions[0].StorageClass != "STANDARD_IA" {
+		t.Errorf("Transitions[0] = %+v", rule.Transitions[0])
+	}
+	if aws.ToInt32(rule.Transitions[1].Days) != 1825 || rule.Transitions[1].StorageClass != "GLACIER" {
+		t.Errorf("Transitions[1] = %+v", rule.Transitions[1])
+	}
+	if rule.Expiration != nil {
+		t.Errorf("Expiration should be nil when ExpireDays=0, got %+v", rule.Expiration)
+	}
+}
+
+func TestS3Backend_ApplyLifecycle_ExpirationOnly(t *testing.T) {
+	t.Parallel()
+	fake := newFakeS3()
+	cfg := S3Config{
+		Bucket: "b", Region: "r", Prefix: "",
+		LifecycleExpireDays: 2555, // 7년 컴플라이언스
+	}
+	b := newS3BackendWithClient(fake, cfg)
+
+	if err := b.ApplyLifecyclePolicy(context.Background()); err != nil {
+		t.Fatalf("ApplyLifecyclePolicy: %v", err)
+	}
+	rule := fake.lastLifecycle.LifecycleConfiguration.Rules[0]
+	if len(rule.Transitions) != 0 {
+		t.Errorf("Transitions = %d, want 0", len(rule.Transitions))
+	}
+	if rule.Expiration == nil || aws.ToInt32(rule.Expiration.Days) != 2555 {
+		t.Errorf("Expiration = %+v", rule.Expiration)
+	}
+}
+
+func TestS3Backend_New_AutoAppliesLifecycle(t *testing.T) {
+	t.Parallel()
+	// LifecycleEnabled=true + transitions 설정 → 자동 적용.
+	// 본 테스트는 newS3BackendWithClient 대신 NewS3Backend가 자동 호출하는 경로를 직접 검증할 수 없어
+	// (AWS SDK config 로딩 의존) — newS3BackendWithClient 후 ApplyLifecyclePolicy 명시 호출 + 결과 검증으로 대체.
+	fake := newFakeS3()
+	cfg := S3Config{
+		Bucket: "b", Region: "r",
+		LifecycleEnabled:     true,
+		LifecycleTransitions: []S3Transition{{Days: 30, StorageClass: "STANDARD_IA"}},
+	}
+	b := newS3BackendWithClient(fake, cfg)
+	if err := b.ApplyLifecyclePolicy(context.Background()); err != nil {
+		t.Fatalf("ApplyLifecyclePolicy: %v", err)
+	}
+	if fake.lastLifecycle == nil {
+		t.Fatal("PutBucketLifecycleConfiguration not called")
+	}
+}
+
+func TestS3Backend_ApplyLifecycle_PropagatesError(t *testing.T) {
+	t.Parallel()
+	fake := newFakeS3()
+	fake.lifecycleErr = errors.New("AccessDenied: s3:PutLifecycleConfiguration")
+	cfg := S3Config{
+		Bucket: "b", Region: "r",
+		LifecycleExpireDays: 365,
+	}
+	b := newS3BackendWithClient(fake, cfg)
+
+	err := b.ApplyLifecyclePolicy(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "AccessDenied") {
+		t.Errorf("err = %v, want propagated AccessDenied", err)
+	}
+}
+
+func TestS3Backend_ApplyLifecycle_RespectsContextCancel(t *testing.T) {
+	t.Parallel()
+	cfg := S3Config{
+		Bucket: "b", Region: "r",
+		LifecycleExpireDays: 365,
+	}
+	b := newS3BackendWithClient(newFakeS3(), cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := b.ApplyLifecyclePolicy(ctx); err == nil {
+		t.Error("expected ctx cancel error")
 	}
 }

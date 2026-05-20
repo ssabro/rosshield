@@ -37,3 +37,8 @@ func (*S3Backend) Get(_ context.Context, _ string) ([]byte, error) {
 func (*S3Backend) Exists(_ context.Context, _ string) (bool, error) {
 	return false, ErrS3BackendNotAvailable
 }
+
+// ApplyLifecyclePolicy (stub).
+func (*S3Backend) ApplyLifecyclePolicy(_ context.Context) error {
+	return ErrS3BackendNotAvailable
+}

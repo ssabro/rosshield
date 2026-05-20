@@ -48,6 +48,7 @@ type s3API interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 	HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+	PutBucketLifecycleConfiguration(ctx context.Context, params *s3.PutBucketLifecycleConfigurationInput, optFns ...func(*s3.Options)) (*s3.PutBucketLifecycleConfigurationOutput, error)
 }
 
 // S3Backend는 AWS S3 또는 S3 호환 storage를 cold archive backend로 사용합니다.
@@ -91,7 +92,13 @@ func NewS3Backend(ctx context.Context, cfg S3Config) (*S3Backend, error) {
 		}
 	})
 
-	return &S3Backend{client: client, cfg: cfg}, nil
+	b := &S3Backend{client: client, cfg: cfg}
+	if cfg.LifecycleEnabled {
+		if err := b.ApplyLifecyclePolicy(ctx); err != nil && !errors.Is(err, ErrLifecycleEmpty) {
+			return nil, fmt.Errorf("rotation: S3Backend: apply lifecycle: %w", err)
+		}
+	}
+	return b, nil
 }
 
 // newS3BackendWithClient은 fake/mock client를 주입할 수 있는 test-only 생성자입니다.
@@ -170,6 +177,54 @@ func (b *S3Backend) Get(ctx context.Context, uri string) ([]byte, error) {
 		return nil, fmt.Errorf("rotation: S3Backend Get read body: %w", err)
 	}
 	return data, nil
+}
+
+// ApplyLifecyclePolicy는 S3 bucket에 lifecycle configuration을 PUT합니다.
+//
+// Rule ID = "rosshield-rotation" (고정) — 운영자가 이름으로 식별·삭제 가능.
+// Filter Prefix = cfg.Prefix → 다른 application의 객체에 영향 없음.
+// transitions/expire 모두 비어 있으면 ErrLifecycleEmpty (호출자 가드).
+//
+// 재적용은 idempotent — PutBucketLifecycleConfiguration은 기존 config를 덮어씁니다.
+// 운영 중 transition 일수 변경은 본 메서드 재호출로 즉시 반영.
+//
+// MinIO·일부 S3 호환 storage는 GLACIER·DEEP_ARCHIVE transition을 silent ignore — error
+// 반환 안 함. 호환성 보장 측면에서 본 함수도 silent OK (storage 측 정책 위임).
+func (b *S3Backend) ApplyLifecyclePolicy(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(b.cfg.LifecycleTransitions) == 0 && b.cfg.LifecycleExpireDays <= 0 {
+		return ErrLifecycleEmpty
+	}
+
+	rule := s3types.LifecycleRule{
+		ID:     aws.String("rosshield-rotation"),
+		Status: s3types.ExpirationStatusEnabled,
+		Filter: &s3types.LifecycleRuleFilter{Prefix: aws.String(b.cfg.Prefix)},
+	}
+	for _, tr := range b.cfg.LifecycleTransitions {
+		rule.Transitions = append(rule.Transitions, s3types.Transition{
+			Days:         aws.Int32(tr.Days),
+			StorageClass: s3types.TransitionStorageClass(tr.StorageClass),
+		})
+	}
+	if b.cfg.LifecycleExpireDays > 0 {
+		rule.Expiration = &s3types.LifecycleExpiration{
+			Days: aws.Int32(b.cfg.LifecycleExpireDays),
+		}
+	}
+
+	_, err := b.client.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+		Bucket: aws.String(b.cfg.Bucket),
+		LifecycleConfiguration: &s3types.BucketLifecycleConfiguration{
+			Rules: []s3types.LifecycleRule{rule},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("rotation: S3Backend ApplyLifecyclePolicy: %w", err)
+	}
+	return nil
 }
 
 // Exists는 s3:// URI 객체 존재 여부를 반환합니다 (HEAD 요청 — body 다운로드 없음).

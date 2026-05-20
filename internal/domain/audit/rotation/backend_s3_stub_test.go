@@ -23,3 +23,15 @@ func TestS3Backend_StubReturnsNotAvailable(t *testing.T) {
 		t.Errorf("NewS3Backend error = %v, want ErrS3BackendNotAvailable", err)
 	}
 }
+
+// TestS3Backend_StubApplyLifecycleNotAvailable는 코어 빌드에서 ApplyLifecyclePolicy도
+// 동일하게 ErrS3BackendNotAvailable을 반환함을 검증합니다.
+func TestS3Backend_StubApplyLifecycleNotAvailable(t *testing.T) {
+	t.Parallel()
+
+	stub := &rotation.S3Backend{}
+	err := stub.ApplyLifecyclePolicy(context.Background())
+	if !errors.Is(err, rotation.ErrS3BackendNotAvailable) {
+		t.Errorf("ApplyLifecyclePolicy error = %v, want ErrS3BackendNotAvailable", err)
+	}
+}
