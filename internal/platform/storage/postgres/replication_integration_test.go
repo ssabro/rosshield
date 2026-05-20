@@ -30,6 +30,7 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -39,6 +40,9 @@ import (
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/ssabro/rosshield/internal/domain/audit"
+	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
+	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	"github.com/ssabro/rosshield/internal/platform/storage/postgres"
 )
@@ -702,5 +706,146 @@ func TestReplicationLagMeasurable(t *testing.T) {
 	}
 	if !writeLSNValid {
 		t.Errorf("pg_stat_replication.write_lsn is NULL — lag 측정 불가")
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// MR.T6 application integration — audit.Service fence token + follower reject
+// ────────────────────────────────────────────────────────────────────────
+
+// fakeAuditRole은 audit.RoleProvider를 mocks (MR.T6 application 통합 test 용).
+type fakeAuditRole struct {
+	leader bool
+	epoch  int64
+}
+
+func (r *fakeAuditRole) IsLeader() bool      { return r.leader }
+func (r *fakeAuditRole) CurrentEpoch() int64 { return r.epoch }
+
+// TestAuditFenceEpochPropagatesCrossRegion은 audit.Service.Append가 leader_epoch을
+// 정확히 저장하고 standby region으로 그대로 replicate됨을 검증합니다 (MR.T6 application
+// integration).
+//
+// 흐름:
+//  1. fixture primary에 audit.Service (sqliterepo.New, RoleProvider=leader epoch=42)
+//  2. tenant 시드 + audit.Service.Append → audit_entries.leader_epoch=42 저장
+//  3. replication 대기 후 standby에서 SELECT leader_epoch → 42 일치 검증
+func TestAuditFenceEpochPropagatesCrossRegion(t *testing.T) {
+	t.Parallel()
+	fix := newReplicationFixture(t)
+	ctx := context.Background()
+
+	const tenantID = "tn-mrtest-t6app"
+
+	// Tenant 시드 (audit_entries는 tenants FK 없지만 일관성 유지)
+	err := fix.primaryStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
+		_, err := tx.Exec(c, `
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, tenantID, "MR.T6 app")
+		return err
+	})
+	if err != nil {
+		t.Fatalf("primary tenant seed: %v", err)
+	}
+
+	// audit.Service primary 인스턴스 + leader Role (epoch=42)
+	primaryRepo := auditrepo.New(auditrepo.Deps{
+		Clock: clock.System(),
+		Role:  &fakeAuditRole{leader: true, epoch: 42},
+	})
+
+	tenantCtx := storage.WithTenantID(ctx, tenantID)
+	var primaryEntry audit.Entry
+	err = fix.primaryStore.Tx(tenantCtx, func(c context.Context, tx storage.Tx) error {
+		e, err := primaryRepo.Append(c, tx, audit.AppendRequest{
+			TenantID: tenantID,
+			Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+			Action:   "test.epoch.fence",
+			Target:   audit.Target{Type: "test", ID: "t6"},
+			Outcome:  audit.OutcomeSuccess,
+		})
+		if err != nil {
+			return err
+		}
+		primaryEntry = e
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("primary audit.Append: %v", err)
+	}
+	if primaryEntry.LeaderEpoch == nil || *primaryEntry.LeaderEpoch != 42 {
+		t.Fatalf("primary entry.LeaderEpoch = %v, want 42", primaryEntry.LeaderEpoch)
+	}
+
+	// Standby propagation 대기 후 leader_epoch 정확 read
+	deadline := time.Now().Add(5 * time.Second)
+	var standbyEpoch int64
+	var found bool
+	for time.Now().Before(deadline) {
+		err := fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
+			return tx.QueryRow(c,
+				"SELECT leader_epoch FROM audit_entries WHERE tenant_id = $1 AND seq = $2",
+				tenantID, primaryEntry.Seq,
+			).Scan(&standbyEpoch)
+		})
+		if err == nil {
+			found = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !found {
+		t.Fatalf("standby audit_entries seq=%d not propagated within 5s", primaryEntry.Seq)
+	}
+	if standbyEpoch != 42 {
+		t.Errorf("standby leader_epoch = %d, want 42 (cross-region fence token mismatch)", standbyEpoch)
+	}
+}
+
+// TestAuditFollowerRejectsAppend는 follower 상태의 audit.Service.Append가
+// audit.ErrNotLeader를 반환함을 검증합니다 (HA single-writer 보장).
+//
+// fence token enforcement의 핵심: follower instance가 region-local PG에 직접 write
+// 시도해도 application layer가 차단 — split-brain 방어 첫 line.
+func TestAuditFollowerRejectsAppend(t *testing.T) {
+	t.Parallel()
+	fix := newReplicationFixture(t)
+	ctx := context.Background()
+
+	const tenantID = "tn-mrtest-t6app-follower"
+
+	err := fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
+		_, err := tx.Exec(c, `
+			INSERT INTO tenants (id, name, plan, created_at)
+			VALUES ($1, $2, 'desktop_free', NOW()::TEXT)
+		`, tenantID, "MR.T6 follower")
+		return err
+	})
+	// tenant 시드 실패는 standby가 read-only standby PG라 발생 가능 — replication 대기
+	// 또는 primary에서 시드 후 propagation. 본 test는 standby PG에 직접 INSERT 시도 +
+	// 실패 graceful 무시 (audit.Service.Append 자체의 ErrNotLeader가 검증 본체).
+	_ = err
+
+	// audit.Service follower Role
+	standbyRepo := auditrepo.New(auditrepo.Deps{
+		Clock: clock.System(),
+		Role:  &fakeAuditRole{leader: false, epoch: 0},
+	})
+
+	tenantCtx := storage.WithTenantID(ctx, tenantID)
+	err = fix.standbyStore.Tx(tenantCtx, func(c context.Context, tx storage.Tx) error {
+		_, err := standbyRepo.Append(c, tx, audit.AppendRequest{
+			TenantID: tenantID,
+			Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+			Action:   "test.follower.reject",
+			Target:   audit.Target{Type: "test", ID: "t6f"},
+			Outcome:  audit.OutcomeSuccess,
+		})
+		return err
+	})
+
+	if !errors.Is(err, audit.ErrNotLeader) {
+		t.Errorf("follower Append err = %v, want audit.ErrNotLeader", err)
 	}
 }
