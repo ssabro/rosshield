@@ -7,7 +7,31 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Audit rotation 잔여 (sqlite hot GC) / e2e cosign 실 CLI test · cosign_e2e build tag CI / rotationjob bootstrap cron 결선 (slot cleanup 정기 실행) / Multi-region HA Stage 4~7 (DNS hook · 자동 failover · cross-region witness · pilot) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Audit rotation 잔여 (sqlite hot GC) / e2e cosign 실 CLI test · cosign_e2e build tag CI / Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.0] — 2026-05-20 (minor)
+
+> **요약**: Multi-region HA + S3 backend 운영 진입 minor release — slot cleanup cron 자동 wiring + S3 lifecycle bootstrap config parser + **MinIO Content-MD5 middleware로 S3 호환 storage 완전 호환**. 회귀 0. 상세는 [docs/releases/v0.7.0.md](docs/releases/v0.7.0.md).
+>
+> **기준 commit**: `810171a` (main)
+
+### Added
+- `feat(replication)` E-MR Stage 3 후속 slot cleanup cron job bootstrap 결선 (`742e0c1`) — `internal/platform/scheduler/replicationcleanupjob/` 신규 패키지 (rotationjob 패턴) + bootstrap auto-register (primary PG + replication enabled 조합) + CLI flag 4 + env 4 + 12 단위 test. SlotPrefix 빈 값 fail-fast 안전 가드.
+- `feat(audit)` S3 lifecycle bootstrap config parser (`3f44860`) — Config 5 필드 (Enabled + IA/Glacier/DeepArchive Days + ExpireDays) + buildS3LifecycleTransitions helper + CLI flag 5 + env 5 + resolveIntEnvFallback helper. 표준 audit retention (1년 IA → 5년 GLACIER → 7년 만료) opt-in.
+- `feat(audit)` MinIO Content-MD5 middleware + lifecycle 통합 검증 복원 (`810171a`) — smithy-go finalize middleware로 PutBucketLifecycleConfiguration request body MD5 base64 자동 주입 (Set-MD5 헤더). AWS 본가 + MinIO 양쪽 호환. MinIO integration test `MinIOLifecycle` 복원 — NewS3Backend 자동 적용 + idempotency 검증.
+
+### Fixed
+- `fix(audit)` S3 lifecycle 1차 ChecksumAlgorithm 시도 (`666682d`) — AWS 본가는 정상이지만 MinIO 미지원, middleware로 최종 해소.
+- `fix(audit)` MinIO integration test lifecycle 임시 분리 (`201c71d`) — middleware 도입 전 lifecycle 부분 분리, middleware 후 복원.
+- `test(scanrun)` TestRunCancelSkipsRemainingButWaitsInFlight flaky 안정화 (`c3ec3f1`) — exec 100ms→500ms + cancel 50ms→100ms로 CI runner 부하 timing tolerance 강화.
+- `chore(deps)` go mod tidy aws-sdk-go-v2/credentials direct 승격 (`01fafa1`) — MinIO integration test가 NewStaticCredentialsProvider 직접 사용.
+
+### Notes
+- slot cleanup wiring + S3 lifecycle parser + MinIO middleware 모두 v0.6.9 한계 항목 일소
+- minor bump 이유: 신규 운영 기능 3종 + customer-facing 자동화 + opt-in (Breaking 0)
+- MinIO·Wasabi·Backblaze B2 같은 S3 호환 storage에서 lifecycle 정상 동작 확보
 
 ---
 
