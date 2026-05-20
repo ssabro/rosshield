@@ -93,7 +93,7 @@ func (r *Repo) ListReplicas(ctx context.Context, tx storage.Tx) ([]replication.R
 	if err != nil {
 		return nil, fmt.Errorf("replication: list replicas: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []replication.Replica
 	for rows.Next() {
@@ -215,11 +215,11 @@ const replicaColumns = `SELECT id, region, role, endpoint,
 // scanReplica는 *sql.Row에서 Replica를 추출합니다.
 func scanReplica(row *sql.Row) (replication.Replica, error) {
 	var (
-		rep                                  replication.Replica
-		roleStr                              string
+		rep                                      replication.Replica
+		roleStr                                  string
 		lastReplayAt, lastHeartbeatAt, createdAt sql.NullString
-		lsn                                  string
-		enabledRaw                           any
+		lsn                                      string
+		enabledRaw                               any
 	)
 	err := row.Scan(&rep.ID, &rep.Region, &roleStr, &rep.Endpoint,
 		&lsn, &lastReplayAt, &lastHeartbeatAt, &enabledRaw, &createdAt)
@@ -238,11 +238,11 @@ func scanReplica(row *sql.Row) (replication.Replica, error) {
 // scanReplicaRows는 *sql.Rows에서 Replica 1행을 추출합니다.
 func scanReplicaRows(rows *sql.Rows) (replication.Replica, error) {
 	var (
-		rep                                  replication.Replica
-		roleStr                              string
+		rep                                      replication.Replica
+		roleStr                                  string
 		lastReplayAt, lastHeartbeatAt, createdAt sql.NullString
-		lsn                                  string
-		enabledRaw                           any
+		lsn                                      string
+		enabledRaw                               any
 	)
 	err := rows.Scan(&rep.ID, &rep.Region, &roleStr, &rep.Endpoint,
 		&lsn, &lastReplayAt, &lastHeartbeatAt, &enabledRaw, &createdAt)

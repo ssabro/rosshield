@@ -1,9 +1,17 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
+
+// vitest는 vite dev server mode로 모듈을 로드하지만 PWA plugin의 devOptions.enabled=false
+// 라 `virtual:pwa-register`가 등록되지 않아 import-analysis 단계에서 fail합니다.
+// 해결: vitest 환경에서만 devOptions.enabled=true로 virtual module을 노출시킵니다.
+// (vitest는 SW 등록을 실제 수행하지 않으므로 부수효과 0 — pwa-register.ts의 typeof
+// window·serviceWorker 가드가 처리.)
+const isVitest = process.env.VITEST === 'true' || process.env.NODE_ENV === 'test'
 
 // rosshield Web Console Vite 설정.
 // - 빌드 결과는 web/dist/ → Stage D에서 Go embed.FS로 끌어올린다.
@@ -33,7 +41,7 @@ export default defineConfig({
       registerType: 'prompt',
       injectRegister: null,
       devOptions: {
-        enabled: false,
+        enabled: isVitest,
       },
       manifest: {
         name: 'Lodestar 관리자 콘솔',

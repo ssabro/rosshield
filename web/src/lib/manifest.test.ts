@@ -31,8 +31,8 @@ describe('dist/manifest.webmanifest (vite-plugin-pwa 생성)', () => {
     const manifest = JSON.parse(raw) as Record<string, unknown>
 
     it('name + short_name 갖춥니다', () => {
-      expect(manifest.name).toBe('rosshield Console')
-      expect(manifest.short_name).toBe('rosshield')
+      expect(manifest.name).toBe('Lodestar 관리자 콘솔')
+      expect(manifest.short_name).toBe('Lodestar')
     })
 
     it('description 갖춥니다', () => {

@@ -6,6 +6,13 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+// vitest는 vite-plugin-pwa의 transform을 거치지 않아 'virtual:pwa-register' resolve
+// 실패합니다. pwa-virtual.ts(virtual import를 격리한 wrapper)를 vi.mock으로 가로채
+// 정적 분석이 그 안쪽 'virtual:' import에 닿지 않도록 합니다.
+vi.mock('@/lib/pwa-virtual', () => ({
+  loadRegisterSW: async () => () => async () => {},
+}))
+
 import {
   __resetPwaStateForTests,
   __triggerNeedRefreshForTests,

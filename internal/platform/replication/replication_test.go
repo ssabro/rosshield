@@ -363,7 +363,7 @@ func TestStandbyMiddlewarePassThroughWhenDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
@@ -393,7 +393,7 @@ func TestStandbyMiddlewareBlocksWriteWhenStandby(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status = %d, want 409", resp.StatusCode)
 	}
@@ -437,7 +437,7 @@ func TestStandbyMiddlewareAllowsReadWhenStandby(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Do %s: %v", method, err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("%s status = %d, want 200", method, resp.StatusCode)
 		}
@@ -473,7 +473,7 @@ func TestStandbyMiddlewareAllowsExemptPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Do %s: %v", path, err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("%s status = %d, want 200 (exempt)", path, resp.StatusCode)
 		}
@@ -502,7 +502,7 @@ func TestStandbyMiddlewareAllowsAllWhenPrimary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200 (primary pass)", resp.StatusCode)
 	}

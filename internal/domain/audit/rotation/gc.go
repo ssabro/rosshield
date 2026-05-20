@@ -316,4 +316,3 @@ func buildGCPayload(result *HotGCResult, cutoff time.Time) ([]byte, error) {
 	}
 	return json.Marshal(p)
 }
-

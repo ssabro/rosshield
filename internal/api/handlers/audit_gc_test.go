@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
-	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/audit/rotation"
+	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/clock"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	"github.com/ssabro/rosshield/internal/platform/storage/sqlite"

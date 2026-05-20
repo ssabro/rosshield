@@ -77,23 +77,13 @@ export function registerServiceWorker(): void {
   registered = true
 
   // virtual 모듈은 build 시에만 존재 — dev 또는 vitest에선 import 실패 가능.
-  // 동적 import로 감싸 silent fallback. import-analysis 우회를 위해 변수에
-  // 담아 호출(vitest의 vite-import-analysis가 정적 string을 검사하지 않도록).
+  // 동적 import로 감싸 silent fallback. virtual import 호출은 별 파일
+  // (`pwa-virtual.ts`)로 격리하여 vitest가 vi.mock으로 가로챌 수 있도록 합니다.
   void (async () => {
     try {
-      // vite-plugin-pwa가 build 시 transform — @vite-ignore 제거(이 주석이
-      // 있으면 vite가 module path 분석을 skip해서 PWA plugin이 transform을
-      // 수행하지 못함. production build에서 virtual:pwa-register가 실 module
-      // 로 resolve되지 않아 dynamic import가 CORS error로 fail).
-      const mod = (await import('virtual:pwa-register')) as {
-        registerSW: (options?: {
-          immediate?: boolean
-          onNeedRefresh?: () => void
-          onOfflineReady?: () => void
-          onRegisterError?: (error: unknown) => void
-        }) => (reloadPage?: boolean) => Promise<void>
-      }
-      const updateSW = mod.registerSW({
+      const { loadRegisterSW } = await import('./pwa-virtual')
+      const registerSW = await loadRegisterSW()
+      const updateSW = registerSW({
         immediate: true,
         // Stage 3 결선 — 새 SW가 install되어 activate 대기 중.
         onNeedRefresh: () => {
@@ -103,7 +93,7 @@ export function registerServiceWorker(): void {
         onOfflineReady: () => {
           update({ offlineReady: true })
         },
-        onRegisterError: (err) => {
+        onRegisterError: (err: unknown) => {
           // eslint-disable-next-line no-console
           console.warn('[pwa] service worker register error:', err)
         },
