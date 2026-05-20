@@ -94,5 +94,78 @@ export default defineConfig({
     outDir: '../internal/web/dist',
     emptyOutDir: true,
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        // v0.6.8 한계 해소 — 단일 main chunk(835KB / gzip 245KB) 분할.
+        // 첫 페이지 cold start latency 단축 + browser parallel fetch 활용 +
+        // 차후 vendor 업데이트 시 cache invalidation 범위 최소화.
+        //
+        // 분할 정책:
+        //   1) node_modules 만 vendor chunk로 보냄 — 도메인 코드는 main + lazy
+        //      route chunk(TanStack autoCodeSplitting)로 자연 분할되도록 유지.
+        //   2) 'virtual:pwa-register' 등 가상 모듈은 id 매칭에서 제외 — vitest
+        //      mock과 SW 등록 경로를 깨뜨리지 않게 node_modules path filter.
+        //   3) 각 그룹은 200~300KB 미만 목표. 초과 시 추가 세분화.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+          // React 코어 — 가장 안정적이고 모든 page에서 참조되므로 별도 chunk로
+          // 장기 캐시 효과 극대화.
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/scheduler/')
+          ) {
+            return 'react-vendor'
+          }
+          // TanStack Router 계열 — autoCodeSplitting과 별도로 router runtime은
+          // 모든 라우트 진입에 필요.
+          if (
+            id.includes('node_modules/@tanstack/react-router') ||
+            id.includes('node_modules/@tanstack/router-')
+          ) {
+            return 'router-vendor'
+          }
+          // TanStack Query + persist client — 데이터 fetch 레이어. persist는 옵션
+          // C 트랙이지만 devDeps로 이미 로드돼 main에 포함되므로 함께 묶음.
+          if (id.includes('node_modules/@tanstack/')) {
+            return 'query-vendor'
+          }
+          // Radix UI primitive 17종 — 합계 가장 큰 그룹이지만 모두 헤드리스
+          // primitive라 함께 묶어도 트리쉐이킹 영향이 적음.
+          if (id.includes('node_modules/@radix-ui/')) {
+            return 'radix-vendor'
+          }
+          // 폼 스택 — react-hook-form + zod + resolvers. 폼 페이지에서만 무거움.
+          if (
+            id.includes('node_modules/react-hook-form') ||
+            id.includes('node_modules/@hookform/') ||
+            id.includes('node_modules/zod')
+          ) {
+            return 'form-vendor'
+          }
+          // UI 보조 라이브러리 — 토스트·아이콘·variant 유틸. lucide-react가 크기
+          // 큰 편이라 별도 분리.
+          if (
+            id.includes('node_modules/cmdk') ||
+            id.includes('node_modules/sonner') ||
+            id.includes('node_modules/lucide-react') ||
+            id.includes('node_modules/class-variance-authority') ||
+            id.includes('node_modules/clsx') ||
+            id.includes('node_modules/tailwind-merge')
+          ) {
+            return 'ui-vendor'
+          }
+          // 전역 상태 — zustand는 작지만 의미 단위 분리.
+          if (id.includes('node_modules/zustand')) {
+            return 'state-vendor'
+          }
+          // 나머지 node_modules (openapi-fetch, workbox-window, pretendard 등)는
+          // 기본 vendor chunk로 묶어 main 오염 방지.
+          return 'vendor'
+        },
+      },
+    },
   },
 })
