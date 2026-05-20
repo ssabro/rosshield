@@ -7,7 +7,24 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Multi-region HA 본체 / Audit rotation Stage 4~6 (hot GC + cosign + S3 SDK + cron) / Stage 5b carryover (color-contrast 실 실행 + 잔여 페이지) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Audit rotation Stage 4 hot GC 재진행 (carryover #522) + Stage 6 cron + cosign 실서명 + S3 SDK / Multi-region HA Stage 3~7 (PG publication 자동 setup · DNS hook · 자동 failover · cross-region witness · pilot) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.6] — 2026-05-20 (patch)
+
+> **요약**: Multi-region HA Stage 1~2 (replication scaffold + standby middleware + manual failover) + Audit rotation Stage 5 (verify CLI + prev_segment_hash chain). 회귀 0. 상세는 [docs/releases/v0.6.6.md](docs/releases/v0.6.6.md).
+>
+> **기준 commit**: `eae9f47` (main)
+
+### Added
+- `feat(replication)` Multi-region HA Stage 1~2 (`eae9f47`) — 마이그레이션 0033 (replication_replicas + replication_failovers) + `internal/platform/replication/` 5 파일 (policy + repository + middleware + sqliterepo + test) + handler 4 endpoint (replicas · heartbeat · failover · head-sha) + `audit.replication.failover` entry emit + standby read-only middleware + bootstrap config + env 4
+- `feat(audit)` rotation Stage 5 verify CLI + prev_segment_hash chain (`6c7ab60`) — 마이그레이션 0035 (prev_segment_hash column) + builder/archiver/rotation chain 처리 + `rosshield-audit-verify rotation`/`chain` 서브커맨드 + UnmarshalEntryLine + onboarding doc + 15 신규 test
+
+### Notes
+- sub-agent 3 dispatch (Multi-region HA + Stage 4 hot GC + Stage 5 verify CLI) — Stage 4 stalled (handler 작성 중) → carryover #522로 분리
+- audit chain 무결성 보존 — failover/rotation 모두 audit chain 정상 entry
+- cherry-pick conflict resolve (migrations_test + migrate_test 0033 + 0035 통합)
 
 ---
 
