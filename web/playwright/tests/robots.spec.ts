@@ -30,8 +30,9 @@ test('toggle create form reveals fleet/name/host inputs', async ({ page }) => {
   await page.getByRole('button', { name: '로봇 등록' }).click()
 
   await expect(page.getByRole('heading', { name: '새 로봇 등록' })).toBeVisible()
-  // Dialog 안 폼 라벨 — Fleet ID(form)와 Fleet ID 필터(filter) 분리 exact 매칭.
-  await expect(page.getByLabel('Fleet ID', { exact: true })).toBeVisible()
+  // Dialog 안 폼 라벨 — dict ko: 'robots.form.fleet'='플릿 ID', filter는 '플릿 ID 필터'.
+  // exact 매칭으로 form 쪽만 잡는다.
+  await expect(page.getByLabel('플릿 ID', { exact: true })).toBeVisible()
   await expect(page.getByLabel('이름')).toBeVisible()
   await expect(page.getByLabel('호스트')).toBeVisible()
   // '폼 닫기' 버튼은 Dialog 마이그레이션 후 삭제 — ESC/X 아이콘이 dialog close.
