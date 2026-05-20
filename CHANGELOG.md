@@ -7,7 +7,26 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — MR.T4 application restart integration (rosshield-server systemd/k8s restart 후 leader-election 자동 검증) / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc §6에 기본 cover) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / Phase 9.6 Stage 5b runbook 자동 cutover 시나리오 갱신 / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.8.0] — 2026-05-20 (minor)
+
+> **요약**: Phase 9 Patroni 자동 failover 통합 minor release — `--ha-rp=patroni`로 RoleProvider를 PG advisory lock(E25) 대신 Patroni REST polling으로 swap. Patroni 자동 promote(RTO ~30초) + audit/lagmetric/cronsched 3 layer 단일 source of truth. air-gap customer는 `--ha-rp=e25` default로 기존 동작 그대로. 회귀 0, Breaking 0. 상세는 [docs/releases/v0.8.0.md](docs/releases/v0.8.0.md).
+>
+> **기준 commit**: `aa512d4` (main)
+
+### Added
+- `design(phase9)` 자동 failover research (`8c3a5d9`) — `auto-failover-research.md` (9 섹션, 390줄) + 4 옵션 비교 (Patroni/Stolon/PG built-in/E25 확장) + D-AF-1~4 권장 default + Stage 9.2~9.7 분해.
+- `docs(phase9)` Patroni 운영 가이드 + Kubernetes manifest (`c30a9e1`) — `patroni-deployment.md` (280줄, 7 섹션) + `deploy/k8s/patroni/` (values-example.yaml + rosshield-deployment.yaml + README). Bitnami Helm chart + Pod anti-affinity + region-local nodeAffinity + watchdog STONITH 옵션.
+- `feat(ha)` Phase 9.3 patroni.RoleProvider 구현 (`9975c3b`) — `internal/platform/ha/patroni/` 신규 패키지 (RoleProvider struct + atomic.Bool/Int64 race-safe + ticker goroutine + `GET /cluster` JSON parse + resolveLeader fallback + 12 단위 test). audit + lagmetric + cronsched 3 interface duck-typed 자동 만족.
+- `feat(ha)` Phase 9.4 bootstrap `--ha-rp` flag 결선 (`aa512d4`) — Config 5 필드 + CLI flag 5 + env 5 + bootstrap switch 분기 (patroni vs e25 default vs unknown fail-fast). 단일 source of truth — audit/lagmetric/cronsched 3 layer 모두 동일 RoleProvider 주입.
+
+### Notes
+- **Phase 9 application 측 결선 완료** — customer가 v0.8.0 binary로 즉시 `--ha-rp=patroni` 전환 가능.
+- 기존 customer (air-gap·single PG): 영향 0 — default `--ha-rp=e25`로 E25 PG advisory lock 동작 유지.
+- 잔여: 9.5 testcontainers e2e (큰 작업) / 9.6 runbook 갱신 (작은 작업) / 9.7 customer staging drill (외부).
 
 ---
 
