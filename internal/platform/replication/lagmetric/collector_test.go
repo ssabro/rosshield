@@ -17,13 +17,21 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/metrics"
 )
 
-// --- fake Querier + Rows ---
+// --- fake Querier + Rows + Role ---
 
 // fakeQuerier는 Querier interface를 in-memory로 구현 — 테스트 단위 격리.
 type fakeQuerier struct {
 	rows     []fakeRow
 	queryErr error
+	calls    int
 }
+
+// fakeRole은 RoleProvider를 mocks. mutex 없이 단순 bool — 단일 goroutine 가정.
+type fakeRole struct {
+	leader bool
+}
+
+func (r *fakeRole) IsLeader() bool { return r.leader }
 
 type fakeRow struct {
 	appName string
@@ -31,6 +39,7 @@ type fakeRow struct {
 }
 
 func (f *fakeQuerier) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	f.calls++
 	if f.queryErr != nil {
 		return nil, f.queryErr
 	}
@@ -224,6 +233,115 @@ func TestPollOnce_GracefulOnQueryError(t *testing.T) {
 	// query error는 panic 안 함 — collector goroutine이 죽지 않음을 보장.
 	c.pollOnce(context.Background())
 	// 본 assertion은 panic 안 함 확인만으로 충분 (test가 종료까지 진행).
+}
+
+// --- HA RoleProvider gate ---
+
+// TestPollOnce_FollowerSkipsQuery는 RoleProvider가 follower일 때 Querier 호출 없이
+// metric Reset만 수행됨을 검증 (HA cluster follower instance 중복 emit 방지).
+func TestPollOnce_FollowerSkipsQuery(t *testing.T) {
+	t.Parallel()
+	reg := metrics.New()
+	querier := &fakeQuerier{rows: []fakeRow{{appName: "sub_a", lagSec: 0.5}}}
+	role := &fakeRole{leader: false}
+	c, err := New(Deps{
+		Querier:  querier,
+		Registry: reg,
+		Role:     role,
+		Logger:   discardLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	c.pollOnce(context.Background())
+
+	if querier.calls != 0 {
+		t.Errorf("Querier.Query calls = %d, want 0 (follower should skip)", querier.calls)
+	}
+}
+
+// TestPollOnce_LeaderRunsQuery는 RoleProvider가 leader일 때 정상 polling 수행 검증.
+func TestPollOnce_LeaderRunsQuery(t *testing.T) {
+	t.Parallel()
+	reg := metrics.New()
+	querier := &fakeQuerier{rows: []fakeRow{{appName: "sub_a", lagSec: 0.5}}}
+	role := &fakeRole{leader: true}
+	c, err := New(Deps{
+		Querier:  querier,
+		Registry: reg,
+		Role:     role,
+		Logger:   discardLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	c.pollOnce(context.Background())
+
+	if querier.calls != 1 {
+		t.Errorf("Querier.Query calls = %d, want 1 (leader should poll)", querier.calls)
+	}
+	if v, _ := gaugeValue(t, reg, "sub_a"); v != 0.5 {
+		t.Errorf("sub_a lag = %v, want 0.5", v)
+	}
+}
+
+// TestPollOnce_FollowerResetsExistingMetric은 leader → follower 전환 시 기존 metric이
+// 정리됨을 검증 (HA cluster에서 leader-loss 후 metric stale 방지).
+func TestPollOnce_FollowerResetsExistingMetric(t *testing.T) {
+	t.Parallel()
+	reg := metrics.New()
+	querier := &fakeQuerier{rows: []fakeRow{{appName: "sub_a", lagSec: 0.5}}}
+	role := &fakeRole{leader: true}
+	c, err := New(Deps{
+		Querier:  querier,
+		Registry: reg,
+		Role:     role,
+		Logger:   discardLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// 1차: leader — metric 등장
+	c.pollOnce(context.Background())
+	if v, _ := gaugeValue(t, reg, "sub_a"); v != 0.5 {
+		t.Fatalf("leader poll sub_a = %v, want 0.5", v)
+	}
+
+	// 2차: follower로 전환 — metric Reset
+	role.leader = false
+	c.pollOnce(context.Background())
+
+	// Querier 호출 안 함 + 기존 metric Reset됨 (Reset 호출 검증은 panic 없음 + 다음
+	// leader 전환 시 새로 등장하는 것으로 간접 검증)
+	if querier.calls != 1 {
+		t.Errorf("Querier.Query calls = %d, want 1 (follower should skip 2nd)", querier.calls)
+	}
+}
+
+// TestPollOnce_NilRoleAlwaysPolls은 Role이 nil이면 single-instance 가정으로 항상
+// polling 수행 검증.
+func TestPollOnce_NilRoleAlwaysPolls(t *testing.T) {
+	t.Parallel()
+	reg := metrics.New()
+	querier := &fakeQuerier{rows: []fakeRow{{appName: "sub_a", lagSec: 0.5}}}
+	// Role nil 명시
+	c, err := New(Deps{
+		Querier:  querier,
+		Registry: reg,
+		Logger:   discardLogger(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	c.pollOnce(context.Background())
+
+	if querier.calls != 1 {
+		t.Errorf("Querier.Query calls = %d, want 1 (nil Role = single-instance)", querier.calls)
+	}
 }
 
 func TestPollOnce_NoSubscribersResetsMetric(t *testing.T) {

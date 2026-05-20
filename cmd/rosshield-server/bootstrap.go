@@ -1454,22 +1454,26 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	// 조건: ReplicationLagMetricEnabled=true + ReplicationConfig.Enabled=true +
 	// Role=primary + PG storage. 그 외는 silent skip. HA gate는 collector 단계 미적용 —
 	// 단일 primary 전체에서 emit (HA leader-only 결선은 후속 carryover).
+	var lagCollector *lagmetric.Collector
 	if cfg.ReplicationLagMetricEnabled &&
 		cfg.ReplicationConfig.Enabled &&
 		cfg.ReplicationConfig.Role == replication.RolePrimary {
 		if pg, ok := store.(*postgres.Postgres); ok {
-			lagCollector, err := lagmetric.New(lagmetric.Deps{
+			lc, err := lagmetric.New(lagmetric.Deps{
 				Querier:  pg.Pool(),
 				Registry: metricsReg,
 				Interval: cfg.ReplicationLagMetricInterval,
 				Logger:   logger,
+				// Role은 platform 생성 후 HA Manager 결선 시점에 SetRoleProvider로 lazy 주입.
+				// nil 상태에서는 single-instance 가정 (모든 polling 수행).
 			})
 			if err != nil {
 				_ = sch.Close(ctx)
 				_ = store.Close()
 				return nil, fmt.Errorf("bootstrap: lagmetric.New: %w", err)
 			}
-			lagCollector.Start(ctx)
+			lc.Start(ctx)
+			lagCollector = lc
 			logger.Info("replication lag metric collector started",
 				"interval", cfg.ReplicationLagMetricInterval)
 		} else {
@@ -1633,6 +1637,12 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		auditSvc.SetRoleProvider(haMgr)
 		// E25 Stage 4a — scheduler tick leader-gate. follower는 cron tick silent skip.
 		sch.SetRoleProvider(haMgr)
+		// Phase 8 MR.T8 후속 — lagmetric collector HA leader-only gate (v0.7.x carryover).
+		// HA cluster에서 follower instance의 metric 중복 emit 방지. lagCollector가 nil이면
+		// (replication lag metric 비활성 또는 storage non-PG) 호출 skip.
+		if lagCollector != nil {
+			lagCollector.SetRoleProvider(haMgr)
+		}
 		// E25 Stage 4 잔여 — HA metric bridge (Grafana dashboard placeholder 활성).
 		// promote/demote callback에서 rosshield_ha_role/leader_epoch/failover_total 갱신.
 		haMgr.OnLeaderAcquired(func() {
