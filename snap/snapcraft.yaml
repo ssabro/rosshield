@@ -39,10 +39,11 @@ architectures:
 
 apps:
   server:
-    # --addr default 명시: server 자체 default는 127.0.0.1:0(random port)이라
-    # snap daemon이 8080에서 listen 안 함. snap에서는 운영자 가이드와 일관되게
-    # 127.0.0.1:8080 고정. configure hook에서 addr 옵션 wire는 후속 stage.
-    command: bin/rosshield-server --addr=127.0.0.1:8080
+    # snap apps.server.command는 alphanumeric + space + `/ . _ # : $ -`만 허용 — `=`
+    # 거부라 `--addr=...` 직접 명시 불가. server는 ROSSHIELD_ADDR env로 default 재정의
+    # (main.go 참조). snap에서는 운영자 가이드와 일관되게 127.0.0.1:8080 고정.
+    # configure hook에서 addr 옵션 wire(snap set)는 후속 stage.
+    command: bin/rosshield-server
     daemon: simple
     restart-condition: on-failure
     install-mode: enable
@@ -52,6 +53,7 @@ apps:
       - home            # --data-dir 사용자 home 옵션
     environment:
       ROSSHIELD_DATA_DIR: $SNAP_COMMON/data
+      ROSSHIELD_ADDR: 127.0.0.1:8080
       # ROSSHIELD_DATABASE_URL은 운영자가 snap set으로 설정
       # ROSSHIELD_LICENSE_TOKEN도 동일
 

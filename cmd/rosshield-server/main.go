@@ -264,7 +264,14 @@ func main() {
 		os.Exit(restoreSubcommand(os.Args[2:]))
 	}
 
-	addr := flag.String("addr", "127.0.0.1:0", "bind address")
+	// ROSSHIELD_ADDR env로 default 재정의 가능 — snap apps.server.environment에서
+	// 주입(snapcraft App commands가 `=` 거부로 flag 직접 지정 불가). 운영자 가이드와
+	// 일관성 회복 + Kubernetes ConfigMap 패턴 동시 cover.
+	defaultAddr := "127.0.0.1:0"
+	if envAddr := strings.TrimSpace(os.Getenv("ROSSHIELD_ADDR")); envAddr != "" {
+		defaultAddr = envAddr
+	}
+	addr := flag.String("addr", defaultAddr, "bind address (also ROSSHIELD_ADDR env)")
 	metricsAddr := flag.String("metrics-addr", "", "Prometheus /metrics bind address (e.g. 127.0.0.1:9090). Empty = disabled (E27 — opt-in).")
 	dataDir := flag.String("data-dir", defaultDataDir(), "data directory (SQLite DB, keys, etc.)")
 	storageDriver := flag.String("storage", "sqlite", "storage driver: sqlite (default) | postgres")
