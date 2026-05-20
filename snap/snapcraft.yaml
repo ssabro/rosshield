@@ -39,7 +39,10 @@ architectures:
 
 apps:
   server:
-    command: bin/rosshield-server
+    # --addr default 명시: server 자체 default는 127.0.0.1:0(random port)이라
+    # snap daemon이 8080에서 listen 안 함. snap에서는 운영자 가이드와 일관되게
+    # 127.0.0.1:8080 고정. configure hook에서 addr 옵션 wire는 후속 stage.
+    command: bin/rosshield-server --addr=127.0.0.1:8080
     daemon: simple
     restart-condition: on-failure
     install-mode: enable

@@ -70,19 +70,25 @@ jobs:
       - name: snap services
         run: |
           sudo snap services rosshield
-          sudo snap logs rosshield --no-color | tail -n 30
+          sudo snap logs rosshield | tail -n 30
 
       - name: Wait for /healthz
         run: |
-          for i in $(seq 1 30); do
+          # 60s timeout — sqlite migration + pack archive load + license check 등
+          # 초기 startup 합산. 매 20s마다 snap log 출력으로 진행 상태 가시화.
+          for i in $(seq 1 60); do
             if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then
               echo "✓ /healthz responded after ${i}s"
               exit 0
             fi
+            if [ $((i % 20)) -eq 0 ]; then
+              echo "--- snap logs (waiting ${i}s) ---"
+              sudo snap logs rosshield | tail -n 20
+            fi
             sleep 1
           done
-          echo "::error::/healthz did not respond within 30s"
-          sudo snap logs rosshield --no-color | tail -n 100
+          echo "::error::/healthz did not respond within 60s"
+          sudo snap logs rosshield | tail -n 100
           exit 1
 
       - name: /healthz body
