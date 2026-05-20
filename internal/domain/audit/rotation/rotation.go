@@ -53,13 +53,18 @@ type Rotator struct {
 	clock    clock.Clock
 	backend  Backend
 	appender AuditAppender
+	signer   Signer // 옵션 — nil 또는 Enabled()=false이면 서명 skip (D-AR-4 cosign keyless).
 }
 
 // Deps는 Rotator 의존성입니다.
+//
+// Signer는 옵션 (nil 허용) — D-AR-4 cosign keyless 활성 시에만 주입.
+// 비활성(nil 또는 Enabled=false) 시 audit_rotation_segments.cosign_bundle은 NULL.
 type Deps struct {
 	Clock    clock.Clock
 	Backend  Backend
 	Appender AuditAppender
+	Signer   Signer
 }
 
 // New는 Rotator를 만듭니다.
@@ -77,6 +82,7 @@ func New(deps Deps) (*Rotator, error) {
 		clock:    deps.Clock,
 		backend:  deps.Backend,
 		appender: deps.Appender,
+		signer:   deps.Signer, // nil 허용
 	}, nil
 }
 
@@ -130,6 +136,14 @@ func (r *Rotator) Rotate(ctx context.Context, tx storage.Tx, tenantID storage.Te
 		return nil, err
 	}
 
+	// D-AR-4 cosign keyless 서명 (옵션). Signer nil 또는 Enabled=false이면 skip → bundle=nil.
+	// 활성인데 실패 시 Tx rollback — archive는 backend에 잔존하지만 segment row 미생성 →
+	// 다음 rotation 시도에서 같은 (tenant, segmentNumber)로 재시도 가능.
+	cosignBundle, err := r.signArchive(ctx, uri)
+	if err != nil {
+		return nil, err
+	}
+
 	rec := SegmentRecord{
 		TenantID:        tenantID,
 		SegmentNumber:   segmentNumber,
@@ -142,6 +156,7 @@ func (r *Rotator) Rotate(ctx context.Context, tx storage.Tx, tenantID storage.Te
 		PrevSegmentHash: prevSegmentHash,
 		ArchiveURI:      uri,
 		ArchiveSHA256:   sum,
+		CosignBundle:    cosignBundle,
 		CreatedAt:       now,
 	}
 
@@ -244,6 +259,29 @@ SELECT id, started_at, ended_at, first_entry_id, last_entry_id, entry_count,
 		copy(rec.PrevSegmentHash, prevSegHash)
 	}
 	return rec, nil
+}
+
+// signArchive는 cosign keyless로 archive bytes를 서명합니다 (D-AR-4, 옵션).
+//
+// signer가 nil 또는 Enabled=false면 (nil, nil) 리턴 — 서명 skip.
+//
+// 활성 signer는 backend.Get(uri)로 방금 Put한 archive를 다시 fetch → signer.Sign(ctx, body) →
+// bundle 리턴. 본 round 제약(archiver.go 미수정)으로 in-memory bytes 직접 전달 대신 backend
+// round-trip 사용. 비용은 cosign 활성 customer에만 (보통 월 1회 rotation으로 무시 가능) +
+// 별 epic에서 Archive 시그니처에 bytes 리턴 추가하여 본 fetch 제거 가능.
+func (r *Rotator) signArchive(ctx context.Context, uri string) ([]byte, error) {
+	if r.signer == nil || !r.signer.Enabled() {
+		return nil, nil
+	}
+	body, err := r.backend.Get(ctx, uri)
+	if err != nil {
+		return nil, fmt.Errorf("rotation: signArchive: backend get %q: %w", uri, err)
+	}
+	bundle, err := r.signer.Sign(ctx, body)
+	if err != nil {
+		return nil, fmt.Errorf("rotation: signArchive: sign: %w", err)
+	}
+	return bundle, nil
 }
 
 // emitRotateComplete은 audit chain에 ActionRotateComplete entry를 link합니다 (D-AR-10).

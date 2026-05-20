@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/handlers"
+	"github.com/ssabro/rosshield/internal/domain/audit/rotation"
 	"github.com/ssabro/rosshield/internal/platform/replication"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	webembed "github.com/ssabro/rosshield/internal/web"
@@ -295,6 +296,11 @@ func main() {
 	backupDir := flag.String("backup-dir", "", "Auto backup output directory (B7 후속). Empty = <data-dir>/backups.")
 	backupSkipEvidence := flag.Bool("backup-skip-evidence", false, "Auto backup excludes evidence/ (faster, smaller, metadata-only).")
 	auditRotationSchedule := flag.String("audit-rotation-schedule", "", "Audit chain rotation cron spec (E32 Stage 6). Empty = disabled (manual API only). Examples: '@every 720h' (monthly), '0 0 1 * *' (1st day of each month). HA: leader-only.")
+	cosignEnabled := flag.Bool("cosign-enabled", false, "Enable cosign keyless signing of audit rotation archives (D-AR-4). Requires cosign binary on PATH or via --cosign-binary. Default: disabled (airgap-friendly).")
+	cosignBinary := flag.String("cosign-binary", "", "Path to cosign binary (D-AR-4). Empty = 'cosign' from PATH.")
+	cosignIdentity := flag.String("cosign-identity", "", "OIDC identity expected for cosign keyless signing (e.g. ci@example.com). Used by verify CLI as --certificate-identity; recorded in operator logs.")
+	cosignFulcioURL := flag.String("cosign-fulcio-url", "", "Fulcio CA URL for cosign keyless. Empty = Sigstore public Fulcio.")
+	cosignRekorURL := flag.String("cosign-rekor-url", "", "Rekor transparency log URL for cosign keyless. Empty = Sigstore public Rekor.")
 	checkTimeoutDefaultSec := flag.Int("check-timeout-default-sec", 0, "Default SSH exec timeout for checks with TimeoutSec=0. 0 uses scan.DefaultCheckTimeoutSec (10s). Per-check TimeoutSec always wins.")
 	flag.Parse()
 
@@ -366,6 +372,10 @@ func main() {
 		smtpPw = os.Getenv("ROSSHIELD_SMTP_PASSWORD")
 	}
 
+	// D-AR-4 cosign keyless env fallback.
+	// 우선순위: flag → ROSSHIELD_COSIGN_*. flag default(false / "") 일 때만 env 적용.
+	cosignCfg := resolveCosignConfig(*cosignEnabled, *cosignBinary, *cosignIdentity, *cosignFulcioURL, *cosignRekorURL)
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -420,6 +430,11 @@ func main() {
 		BackupDir:              *backupDir,
 		BackupSkipEvidence:     *backupSkipEvidence,
 		AuditRotationSchedule:  resolveAuditRotationSchedule(*auditRotationSchedule),
+		CosignEnabled:          cosignCfg.Enabled,
+		CosignBinaryPath:       cosignCfg.BinaryPath,
+		CosignIdentity:         cosignCfg.Identity,
+		CosignFulcioURL:        cosignCfg.FulcioURL,
+		CosignRekorURL:         cosignCfg.RekorURL,
 		CheckTimeoutDefaultSec: *checkTimeoutDefaultSec,
 	})
 	if err != nil {
@@ -497,4 +512,37 @@ func resolveAuditRotationSchedule(flagVal string) string {
 		return flagVal
 	}
 	return os.Getenv("ROSSHIELD_AUDIT_ROTATION_SCHEDULE")
+}
+
+// resolveCosignConfig는 flag 값 5건을 ROSSHIELD_COSIGN_* env로 fallback합니다 (D-AR-4).
+//
+// 우선순위: flag → env. flag default(false / "")일 때만 env 적용. env "ENABLED" parse 실패 시
+// false fallback (rotation.LoadSignerConfigFromEnv와 동일 정책 — strconv.ParseBool 실패는 disable).
+//
+// 반환은 rotation.SignerConfig — Bootstrap Config로 그대로 매핑 가능.
+func resolveCosignConfig(flagEnabled bool, flagBinary, flagIdentity, flagFulcio, flagRekor string) rotation.SignerConfig {
+	envCfg := rotation.LoadSignerConfigFromEnv()
+	out := rotation.SignerConfig{
+		Enabled:    flagEnabled,
+		BinaryPath: flagBinary,
+		Identity:   flagIdentity,
+		FulcioURL:  flagFulcio,
+		RekorURL:   flagRekor,
+	}
+	if !out.Enabled {
+		out.Enabled = envCfg.Enabled
+	}
+	if out.BinaryPath == "" {
+		out.BinaryPath = envCfg.BinaryPath
+	}
+	if out.Identity == "" {
+		out.Identity = envCfg.Identity
+	}
+	if out.FulcioURL == "" {
+		out.FulcioURL = envCfg.FulcioURL
+	}
+	if out.RekorURL == "" {
+		out.RekorURL = envCfg.RekorURL
+	}
+	return out
 }

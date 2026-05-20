@@ -225,6 +225,22 @@ type Config struct {
 	// tenant는 silent skip. HA 활성 시 leader 단일 인스턴스만 수행 (cronsched RoleProvider gate).
 	AuditRotationSchedule string
 
+	// D-AR-4 cosign keyless 서명 옵션 (Audit rotation).
+	//
+	// CosignEnabled=true일 때 매 rotation 후 archive를 cosign sign-blob으로 서명 →
+	// bundle을 audit_rotation_segments.cosign_bundle 컬럼에 저장. 활성 시 cosign binary가
+	// PATH에 또는 CosignBinaryPath에 존재해야 함 (옵션 A 외부 CLI 채택).
+	//
+	// 에어갭 customer는 CosignEnabled=false (default) — bundle은 NULL, segment_hash·
+	// archive_sha256만으로 결정론적 검증 유지. cosign verify는 verify CLI에서 별도 수행.
+	//
+	// env 매핑: ROSSHIELD_COSIGN_ENABLED · _BINARY · _IDENTITY · _FULCIO_URL · _REKOR_URL.
+	CosignEnabled    bool
+	CosignBinaryPath string // 빈 값이면 "cosign" PATH lookup.
+	CosignIdentity   string // OIDC sub claim 기대치 (운영 doc · verify 측에서 사용).
+	CosignFulcioURL  string // 빈 값이면 Sigstore public Fulcio.
+	CosignRekorURL   string // 빈 값이면 Sigstore public Rekor.
+
 	// CheckTimeoutDefaultSec는 scanrun.Orchestrator가 CheckDef.TimeoutSec=0인 항목에
 	// 적용할 default SSH exec timeout. 0이면 scan.DefaultCheckTimeoutSec(10초). per-check
 	// TimeoutSec은 항상 우선 — 본 값은 fallback default만 조정.
@@ -1247,10 +1263,28 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 			_ = store.Close()
 			return nil, fmt.Errorf("bootstrap: rotation backend: %w", err)
 		}
+		// D-AR-4 — cosign keyless signer (옵션). CosignEnabled=false면 nil로 두면 Rotator가
+		// 서명 skip + cosign_bundle 컬럼 NULL.
+		var rotSigner rotation.Signer
+		if cfg.CosignEnabled {
+			rotSigner = rotation.NewCosignSigner(rotation.SignerConfig{
+				Enabled:    true,
+				BinaryPath: cfg.CosignBinaryPath,
+				Identity:   cfg.CosignIdentity,
+				FulcioURL:  cfg.CosignFulcioURL,
+				RekorURL:   cfg.CosignRekorURL,
+			})
+			logger.Info("audit rotation cosign signing enabled",
+				"binaryPath", cfg.CosignBinaryPath,
+				"identity", cfg.CosignIdentity,
+				"fulcio", cfg.CosignFulcioURL,
+				"rekor", cfg.CosignRekorURL)
+		}
 		rotator, err := rotation.New(rotation.Deps{
 			Clock:    clk,
 			Backend:  rotBackend,
 			Appender: auditSvc,
+			Signer:   rotSigner,
 		})
 		if err != nil {
 			_ = sch.Close(ctx)
