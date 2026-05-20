@@ -309,6 +309,25 @@ type Config struct {
 	AuditS3SSE            string
 	AuditS3KMSKeyID       string
 
+	// E32 + D-AR-9 후속 — S3 lifecycle policy 자동 적용 (v0.6.9 carryover 해소).
+	//
+	// AuditS3LifecycleEnabled=true 시 NewS3Backend 시점에 PutBucketLifecycleConfiguration
+	// 자동 호출 (rule ID "rosshield-rotation", Filter.Prefix=cfg.AuditS3Prefix). 적용은
+	// idempotent — 반복 부팅에 안전.
+	//
+	// 표준 audit retention 시나리오 cover:
+	//   - 첫 N일 STANDARD, IADays 후 STANDARD_IA, GlacierDays 후 GLACIER, DeepArchiveDays
+	//     후 DEEP_ARCHIVE, 마지막 ExpireDays 후 자동 삭제 (옵션).
+	//   - 각 *Days=0이면 해당 단계 transition 없음. ExpireDays=0이면 영구 보존.
+	//
+	// MinIO 등 일부 S3 호환 storage는 GLACIER·DEEP_ARCHIVE를 silent ignore — error 0,
+	// rule 자체는 정상 등록 (호환성 우선).
+	AuditS3LifecycleEnabled                   bool
+	AuditS3LifecycleTransitionIADays          int32 // STANDARD → STANDARD_IA 전환 일수
+	AuditS3LifecycleTransitionGlacierDays     int32 // STANDARD → GLACIER 전환 일수
+	AuditS3LifecycleTransitionDeepArchiveDays int32 // STANDARD → DEEP_ARCHIVE 전환 일수
+	AuditS3LifecycleExpireDays                int32 // object 만료 일수 (0=영구)
+
 	// CheckTimeoutDefaultSec는 scanrun.Orchestrator가 CheckDef.TimeoutSec=0인 항목에
 	// 적용할 default SSH exec timeout. 0이면 scan.DefaultCheckTimeoutSec(10초). per-check
 	// TimeoutSec은 항상 우선 — 본 값은 fallback default만 조정.

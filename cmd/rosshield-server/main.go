@@ -319,6 +319,11 @@ func main() {
 	auditS3ForcePathStyle := flag.Bool("audit-s3-force-path-style", false, "Force path-style addressing (required by MinIO and some self-hosted gateways). Env: ROSSHIELD_AUDIT_S3_FORCE_PATH_STYLE=1.")
 	auditS3SSE := flag.String("audit-s3-sse", "", "S3 server-side encryption mode: 'AES256' or 'aws:kms'. Empty = no SSE. Env: ROSSHIELD_AUDIT_S3_SSE.")
 	auditS3KMSKeyID := flag.String("audit-s3-kms-key-id", "", "SSE-KMS CMK ARN/ID (used when --audit-s3-sse=aws:kms). Env: ROSSHIELD_AUDIT_S3_KMS_KEY_ID.")
+	auditS3LifecycleEnabled := flag.Bool("audit-s3-lifecycle-enabled", false, "Apply S3 bucket lifecycle policy on backend init (D-AR-9 후속). Env: ROSSHIELD_AUDIT_S3_LIFECYCLE_ENABLED=1. Rule ID 'rosshield-rotation', Filter.Prefix=--audit-s3-prefix. idempotent.")
+	auditS3LifecycleIADays := flag.Int("audit-s3-lifecycle-transition-ia-days", 0, "STANDARD → STANDARD_IA 전환 일수. 0 = 단계 비활성. Env: ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_IA_DAYS.")
+	auditS3LifecycleGlacierDays := flag.Int("audit-s3-lifecycle-transition-glacier-days", 0, "STANDARD → GLACIER 전환 일수. 0 = 단계 비활성. Env: ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_GLACIER_DAYS. MinIO 등은 silent ignore.")
+	auditS3LifecycleDeepArchiveDays := flag.Int("audit-s3-lifecycle-transition-deep-archive-days", 0, "STANDARD → DEEP_ARCHIVE 전환 일수. 0 = 단계 비활성. Env: ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_DEEP_ARCHIVE_DAYS.")
+	auditS3LifecycleExpireDays := flag.Int("audit-s3-lifecycle-expire-days", 0, "Object 만료 일수 (S3 lifecycle Expiration). 0 = 영구 보존. Env: ROSSHIELD_AUDIT_S3_LIFECYCLE_EXPIRE_DAYS.")
 	checkTimeoutDefaultSec := flag.Int("check-timeout-default-sec", 0, "Default SSH exec timeout for checks with TimeoutSec=0. 0 uses scan.DefaultCheckTimeoutSec (10s). Per-check TimeoutSec always wins.")
 	flag.Parse()
 
@@ -448,62 +453,67 @@ func main() {
 	}
 
 	platform, err := Bootstrap(bootCtx, Config{
-		DataDir:                              *dataDir,
-		Logger:                               logger,
-		StorageDriver:                        *storageDriver,
-		StorageDSN:                           dsn,
-		LLMProvider:                          llmProviderVal,
-		LLMModel:                             llmModelVal,
-		LLMBaseURL:                           llmBaseURLVal,
-		LLMAPIKey:                            apiKey,
-		LLMTimeout:                           llmTimeoutVal,
-		LLMMaxTokens:                         llmMaxTokensVal,
-		LLMKeepAlive:                         llmKeepAliveVal,
-		LLMAutoPull:                          llmAutoPullVal,
-		LicenseToken:                         licTok,
-		LicensePublicKeyHex:                  licPub,
-		WebhookTickInterval:                  *webhookTick,
-		EmailProvider:                        *emailProvider,
-		SMTPHost:                             *smtpHost,
-		SMTPPort:                             *smtpPort,
-		SMTPUsername:                         *smtpUser,
-		SMTPPassword:                         smtpPw,
-		SMTPFrom:                             *smtpFrom,
-		PublicBaseURL:                        *publicBaseURL,
-		HAEnabled:                            *haEnabled,
-		HALockID:                             *haLockID,
-		HAHeartbeatInterval:                  *haHeartbeat,
-		HALeaderID:                           *haLeaderID,
-		HAAdvertisedAddr:                     *haAdvertised,
-		ReplicationConfig:                    replicationCfg,
-		ReplicationAutoSetup:                 replAutoSetup,
-		ReplicationPublicationName:           replPubName,
-		ReplicationPublicationAllTables:      replPubAllTables,
-		ReplicationSubscriptionName:          replSubName,
-		ReplicationPrimaryConnString:         replPrimaryConnStr,
-		KeystoreType:                         *keystoreType,
-		BackupSchedule:                       *backupSchedule,
-		BackupDir:                            *backupDir,
-		BackupSkipEvidence:                   *backupSkipEvidence,
-		AuditRotationSchedule:                resolveAuditRotationSchedule(*auditRotationSchedule),
-		ReplicationSlotCleanupSchedule:       resolveEnvFallback(*replicationSlotCleanupSchedule, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_SCHEDULE"),
-		ReplicationSlotCleanupPrefix:         resolveEnvFallback(*replicationSlotCleanupPrefix, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_PREFIX"),
-		ReplicationSlotCleanupMinInactiveAge: *replicationSlotCleanupMinInactiveAge,
-		ReplicationSlotCleanupDryRun:         resolveBoolEnvFallback(*replicationSlotCleanupDryRun, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_DRY_RUN"),
-		CosignEnabled:                        cosignCfg.Enabled,
-		CosignBinaryPath:                     cosignCfg.BinaryPath,
-		CosignIdentity:                       cosignCfg.Identity,
-		CosignFulcioURL:                      cosignCfg.FulcioURL,
-		CosignRekorURL:                       cosignCfg.RekorURL,
-		AuditColdBackend:                     resolveEnvFallback(*auditColdBackend, "ROSSHIELD_AUDIT_COLD_BACKEND"),
-		AuditS3Bucket:                        resolveEnvFallback(*auditS3Bucket, "ROSSHIELD_AUDIT_S3_BUCKET"),
-		AuditS3Region:                        resolveEnvFallback(*auditS3Region, "ROSSHIELD_AUDIT_S3_REGION"),
-		AuditS3Prefix:                        resolveEnvFallback(*auditS3Prefix, "ROSSHIELD_AUDIT_S3_PREFIX"),
-		AuditS3Endpoint:                      resolveEnvFallback(*auditS3Endpoint, "ROSSHIELD_AUDIT_S3_ENDPOINT"),
-		AuditS3ForcePathStyle:                resolveBoolEnvFallback(*auditS3ForcePathStyle, "ROSSHIELD_AUDIT_S3_FORCE_PATH_STYLE"),
-		AuditS3SSE:                           resolveEnvFallback(*auditS3SSE, "ROSSHIELD_AUDIT_S3_SSE"),
-		AuditS3KMSKeyID:                      resolveEnvFallback(*auditS3KMSKeyID, "ROSSHIELD_AUDIT_S3_KMS_KEY_ID"),
-		CheckTimeoutDefaultSec:               *checkTimeoutDefaultSec,
+		DataDir:                               *dataDir,
+		Logger:                                logger,
+		StorageDriver:                         *storageDriver,
+		StorageDSN:                            dsn,
+		LLMProvider:                           llmProviderVal,
+		LLMModel:                              llmModelVal,
+		LLMBaseURL:                            llmBaseURLVal,
+		LLMAPIKey:                             apiKey,
+		LLMTimeout:                            llmTimeoutVal,
+		LLMMaxTokens:                          llmMaxTokensVal,
+		LLMKeepAlive:                          llmKeepAliveVal,
+		LLMAutoPull:                           llmAutoPullVal,
+		LicenseToken:                          licTok,
+		LicensePublicKeyHex:                   licPub,
+		WebhookTickInterval:                   *webhookTick,
+		EmailProvider:                         *emailProvider,
+		SMTPHost:                              *smtpHost,
+		SMTPPort:                              *smtpPort,
+		SMTPUsername:                          *smtpUser,
+		SMTPPassword:                          smtpPw,
+		SMTPFrom:                              *smtpFrom,
+		PublicBaseURL:                         *publicBaseURL,
+		HAEnabled:                             *haEnabled,
+		HALockID:                              *haLockID,
+		HAHeartbeatInterval:                   *haHeartbeat,
+		HALeaderID:                            *haLeaderID,
+		HAAdvertisedAddr:                      *haAdvertised,
+		ReplicationConfig:                     replicationCfg,
+		ReplicationAutoSetup:                  replAutoSetup,
+		ReplicationPublicationName:            replPubName,
+		ReplicationPublicationAllTables:       replPubAllTables,
+		ReplicationSubscriptionName:           replSubName,
+		ReplicationPrimaryConnString:          replPrimaryConnStr,
+		KeystoreType:                          *keystoreType,
+		BackupSchedule:                        *backupSchedule,
+		BackupDir:                             *backupDir,
+		BackupSkipEvidence:                    *backupSkipEvidence,
+		AuditRotationSchedule:                 resolveAuditRotationSchedule(*auditRotationSchedule),
+		ReplicationSlotCleanupSchedule:        resolveEnvFallback(*replicationSlotCleanupSchedule, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_SCHEDULE"),
+		ReplicationSlotCleanupPrefix:          resolveEnvFallback(*replicationSlotCleanupPrefix, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_PREFIX"),
+		ReplicationSlotCleanupMinInactiveAge:  *replicationSlotCleanupMinInactiveAge,
+		ReplicationSlotCleanupDryRun:          resolveBoolEnvFallback(*replicationSlotCleanupDryRun, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_DRY_RUN"),
+		CosignEnabled:                         cosignCfg.Enabled,
+		CosignBinaryPath:                      cosignCfg.BinaryPath,
+		CosignIdentity:                        cosignCfg.Identity,
+		CosignFulcioURL:                       cosignCfg.FulcioURL,
+		CosignRekorURL:                        cosignCfg.RekorURL,
+		AuditColdBackend:                      resolveEnvFallback(*auditColdBackend, "ROSSHIELD_AUDIT_COLD_BACKEND"),
+		AuditS3Bucket:                         resolveEnvFallback(*auditS3Bucket, "ROSSHIELD_AUDIT_S3_BUCKET"),
+		AuditS3Region:                         resolveEnvFallback(*auditS3Region, "ROSSHIELD_AUDIT_S3_REGION"),
+		AuditS3Prefix:                         resolveEnvFallback(*auditS3Prefix, "ROSSHIELD_AUDIT_S3_PREFIX"),
+		AuditS3Endpoint:                       resolveEnvFallback(*auditS3Endpoint, "ROSSHIELD_AUDIT_S3_ENDPOINT"),
+		AuditS3ForcePathStyle:                 resolveBoolEnvFallback(*auditS3ForcePathStyle, "ROSSHIELD_AUDIT_S3_FORCE_PATH_STYLE"),
+		AuditS3SSE:                            resolveEnvFallback(*auditS3SSE, "ROSSHIELD_AUDIT_S3_SSE"),
+		AuditS3KMSKeyID:                       resolveEnvFallback(*auditS3KMSKeyID, "ROSSHIELD_AUDIT_S3_KMS_KEY_ID"),
+		AuditS3LifecycleEnabled:               resolveBoolEnvFallback(*auditS3LifecycleEnabled, "ROSSHIELD_AUDIT_S3_LIFECYCLE_ENABLED"),
+		AuditS3LifecycleTransitionIADays:      int32(resolveIntEnvFallback(*auditS3LifecycleIADays, "ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_IA_DAYS")),
+		AuditS3LifecycleTransitionGlacierDays: int32(resolveIntEnvFallback(*auditS3LifecycleGlacierDays, "ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_GLACIER_DAYS")),
+		AuditS3LifecycleTransitionDeepArchiveDays: int32(resolveIntEnvFallback(*auditS3LifecycleDeepArchiveDays, "ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_DEEP_ARCHIVE_DAYS")),
+		AuditS3LifecycleExpireDays:                int32(resolveIntEnvFallback(*auditS3LifecycleExpireDays, "ROSSHIELD_AUDIT_S3_LIFECYCLE_EXPIRE_DAYS")),
+		CheckTimeoutDefaultSec:                    *checkTimeoutDefaultSec,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())
@@ -625,4 +635,23 @@ func resolveBoolEnvFallback(flagVal bool, envKey string) bool {
 	}
 	v := os.Getenv(envKey)
 	return v == "1" || strings.EqualFold(v, "true")
+}
+
+// resolveIntEnvFallback는 flag가 0이면 env로 fallback해 정수로 파싱합니다.
+//
+// env 값이 비어있거나 파싱 실패면 0 반환 (silent — log은 호출자가 별도 처리).
+// 음수는 음수 그대로 반환 — 호출자 측 의미론에 따라 검증.
+func resolveIntEnvFallback(flagVal int, envKey string) int {
+	if flagVal != 0 {
+		return flagVal
+	}
+	v := strings.TrimSpace(os.Getenv(envKey))
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
+	}
+	return n
 }

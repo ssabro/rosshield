@@ -80,6 +80,9 @@ func newS3RotationBackend(ctx context.Context, cfg Config, logger *slog.Logger) 
 		ForcePathStyle:       cfg.AuditS3ForcePathStyle,
 		ServerSideEncryption: cfg.AuditS3SSE,
 		KMSKeyID:             cfg.AuditS3KMSKeyID,
+		LifecycleEnabled:     cfg.AuditS3LifecycleEnabled,
+		LifecycleTransitions: buildS3LifecycleTransitions(cfg),
+		LifecycleExpireDays:  cfg.AuditS3LifecycleExpireDays,
 	}
 	be, err := rotation.NewS3Backend(ctx, s3cfg)
 	if err != nil {
@@ -91,7 +94,39 @@ func newS3RotationBackend(ctx context.Context, cfg Config, logger *slog.Logger) 
 		}
 		return nil, "", fmt.Errorf("s3 backend init: %w", err)
 	}
-	desc := fmt.Sprintf("s3://%s/%s (region=%s, sse=%q)",
-		cfg.AuditS3Bucket, cfg.AuditS3Prefix, cfg.AuditS3Region, cfg.AuditS3SSE)
+	desc := fmt.Sprintf("s3://%s/%s (region=%s, sse=%q, lifecycle=%v)",
+		cfg.AuditS3Bucket, cfg.AuditS3Prefix, cfg.AuditS3Region, cfg.AuditS3SSE,
+		cfg.AuditS3LifecycleEnabled)
 	return be, desc, nil
+}
+
+// buildS3LifecycleTransitions은 cfg.AuditS3Lifecycle*Days 3 필드를 S3Transition 슬라이스로
+// 변환합니다.
+//
+// 각 *Days=0이면 해당 단계 transition 없음 (slice에 미포함). 결과 slice는 days ASC로
+// 정렬된 형태 — IA(작은 days) → GLACIER → DEEP_ARCHIVE 순. S3 lifecycle은 같은
+// rule 안에서 storage class를 시간 순으로 자동 전환합니다.
+//
+// LifecycleEnabled=false면 호출자가 본 함수의 결과를 무시 — 본 함수는 input 값만 변환.
+func buildS3LifecycleTransitions(cfg Config) []rotation.S3Transition {
+	var out []rotation.S3Transition
+	if cfg.AuditS3LifecycleTransitionIADays > 0 {
+		out = append(out, rotation.S3Transition{
+			Days:         cfg.AuditS3LifecycleTransitionIADays,
+			StorageClass: "STANDARD_IA",
+		})
+	}
+	if cfg.AuditS3LifecycleTransitionGlacierDays > 0 {
+		out = append(out, rotation.S3Transition{
+			Days:         cfg.AuditS3LifecycleTransitionGlacierDays,
+			StorageClass: "GLACIER",
+		})
+	}
+	if cfg.AuditS3LifecycleTransitionDeepArchiveDays > 0 {
+		out = append(out, rotation.S3Transition{
+			Days:         cfg.AuditS3LifecycleTransitionDeepArchiveDays,
+			StorageClass: "DEEP_ARCHIVE",
+		})
+	}
+	return out
 }
