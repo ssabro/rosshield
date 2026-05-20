@@ -15,7 +15,8 @@ test('audit page renders chain head seq + hash', async ({ page }) => {
   await page.goto('/audit')
 
   await expect(page.getByRole('heading', { name: '감사' }).first()).toBeVisible()
-  await expect(page.getByText('Chain Head')).toBeVisible()
+  // exact: true — description에 "chain head" substring이 있어 strict mode violation 회피
+  await expect(page.getByText('Chain Head', { exact: true })).toBeVisible()
 
   // Sequence 라벨이 있고 옆에 숫자가 표시된다.
   // dict.ts: 'audit.head.seq': 'Sequence'
