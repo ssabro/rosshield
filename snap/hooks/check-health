@@ -6,8 +6,10 @@
 #
 # 동작:
 #   1. snapctl get healthz-url / healthz-timeout (configure 값 또는 default).
-#   2. 짧은 polling (최대 30s, 2s 간격) — daemon이 막 부팅 중일 수 있으므로 grace 허용.
-#      check-health는 짧고 idempotent해야 하므로 최대 30s로 cap (snapd docs 권장).
+#   2. 짧은 polling (최대 10s, 1s 간격) — daemon이 막 부팅 중일 수 있으므로 grace 허용.
+#      **중요**: snapd는 check-health hook에 **30s hard timeout**을 강제하며, 초과 시 install/refresh
+#      자체가 fail. 본 hook은 10s margin으로 안전. daemon이 ready 안 됐어도 빠르게 waiting으로
+#      종료하면 snap install은 정상 통과, snapd 주기 재호출(약 5분)에서 catch up.
 #   3. healthz 200 + status=ok → `snapctl set-health okay`.
 #   4. timeout → `snapctl set-health waiting "healthz timeout — daemon not ready"`.
 #
@@ -22,17 +24,18 @@ set -e
 HEALTHZ_URL="$(snapctl get healthz-url 2>/dev/null || true)"
 HEALTHZ_URL="${HEALTHZ_URL:-http://127.0.0.1:8080/healthz}"
 
-# check-health hook은 빠르고 idempotent 해야 하므로 max 30s로 cap.
-# 운영자가 configure로 더 큰 값 설정해도 본 hook은 30s 상한.
-CHECK_TIMEOUT=30
+# snapd는 check-health hook에 30s hard timeout을 강제 — 초과 시 install/refresh 자체 fail.
+# 본 hook은 10s margin으로 안전. daemon ready 안 됐을 때는 waiting으로 빠르게 종료, snapd
+# 주기 재호출 또는 외부 `snap run --hook=check-health rosshield` trigger에서 okay 도달.
+CHECK_TIMEOUT=10
 
 deadline=$(( $(date +%s) + CHECK_TIMEOUT ))
 while [ "$(date +%s)" -lt "$deadline" ]; do
-	if curl -fsS --max-time 5 "$HEALTHZ_URL" 2>/dev/null | grep -q '"status":"ok"'; then
+	if curl -fsS --max-time 3 "$HEALTHZ_URL" 2>/dev/null | grep -q '"status":"ok"'; then
 		snapctl set-health okay
 		exit 0
 	fi
-	sleep 2
+	sleep 1
 done
 
 # unhealthy — `waiting`은 transient 가능 의미 (snapd가 주기 재호출). 영구 unhealthy는

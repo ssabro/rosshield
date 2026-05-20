@@ -103,12 +103,15 @@ jobs:
           jq -e '.components.signer' healthz.json
 
       # E35 redesign — check-health hook 검증 (services start 후 호출).
-      # snap install 직후 check-health가 한 번 호출됨 — daemon이 active되면 status okay.
-      - name: snap health — check-health hook status
+      # snap install 직후 check-health hook이 자동 호출되며 daemon이 막 부팅 중이면
+      # waiting status로 종료(snapd 30s hard timeout 회피). daemon ready 확인 후
+      # 외부 trigger로 hook 재실행하여 okay 도달.
+      - name: snap health — trigger + verify check-health
         run: |
-          # check-health hook은 install 직후 자동 호출되며, daemon이 active되기까지
-          # transient waiting 가능. max 30s polling으로 okay 도달 확인.
+          # daemon이 listen 시작 후 hook을 외부 trigger.
+          # `snap run --hook=check-health rosshield`는 hook을 idempotent 재실행 — okay 전환.
           for i in $(seq 1 30); do
+            sudo snap run --hook=check-health rosshield 2>/dev/null || true
             STATUS=$(sudo snap health rosshield 2>&1 | awk '/^rosshield/{print $2}')
             if [ "$STATUS" = "okay" ] || [ -z "$STATUS" ]; then
               # 빈 status는 "no health concerns" 의미 (snap health는 unhealthy만 출력).
@@ -116,8 +119,9 @@ jobs:
               break
             fi
             if [ $i -eq 30 ]; then
-              echo "::error::snap health did not reach okay within 30s (last status: $STATUS)"
+              echo "::error::snap health did not reach okay within 30s of triggers (last status: $STATUS)"
               sudo snap health rosshield
+              sudo snap logs rosshield | tail -n 30
               exit 1
             fi
             sleep 1
@@ -198,18 +202,20 @@ jobs:
           # post-refresh hook이 실행됐는지 snap changes로 확인
           sudo snap changes rosshield | head -5
 
-      # check-health hook이 새 revision에서도 okay 도달 확인.
-      - name: snap health — check-health after refresh
+      # check-health hook이 새 revision에서도 okay 도달 확인 — 외부 trigger 패턴 동일.
+      - name: snap health — trigger + verify after refresh
         run: |
           for i in $(seq 1 30); do
+            sudo snap run --hook=check-health rosshield 2>/dev/null || true
             STATUS=$(sudo snap health rosshield 2>&1 | awk '/^rosshield/{print $2}')
             if [ "$STATUS" = "okay" ] || [ -z "$STATUS" ]; then
               echo "✓ snap health okay after refresh (i=$i)"
               break
             fi
             if [ $i -eq 30 ]; then
-              echo "::error::snap health did not reach okay within 30s after refresh (last: $STATUS)"
+              echo "::error::snap health did not reach okay within 30s of triggers after refresh (last: $STATUS)"
               sudo snap health rosshield
+              sudo snap logs rosshield | tail -n 30
               exit 1
             fi
             sleep 1
