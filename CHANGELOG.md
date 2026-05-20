@@ -8,6 +8,12 @@
 
 ### Added
 - (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- `feat(snap)` E35-refresh redesign — post-refresh hook 단순화 + check-health hook 신규 (Stage 1+2 `3b8e36c`). snap lifecycle 표준 정합: post-refresh는 catastrophic case(binary corruption + configure schema)만 cover, check-health가 daemon healthz polling + snapctl set-health 담당.
+- `ci(snap-smoke)` E35-refresh redesign Stage 3 (`02a8f6c`) — refresh round-trip step `continue-on-error: true` 제거 + `snap health` polling 신규 step 2개. E35-refresh carryover 마감.
+
+### Changed
+- `docs(ops)` E35-refresh redesign Stage 4 — snap-deployment.md §7 rewrite: hook 책임 분리 표 + 자동 rollback 범위 축소 명시(catastrophic case만) + broken refresh 운영 절차(§7.5) + channel staged rollout 권장(§7.6) + §9 한계 갱신.
+  - 설계 배경: `docs/design/notes/e35-refresh-rollback-redesign.md` — D-E35R-1 옵션 A(post-refresh 단순화 + check-health 신규) + D-E35R-2 포기(운영 절차 위임) + D-E35R-3 순차 Stage 1·2·3·4.
 
 ---
 
