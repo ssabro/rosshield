@@ -7,7 +7,27 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — e2e cosign 실 CLI test · cosign_e2e build tag CI / Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.2] — 2026-05-20 (patch)
+
+> **요약**: cosign 2.x 호환성 prod 버그 fix + cosign keyless e2e CI job 추가. e2e 검증으로 release 직후 발견한 wire layer 버그를 customer 노출 전 차단. **v0.7.0~v0.7.1에서 cosign 활성화한 customer의 bundle은 verify 불가 상태였음 — v0.7.2 후 신규 rotation부터 정상**. 상세는 [docs/releases/v0.7.2.md](docs/releases/v0.7.2.md).
+>
+> **기준 commit**: `53b19aa` (main)
+
+### Fixed
+- `fix(audit)` cosign sign-blob bundle을 stdout 대신 임시 파일 경유 (`5df41f9`) — **잠재 prod 버그**. cosign 2.x는 stdout에 base64 signature(`MEUC...`)와 bundle JSON 혼재 출력 → 외부 감사인 verify-blob 호출 시 'invalid character M' JSON parse 실패. `os.CreateTemp` + `--bundle=<tmpfile>` 패턴(cosign docs 표준)으로 정정. 단위 test 14건 회귀 0(FakeSigner는 binary 호출 안 함, e2e만 잡았음).
+- `test(storage)` migration sequence test 0036 등록 (`53b19aa`) — v0.7.1 0036_audit_gc_marker 추가 후 TestNoUnexpectedMigrationFiles + TestStorageMigrateIdempotent 갱신 누락.
+
+### Added
+- `test(audit)` cosign keyless e2e wire 호환성 (`73f7a94`) — build tag `cosign_e2e` + `internal/domain/audit/rotation/cosign_e2e_test.go` 신규. 실 cosign binary로 sign-blob → verify-blob round-trip + bundle 변조 거부 검증. CI cosign-e2e job 신규(sigstore/cosign-installer + permissions: id-token: write). v0.7.x carryover 마지막 코드 작업 항목 일소.
+
+### Notes
+- **e2e test 가치 입증** — release 직후 cosign 2.x 호환성 버그를 발견. 단위 test (FakeSigner)는 binary 호출 안 해서 잡지 못한 wire layer 버그. e2e의 직접적 ROI.
+- 본 release 이전 customer는 cosign_bundle 컬럼이 손상된 상태일 수 있음. v0.7.2 후 신규 rotation부터 정상.
+- v0.7.x 코드 작업 carryover **모두 일소**. 잔여는 시간 큰 폴리시 또는 외부 트랙(Stage 5b Playwright, HA Stage 4~6 docs, R-D8, E36).
 
 ---
 
