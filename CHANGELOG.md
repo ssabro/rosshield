@@ -7,7 +7,23 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Multi-region HA Stage 4.4 (Cloudflare Terraform module) / MR.T4/T6 application integration (leader-election restart · fence token enforcement) / HA leader-only metric gate / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — MR.T4/T6 application integration (leader-election restart · fence token enforcement) / HA leader-only metric gate / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc §6에 기본 cover) / Stage 6 자동 failover research (Patroni/Stolon, Phase 9+) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.7] — 2026-05-20 (patch)
+
+> **요약**: Phase 8 Stage 4.4 Cloudflare Load Balancer Terraform module — Route53 alternative 완성. Cloudflare 사용 중인 enterprise customer가 즉시 plan/apply 가능한 Pool + Monitor + Load Balancer 자동 결선. 코드 변경 0건, Breaking 0. 상세는 [docs/releases/v0.7.7.md](docs/releases/v0.7.7.md).
+>
+> **기준 commit**: `01ae29b` (main)
+
+### Added
+- `feat(deploy)` Stage 4.4 Cloudflare Load Balancer Terraform module (`01ae29b`) — `deploy/terraform/multi-region-ha/modules/cloudflare-loadbalancer/` (Monitor + Pool×2 + Load Balancer) + 신규 root `deploy/terraform/multi-region-ha-cloudflare/` (README + main.tf + variables/outputs + envs/example.tfvars + .gitignore) + multi-region-ha/README.md 링크 활성 + multi-region-dns.md §5.4 Terraform 자동화 절차 추가. Cloudflare Pro plan + Load Balancer 옵션 customer 즉시 적용.
+
+### Notes
+- **Phase 8 cross-region cutover 인프라 완전 완성** — design + ops + Route53 IaC + Cloudflare module + failover runbook + testcontainers e2e + Prometheus monitoring. customer는 Route53 또는 Cloudflare 선택.
+- Cloudflare 강점: Global anycast 200+ POP + DDoS 무료 (proxy on) + TTL 30s.
+- Route53 강점: AWS multi-region 통합 + 비용 효율 + monitor interval 30s.
 
 ---
 
