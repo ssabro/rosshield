@@ -7,7 +7,23 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Audit rotation 잔여 (sqlite hot GC) / e2e cosign 실 CLI test · cosign_e2e build tag CI / Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — e2e cosign 실 CLI test · cosign_e2e build tag CI / Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.1] — 2026-05-20 (patch)
+
+> **요약**: sqlite hot GC marker mode 활성화 patch — v0.7.0 한계 "sqlite hot GC" 항목 일소. sqlite customer(데스크톱·단일 노드)도 audit chain hot row 무한 누적 없이 운영 가능. 회귀 0. 상세는 [docs/releases/v0.7.1.md](docs/releases/v0.7.1.md).
+>
+> **기준 commit**: `ee5f3c8` (main)
+
+### Added
+- `feat(audit)` sqlite hot GC marker mode (`ee5f3c8`) — 마이그레이션 0036 (sqlite `audit_gc_mode` table + `audit_entries_no_delete` trigger WHEN 절 변환 / PG noop) + `HotGCDeps.UseMarkerMode` 분기 (sqlite INSERT/DELETE marker, PG SET LOCAL 유지) + bootstrap auto-wiring (cfg.StorageDriver) + `Platform.HotGC` + `handlers.Deps.HotGC` 결선 (POST /api/v1/audit/gc/run 503 → 200) + 단위 test 3 (1 갱신 + 2 신규: marker mode 실제 DELETE + emit / HotGC 완료 후 direct DELETE 차단 검증).
+
+### Notes
+- 마이그레이션 0036은 자동 적용 — application 코드 변경 없음. marker 비활성 상태(default)에서 동작은 기존과 동일.
+- sqlite 환경에서 hot GC 활성화는 운영자 명시 trigger (manual API 또는 cron schedule 옵트인).
+- PG customer는 0036 noop으로 영향 0 — 기존 0034 GUC 경로 그대로 유지.
 
 ---
 
