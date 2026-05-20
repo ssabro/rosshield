@@ -307,6 +307,8 @@ func main() {
 	replicationSlotCleanupPrefix := flag.String("replication-slot-cleanup-prefix", "rosshield_", "Safety prefix — only slots whose name starts with this string are cleanup candidates. Empty/whitespace value disables the cron job. Env: ROSSHIELD_REPLICATION_SLOT_CLEANUP_PREFIX.")
 	replicationSlotCleanupMinInactiveAge := flag.Duration("replication-slot-cleanup-min-inactive-age", 24*time.Hour, "Slots inactive longer than this duration are cleanup candidates. Env: ROSSHIELD_REPLICATION_SLOT_CLEANUP_MIN_INACTIVE_AGE.")
 	replicationSlotCleanupDryRun := flag.Bool("replication-slot-cleanup-dry-run", false, "When true, log cleanup candidates but do not drop them. Env: ROSSHIELD_REPLICATION_SLOT_CLEANUP_DRY_RUN=1.")
+	replicationLagMetricEnabled := flag.Bool("replication-lag-metric-enabled", false, "Enable Prometheus replication lag collector (Phase 8 MR.T8). Polls pg_stat_replication every 30s on primary PG. Env: ROSSHIELD_REPLICATION_LAG_METRIC_ENABLED=1.")
+	replicationLagMetricInterval := flag.Duration("replication-lag-metric-interval", 30*time.Second, "Replication lag metric polling interval. Env: ROSSHIELD_REPLICATION_LAG_METRIC_INTERVAL (e.g. 30s).")
 	cosignEnabled := flag.Bool("cosign-enabled", false, "Enable cosign keyless signing of audit rotation archives (D-AR-4). Requires cosign binary on PATH or via --cosign-binary. Default: disabled (airgap-friendly).")
 	cosignBinary := flag.String("cosign-binary", "", "Path to cosign binary (D-AR-4). Empty = 'cosign' from PATH.")
 	cosignIdentity := flag.String("cosign-identity", "", "OIDC identity expected for cosign keyless signing (e.g. ci@example.com). Used by verify CLI as --certificate-identity; recorded in operator logs.")
@@ -496,6 +498,8 @@ func main() {
 		ReplicationSlotCleanupPrefix:          resolveEnvFallback(*replicationSlotCleanupPrefix, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_PREFIX"),
 		ReplicationSlotCleanupMinInactiveAge:  *replicationSlotCleanupMinInactiveAge,
 		ReplicationSlotCleanupDryRun:          resolveBoolEnvFallback(*replicationSlotCleanupDryRun, "ROSSHIELD_REPLICATION_SLOT_CLEANUP_DRY_RUN"),
+		ReplicationLagMetricEnabled:           resolveBoolEnvFallback(*replicationLagMetricEnabled, "ROSSHIELD_REPLICATION_LAG_METRIC_ENABLED"),
+		ReplicationLagMetricInterval:          *replicationLagMetricInterval,
 		CosignEnabled:                         cosignCfg.Enabled,
 		CosignBinaryPath:                      cosignCfg.BinaryPath,
 		CosignIdentity:                        cosignCfg.Identity,

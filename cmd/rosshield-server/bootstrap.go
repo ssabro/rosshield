@@ -65,6 +65,7 @@ import (
 	llmvllm "github.com/ssabro/rosshield/internal/platform/llm/vllm"
 	"github.com/ssabro/rosshield/internal/platform/metrics"
 	"github.com/ssabro/rosshield/internal/platform/replication"
+	"github.com/ssabro/rosshield/internal/platform/replication/lagmetric"
 	replicationsetup "github.com/ssabro/rosshield/internal/platform/replication/setup"
 	replicationrepo "github.com/ssabro/rosshield/internal/platform/replication/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
@@ -273,6 +274,15 @@ type Config struct {
 	ReplicationSlotCleanupPrefix         string        // "rosshield_" 권장. 자동 활성 시 필수.
 	ReplicationSlotCleanupMinInactiveAge time.Duration // default 24h (0이면 setup 패키지 기본).
 	ReplicationSlotCleanupDryRun         bool          // true면 후보만 logging (운영자 검토용).
+
+	// Phase 8 MR.T8 — pg_stat_replication lag metric collector.
+	//
+	// ReplicationLagMetricEnabled=true이면 primary PG + replication enabled 조합에서
+	// goroutine이 30초 간격으로 pg_stat_replication.replay_lag을 polling해
+	// rosshield_replication_lag_seconds gauge를 emit합니다. 조합 미일치(sqlite/standby)는
+	// silent skip.
+	ReplicationLagMetricEnabled  bool
+	ReplicationLagMetricInterval time.Duration // default 30s (0이면 lagmetric.DefaultInterval)
 
 	// D-AR-4 cosign keyless 서명 옵션 (Audit rotation).
 	//
@@ -1436,6 +1446,34 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		} else {
 			logger.Warn("replication slot cleanup schedule set but storage is not PG — silent skip",
 				"schedule", cfg.ReplicationSlotCleanupSchedule)
+		}
+	}
+
+	// Phase 8 MR.T8 — replication lag metric collector (v0.7.x carryover 일소).
+	//
+	// 조건: ReplicationLagMetricEnabled=true + ReplicationConfig.Enabled=true +
+	// Role=primary + PG storage. 그 외는 silent skip. HA gate는 collector 단계 미적용 —
+	// 단일 primary 전체에서 emit (HA leader-only 결선은 후속 carryover).
+	if cfg.ReplicationLagMetricEnabled &&
+		cfg.ReplicationConfig.Enabled &&
+		cfg.ReplicationConfig.Role == replication.RolePrimary {
+		if pg, ok := store.(*postgres.Postgres); ok {
+			lagCollector, err := lagmetric.New(lagmetric.Deps{
+				Querier:  pg.Pool(),
+				Registry: metricsReg,
+				Interval: cfg.ReplicationLagMetricInterval,
+				Logger:   logger,
+			})
+			if err != nil {
+				_ = sch.Close(ctx)
+				_ = store.Close()
+				return nil, fmt.Errorf("bootstrap: lagmetric.New: %w", err)
+			}
+			lagCollector.Start(ctx)
+			logger.Info("replication lag metric collector started",
+				"interval", cfg.ReplicationLagMetricInterval)
+		} else {
+			logger.Warn("replication lag metric requested but storage is not PG — silent skip")
 		}
 	}
 

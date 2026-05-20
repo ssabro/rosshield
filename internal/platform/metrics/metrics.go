@@ -57,6 +57,13 @@ type Registry struct {
 	HALeaderEpoch   prometheus.Gauge
 	HAFailoverTotal prometheus.Counter
 
+	// === Multi-region replication lag (Phase 8 MR.T8 — v0.7.x carryover 일소) ===
+	//
+	// ReplicationLagSeconds: primary 측에서 pg_stat_replication.replay_lag을 polling해
+	// EPOCH(초)로 노출. label=application_name으로 multi-replica 대응. follower 또는
+	// sqlite storage에서는 emit 안 함 (collector 미시작).
+	ReplicationLagSeconds *prometheus.GaugeVec
+
 	// === SSH pool (scanrun SSH 통합 Stage 4) ===
 	//
 	// SSHExecTotal: SSH exec 호출 누적, label outcome=success|error|timeout.
@@ -159,6 +166,13 @@ func New() *Registry {
 		Help:      "Cumulative number of leader promotions on this instance (process scope, resets on restart).",
 	})
 
+	r.ReplicationLagSeconds = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "rosshield",
+		Subsystem: "replication",
+		Name:      "lag_seconds",
+		Help:      "PG logical replication lag in seconds, partitioned by subscriber application_name. Emitted only on primary instances when replication is enabled.",
+	}, []string{"application_name"})
+
 	r.SSHExecTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "rosshield",
 		Subsystem: "ssh",
@@ -200,6 +214,7 @@ func New() *Registry {
 		r.HARole,
 		r.HALeaderEpoch,
 		r.HAFailoverTotal,
+		r.ReplicationLagSeconds,
 		r.SSHExecTotal,
 		r.SSHExecDuration,
 		r.SSHDialTotal,
