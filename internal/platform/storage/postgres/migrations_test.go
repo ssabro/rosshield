@@ -56,6 +56,7 @@ var expectedSequences = []string{
 	"0031_boolean_native_recovery",
 	"0032_audit_rotation",
 	"0033_replication_metadata",
+	"0034_audit_gc_guc",
 	"0035_audit_rotation_chain",
 }
 

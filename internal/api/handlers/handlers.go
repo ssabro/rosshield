@@ -29,6 +29,7 @@ import (
 	"github.com/ssabro/rosshield/internal/app/webhookrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/audit"
+	"github.com/ssabro/rosshield/internal/domain/audit/rotation"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
 	"github.com/ssabro/rosshield/internal/domain/insight"
@@ -83,6 +84,10 @@ type Deps struct {
 	// Replication nil 또는 ReplicationConfig.Enabled=false면 endpoint 503/no-op.
 	Replication       replication.Repository
 	ReplicationConfig replication.Config
+
+	// E32 Stage 4 — Audit rotation hot GC (admin manual + cron Stage 6).
+	// HotGC nil 이면 POST /api/v1/audit/gc/run 503. PG only — sqlite는 SET LOCAL 미지원.
+	HotGC *rotation.HotGC
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -424,6 +429,16 @@ func (h *Handlers) Mount(r chi.Router) {
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
 			Post("/api/v1/replication/failover", h.TriggerFailover)
 		r.Get("/api/v1/audit/head-sha", h.GetAuditHeadSHA)
+
+		// === E32 Stage 4 — Audit hot GC (admin manual trigger) ===
+		// design doc: docs/design/notes/audit-chain-rotation-design.md Stage 4.
+		//
+		// POST /api/v1/audit/gc/run?dry_run=true|false
+		//   admin 전용 (다른 destructive ops — SSO/Webhook delete — 일관).
+		//   ?dry_run=true 면 추정 카운트만 응답, DELETE 미실행 + audit.gc.complete emit 안 함.
+		//   HotGC 미주입 이면 503.
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/audit/gc/run", h.RunAuditGC)
 	})
 }
 
