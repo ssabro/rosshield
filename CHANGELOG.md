@@ -7,7 +7,22 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Multi-region HA Stage 4~6 (DNS hook docs · failover runbook · 자동 failover research, Phase 8+ 영역) / Stage 5b 잔여 carryover (C5b-6 Invitation accept 분기 / C5b-7 3rd party widget axe scan / C5b-8 키보드 navigation / C5b-9 인터랙션 후 분기) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.7.3] — 2026-05-20 (patch)
+
+> **요약**: D-UI-1 Stage 5b drill-down a11y axe scan — 10 페이지 추가 cover (Audit·Reports·SSO·Integrations·License·Advisor·Fleet·Robot·Pack·Check details). 누적 a11y cover **20 페이지 / 28 케이스 / violation 0**. carryover C5b-3 일소. 상세는 [docs/releases/v0.7.3.md](docs/releases/v0.7.3.md).
+>
+> **기준 commit**: `af5bfd1` (main)
+
+### Added
+- `test(web)` D-UI-1 Stage 5b drill-down a11y axe scan (`af5bfd1`) — `web/src/routes/__tests__/a11y-drilldown.test.tsx` 신규 (370+ 줄, 13 케이스: 10 light + 3 dark sampling) + 10 페이지 named export 정비 (audit/reports/sso/integrations/license/advisor/packs.$packKey + 3 detail view 분리) + test 인프라 개선 (createFileRoute mock useParams + Link aria-label fallback). 회귀 0.
+
+### Notes
+- 누적 a11y cover **20 페이지 / 28 케이스 / WCAG violation 0** — admin·auditor 권한·인증 전 surface·drill-down 거의 전체.
+- 잔여 Stage 5b carryover는 시간 큰 폴리시 또는 별 epic (C5b-6 단순 카드, C5b-7 3rd party widget, C5b-8 키보드, C5b-9 인터랙션).
 
 ---
 
