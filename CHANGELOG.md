@@ -7,7 +7,26 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Audit rotation cosign 실서명 + S3 SDK + sqlite hot GC / Multi-region HA Stage 3~7 (PG publication 자동 setup · DNS hook · 자동 failover · cross-region witness · pilot) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / Bundle size 최적화 / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Audit rotation 후속 (sqlite hot GC · verify CLI cosign 통합 · S3 lifecycle · MinIO testcontainer) / Multi-region HA Stage 4~7 (DNS hook · 자동 failover · cross-region witness · pilot) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / Bundle size 최적화 / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.8] — 2026-05-20 (patch)
+
+> **요약**: cosign keyless Sigstore 실서명 + Multi-region HA Stage 3 (PG publication/subscription 자동 setup) + S3 backend 실 SDK (BSL 1.1 enterprise). paying customer demo 가치 3건 동시 진척. 회귀 0. 상세는 [docs/releases/v0.6.8.md](docs/releases/v0.6.8.md).
+>
+> **기준 commit**: `5dd72b9` (main)
+
+### Added
+- `feat(audit)` rotation cosign keyless 서명 결선 (`904c55e`) — Signer interface + CosignSigner (외부 cosign CLI wrap) + FakeSigner + rotation.go signArchive 결선 + bootstrap env 5 + onboarding doc + 14 test
+- `feat(replication)` E-MR Stage 3 PG publication/subscription 자동 setup (`cc559ff`) — `internal/platform/replication/setup/` 신규 패키지 (6 파일, 846줄) + idempotent + FOR ALL TABLES default + Executor interface + bootstrap config 5 + 23 unit test + onboarding doc
+- `feat(audit)` rotation S3 backend 실 SDK (`5dd72b9`) — build tag `rosshield_enterprise` (BSL 1.1) 분리 + AWS SDK v2 + s3API interface + SSE (AES256/KMS) + S3-compatible (MinIO endpoint + path style) + bootstrap config 8 + onboarding doc + 22 enterprise test
+
+### Notes
+- sub-agent 3 병렬 dispatch 모두 성공 — 도메인 충돌 0
+- cherry-pick conflict 2회 resolve (main.go + bootstrap.go) — cosign + HA Stage 3 + S3 Config 필드 통합
+- enterprise 빌드 분리 — Apache-2.0 코어 + BSL 1.1 enterprise (build tag)
+- AWS SDK v2 dep 추가 (이미 sigstore-go indirect → explicit 승격)
 
 ---
 
