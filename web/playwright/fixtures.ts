@@ -14,7 +14,7 @@ export const E2E_ADMIN = {
 // dict.ts와 동기 갱신 필요.
 export const KO_LABELS = {
   login: {
-    title: 'rosshield Console',
+    title: 'Lodestar 관리자 콘솔',
     email: '이메일',
     password: '패스워드',
     submit: '로그인',

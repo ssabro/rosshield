@@ -563,19 +563,30 @@ func TestAuditChainHeadSHACrossRegion(t *testing.T) {
 			standbyHeadHash, expectedHeadHash)
 	}
 
-	// audit_entries 5건도 standby에 모두 존재하는지 sanity
+	// audit_entries 5건도 standby에 모두 존재하는지 sanity.
+	//
+	// audit_entries와 audit_chain_heads는 별개 publication row라 logical replication
+	// 도착 순서가 atomic 보장되지 않음 — chain_heads가 먼저 들어와도 entries는 아직
+	// 0건일 수 있음. 별도 polling loop로 5건 도달 대기.
+	entryDeadline := time.Now().Add(5 * time.Second)
 	var entryCount int
-	err = fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
-		return tx.QueryRow(c,
-			"SELECT COUNT(*) FROM audit_entries WHERE tenant_id = $1",
-			tenantID,
-		).Scan(&entryCount)
-	})
+	for time.Now().Before(entryDeadline) {
+		err = fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
+			return tx.QueryRow(c,
+				"SELECT COUNT(*) FROM audit_entries WHERE tenant_id = $1",
+				tenantID,
+			).Scan(&entryCount)
+		})
+		if err == nil && entryCount == 5 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	if err != nil {
 		t.Fatalf("standby audit_entries count: %v", err)
 	}
 	if entryCount != 5 {
-		t.Errorf("standby audit_entries count = %d, want 5", entryCount)
+		t.Errorf("standby audit_entries count = %d, want 5 (replication propagation lag exceeded 5s)", entryCount)
 	}
 }
 

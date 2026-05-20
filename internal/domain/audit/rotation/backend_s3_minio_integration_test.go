@@ -195,15 +195,16 @@ func TestS3Backend_MinIOExists(t *testing.T) {
 // 가 자동으로 헤더를 채워줍니다. 본 테스트는 NewS3Backend의 LifecycleEnabled 자동 적용
 // 경로 + 명시 재호출 idempotency 모두 검증.
 //
-// MinIO가 GLACIER·DEEP_ARCHIVE transition을 silent ignore해도 rule 등록 자체는 성공 —
-// 통신 layer 검증 목적이라 storage class 실효는 검증 대상 아님.
+// 신규 MinIO release(2024+)는 transition StorageClass를 strict validate — remote tier
+// (mc admin tier add) 미등록 시 STANDARD_IA·GLACIER·DEEP_ARCHIVE 모두 400 InvalidStorageClass
+// 거부. 본 테스트는 통신 layer(Content-MD5 middleware) + Expiration rule 등록만 검증.
+// Transition rule 자체의 직렬화는 backend_s3_enterprise_test.go(fake S3)가 cover.
 func TestS3Backend_MinIOLifecycle(t *testing.T) {
 	fix := setupMinIO(t)
 	cfg := rotation.S3Config{
-		Prefix:               "lifecycle/",
-		LifecycleEnabled:     true,
-		LifecycleTransitions: []rotation.S3Transition{{Days: 30, StorageClass: "STANDARD_IA"}},
-		LifecycleExpireDays:  365,
+		Prefix:              "lifecycle/",
+		LifecycleEnabled:    true,
+		LifecycleExpireDays: 365,
 	}
 	// LifecycleEnabled=true라 NewS3Backend가 ApplyLifecyclePolicy를 자동 호출.
 	// 성공해야 backend 생성 (middleware Content-MD5 헤더 정상 → MinIO 통과).

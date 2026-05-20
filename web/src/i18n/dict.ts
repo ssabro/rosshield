@@ -1155,7 +1155,7 @@ export const en: Record<keyof typeof ko, string> = {
   'header.user.menu.profile': 'Settings',
   'header.user.menu.signedInAs': 'Signed in as',
 
-  'login.title': 'Lodestar 관리자 콘솔',
+  'login.title': 'Lodestar Admin Console',
   'login.description': 'Sign in to the robot fleet security audit console.',
   'login.email': 'Email',
   'login.password': 'Password',
