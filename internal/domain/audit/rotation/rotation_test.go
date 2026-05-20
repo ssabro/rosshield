@@ -175,15 +175,9 @@ func TestFileBackend_RejectsAbsoluteKey(t *testing.T) {
 }
 
 // --- S3 backend stub (core build) ---
-
-func TestS3Backend_StubReturnsNotAvailable(t *testing.T) {
-	t.Parallel()
-
-	_, err := rotation.NewS3Backend(rotation.S3Config{Region: "us-east-1", Bucket: "x"})
-	if !errors.Is(err, rotation.ErrS3BackendNotAvailable) {
-		t.Errorf("NewS3Backend error = %v, want ErrS3BackendNotAvailable", err)
-	}
-}
+// 본 stub assertion은 build tag `!rosshield_enterprise` 빌드에서만 의미를 가지므로
+// `backend_s3_stub_test.go`(`//go:build !rosshield_enterprise`)에 분리되어 있습니다.
+// enterprise 빌드는 `backend_s3_enterprise_test.go`가 실 S3 client 동작을 검증합니다.
 
 // --- segment builder + archiver ---
 

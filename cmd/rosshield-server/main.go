@@ -307,6 +307,14 @@ func main() {
 	cosignIdentity := flag.String("cosign-identity", "", "OIDC identity expected for cosign keyless signing (e.g. ci@example.com). Used by verify CLI as --certificate-identity; recorded in operator logs.")
 	cosignFulcioURL := flag.String("cosign-fulcio-url", "", "Fulcio CA URL for cosign keyless. Empty = Sigstore public Fulcio.")
 	cosignRekorURL := flag.String("cosign-rekor-url", "", "Rekor transparency log URL for cosign keyless. Empty = Sigstore public Rekor.")
+	auditColdBackend := flag.String("audit-cold-backend", "", "Audit rotation cold backend (D-AR-9): '' or 'file' (default, <data-dir>/audit-archives, Apache-2.0) | 's3' (BSL 1.1 enterprise — build with rosshield_enterprise tag). Env: ROSSHIELD_AUDIT_COLD_BACKEND.")
+	auditS3Bucket := flag.String("audit-s3-bucket", "", "S3 bucket for audit cold archives (required when --audit-cold-backend=s3). Env: ROSSHIELD_AUDIT_S3_BUCKET.")
+	auditS3Region := flag.String("audit-s3-region", "", "AWS region for audit S3 backend (required when --audit-cold-backend=s3). Env: ROSSHIELD_AUDIT_S3_REGION.")
+	auditS3Prefix := flag.String("audit-s3-prefix", "", "Key prefix inside the S3 bucket (e.g. 'audit-archives/tn_acme/'). Empty = bucket root. Env: ROSSHIELD_AUDIT_S3_PREFIX.")
+	auditS3Endpoint := flag.String("audit-s3-endpoint", "", "S3-compatible endpoint URL for MinIO/Wasabi/Backblaze B2. Empty = AWS default. Env: ROSSHIELD_AUDIT_S3_ENDPOINT.")
+	auditS3ForcePathStyle := flag.Bool("audit-s3-force-path-style", false, "Force path-style addressing (required by MinIO and some self-hosted gateways). Env: ROSSHIELD_AUDIT_S3_FORCE_PATH_STYLE=1.")
+	auditS3SSE := flag.String("audit-s3-sse", "", "S3 server-side encryption mode: 'AES256' or 'aws:kms'. Empty = no SSE. Env: ROSSHIELD_AUDIT_S3_SSE.")
+	auditS3KMSKeyID := flag.String("audit-s3-kms-key-id", "", "SSE-KMS CMK ARN/ID (used when --audit-s3-sse=aws:kms). Env: ROSSHIELD_AUDIT_S3_KMS_KEY_ID.")
 	checkTimeoutDefaultSec := flag.Int("check-timeout-default-sec", 0, "Default SSH exec timeout for checks with TimeoutSec=0. 0 uses scan.DefaultCheckTimeoutSec (10s). Per-check TimeoutSec always wins.")
 	flag.Parse()
 
@@ -479,6 +487,14 @@ func main() {
 		CosignIdentity:                  cosignCfg.Identity,
 		CosignFulcioURL:                 cosignCfg.FulcioURL,
 		CosignRekorURL:                  cosignCfg.RekorURL,
+		AuditColdBackend:                resolveEnvFallback(*auditColdBackend, "ROSSHIELD_AUDIT_COLD_BACKEND"),
+		AuditS3Bucket:                   resolveEnvFallback(*auditS3Bucket, "ROSSHIELD_AUDIT_S3_BUCKET"),
+		AuditS3Region:                   resolveEnvFallback(*auditS3Region, "ROSSHIELD_AUDIT_S3_REGION"),
+		AuditS3Prefix:                   resolveEnvFallback(*auditS3Prefix, "ROSSHIELD_AUDIT_S3_PREFIX"),
+		AuditS3Endpoint:                 resolveEnvFallback(*auditS3Endpoint, "ROSSHIELD_AUDIT_S3_ENDPOINT"),
+		AuditS3ForcePathStyle:           resolveBoolEnvFallback(*auditS3ForcePathStyle, "ROSSHIELD_AUDIT_S3_FORCE_PATH_STYLE"),
+		AuditS3SSE:                      resolveEnvFallback(*auditS3SSE, "ROSSHIELD_AUDIT_S3_SSE"),
+		AuditS3KMSKeyID:                 resolveEnvFallback(*auditS3KMSKeyID, "ROSSHIELD_AUDIT_S3_KMS_KEY_ID"),
 		CheckTimeoutDefaultSec:          *checkTimeoutDefaultSec,
 	})
 	if err != nil {
@@ -559,11 +575,6 @@ func resolveAuditRotationSchedule(flagVal string) string {
 }
 
 // resolveCosignConfig는 flag 값 5건을 ROSSHIELD_COSIGN_* env로 fallback합니다 (D-AR-4).
-//
-// 우선순위: flag → env. flag default(false / "")일 때만 env 적용. env "ENABLED" parse 실패 시
-// false fallback (rotation.LoadSignerConfigFromEnv와 동일 정책 — strconv.ParseBool 실패는 disable).
-//
-// 반환은 rotation.SignerConfig — Bootstrap Config로 그대로 매핑 가능.
 func resolveCosignConfig(flagEnabled bool, flagBinary, flagIdentity, flagFulcio, flagRekor string) rotation.SignerConfig {
 	envCfg := rotation.LoadSignerConfigFromEnv()
 	out := rotation.SignerConfig{
@@ -589,4 +600,21 @@ func resolveCosignConfig(flagEnabled bool, flagBinary, flagIdentity, flagFulcio,
 		out.RekorURL = envCfg.RekorURL
 	}
 	return out
+}
+
+// resolveEnvFallback는 flag 값이 비어있으면 env로 fallback합니다 (D-AR-9).
+func resolveEnvFallback(flagVal, envKey string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return os.Getenv(envKey)
+}
+
+// resolveBoolEnvFallback는 flag가 false일 때만 env로 fallback합니다.
+func resolveBoolEnvFallback(flagVal bool, envKey string) bool {
+	if flagVal {
+		return true
+	}
+	v := os.Getenv(envKey)
+	return v == "1" || strings.EqualFold(v, "true")
 }

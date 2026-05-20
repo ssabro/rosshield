@@ -274,6 +274,25 @@ type Config struct {
 	CosignFulcioURL  string // 빈 값이면 Sigstore public Fulcio.
 	CosignRekorURL   string // 빈 값이면 Sigstore public Rekor.
 
+	// E32 + D-AR-9 — Audit rotation cold backend 선택.
+	//
+	// AuditColdBackend="" 또는 "file" (default) → DataDir/audit-archives 로컬 디렉토리 (Apache-2.0).
+	// AuditColdBackend="s3"                     → AWS S3 (BSL 1.1 enterprise, build tag `rosshield_enterprise`).
+	//
+	// 코어 빌드에서 "s3" 지정 시 ErrS3BackendNotAvailable → file backend로 graceful fallback +
+	// warning log. enterprise 빌드에서 "s3" 지정 + 아래 필수 필드 누락 시 부트스트랩 에러.
+	AuditColdBackend string
+
+	// AuditS3Bucket·AuditS3Region·AuditS3Prefix·AuditS3Endpoint·AuditS3SSE·AuditS3KMSKeyID는
+	// AuditColdBackend="s3" 일 때 의미. enterprise 빌드에서만 실제 S3 호출.
+	AuditS3Bucket         string
+	AuditS3Region         string
+	AuditS3Prefix         string
+	AuditS3Endpoint       string
+	AuditS3ForcePathStyle bool
+	AuditS3SSE            string
+	AuditS3KMSKeyID       string
+
 	// CheckTimeoutDefaultSec는 scanrun.Orchestrator가 CheckDef.TimeoutSec=0인 항목에
 	// 적용할 default SSH exec timeout. 0이면 scan.DefaultCheckTimeoutSec(10초). per-check
 	// TimeoutSec은 항상 우선 — 본 값은 fallback default만 조정.
@@ -1282,15 +1301,9 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	//
 	// AuditRotationSchedule="" → 자동 rotation 비활성 (manual API only).
 	// HA 활성 시 cronsched RoleProvider gate(E25 Stage 4a)가 follower tick을 silent skip.
-	// rotation.Backend는 file 기본 (DataDir/audit-archives/). env override는 별 epic.
+	// rotation.Backend는 cfg.AuditColdBackend로 분기 (file default, "s3" enterprise).
 	if cfg.AuditRotationSchedule != "" {
-		rotBackendRoot := filepath.Join(cfg.DataDir, "audit-archives")
-		if err := os.MkdirAll(rotBackendRoot, 0o755); err != nil {
-			_ = sch.Close(ctx)
-			_ = store.Close()
-			return nil, fmt.Errorf("bootstrap: mkdir rotation archive dir: %w", err)
-		}
-		rotBackend, err := rotation.NewFileBackend(rotBackendRoot)
+		rotBackend, rotBackendDesc, err := buildRotationBackend(ctx, cfg, logger)
 		if err != nil {
 			_ = sch.Close(ctx)
 			_ = store.Close()
@@ -1339,7 +1352,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 			return nil, fmt.Errorf("bootstrap: register rotation job: %w", err)
 		}
 		logger.Info("audit rotation auto-schedule active",
-			"spec", cfg.AuditRotationSchedule, "archiveRoot", rotBackendRoot)
+			"spec", cfg.AuditRotationSchedule, "backend", rotBackendDesc)
 	}
 
 	// FleetPolicy.ScanSchedule cron — best-effort 등록.

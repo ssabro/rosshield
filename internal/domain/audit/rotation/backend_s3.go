@@ -1,62 +1,52 @@
-//go:build !enterprise
-
 package rotation
 
-import (
-	"context"
-	"errors"
-)
+import "errors"
 
-// ErrS3BackendNotAvailable는 build tag `enterprise` 없이 S3 backend를 호출할 때 반환됩니다.
+// 본 파일은 build tag 무관 — S3Backend 공통 선언 (config struct + scheme 상수 + sentinel error)을 둡니다.
+// 실 구현은 build tag별 분기:
 //
-// open-core 정합 (D-AR-9): S3 backend는 BSL 1.1 enterprise.
-// 본 파일은 stub — Apache-2.0 코어 빌드에서는 NewS3Backend가 stub error를 반환합니다.
-// 실제 AWS SDK v2 통합은 `//go:build enterprise` 분기 + 별 epic에서 진행.
+//   - `backend_s3_stub.go`        (`//go:build !rosshield_enterprise`): NewS3Backend가 ErrS3BackendNotAvailable.
+//   - `backend_s3_enterprise.go`  (`//go:build rosshield_enterprise`):  AWS SDK v2 실 구현 (BSL 1.1 enterprise).
+//
+// open-core 정합 (D-AR-9, 2026-05-19):
+//
+//	코어 (Apache-2.0) — file backend + rotation 도메인 로직.
+//	enterprise (BSL 1.1) — S3 backend 실 구현. airgap profile은 file backend로 무료 동작.
+//
+// 자세한 라이선스 조건은 리포 루트의 `LICENSE-ENTERPRISE` 참조.
+
+// ErrS3BackendNotAvailable은 build tag `rosshield_enterprise` 없이 S3 backend를 호출할 때 반환됩니다.
+//
+// caller는 errors.Is로 본 sentinel을 판정해 file backend로 fallback할 수 있습니다.
 var ErrS3BackendNotAvailable = errors.New(
-	"rotation: S3 backend not available in this build (BSL 1.1 enterprise build tag required)")
+	"rotation: S3 backend not available in this build (BSL 1.1 enterprise build tag `rosshield_enterprise` required)")
 
 // s3Scheme은 S3 backend URI 식별자입니다.
 const s3Scheme = "s3"
 
-// S3Config는 S3 backend 구성 (enterprise build에서만 의미).
+// S3Config는 S3 backend 구성입니다.
 //
-// 본 stub은 필드를 선언만 — caller가 동일 호출부를 유지할 수 있도록.
+// 본 struct는 build tag 무관 — caller가 단일 struct literal로 양쪽 빌드에서 사용 가능.
+// stub 빌드에서는 모든 필드가 무시됩니다.
+//
+// credential은 AWS SDK default chain (env, ~/.aws/credentials, IRSA, EC2 instance profile)에
+// 위임 — 본 struct는 식별자만. 명시 credential 입력 미지원 (12-factor 일관).
 type S3Config struct {
-	// Region은 AWS region (예: "us-east-1").
+	// Region은 AWS region (예: "us-east-1"). 필수.
 	Region string
-	// Bucket은 archive 저장 bucket.
+	// Bucket은 archive 저장 bucket. 필수.
 	Bucket string
-	// Prefix는 bucket 안의 key prefix (예: "audit-archives/").
+	// Prefix는 bucket 안의 key prefix (예: "audit-archives/tn_acme/"). 옵션.
+	// 비어 있으면 bucket root에 저장.
 	Prefix string
-	// EndpointURL은 S3 호환 endpoint (MinIO·Wasabi 등). 비어 있으면 AWS 기본.
+	// EndpointURL은 S3 호환 endpoint (MinIO·Wasabi·Backblaze B2 등). 비어 있으면 AWS 기본.
 	EndpointURL string
-}
-
-// S3Backend는 enterprise build에서 AWS SDK v2 s3.Client를 wrap합니다.
-//
-// 본 (코어) build에서는 stub — 모든 메서드가 ErrS3BackendNotAvailable.
-// NewS3Backend도 동일 stub error.
-type S3Backend struct{}
-
-// NewS3Backend (stub)는 코어 build에서 항상 ErrS3BackendNotAvailable을 반환합니다.
-func NewS3Backend(_ S3Config) (*S3Backend, error) {
-	return nil, ErrS3BackendNotAvailable
-}
-
-// Scheme는 "s3"를 반환합니다.
-func (*S3Backend) Scheme() string { return s3Scheme }
-
-// Put (stub).
-func (*S3Backend) Put(_ context.Context, _ string, _ []byte) (string, error) {
-	return "", ErrS3BackendNotAvailable
-}
-
-// Get (stub).
-func (*S3Backend) Get(_ context.Context, _ string) ([]byte, error) {
-	return nil, ErrS3BackendNotAvailable
-}
-
-// Exists (stub).
-func (*S3Backend) Exists(_ context.Context, _ string) (bool, error) {
-	return false, ErrS3BackendNotAvailable
+	// ForcePathStyle은 S3 호환 storage에서 path-style addressing 강제.
+	// MinIO·일부 self-hosted gateway 환경에서 true 필요.
+	// AWS 기본 endpoint는 false 권장 (virtual-hosted-style).
+	ForcePathStyle bool
+	// ServerSideEncryption은 SSE 모드 ("AES256" 또는 "aws:kms"). 비어 있으면 SSE 미사용.
+	ServerSideEncryption string
+	// KMSKeyID는 SSE-KMS 사용 시 CMK ARN/ID. ServerSideEncryption="aws:kms"일 때만 유효.
+	KMSKeyID string
 }
