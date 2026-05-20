@@ -423,11 +423,12 @@ func TestRunCancelSkipsRemainingButWaitsInFlight(t *testing.T) {
 	h.seedChecks(2) // 총 20 work item — Cancel 시점엔 일부만 실행됨
 	sessionID := h.startSession(20)
 
-	// 각 exec 100ms — Cancel 후 진행중 2개는 완료, 나머지는 skip.
+	// 각 exec 500ms — Cancel 후 진행 중 2개는 ctx.Done() 응답, 나머지는 skip.
+	// CI runner 부하에서도 안정적이도록 충분한 단일 work item 시간 확보 (이전 100ms는 flaky).
 	h.executor.exec = func(ctx context.Context, _ scan.RobotTarget, _ []string, _ time.Duration) (scan.ExecResult, error) {
 		select {
-		case <-time.After(100 * time.Millisecond):
-			return scan.ExecResult{Stdout: []byte("ok"), Duration: 100 * time.Millisecond}, nil
+		case <-time.After(500 * time.Millisecond):
+			return scan.ExecResult{Stdout: []byte("ok"), Duration: 500 * time.Millisecond}, nil
 		case <-ctx.Done():
 			// R4-5: Cancel 발생 시 진행 중 worker는 timeout 대기여야 — mock은 일단 ctx.Err로 취소 응답
 			// (실제 sshpool.Executor도 ctx.Done에서 session.Close + ctx.Err 반환)
@@ -435,13 +436,13 @@ func TestRunCancelSkipsRemainingButWaitsInFlight(t *testing.T) {
 		}
 	}
 
-	// Run을 백그라운드로 실행, 50ms 후 Cancel.
+	// Run을 백그라운드로 실행, 100ms 후 Cancel (work item 1개도 완료 전).
 	runErr := make(chan error, 1)
 	go func() {
 		runErr <- h.orch.Run(context.Background(), h.tenantID, sessionID, h.makeTargets(), h.makeChecks())
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	if _, err := h.orch.Cancel(context.Background(), h.tenantID, sessionID, "test cancel"); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
