@@ -21,6 +21,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	advisorrepo "github.com/ssabro/rosshield/internal/domain/advisor/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/audit"
+	"github.com/ssabro/rosshield/internal/domain/audit/rotation"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	benchmarkrepo "github.com/ssabro/rosshield/internal/domain/benchmark/sqliterepo"
@@ -67,6 +68,7 @@ import (
 	replicationrepo "github.com/ssabro/rosshield/internal/platform/replication/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
+	"github.com/ssabro/rosshield/internal/platform/scheduler/rotationjob"
 	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/signer/soft"
 	"github.com/ssabro/rosshield/internal/platform/sshpool"
@@ -212,6 +214,16 @@ type Config struct {
 	BackupSchedule     string // cron spec (예: "@every 24h" 또는 "0 15 3 * * *"). 빈 값 = 자동 백업 비활성.
 	BackupDir          string // 빈 값이면 DataDir/backups.
 	BackupSkipEvidence bool
+
+	// E32 Stage 6 — Audit chain rotation 자동 cron schedule.
+	//
+	// AuditRotationSchedule이 비지 않으면 cronsched에 rotation job 등록 — 매 tick에
+	// 모든 활성 tenant에 대해 직전 segment 이후 신규 entry를 새 segment로 archive.
+	// 빈 값 = 자동 rotation 비활성 (manual API only).
+	//
+	// design doc default = 월 1회 (`@every 720h` 또는 `0 0 1 * *`). 빈 chain·신규 entry 없는
+	// tenant는 silent skip. HA 활성 시 leader 단일 인스턴스만 수행 (cronsched RoleProvider gate).
+	AuditRotationSchedule string
 
 	// CheckTimeoutDefaultSec는 scanrun.Orchestrator가 CheckDef.TimeoutSec=0인 항목에
 	// 적용할 default SSH exec timeout. 0이면 scan.DefaultCheckTimeoutSec(10초). per-check
@@ -1215,6 +1227,52 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		_ = sch.Close(ctx)
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: register backup job: %w", err)
+	}
+
+	// E32 Stage 6 — Audit chain rotation 자동 cron job 등록 (옵트인).
+	//
+	// AuditRotationSchedule="" → 자동 rotation 비활성 (manual API only).
+	// HA 활성 시 cronsched RoleProvider gate(E25 Stage 4a)가 follower tick을 silent skip.
+	// rotation.Backend는 file 기본 (DataDir/audit-archives/). env override는 별 epic.
+	if cfg.AuditRotationSchedule != "" {
+		rotBackendRoot := filepath.Join(cfg.DataDir, "audit-archives")
+		if err := os.MkdirAll(rotBackendRoot, 0o755); err != nil {
+			_ = sch.Close(ctx)
+			_ = store.Close()
+			return nil, fmt.Errorf("bootstrap: mkdir rotation archive dir: %w", err)
+		}
+		rotBackend, err := rotation.NewFileBackend(rotBackendRoot)
+		if err != nil {
+			_ = sch.Close(ctx)
+			_ = store.Close()
+			return nil, fmt.Errorf("bootstrap: rotation backend: %w", err)
+		}
+		rotator, err := rotation.New(rotation.Deps{
+			Clock:    clk,
+			Backend:  rotBackend,
+			Appender: auditSvc,
+		})
+		if err != nil {
+			_ = sch.Close(ctx)
+			_ = store.Close()
+			return nil, fmt.Errorf("bootstrap: rotation.New: %w", err)
+		}
+		tenantLister := rotationjob.TenantListerFunc(func(c context.Context) ([]storage.TenantID, error) {
+			return listAllTenantIDs(c, store)
+		})
+		if err := rotationjob.Register(sch, rotationjob.Deps{
+			Storage: store,
+			Audit:   auditSvc,
+			Rotator: rotator,
+			Tenants: tenantLister,
+			Logger:  logger,
+		}, rotationjob.DefaultJobID, cfg.AuditRotationSchedule); err != nil {
+			_ = sch.Close(ctx)
+			_ = store.Close()
+			return nil, fmt.Errorf("bootstrap: register rotation job: %w", err)
+		}
+		logger.Info("audit rotation auto-schedule active",
+			"spec", cfg.AuditRotationSchedule, "archiveRoot", rotBackendRoot)
 	}
 
 	// FleetPolicy.ScanSchedule cron — best-effort 등록.

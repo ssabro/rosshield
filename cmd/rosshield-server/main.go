@@ -294,6 +294,7 @@ func main() {
 	backupSchedule := flag.String("backup-schedule", "", "Auto backup cron spec (B7 후속). Empty = disabled. Examples: '@every 24h', '0 15 3 * * *' (daily 03:15 UTC).")
 	backupDir := flag.String("backup-dir", "", "Auto backup output directory (B7 후속). Empty = <data-dir>/backups.")
 	backupSkipEvidence := flag.Bool("backup-skip-evidence", false, "Auto backup excludes evidence/ (faster, smaller, metadata-only).")
+	auditRotationSchedule := flag.String("audit-rotation-schedule", "", "Audit chain rotation cron spec (E32 Stage 6). Empty = disabled (manual API only). Examples: '@every 720h' (monthly), '0 0 1 * *' (1st day of each month). HA: leader-only.")
 	checkTimeoutDefaultSec := flag.Int("check-timeout-default-sec", 0, "Default SSH exec timeout for checks with TimeoutSec=0. 0 uses scan.DefaultCheckTimeoutSec (10s). Per-check TimeoutSec always wins.")
 	flag.Parse()
 
@@ -418,6 +419,7 @@ func main() {
 		BackupSchedule:         *backupSchedule,
 		BackupDir:              *backupDir,
 		BackupSkipEvidence:     *backupSkipEvidence,
+		AuditRotationSchedule:  resolveAuditRotationSchedule(*auditRotationSchedule),
 		CheckTimeoutDefaultSec: *checkTimeoutDefaultSec,
 	})
 	if err != nil {
@@ -481,4 +483,18 @@ func main() {
 	if err := platform.Shutdown(shutdownCtx); err != nil {
 		logger.Error("platform shutdown error", "err", err.Error())
 	}
+}
+
+// resolveAuditRotationSchedule은 flag 값이 비어있으면 env로 fallback합니다 (E32 Stage 6).
+//
+// 우선순위: flag → ROSSHIELD_AUDIT_ROTATION_SCHEDULE.
+// 두 값 모두 빈 값이면 자동 rotation 비활성 (manual API only) — bootstrap에서 no-op.
+//
+// 본 함수는 단순 분기만 — env에 값이 있으면 그대로 사용 (cron spec validation은 cronsched가
+// register 시점에 수행).
+func resolveAuditRotationSchedule(flagVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return os.Getenv("ROSSHIELD_AUDIT_ROTATION_SCHEDULE")
 }
