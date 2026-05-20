@@ -7,7 +7,21 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / Phase 9.6 Stage 5b runbook 자동 cutover 시나리오 갱신 / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.8.1] — 2026-05-20 (patch)
+
+> **요약**: Phase 9.6 Stage 5b runbook 갱신 — `multi-region-failover-runbook.md`에 §11 Patroni 자동 cutover 시나리오 추가. v0.8.0 customer가 `--ha-rp=patroni` 환경에서 운영자 검증/사후 분석 절차 + Patroni pause/failover/resume + E25 fallback + RTO 비교(manual 5분 vs 자동 30초) 정착. docs-only, 회귀 0, Breaking 0. 상세는 [docs/releases/v0.8.1.md](docs/releases/v0.8.1.md).
+
+### Added
+- `docs(ops)` Phase 9.6 runbook §11 Patroni 자동 cutover 시나리오 — 자동 단계 timeline (T+0~T+0:21) + 운영자 검증 5 step (PagerDuty/patronictl list/healthz/write API/customer 통지) + false positive `patronictl pause` 절차 + manual `patronictl failover --force` 절차 + `ROSSHIELD_HA_RP=e25` fallback rolling restart + RTO 비교 표.
+- `docs(ops)` §12 참조 boost — `auto-failover-research.md` + `patroni-deployment.md` + `deploy/k8s/patroni/` link 추가.
+
+### Notes
+- v0.8.0 Patroni 통합 customer 운영자 가이드 완전 마감.
+- 잔여: 9.5 testcontainers e2e Patroni 3-node + etcd (큰 작업) / 9.7 customer staging drill (외부).
 
 ---
 

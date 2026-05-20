@@ -416,10 +416,157 @@ sudo -u postgres psql -c "SELECT MIN(occurred_at) FROM audit_entries WHERE id > 
 
 ---
 
-## 11. 참조
+## 11. Patroni 자동 cutover 시나리오 (Phase 9 — `--ha-rp=patroni`)
+
+`--ha-rp=patroni` 환경(v0.8.0+ Kubernetes customer)은 application promote가 **자동** —
+운영자는 검증 + 사후 분석만 담당. 본 절차는 §3 manual promote를 대체합니다.
+
+### 11.1 자동 단계 (Patroni 표준)
+
+```
+T+0:00  PG primary pod 죽음 (kubelet 또는 PG crash)
+T+0:05  Patroni leader lease 만료 감지 (etcd TTL 30s, lease 갱신 실패)
+T+0:10  Patroni standby × 2가 promote 시도 → etcd quorum 확인 → 1개 promote
+T+0:15  새 PG primary가 wal stream 수용 시작
+T+0:20  rosshield-server pod 3개가 Patroni REST polling → 새 leader 식별
+        (PollInterval 1s default라 직전 leader poll 직후 ≤ 1s)
+T+0:21  application-level RoleProvider epoch 증가 → write API 수용 시작
+T+0:21  Kubernetes Service가 새 leader pod로 routing (readiness probe 200)
+```
+
+**RTO**: ~30초 (etcd quorum + Patroni lease + rosshield poll 합).
+
+### 11.2 운영자 검증 절차 (T+0:30 ~ T+2:00)
+
+#### Step 1 — PagerDuty 알림 + Slack 통지
+
+```
+@here Patroni 자동 cutover 발생 — runbook §11 검증 진입.
+Acked by: <your-name>
+Time: 2026-05-20T12:34:00Z
+```
+
+#### Step 2 — Patroni 자체 검증
+
+```bash
+# Patroni cluster 상태
+kubectl exec -n rosshield-ha rosshield-patroni-postgresql-ha-postgresql-0 -- patronictl list
+# Expected: 정확히 1개 Leader + 2개 Replica
+#   Member                                  | Cluster                                 | Host           | Role    | State     | TL | Lag in MB
+# ----------------------------------------------------------------------------------------------------------------------
+#   rosshield-patroni-postgresql-ha-postgresql-0  | rosshield-patroni-postgresql-ha-postgresql  | 10.0.0.10      | Leader  | running   |  3 |
+#   rosshield-patroni-postgresql-ha-postgresql-1  | rosshield-patroni-postgresql-ha-postgresql  | 10.0.0.11      | Replica | streaming |  3 |   0
+#   rosshield-patroni-postgresql-ha-postgresql-2  | rosshield-patroni-postgresql-ha-postgresql  | 10.0.0.12      | Replica | streaming |  3 |   0
+
+# TL(timeline)이 증가했는지 (이전 incident 대비 +1)
+kubectl exec -n rosshield-ha rosshield-patroni-postgresql-ha-postgresql-0 -- \
+  patronictl history
+# Expected: 최근 timeline switch 1건
+```
+
+#### Step 3 — rosshield-server leader 추종 확인
+
+```bash
+# 모든 pod의 RoleProvider 상태
+for pod in $(kubectl get pods -n rosshield-ha -l app=rosshield-server -o name); do
+  kubectl exec -n rosshield-ha $pod -- curl -s localhost:8080/healthz | jq '.ha'
+done
+# Expected: 1 pod role=leader (Patroni leader 일치), 나머지 follower
+# 모든 pod의 epoch가 동일한 새 timeline 값
+```
+
+#### Step 4 — write API 동작
+
+```bash
+curl -X POST https://audit.acme.com/api/v1/audit/checkpoint \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+# Expected: 200 OK
+```
+
+#### Step 5 — Customer 통지
+
+§5 customer 통지 절차 그대로. 단 자동 cutover라 영향 시간이 짧음 (~30초):
+
+```
+[INCIDENT — Resolved]
+Title: PG primary auto-failover (Patroni)
+Time: 2026-05-20 12:34 UTC
+Impact: ~30 seconds write API unavailability
+Status: Auto-resolved by Patroni — Lodestar RoleProvider 자동 추종
+Customer action: No action required
+```
+
+### 11.3 false positive 의심 시 (Patroni pause)
+
+Patroni가 false positive로 자동 cutover를 시도하는 패턴 (분기 0~3회):
+
+```bash
+# 자동 failover 즉시 정지
+kubectl exec -n rosshield-ha rosshield-patroni-postgresql-ha-postgresql-0 -- patronictl pause
+
+# 원인 분석
+kubectl logs -n rosshield-ha rosshield-patroni-postgresql-ha-postgresql-0 --tail=100
+# network partition / etcd flapping / PG load 등 식별
+
+# 안정 확인 후 재활성
+kubectl exec -n rosshield-ha rosshield-patroni-postgresql-ha-postgresql-0 -- patronictl resume
+```
+
+### 11.4 Manual promote (자동 거부 시)
+
+Patroni가 자동 cutover에 실패 (network partition · etcd quorum 부족 등):
+
+```bash
+# 강제 promote — etcd quorum 우회 (위험: split-brain risk)
+kubectl exec -n rosshield-ha rosshield-patroni-postgresql-ha-postgresql-1 -- \
+  patronictl failover --candidate rosshield-patroni-postgresql-ha-postgresql-1 --force
+
+# 또는 등록된 후보 list 확인
+kubectl exec -n rosshield-ha rosshield-patroni-postgresql-ha-postgresql-0 -- \
+  patronictl list
+```
+
+### 11.5 Patroni 환경에서 E25 fallback
+
+Patroni 또는 etcd 자체 장애 시 임시로 E25 fallback (D-AF-4):
+
+```bash
+# 모든 rosshield-server pod 환경 변수 변경
+kubectl set env deployment/rosshield-server -n rosshield-ha \
+  ROSSHIELD_HA_RP=e25
+
+# Rolling restart
+kubectl rollout restart deployment/rosshield-server -n rosshield-ha
+
+# 검증
+kubectl exec -n rosshield-ha deploy/rosshield-server -- \
+  curl -s localhost:8080/healthz | jq '.ha'
+# role이 e25 PG advisory lock 기반으로 결정됨
+```
+
+복구 후 다시 `ROSSHIELD_HA_RP=patroni`로 환원.
+
+### 11.6 RTO 비교 (E25 manual vs Patroni 자동)
+
+| 단계 | E25 manual (§3) | Patroni 자동 (§11) |
+|---|---|---|
+| 감지 | T+0:00 ~ T+2:00 | T+0:00 ~ T+0:10 |
+| PG promote | T+2:30 (수동) | T+0:10 (자동) |
+| Application restart | T+3:00 (수동) | T+0:20 (자동, polling) |
+| Client 검증 | T+4:00 (수동) | T+0:21 (자동) |
+| **총 RTO** | **≤ 5분** | **≤ 30초** |
+
+Patroni 환경은 운영자가 사후 검증만 — RTO 자체는 application 측 무관.
+
+---
+
+## 12. 참조
 
 - design [`multi-region-ha-stage4-design.md`](../design/notes/multi-region-ha-stage4-design.md) — Stage 4 DNS routing 결정
+- design [`auto-failover-research.md`](../design/notes/auto-failover-research.md) — Phase 9 Patroni 통합 결정 (D-AF-1~4)
 - ops [`multi-region-dns.md`](multi-region-dns.md) — Route53 setup + Cloudflare + 자체 DNS
 - ops [`multi-region-ha-setup.md`](multi-region-ha-setup.md) — PG logical replication 전제 조건
+- ops [`patroni-deployment.md`](patroni-deployment.md) — Phase 9 Kubernetes Patroni 운영 가이드
 - HA [`ha-deployment.md`](ha-deployment.md) — E25 single-region leader-election
 - audit chain [`audit-rotation-verify.md`](audit-rotation-verify.md) — failover 시 segment 무결성 검증
+- Kubernetes manifest [`deploy/k8s/patroni/`](../../deploy/k8s/patroni/) — values + Deployment sample
