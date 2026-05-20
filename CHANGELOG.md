@@ -7,7 +7,25 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Audit rotation Stage 4 hot GC 재진행 (carryover #522) + Stage 6 cron + cosign 실서명 + S3 SDK / Multi-region HA Stage 3~7 (PG publication 자동 setup · DNS hook · 자동 failover · cross-region witness · pilot) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Audit rotation cosign 실서명 + S3 SDK + sqlite hot GC / Multi-region HA Stage 3~7 (PG publication 자동 setup · DNS hook · 자동 failover · cross-region witness · pilot) / Stage 5b 잔여 carryover (Playwright 실 실행 + drill-down + 3rd party a11y) / Bundle size 최적화 / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.6.7] — 2026-05-20 (patch)
+
+> **요약**: Audit rotation Stage 4 hot GC (PG GUC trigger bypass) + Stage 6 cron 자동 job + Stage 5b 잔여 페이지 axe scan (9 페이지 누적). 회귀 0. 상세는 [docs/releases/v0.6.7.md](docs/releases/v0.6.7.md).
+>
+> **기준 commit**: `ae7e560` (main)
+
+### Added
+- `feat(audit)` rotation Stage 4 hot GC (`4d42306`) — 마이그레이션 0034 (audit_gc_guc PG trigger bypass) + HotGC 본체 (290줄) + `audit.gc.complete` entry + manual API + admin 권한 + 13 test (단위 7 + PG integration 2 + handler 4)
+- `feat(audit)` rotation Stage 6 cron 자동 job (`f431eb1`) — `internal/platform/scheduler/rotationjob/` sub-package (cycle 회피) + bootstrap 결선 + HA gate 자동 적용 + CLI flag + env + 11 test
+- `test(web)` Stage 5b additional 잔여 페이지 4건 axe scan (`2eb9783`) — Login + Invitation accept + Settings + Users + System (5 페이지 × light/dark = 8 케이스). 누적 9 페이지 cover (Stage 5 5 + Stage 5b 4)
+
+### Notes
+- sub-agent 3 병렬 dispatch 모두 성공 (Stage 4 재진행 + Stage 6 + Stage 5b additional) — 도메인 충돌 0
+- audit chain 무결성 보존 — hot GC도 audit chain 정상 entry (`audit.gc.complete`)
+- migrations_test + migrate_test linter 자동 0034 inserted (cherry-pick 후)
 
 ---
 
