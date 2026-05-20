@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ssabro/rosshield/internal/api/handlers"
+	"github.com/ssabro/rosshield/internal/platform/replication"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 	webembed "github.com/ssabro/rosshield/internal/web"
 )
@@ -155,6 +156,11 @@ func newMux(p *Platform) http.Handler {
 	if p.HA != nil {
 		apiRouter.Use(handlers.RequireLeaderForWrites(p.HA))
 	}
+	// E-MR (Phase 8) Stage 2 — standby-mode middleware (write 차단).
+	// cfg.ReplicationConfig.Enabled=false (default)면 middleware가 no-op — single-region
+	// 호환. Enabled=true + Role=standby면 POST/PUT/PATCH/DELETE → 409 Conflict.
+	apiRouter.Use(replication.StandbyReadOnlyMiddleware(p.ReplicationConfig))
+
 	h := handlers.New(handlers.Deps{
 		Storage:           p.Storage,
 		Clock:             p.Clock,
@@ -179,6 +185,12 @@ func newMux(p *Platform) http.Handler {
 		Metrics:           p.Metrics,
 		ReportSigner:      p.ReportSigner,
 		Intake:            p.Intake, // Phase 6 후보 1 R1 Stage 3 — customer intake handler 결선 (운영자 admin gate).
+
+		// E-MR (Phase 8) Stage 1~2 — Multi-region HA 결선.
+		// Replication repo: sqlite·PG 양쪽에서 동일한 `?` placeholder SQL.
+		// ReplicationConfig: bootstrap에서 env override 로드 — Enabled=false면 endpoint 503/no-op.
+		Replication:       p.Replication,
+		ReplicationConfig: p.ReplicationConfig,
 		// RBAC fleet 정밀화 Stage 3 + Stage 6 closing — robot/scan/insight/reporting service
 		// 위임 ScopeResolver. cross-resource fleet lookup이 필요한 7 mutation endpoint(DELETE
 		// /robots/{id}, POST /robots/{id}/credential:rotate, POST /scans/{id}:cancel,
@@ -365,6 +377,14 @@ func main() {
 		dsn = os.Getenv("ROSSHIELD_DATABASE_URL")
 	}
 
+	// E-MR (Phase 8) — Multi-region HA config from env.
+	// 모든 env 미설정 시 single-region default (Enabled=false) — 기존 배포 동작 그대로.
+	replicationCfg, replErr := replication.LoadConfigFromEnv()
+	if replErr != nil {
+		logger.Error("replication config from env failed", "err", replErr.Error())
+		os.Exit(1)
+	}
+
 	platform, err := Bootstrap(bootCtx, Config{
 		DataDir:                *dataDir,
 		Logger:                 logger,
@@ -393,6 +413,7 @@ func main() {
 		HAHeartbeatInterval:    *haHeartbeat,
 		HALeaderID:             *haLeaderID,
 		HAAdvertisedAddr:       *haAdvertised,
+		ReplicationConfig:      replicationCfg,
 		KeystoreType:           *keystoreType,
 		BackupSchedule:         *backupSchedule,
 		BackupDir:              *backupDir,

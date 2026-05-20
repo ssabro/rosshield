@@ -44,6 +44,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/eventbus"
 	"github.com/ssabro/rosshield/internal/platform/license"
 	"github.com/ssabro/rosshield/internal/platform/metrics"
+	"github.com/ssabro/rosshield/internal/platform/replication"
 	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
@@ -77,6 +78,11 @@ type Deps struct {
 	ReportSigner      signer.Signer            // POST /api/v1/reports/{id}/verify — public key 추출용 (R10-7 ReportSigner, nil이면 503)
 	ScopeResolver     ScopeResolver            // RBAC fleet 정밀화 Stage 2 — cross-resource fleet lookup (nil 허용; Stage 3에서 robot/scan/insight/report repo wrap 주입)
 	Intake            intake.Service           // Phase 6 후보 1 R1 Stage 2 — customer intake CRUD (nil이면 503)
+
+	// E-MR (Phase 8) — Multi-region HA Stage 1~2 — replication 메타 + manual failover.
+	// Replication nil 또는 ReplicationConfig.Enabled=false면 endpoint 503/no-op.
+	Replication       replication.Repository
+	ReplicationConfig replication.Config
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -111,6 +117,11 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/refresh", h.RefreshAuth) // C6 — refresh token rotation
 	r.Post("/api/v1/auth/logout", h.LogoutAuth)   // C6 — refresh revoke + cookie clear
+
+	// E-MR (Phase 8) Stage 2 — replication heartbeat (standby → primary 자기 ping).
+	// 비인증 — 향후 cross-region 공유 시크릿 도입 예정. standby 인스턴스가 standby-mode
+	// middleware의 exempt path로 자기 자신에 호출하는 경로도 본 endpoint 활용.
+	r.Post("/api/v1/replication/heartbeat", h.ReplicationHeartbeat)
 
 	// E21 — invitation by-token (비인증 — token이 capability).
 	r.Get("/api/v1/invitations/by-token/{token}", func(w http.ResponseWriter, req *http.Request) {
@@ -400,6 +411,19 @@ func (h *Handlers) Mount(r chi.Router) {
 			Post("/api/v1/customers/intakes/{intakeId}:accept", h.AcceptCustomerIntake)
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
 			Post("/api/v1/customers/intakes/{intakeId}:reject", h.RejectCustomerIntake)
+
+		// === E-MR (Phase 8) Stage 2 — Multi-region HA endpoints ===
+		// design doc: docs/design/notes/multi-region-ha-design.md §4.3·§4.4.
+		//
+		// GET  /replication/replicas       — 현 replicas 목록 + lag. read는 admin 권한
+		//                                    (인프라 토폴로지 정보 — 운영자 외 노출 금지).
+		// POST /replication/failover       — manual failover (region swap). admin 전용 mutation.
+		// GET  /audit/head-sha             — cross-region head SHA 비교. 인증 사용자 read.
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Get("/api/v1/replication/replicas", h.ListReplicas)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/replication/failover", h.TriggerFailover)
+		r.Get("/api/v1/audit/head-sha", h.GetAuditHeadSHA)
 	})
 }
 

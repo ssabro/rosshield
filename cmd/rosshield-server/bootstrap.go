@@ -63,6 +63,8 @@ import (
 	llmollama "github.com/ssabro/rosshield/internal/platform/llm/ollama"
 	llmvllm "github.com/ssabro/rosshield/internal/platform/llm/vllm"
 	"github.com/ssabro/rosshield/internal/platform/metrics"
+	"github.com/ssabro/rosshield/internal/platform/replication"
+	replicationrepo "github.com/ssabro/rosshield/internal/platform/replication/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
 	"github.com/ssabro/rosshield/internal/platform/signer"
@@ -184,6 +186,16 @@ type Config struct {
 	HALeaderID          string        // 본 인스턴스 식별자 ("hostname:pid"). 빈 값이면 자동 생성.
 	HAAdvertisedAddr    string        // 다른 인스턴스가 redirect 시 사용할 URL (옵션, Stage 3 사용).
 
+	// E-MR (Phase 8) — Multi-region HA (옵션 A = PG logical replication + Route53 DNS).
+	//
+	// 본 round Stage 1·2: Config 등록 + standby-mode middleware + manual failover handler 결선.
+	// 본 round 미진행 (Stage 3~7): PG publication·subscription 자동 setup, DNS hook 실 SDK,
+	// 자동 failover, cross-region audit witness.
+	//
+	// ReplicationConfig.Enabled=false (default)면 single-region 동작 그대로 — 본 코드 도입으로
+	// 동작 변경 없음. true + Role=standby면 write API가 standby middleware로 차단.
+	ReplicationConfig replication.Config
+
 	// E34 — KeyStore 어댑터 선택 (Phase 5 어플라이언스 트랙).
 	//
 	// "" 또는 "file" → file 어댑터(현재 동작, soft.LoadOrCreatePrivateKey 위임).
@@ -245,6 +257,8 @@ type Platform struct {
 	Metrics           *metrics.Registry        // E27 — Prometheus exposition (옵트인)
 	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
 	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
+	Replication       replication.Repository   // E-MR Stage 1 — replication metadata 어댑터 (sqlite/PG 양쪽)
+	ReplicationConfig replication.Config       // E-MR Stage 1~2 — 본 인스턴스의 region·role + standby middleware 활성 여부
 	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
 	BackupDir         string                   // B7 후속 — 자동 백업 디렉터리 (handlers/backup이 list 시 사용)
 	FleetScanSched    *FleetScanScheduler      // dynamic cron re-registration on fleet mutation
@@ -1330,6 +1344,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		SSHPool:           sshPool,
 		systemTenant:      systemTenant,
 		insightAutorunSub: insightAutorunSub,
+		Replication:       replicationrepo.New(),
+		ReplicationConfig: cfg.ReplicationConfig,
 	}
 
 	// E25 — HA leader-election (R30-2 = PG advisory lock + leader/follower).
