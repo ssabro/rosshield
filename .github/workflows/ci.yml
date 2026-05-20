@@ -270,6 +270,31 @@ jobs:
           CGO_ENABLED: '1'
         run: go test -tags="tpm_integration rosshield_enterprise" -count=1 -timeout=4m ./internal/platform/keystore/tpm/... ./internal/enterprise/robotid/...
 
+  cosign-e2e:
+    name: Cosign keyless e2e (sign + verify)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # GitHub Actions OIDC token이 필요 — cosign keyless가 token.actions.githubusercontent.com
+    # issuer로 ambient identity를 fetch해 Fulcio에 단기 인증서 발급 요청.
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Run cosign keyless e2e test
+        # cosign이 ACTIONS_ID_TOKEN_REQUEST_TOKEN/_URL env를 자동 감지하여
+        # OIDC token fetch → Fulcio 인증서 발급 → Rekor 등록.
+        # identity는 GITHUB_REPOSITORY_OWNER 기반 regex.
+        run: go test -tags=cosign_e2e -count=1 -timeout=8m ./internal/domain/audit/rotation/...
+
   e2e:
     name: Playwright E2E (smoke)
     needs: [go, web]
