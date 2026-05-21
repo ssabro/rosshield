@@ -1,0 +1,26 @@
+# selftest — ros2.C2.cmd_vel_acl_enforced (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C2.cmd_vel_acl_enforced
+spec:
+  cases:
+    - name: PASS — ACL entries 2건 명시
+      input:
+        stdout: '** PASS ** cmd_vel ACL entries count=2'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — ACL entries 0건 (default fallback)
+      input:
+        stdout: '** FAIL ** cmd_vel ACL entries count=0 (no publish/topic rule for /cmd_vel)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — keystore enclaves dir 부재
+      input:
+        stdout: '** FAIL ** keystore enclaves dir not found: /home/ros/.ros/keystore/enclaves'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

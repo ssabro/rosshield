@@ -1,0 +1,26 @@
+# selftest — ros2.C3.domain_id_set (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C3.domain_id_set
+spec:
+  cases:
+    - name: PASS — domain id 42
+      input:
+        stdout: '** PASS ** ROS_DOMAIN_ID=42'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — domain id 0 (default)
+      input:
+        stdout: '** FAIL ** ROS_DOMAIN_ID=0'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — domain id unset
+      input:
+        stdout: '** FAIL ** ROS_DOMAIN_ID=unset'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

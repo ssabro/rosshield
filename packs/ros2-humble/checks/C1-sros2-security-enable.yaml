@@ -1,0 +1,46 @@
+# C1 — SROS2 보안 활성화 (ROS_SECURITY_ENABLE=true + ROS_SECURITY_STRATEGY=Enforce) — Humble Hawksbill
+#
+# design doc §2 C1 + §6 D-ROS2-6 권장 default — Enforce 모드 strict baseline.
+# SROS2 미활성 시 인증 없이 join한 악의적 노드가 /cmd_vel publish → 로봇 임의 조작.
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C1.sros2_security_enable
+  title: SROS2 활성화 (ROS_SECURITY_ENABLE=true + Enforce 모드) — Humble Hawksbill
+  description: |-
+    ROS2 Humble Hawksbill 전용. SROS2(Secure ROS2)는 DDS Security Spec v1.1을 기반으로
+    노드 인증·메시지 암호화·권한 enforce를 제공합니다. 본 check는 두 환경변수가 모두
+    strict 값으로 설정되었는지 확인합니다.
+
+      - ROS_SECURITY_ENABLE=true   — 보안 plugin 활성
+      - ROS_SECURITY_STRATEGY=Enforce — 정책 위반 시 즉시 차단(Permissive는 경고만)
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    EN="${ROS_SECURITY_ENABLE:-unset}";
+    ST="${ROS_SECURITY_STRATEGY:-unset}";
+    if [ "$EN" = "true" ] && [ "$ST" = "Enforce" ]; then
+      echo "** PASS ** ROS_SECURITY_ENABLE=$EN ROS_SECURITY_STRATEGY=$ST";
+    else
+      echo "** FAIL ** ROS_SECURITY_ENABLE=$EN ROS_SECURITY_STRATEGY=$ST (want true/Enforce)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    인증 없이 동일 ROS_DOMAIN_ID에 join한 임의 노드가 /cmd_vel 같은 안전-critical
+    토픽을 publish 가능. Enforce 모드만 spec 준수 — Permissive는 경고만 출력하고
+    실제로 차단하지 않으므로 운영 환경 baseline으로 부적합.
+    Humble Hawksbill의 ROS_SECURITY_* 환경변수 의미는 jazzy와 동일.
+  fixGuidance: |-
+    1. ros2 security create_keystore ~/.ros/keystore 로 키스토어 생성.
+    2. /etc/profile.d/ros2-security.sh 파일에 다음 두 줄 추가:
+         export ROS_SECURITY_ENABLE=true
+         export ROS_SECURITY_STRATEGY=Enforce
+    3. 모든 노드 재시작 (systemd unit 또는 launch).
+    4. ros2 daemon stop && ros2 daemon start.
+    5. 검증: env | grep ROS_SECURITY_ 후 두 값 확인.
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

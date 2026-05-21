@@ -1,0 +1,47 @@
+# C2 — /cmd_vel publisher count 단일 (rogue publisher 차단) — Humble Hawksbill
+#
+# design doc §2 C2 후보 'topic.cmd_vel_publisher_count' 정확 일치.
+# /cmd_vel은 로봇 모션 명령 토픽 — publisher가 정확히 1개여야 합니다.
+# 2개 이상이면 rogue node가 명령 발사 가능 (안전-critical).
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C2.cmd_vel_publisher_count
+  title: /cmd_vel publisher count = 1 (rogue publisher 차단) — Humble Hawksbill
+  description: |-
+    ROS2 Humble Hawksbill 전용. /cmd_vel은 표준 로봇 모션 명령 토픽입니다. 정상 운영 시
+    publisher는 정확히 1개(teleop 또는 navigation stack). 2개 이상이면 인증 없이 join한
+    노드가 동시에 명령을 발사할 수 있어 충돌·예측 불가능한 모션 발생. 0개도 abnormal
+    (publisher 미동작 또는 토픽 namespace 불일치).
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    if ! command -v ros2 >/dev/null 2>&1; then
+      echo "** FAIL ** ros2 CLI not found";
+      exit 0;
+    fi;
+    CNT=$(ros2 topic info /cmd_vel 2>/dev/null | grep -E "^Publisher count:" | awk "{print \$3}");
+    CNT="${CNT:-unknown}";
+    if [ "$CNT" = "1" ]; then
+      echo "** PASS ** /cmd_vel publisher count=$CNT";
+    else
+      echo "** FAIL ** /cmd_vel publisher count=$CNT (want 1)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    DDS는 multi-publisher topic을 허용하므로 ACL 부재 시 rogue node가 /cmd_vel에
+    join해 명령을 동시 발사 가능. 단일 publisher 강제는 안전-critical baseline의
+    1차 방어선이며, multi-publisher가 필요한 site는 본 check를 disable하고 site
+    policy(예: teleop priority + nav2 fallback)을 별 audit 항목으로 정의해야 합니다.
+    Humble Hawksbill의 ros2 topic info CLI는 jazzy와 동일 출력 포맷.
+  fixGuidance: |-
+    1. ros2 node list로 publisher node 식별 — ros2 topic info /cmd_vel --verbose.
+    2. 의도하지 않은 publisher 종료 — pkill 또는 launch 파일 점검.
+    3. SROS2 permissions.xml에 publish 권한을 명시한 노드만 허용 — C2 acl_enforced 참조.
+    4. 재검증 — 본 check 재실행.
+    5. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

@@ -1,0 +1,32 @@
+# selftest — ros2.C2.cmd_vel_publisher_count (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C2.cmd_vel_publisher_count
+spec:
+  cases:
+    - name: PASS — publisher count = 1 (정상 단일 teleop)
+      input:
+        stdout: '** PASS ** /cmd_vel publisher count=1'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — publisher count = 2 (rogue publisher join)
+      input:
+        stdout: '** FAIL ** /cmd_vel publisher count=2 (want 1)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — publisher count = 0 (토픽 미동작)
+      input:
+        stdout: '** FAIL ** /cmd_vel publisher count=0 (want 1)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — ros2 CLI 미설치
+      input:
+        stdout: '** FAIL ** ros2 CLI not found'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
