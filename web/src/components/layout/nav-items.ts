@@ -43,6 +43,7 @@ export interface NavItem {
     | '/scans'
     | '/findings'
     | '/compliance'
+    | '/compliance/export'
     | '/advisor'
     | '/reports'
     | '/audit'
@@ -93,6 +94,16 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     labelKey: 'nav.group.compliance',
     items: [
       { to: '/compliance', labelKey: 'nav.compliance', icon: ClipboardCheck },
+      // audit log export wizard — admin + auditor (audit.export 권한).
+      // Phase 11.B-5: nav 매트릭스는 tenant_admin.admin / system.read 두 분기만 cover.
+      // auditor 는 system.read 보유(매트릭스 §3.3) — system.read 로 게이트하면 admin + auditor
+      // 둘 다 visible. fleet-admin/operator/read-only 는 system.read 미보유로 자연 hide.
+      {
+        to: '/compliance/export',
+        labelKey: 'nav.compliance.export',
+        icon: FileText,
+        requires: { resource: 'system', action: 'read' },
+      },
       { to: '/reports', labelKey: 'nav.reports', icon: FileText },
       { to: '/audit', labelKey: 'nav.audit', icon: ScrollText },
     ],

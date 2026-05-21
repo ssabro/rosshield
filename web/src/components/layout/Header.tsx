@@ -28,6 +28,7 @@ const PAGE_TITLE_KEYS: Record<string, DictKey> = {
   '/scans': 'nav.scans',
   '/findings': 'nav.findings',
   '/compliance': 'nav.compliance',
+  '/compliance/export': 'nav.compliance.export',
   '/advisor': 'nav.advisor',
   '/reports': 'nav.reports',
   '/audit': 'nav.audit',

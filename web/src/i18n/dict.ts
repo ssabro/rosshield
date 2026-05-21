@@ -19,6 +19,7 @@ export const ko = {
   'nav.scans': '스캔',
   'nav.findings': '탐지·이슈',
   'nav.compliance': '컴플라이언스',
+  'nav.compliance.export': '감사 로그 내보내기',
   'nav.advisor': 'AI 어드바이저',
   'nav.reports': '리포트',
   'nav.audit': '감사 체인',
@@ -434,6 +435,32 @@ export const ko = {
     '이 스냅샷은 control 단위 데이터를 포함하지 않습니다.',
   'compliance.controls.no_match': '필터 조건에 맞는 통제가 없습니다.',
   'compliance.header.activeBadge': '활성 프로필 {count}',
+
+  // Phase 11.B-5 — audit log export wizard (auditor + admin).
+  'pages.compliance.export.title': '감사 로그 내보내기',
+  'pages.compliance.export.description':
+    '외부 감사인을 위한 audit chain bundle 을 다운로드합니다. v2 번들에는 chainKeyEpochs 가 포함되어 epoch 별 public key 로 외부 검증이 가능합니다.',
+  'compliance.export.section': '내보내기 옵션',
+  'compliance.export.fromSeq': '시작 seq',
+  'compliance.export.fromSeq.placeholder': '예: 1 (비우면 1부터)',
+  'compliance.export.toSeq': '종료 seq',
+  'compliance.export.toSeq.placeholder': '비우면 chain head 까지',
+  'compliance.export.format': '번들 포맷',
+  'compliance.export.format.v2': 'v2 — chainKeyEpochs 포함 (권장)',
+  'compliance.export.format.v1': 'v1 — 호환 모드',
+  'compliance.export.submit': '내보내기',
+  'compliance.export.submitting': '내보내는 중…',
+  'compliance.export.toast.success': '번들이 다운로드되었습니다',
+  'compliance.export.toast.success.desc':
+    'auditEntrySeq={seq} format={format} — 다운로드된 .tar.gz 를 외부 감사인에게 전달하세요.',
+  'compliance.export.toast.error': '내보내기에 실패했습니다',
+  'compliance.export.error.unauthorized':
+    '권한이 부족합니다. auditor 또는 admin 역할이 필요합니다.',
+  'compliance.export.error.unavailable':
+    '서버에서 audit log export 기능이 비활성화되어 있습니다.',
+  'compliance.export.error.fallback': '내보내기 요청을 처리할 수 없습니다.',
+  'compliance.export.hint':
+    '본 endpoint 호출은 audit.compliance.export event 로 기록되며 호출자(actor)·tenant·범위·format 이 audit chain 에 append-only 로 남습니다.',
 
   'pages.advisor.title': 'AI 어드바이저',
   'advisor.subtitle.intro':
@@ -1161,6 +1188,7 @@ export const en: Record<keyof typeof ko, string> = {
   'nav.scans': 'Scans',
   'nav.findings': 'Findings',
   'nav.compliance': 'Compliance',
+  'nav.compliance.export': 'Audit log export',
   'nav.advisor': 'Advisor',
   'nav.reports': 'Reports',
   'nav.audit': 'Audit',
@@ -1571,6 +1599,32 @@ export const en: Record<keyof typeof ko, string> = {
   'compliance.controls.empty.description':
     'This snapshot does not include per-control breakdown.',
   'compliance.controls.no_match': 'No controls match the current filter.',
+
+  // Phase 11.B-5 — audit log export wizard (auditor + admin).
+  'pages.compliance.export.title': 'Audit log export',
+  'pages.compliance.export.description':
+    'Download an audit chain bundle for an external auditor. v2 bundles include chainKeyEpochs so the auditor can verify each entry against the epoch-scoped public key.',
+  'compliance.export.section': 'Export options',
+  'compliance.export.fromSeq': 'From seq',
+  'compliance.export.fromSeq.placeholder': 'e.g. 1 (empty = 1)',
+  'compliance.export.toSeq': 'To seq',
+  'compliance.export.toSeq.placeholder': 'empty = chain head',
+  'compliance.export.format': 'Bundle format',
+  'compliance.export.format.v2': 'v2 — includes chainKeyEpochs (recommended)',
+  'compliance.export.format.v1': 'v1 — compatibility mode',
+  'compliance.export.submit': 'Export',
+  'compliance.export.submitting': 'Exporting…',
+  'compliance.export.toast.success': 'Bundle downloaded',
+  'compliance.export.toast.success.desc':
+    'auditEntrySeq={seq} format={format} — hand the .tar.gz over to your external auditor.',
+  'compliance.export.toast.error': 'Export failed',
+  'compliance.export.error.unauthorized':
+    'Insufficient permission. The auditor or admin role is required.',
+  'compliance.export.error.unavailable':
+    'Audit log export is not enabled on this server.',
+  'compliance.export.error.fallback': 'Failed to process the export request.',
+  'compliance.export.hint':
+    'Each call is recorded as an audit.compliance.export event — actor, tenant, range, and format are appended to the audit chain.',
   'compliance.header.activeBadge': '{count} active',
 
   'pages.advisor.title': 'Advisor',

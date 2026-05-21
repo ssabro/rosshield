@@ -91,6 +91,10 @@ func allMutationEndpoints() []rbacEndpoint {
 		{name: "POST /compliance/profiles", resource: authz.ResourceCompliance, action: authz.ActionAdmin},
 		{name: "POST /compliance/profiles/{profileId}/snapshots", resource: authz.ResourceCompliance, action: authz.ActionExecute},
 
+		// === Compliance export (1) — Phase 11.B-5 audit log export wizard ===
+		// admin + auditor 통과 (audit.export 매트릭스 §3.3). read-only/operator/fleet-admin 거부.
+		{name: "POST /compliance/export", resource: authz.ResourceAudit, action: authz.ActionExport},
+
 		// === Customer Intake (5) — Phase 6 후보 1 R1 Stage 3 ===
 		// 운영자 admin 전용 — read 포함 모든 5 endpoint가 ResourceTenantAdmin.Admin 게이트.
 		// design doc `customer-onboarding-design.md` §6.2 line 90·538 일관.
@@ -183,8 +187,8 @@ func TestRBACMatrix_AllPersonasAllEndpoints(t *testing.T) {
 	t.Parallel()
 
 	endpoints := allMutationEndpoints()
-	if got, want := len(endpoints), 29; got != want {
-		t.Fatalf("endpoint count = %d, want %d (handlers.go admin 그룹 mutation 24 + intake 5)", got, want)
+	if got, want := len(endpoints), 30; got != want {
+		t.Fatalf("endpoint count = %d, want %d (handlers.go admin 그룹 mutation 24 + intake 5 + compliance export 1)", got, want)
 	}
 	personas := allPersonas()
 	if got, want := len(personas), 6; got != want {

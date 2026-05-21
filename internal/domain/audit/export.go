@@ -1,14 +1,36 @@
 package audit
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
+	"github.com/ssabro/rosshield/internal/platform/signer"
 	"github.com/ssabro/rosshield/internal/platform/storage"
 )
+
+// ChainExporter 는 v1 + v2 audit chain bundle export 진입점입니다 (Phase 11.B-5).
+//
+// design doc `docs/design/notes/soc2-readiness-design.md` §7.5 (Stage 11.B-5) — 외부
+// 감사인 access wizard 에서 사용할 audit log bundle 표면을 도메인 interface 로 분리.
+// sqliterepo.Repo 가 자동 만족 (Export + ExportV2 메서드 보유).
+//
+// 본 interface 는 기존 audit.Service interface 와 분리되어 있습니다 — Service 는 광범위하게
+// 사용되는 공개 표면(Append/Head/Verify/WriteCheckpoint/LatestCheckpoint 등) 이므로
+// export 메서드를 신규 추가하면 mock 다수 갱신이 필요. ChainExporter 는 export endpoint
+// 핸들러 + audit_export wizard 만 의존하면 충분.
+//
+// fromSeq <= 0 → 1, toSeq <= 0 또는 toSeq < fromSeq → head.Seq 까지.
+// v2 keyRepo 가 nil 이면 v1 bundle (byte-identical).
+type ChainExporter interface {
+	// ExportV2 는 v2 bundle 을 내보냅니다 (chainKeyEpochs 포함).
+	// keyRepo 가 nil 이면 v1 bundle 로 fallback (Export 와 byte-identical).
+	ExportV2(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64, sgn signer.Signer, keyRepo ChainKeyRepository) (io.ReadCloser, error)
+}
 
 // ExportEntryLine은 NDJSON 한 라인 직렬화 결과입니다.
 //

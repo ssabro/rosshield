@@ -414,6 +414,9 @@ type Platform struct {
 	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
 	HotGC             *rotation.HotGC          // E32 Stage 4 — audit hot GC (sqlite marker mode + PG GUC 양쪽)
 	KeyRotator        *keyrotation.KeyRotator  // Phase 10.D-3+4+6 — audit chain signer key rotation (auto + emergency override)
+	AuditExporter     audit.ChainExporter      // Phase 11.B-5 — audit log bundle export (auditor + admin)
+	AuditChainKeys    audit.ChainKeyRepository // Phase 11.B-5 — v2 bundle chainKeyEpochs lookup
+	AuditSigner       signer.Signer            // Phase 11.B-5 — audit chain signer (SwappableSigner)
 	Replication       replication.Repository   // E-MR Stage 1 — replication metadata 어댑터 (sqlite/PG 양쪽)
 	ReplicationConfig replication.Config       // E-MR Stage 1~2 — 본 인스턴스의 region·role + standby middleware 활성 여부
 	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
@@ -1668,6 +1671,9 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		MetricsBridge:     metricsBridge,
 		HotGC:             hotGC,
 		KeyRotator:        keyRotator, // Phase 10.D-3+4+6 — auto-rotation orchestrator + emergency override.
+		AuditExporter:     auditSvc,
+		AuditChainKeys:    auditrepo.NewKeyEpochRepo(),
+		AuditSigner:       swappableSigner,
 		Keystore:          ks,
 		BackupDir:         resolvedBackupDir,
 		FleetScanSched:    fleetScanSch,

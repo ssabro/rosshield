@@ -93,6 +93,13 @@ type Deps struct {
 	// Phase 10.D-6 — audit chain signer key rotation emergency override.
 	// KeyRotator nil 이면 POST /api/v1/audit/rotation/abort 503.
 	KeyRotator *keyrotation.KeyRotator
+
+	// Phase 11.B-5 — audit log export wizard (auditor + admin).
+	// AuditExporter / AuditChainKeys / AuditSigner 중 하나라도 nil 이면
+	// POST /api/v1/compliance/export 503.
+	AuditExporter   audit.ChainExporter
+	AuditChainKeys  audit.ChainKeyRepository
+	AuditSigner     signer.Signer
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -401,6 +408,13 @@ func (h *Handlers) Mount(r chi.Router) {
 			Post("/api/v1/compliance/profiles/{profileId}/snapshots", func(w http.ResponseWriter, req *http.Request) {
 				h.GenerateComplianceSnapshot(w, req, chi.URLParam(req, "profileId"))
 			})
+
+		// === Phase 11.B-5 — audit log export wizard (auditor + admin) ===
+		// design doc `docs/design/notes/soc2-readiness-design.md` §7.5.
+		// 권한: ResourceAudit.ActionExport — permission_matrix.go 매트릭스에서 admin +
+		// auditor 통과 (auditor read-only role 의 핵심 위임 표면).
+		r.With(h.RequirePermission(authz.ResourceAudit, authz.ActionExport)).
+			Post("/api/v1/compliance/export", h.ExportComplianceBundle)
 
 		// === Customer Intake (5건) — Phase 6 후보 1 R1 Stage 3 ===
 		// design doc `docs/design/notes/customer-onboarding-design.md` §6.1 + §6.2 산출.
