@@ -626,3 +626,28 @@ CLAUDE.md 일관 — local 커밋 OK, remote push 사용자 명시 요청 시에
 - **D-P11B-4 soc2-controls pack 운영** — 권장 default CIS-style yaml 자동 검증 (~50~80 check).
 
 사용자 4 결정 round 1회로 합의 후 Stage 11.B-2 진입 가능.
+
+---
+
+## 13. 결정 확정 (2026-05-21)
+
+사용자 D-P11B-1·2·3·4 결정:
+
+- **D-P11B-1 = 옵션 A** (compliance docs + auditor role + dashboard + 자동 검증 pack 일괄, 권장 default).
+- **D-P11B-2 = 전체 5 (A1~A5)** — sub-agent 권장(A1·A2·A5 우선)에서 broader cover로 변경. A6 Custodial은 미적용(rare).
+- **D-P11B-3 = auditor role 신규** — RBAC 일관, 세분 분리, audit log export wizard 전용 role.
+- **D-P11B-4 = 자동 검증 pack** — soc2-controls pack ~50~80 check CIS-style yaml, 최대 ROI.
+
+### 13.1 결정 amendment에 따른 Stage 분해 조정
+
+- Stage 11.B-1: 본 design doc (마감, dac77e5)
+- Stage 11.B-2: docs/compliance/ scaffold + CC1~CC4 control mapping (1~2주)
+- Stage 11.B-3: CC5~CC9 control mapping (1주)
+- Stage 11.B-4: **A1~A5 전체 cover** (A6 제외) — Availability + Confidentiality + Processing Integrity + Privacy + Security (0.5~1주, broader)
+- Stage 11.B-5: auditor role 신규 + audit log export wizard (1~1.5주)
+- Stage 11.B-6: effectiveness dashboard (`/compliance` 페이지) (1~1.5주)
+- Stage 11.B-7: soc2-controls 자동 검증 pack (~50~80 check, 1~2주)
+- Stage 11.B-8: testcontainers integration + ops docs + v0.12.0 minor release (0.5주)
+
+총 보수적 ~8~10주.
+
