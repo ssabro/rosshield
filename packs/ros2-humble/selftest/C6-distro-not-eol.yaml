@@ -1,0 +1,32 @@
+# selftest — ros2.C6.distro_not_eol (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C6.distro_not_eol
+spec:
+  cases:
+    - name: PASS — humble (EOL 아님, 2027-05 EOL 예정)
+      input:
+        stdout: '** PASS ** ROS_DISTRO=humble (EOL 아님)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — ROS_DISTRO unset (EOL distro 검출 0)
+      input:
+        stdout: '** PASS ** ROS_DISTRO 미설정 (EOL distro 검출 0)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — iron (EOL 2025-11)
+      input:
+        stdout: '** FAIL ** ROS_DISTRO=iron (EOL — 보안 patch 미발급)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — foxy (EOL 2023-05)
+      input:
+        stdout: '** FAIL ** ROS_DISTRO=foxy (EOL — 보안 patch 미발급)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

@@ -1,0 +1,32 @@
+# selftest — ros2.C4.systemd_unit_perms (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C4.systemd_unit_perms
+spec:
+  cases:
+    - name: PASS — owner=root + perms ≤ 0644 모두 충족
+      input:
+        stdout: '** PASS ** ros2-*.service unit owner=root + perms ≤ 0644'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — ros2 unit 부재 (본 check 비대상)
+      input:
+        stdout: '** PASS ** ros2-*.service unit 부재 (본 check 비대상)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — owner non-root
+      input:
+        stdout: '** FAIL ** owner!=root: /etc/systemd/system/ros2-talker.service (uid=1000)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — perms world-writable (0666)
+      input:
+        stdout: '** FAIL ** perms>0644: /etc/systemd/system/ros2-listener.service (mode=666)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

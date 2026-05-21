@@ -1,0 +1,20 @@
+# selftest — ros2.C6.ros2_cli_available (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C6.ros2_cli_available
+spec:
+  cases:
+    - name: PASS — ros2 CLI 발견
+      input:
+        stdout: '** PASS ** ros2 CLI 발견: /opt/ros/humble/bin/ros2'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — ros2 CLI 미발견
+      input:
+        stdout: '** FAIL ** ros2 CLI 미발견 (ROS2 미설치 또는 setup.bash source 누락)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

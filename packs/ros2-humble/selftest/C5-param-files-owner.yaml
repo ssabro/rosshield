@@ -1,0 +1,38 @@
+# selftest — ros2.C5.param_files_owner (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C5.param_files_owner
+spec:
+  cases:
+    - name: PASS — owner=ros + perms ≤ 0644
+      input:
+        stdout: '** PASS ** launch/param yaml owner=ros/root + perms ≤ 0644'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — launch/param 디렉터리 부재 (비대상)
+      input:
+        stdout: '** PASS ** launch/param yaml 디렉터리 부재 (검사 대상 0)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — yaml 파일 0건 (비대상)
+      input:
+        stdout: '** PASS ** launch/param yaml 0건 (검사 대상 0)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — owner unprivileged user
+      input:
+        stdout: '** FAIL ** owner!=ros/root: /etc/ros2/params/robot.yaml (owner=attacker)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — perms 0666 (world-writable)
+      input:
+        stdout: '** FAIL ** perms not in {0644,0640,0600}: /etc/ros2/params/sensor.yaml (mode=666)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

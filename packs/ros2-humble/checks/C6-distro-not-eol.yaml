@@ -1,0 +1,62 @@
+# C6 — EOL distro 사용 차단 (iron·foxy·galactic·dashing·eloquent) — Humble Hawksbill
+#
+# design doc §2 C6 — distro.not_eol.
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+# Humble Hawksbill 자체 EOL은 2027-05 — 본 pack 출시 시점(2026-05) 기준 아직 EOL 아님(PASS).
+# 단 2027-05 이후 EOL 진입 시 본 pack 사용 site는 jazzy 등 LTS migration 권장.
+# EOL distro는 보안 patch 미발급 — 알려진 CVE 미해결 상태로 운영 위험.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C6.distro_not_eol
+  title: EOL ROS2 distro 사용 금지 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. EOL(End-Of-Life) distro는 보안 patch 발급이
+    중단되어 known CVE가 미해결로 잔존합니다. 본 check는 다음 EOL distro 사용을
+    차단합니다:
+
+      - iron      (2023-05 release, 2025-11 EOL)
+      - foxy      (2020-06 release, 2023-05 EOL)
+      - galactic  (2021-05 release, 2022-12 EOL)
+      - dashing   (2019-05 release, 2021-05 EOL)
+      - eloquent  (2019-11 release, 2020-11 EOL)
+
+    참고 — Humble Hawksbill 자체 EOL은 2027-05 (jazzy의 2029-05 대비 빠름).
+    본 pack 사용 site는 2027-05 이전에 jazzy LTS migration 계획을 권장합니다.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    DISTRO="${ROS_DISTRO:-unset}";
+    case "$DISTRO" in
+      iron|foxy|galactic|dashing|eloquent)
+        echo "** FAIL ** ROS_DISTRO=$DISTRO (EOL — 보안 patch 미발급)";
+        ;;
+      unset)
+        echo "** PASS ** ROS_DISTRO 미설정 (EOL distro 검출 0)";
+        ;;
+      *)
+        echo "** PASS ** ROS_DISTRO=$DISTRO (EOL 아님)";
+        ;;
+    esac'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    EOL distro에서 발견된 CVE는 upstream patch 없이 customer 자체 해결만 가능 —
+    enterprise 환경에서 수용 불가. 본 check가 FAIL이면 즉시 LTS(humble/jazzy)로
+    migration 필요. Humble Hawksbill 자체는 2027-05 EOL 예정이므로 본 pack
+    사용 customer는 그 이전에 jazzy(EOL 2029-05) migration 일정 수립 권장 —
+    상위 layer 운영 정책으로 carryover.
+  fixGuidance: |-
+    1. apt list --installed 2>/dev/null | grep ros-<distro>- 로 설치된 패키지 확인.
+    2. EOL distro 패키지 제거:
+         sudo apt remove 'ros-iron-*' 'ros-foxy-*' (예시 — 검출된 distro 이름)
+    3. Humble 설치 (본 pack 대상):
+         sudo apt update && sudo apt install ros-humble-desktop
+       또는 jazzy 최신 LTS(EOL 2029-05):
+         sudo apt update && sudo apt install ros-jazzy-desktop
+    4. workspace 재빌드 + /etc/profile.d/ros2.sh 갱신 (humble의 경우 /opt/ros/humble/setup.bash).
+    5. ros2 --version 으로 확인.
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

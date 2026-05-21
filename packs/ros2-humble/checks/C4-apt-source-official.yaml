@@ -1,0 +1,56 @@
+# C4 — APT source가 공식 packages.ros.org 사용 (supply chain 신뢰) — Humble Hawksbill
+#
+# design doc §2 C4 후보 'binary.apt_source_official'.
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+# 비공식 mirror는 binary tampering 또는 outdated package risk → supply chain 공격 경로.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C4.apt_source_official
+  title: APT source — 공식 packages.ros.org URL 사용 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. /etc/apt/sources.list.d/ros2*.list 파일이 공식
+    packages.ros.org URL을 사용해야 합니다. 비공식 mirror·redirector는 supply
+    chain 신뢰 경로 밖이며, binary tampering 또는 outdated package(취약점 미패치)
+    노출 risk.
+
+    본 check는:
+      1. /etc/apt/sources.list.d/ros2*.list 1개 이상 존재
+      2. 파일 안에 `deb ... packages.ros.org` 라인 1건 이상
+
+    조건이 모두 충족되면 PASS.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    FILES=$(ls /etc/apt/sources.list.d/ros2*.list 2>/dev/null);
+    if [ -z "$FILES" ]; then
+      echo "** FAIL ** ros2 apt source list 부재 (/etc/apt/sources.list.d/ros2*.list)";
+      exit 0;
+    fi;
+    if grep -hE "^deb[[:space:]].*packages\.ros\.org" $FILES > /dev/null 2>&1; then
+      echo "** PASS ** 공식 packages.ros.org URL 발견";
+    else
+      echo "** FAIL ** 공식 packages.ros.org URL 없음 (비공식 mirror 사용 의심)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    ROS2 공식 binary는 packages.ros.org에서 GPG 서명되어 배포됩니다. 비공식
+    mirror·CDN redirector·내부 proxy(서명 검증 우회) 사용은 supply chain 경로를
+    감사 외부로 노출. 본 check는 apt source line이 공식 host를 가리키는지 정적
+    검증 — apt key 만료(`binary.apt_key_valid`)와 별 layer로 carryover.
+    Humble Hawksbill은 Ubuntu 22.04 LTS(jammy) base이며 jazzy(noble base)와 비교해
+    apt source host(packages.ros.org)는 동일, distro 디렉터리만 humble로 다릅니다.
+  fixGuidance: |-
+    1. /etc/apt/sources.list.d/ros2.list 편집:
+         sudo nano /etc/apt/sources.list.d/ros2.list
+    2. 다음 라인 추가 (humble LTS 기준 — Ubuntu 22.04 jammy):
+         deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main
+    3. 비공식 mirror line 제거 후 저장.
+    4. apt update + 재설치:
+         sudo apt update && sudo apt install --reinstall ros-humble-ros-base
+    5. 내부 mirror 운영 site는 별 정책(서명 검증 강제) 문서화 후 carryover로 분리.
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

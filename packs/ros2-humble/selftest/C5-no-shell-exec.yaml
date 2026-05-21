@@ -1,0 +1,26 @@
+# selftest — ros2.C5.no_shell_exec (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C5.no_shell_exec
+spec:
+  cases:
+    - name: PASS — ExecuteProcess(shell=True) 0건
+      input:
+        stdout: '** PASS ** ExecuteProcess(shell=True) 0건'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — launch.py 디렉터리 부재 (검사 대상 0)
+      input:
+        stdout: '** PASS ** launch.py 디렉터리 부재 (검사 대상 0)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — ExecuteProcess(shell=True) 1건 발견
+      input:
+        stdout: '** FAIL ** ExecuteProcess(shell=True) 발견 count=1 (shell=False + cmd list 권장)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

@@ -1,0 +1,80 @@
+# C5 — safety-critical 노드가 managed lifecycle 사용 (uncontrolled startup 차단) — Humble Hawksbill
+#
+# design doc §2 C5 후보 'launch.lifecycle_node_used' + §6 Stage 10.E-3 D-P10E-3
+# (env override skip — site policy 의존 check, env 미설정 시 PASS skip).
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/ → /opt/ros/humble/.
+# unmanaged 노드는 부팅 직후 즉시 active → safety check 우회 risk.
+# managed lifecycle은 configure → activate 단계 강제 → 의도된 시점에만 활성.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C5.lifecycle_node_used
+  title: safety-critical 노드 — managed lifecycle 사용 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. Safety-critical 노드(env
+    `ROSSHIELD_SAFETY_CRITICAL_NODES` 로 site별 지정)는 ROS2 managed lifecycle
+    (`LifecycleNode` 또는 `lifecycle_node`)을 사용해야 합니다. 일반 `Node` 사용 시
+    부팅 직후 즉시 active 상태가 되어 safety check(precondition 검증, sensor
+    warm-up) 우회 risk. managed lifecycle은 configure → activate 단계 강제 +
+    운영자의 명시적 trigger 가 필요 → 의도된 시점에만 활성화.
+
+    본 check는 site policy 의존:
+      1. env `ROSSHIELD_SAFETY_CRITICAL_NODES` 미설정 시 PASS skip
+      2. 설정 시 (comma-separated 노드 이름 목록) 각 노드의 launch/소스 코드에서 `LifecycleNode`/`lifecycle_node` 참조 검색
+      3. 모든 safety-critical 노드가 lifecycle 사용 시 PASS
+
+    customer가 safety-critical 노드 목록을 env로 정의해야 실 검증 활성화.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    if [ -z "$ROSSHIELD_SAFETY_CRITICAL_NODES" ]; then
+      echo "** PASS ** safety-critical 노드 목록 미설정 (env ROSSHIELD_SAFETY_CRITICAL_NODES 정의 필요 — site policy skip)";
+      exit 0;
+    fi;
+    DIRS=$(ls -d ~/ros2_ws/src /opt/ros/humble/share/*/launch ~/ros2_ws/install/*/share/*/launch 2>/dev/null);
+    if [ -z "$DIRS" ]; then
+      echo "** FAIL ** source/launch 디렉터리 부재 — safety-critical 노드 정의되었으나 검사 대상 source 없음";
+      exit 0;
+    fi;
+    MISSING="";
+    IFS=",";
+    for n in $ROSSHIELD_SAFETY_CRITICAL_NODES; do
+      n_trim=$(echo "$n" | tr -d "[:space:]");
+      [ -z "$n_trim" ] && continue;
+      HITS=$(grep -rE "(LifecycleNode|lifecycle_node).*${n_trim}|${n_trim}.*(LifecycleNode|lifecycle_node)" $DIRS 2>/dev/null | wc -l);
+      if [ "$HITS" = "0" ]; then
+        MISSING="$MISSING $n_trim";
+      fi;
+    done;
+    unset IFS;
+    if [ -z "$MISSING" ]; then
+      echo "** PASS ** safety-critical 노드 모두 managed lifecycle 사용";
+    else
+      echo "** FAIL ** safety-critical 노드에 unmanaged Node 사용 의심:$MISSING (LifecycleNode 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    일반 `rclcpp::Node`/`rclpy.Node`는 인스턴스 생성 즉시 callback 활성 —
+    부팅 직후 sensor calibration, network connectivity, safety zone load
+    완료 전에 `/cmd_vel` publish 시작 가능. ROS2 managed lifecycle은
+    unconfigured → inactive → active 상태 전이를 운영자/launch가 명시
+    trigger 해야 활성 → safety precondition 강제. site별 어느 노드가
+    safety-critical 인지는 customer 정의 — env var 미설정 시 PASS skip
+    (false positive 회피). 향후 carryover로 plugin check + AST 분석으로
+    detection 정확도 강화 예정.
+    Humble Hawksbill의 lifecycle 의미·인터페이스는 jazzy와 동일.
+  fixGuidance: |-
+    1. customer 운영팀과 safety-critical 노드 목록 합의:
+         export ROSSHIELD_SAFETY_CRITICAL_NODES="motion_controller,emergency_stop,collision_detector"
+    2. 위반 노드를 LifecycleNode 로 마이그레이션:
+       - C++: `rclcpp_lifecycle::LifecycleNode` 상속 + on_configure/on_activate 구현.
+       - Python: `rclpy.lifecycle.Node` 상속 + 동일.
+    3. launch.py에서 lifecycle 노드는 `LifecycleNode` action 사용 + `EmitEvent` 로 configure/activate trigger.
+    4. 운영 절차에 lifecycle 상태 점검 단계 추가:
+         ros2 lifecycle get /motion_controller
+    5. 검증 — 본 check 재실행, MISSING 비어 있음 확인.
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

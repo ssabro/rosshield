@@ -1,0 +1,69 @@
+# C4 — ROS2 APT GPG key 유효 + 만료 ≥ 90일 (supply chain 신뢰 layer 2) — Humble Hawksbill
+#
+# design doc §2 C4 후보 'binary.apt_key_valid' + §6 Stage 10.E-3 D-P10E-4 (≥ 90일).
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+# apt source URL이 공식이라도 GPG key가 expired/revoked 면 서명 검증 우회 risk.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C4.apt_key_valid
+  title: ROS2 APT GPG key — 유효 + 만료까지 ≥ 90일 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. /etc/apt/trusted.gpg.d/ros.gpg(또는 env
+    `ROSSHIELD_APT_KEY_FILE`로 지정)의 GPG key가 유효하며 만료까지 ≥ 90일
+    남아 있어야 합니다. key가 expired/revoked 상태이면 apt가 서명 검증을 silently
+    skip 하거나 사용자가 `--allow-unauthenticated` flag를 쓰게 되어 공식 mirror
+    사용 검증(`binary.apt_source_official`)이 무력화됩니다.
+
+    본 check는:
+      1. key 파일 존재(`/etc/apt/trusted.gpg.d/ros.gpg` 또는 env 지정)
+      2. gpg --list-keys --with-colons 으로 만료일 parse
+      3. 오늘 기준 만료까지 ≥ 90일 (해당 정책 — site 변경 시 audit cmd 직접 수정)
+
+    조건 모두 충족 시 PASS.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    KEYFILE="${ROSSHIELD_APT_KEY_FILE:-/etc/apt/trusted.gpg.d/ros.gpg}";
+    if [ ! -f "$KEYFILE" ]; then
+      echo "** FAIL ** ROS2 GPG key 파일 부재: $KEYFILE (env ROSSHIELD_APT_KEY_FILE override 가능)";
+      exit 0;
+    fi;
+    EXP=$(gpg --no-default-keyring --keyring "$KEYFILE" --list-keys --with-colons 2>/dev/null | awk -F: "/^pub/{print \$7; exit}");
+    if [ -z "$EXP" ] || [ "$EXP" = "0" ]; then
+      echo "** PASS ** ROS2 GPG key 만료일 미설정(영구) 또는 enterprise long-lived";
+      exit 0;
+    fi;
+    NOW=$(date +%s);
+    DAYS=$(( (EXP - NOW) / 86400 ));
+    if [ "$DAYS" -ge 90 ]; then
+      echo "** PASS ** ROS2 GPG key 만료까지 ${DAYS}일 (≥ 90일)";
+    else
+      echo "** FAIL ** ROS2 GPG key 만료까지 ${DAYS}일 (< 90일) — key rotate 권장";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    ROS2 binary는 packages.ros.org에서 GPG 서명되어 배포됩니다. apt는 키
+    expired 시 서명 검증을 skip 하거나 사용자가 `--allow-unauthenticated`로
+    우회하는 게 일반적 — 공식 mirror 사용 검증이 무력화됩니다. 90일 buffer는
+    quarterly rotation cadence + 운영팀이 발견 후 rotate 까지의 안전 margin.
+    enterprise long-lived(만료 미설정) key는 PASS — site 정책 의존이므로
+    `binary.apt_source_official` + audit log 보완을 권장합니다.
+    Humble Hawksbill의 GPG key 검증 의미·threshold는 jazzy와 동일.
+  fixGuidance: |-
+    1. 최신 ROS2 key 다운로드 (Humble):
+         curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+           | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/ros.gpg
+    2. 권한 확인:
+         sudo chmod 0644 /etc/apt/trusted.gpg.d/ros.gpg
+    3. apt cache 재구성:
+         sudo apt update
+    4. 만료일 확인:
+         gpg --keyring /etc/apt/trusted.gpg.d/ros.gpg --list-keys
+    5. site internal mirror 운영 시 별 GPG key 경로를 env `ROSSHIELD_APT_KEY_FILE`로
+       override + key rotation calendar 수립.
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

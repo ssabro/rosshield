@@ -1,0 +1,32 @@
+# selftest — ros2.C6.distro_is_lts (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C6.distro_is_lts
+spec:
+  cases:
+    - name: PASS — humble LTS
+      input:
+        stdout: '** PASS ** ROS_DISTRO=humble (LTS)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — jazzy LTS
+      input:
+        stdout: '** PASS ** ROS_DISTRO=jazzy (LTS)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — rolling (non-LTS)
+      input:
+        stdout: '** FAIL ** ROS_DISTRO=rolling (LTS 아님 — jazzy/humble만 허용)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — ROS_DISTRO unset
+      input:
+        stdout: '** FAIL ** ROS_DISTRO 미설정 (ROS2 환경 source 누락 가능)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

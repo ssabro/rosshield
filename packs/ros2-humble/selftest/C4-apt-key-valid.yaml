@@ -1,0 +1,32 @@
+# selftest — ros2.C4.apt_key_valid (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C4.apt_key_valid
+spec:
+  cases:
+    - name: PASS — 만료까지 365일
+      input:
+        stdout: '** PASS ** ROS2 GPG key 만료까지 365일 (≥ 90일)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — 만료일 미설정 (영구/long-lived)
+      input:
+        stdout: '** PASS ** ROS2 GPG key 만료일 미설정(영구) 또는 enterprise long-lived'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — 만료까지 30일 (90일 미만)
+      input:
+        stdout: '** FAIL ** ROS2 GPG key 만료까지 30일 (< 90일) — key rotate 권장'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — key 파일 부재
+      input:
+        stdout: '** FAIL ** ROS2 GPG key 파일 부재: /etc/apt/trusted.gpg.d/ros.gpg (env ROSSHIELD_APT_KEY_FILE override 가능)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

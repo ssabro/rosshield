@@ -1,0 +1,62 @@
+# C5 — launch DeclareLaunchArgument default value에 http://·https:// remote URL 없음 — Humble Hawksbill
+#
+# design doc §2 C5 후보 'launch.argv_no_remote_url'.
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/ → /opt/ros/humble/.
+# launch arg default가 외부 URL이면 robot 부팅 시 그 URL에서 yaml/config을
+# fetch → 공격자가 그 URL 조작 시 임의 config 주입 가능.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C5.argv_no_remote_url
+  title: launch DeclareLaunchArgument — http(s):// remote URL default 0건 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. launch.py 안 `DeclareLaunchArgument(default_value=...)`
+    에 `http://` 또는 `https://` 외부 URL 이 직접 사용되면 supply chain attack 직접
+    노출 — robot 부팅 시 그 URL에서 config/yaml을 fetch, 공격자가 URL 응답을 조작 시
+    임의 파라미터 주입 가능. 본 check는 표준 디렉터리의 launch.py 안 정적 grep으로
+    검출합니다 (full AST 분석은 carryover).
+
+    본 check는:
+      1. /opt/ros/humble/share/*/launch · ~/ros2_ws/src 에서 launch.py 수집
+      2. `DeclareLaunchArgument` 줄에 `http://` 또는 `https://` 포함 여부 검사
+      3. 0건이면 PASS
+
+    localhost URL(`http://localhost`, `http://127.0.0.1`)는 화이트리스트(개발 환경).
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    DIRS=$(ls -d /opt/ros/humble/share/*/launch ~/ros2_ws/install/*/share/*/launch ~/ros2_ws/src 2>/dev/null);
+    if [ -z "$DIRS" ]; then
+      echo "** PASS ** launch.py 디렉터리 부재 (검사 대상 0)";
+      exit 0;
+    fi;
+    HITS=$(grep -rhE "DeclareLaunchArgument.*(http|https)://" $DIRS --include="*.py" 2>/dev/null | grep -vE "(localhost|127\.0\.0\.1)" | wc -l);
+    if [ "$HITS" = "0" ]; then
+      echo "** PASS ** DeclareLaunchArgument remote URL 0건 (localhost 제외)";
+    else
+      echo "** FAIL ** DeclareLaunchArgument remote URL 발견 count=$HITS (supply chain risk — 로컬 file:// 또는 vault 참조 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    launch 시점에 remote URL에서 config을 fetch 하는 패턴은 supply chain
+    공격자에게 무력화된 endpoint 단일점을 제공 — DNS spoof, MITM, hosting
+    provider 침해 중 하나만 발생해도 robot이 임의 파라미터로 부팅됩니다.
+    config 분배는 file://(로컬), secrets manager 참조, 또는 build 시점에
+    번들링이 권장. localhost는 개발 환경(test fixture) 일반적이므로
+    화이트리스트 — 운영 robot은 별 화이트리스트 검증 carryover.
+    Humble Hawksbill의 launch.py 분석 의미는 jazzy와 동일.
+  fixGuidance: |-
+    1. 위반 launch.py 식별:
+         grep -rE "DeclareLaunchArgument.*(http|https)://" <launch-dir>
+    2. 각 위반:
+       - 로컬 file 참조로 변환: `default_value='/etc/ros2/params/robot.yaml'`
+       - 또는 build 시점 번들링 (share/ 디렉터리 안 yaml).
+       - 또는 secrets manager 참조 (vault: prefix + post-processing).
+    3. fetch가 정말 필요하면 (1) HTTPS only (2) certificate pinning (3) 응답 sha256 검증 후 사용.
+    4. 검증 — 본 check 재실행, HITS=0 확인.
+    5. (carryover) 운영 robot에 한해 localhost 화이트리스트도 차단하는 strict mode 검토.
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

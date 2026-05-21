@@ -1,0 +1,26 @@
+# selftest — ros2.C5.argv_no_remote_url (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C5.argv_no_remote_url
+spec:
+  cases:
+    - name: PASS — remote URL 0건
+      input:
+        stdout: '** PASS ** DeclareLaunchArgument remote URL 0건 (localhost 제외)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — launch.py 디렉터리 부재
+      input:
+        stdout: '** PASS ** launch.py 디렉터리 부재 (검사 대상 0)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — https remote URL 검출
+      input:
+        stdout: '** FAIL ** DeclareLaunchArgument remote URL 발견 count=2 (supply chain risk — 로컬 file:// 또는 vault 참조 권장)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

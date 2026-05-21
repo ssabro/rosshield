@@ -1,0 +1,56 @@
+# C8 — governance.xml에 ENCRYPT 토픽 선언 (transport plaintext 차단) — Humble Hawksbill
+#
+# design doc §2 C8 후보 'transport.governance_encrypt_topics' + §6 R1 권장 default.
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+# C1(SROS2 활성 + Enforce)이 인증·권한 enforce 담당이면 본 check는 transport 레벨
+# 평문 토픽 부재(ENCRYPT 토픽 ≥ 1건) 검증. 평문 DDS traffic은 도청·MitM 노출.
+# Humble Hawksbill의 SROS2/DDS Security Spec v1.1 인터페이스는 jazzy와 동일.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C8.governance_encrypt_topics
+  title: governance.xml에 ENCRYPT topic_security_kind 토픽 ≥ 1건 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. SROS2 governance.xml 파일에
+    <topic_security_kind>ENCRYPT</topic_security_kind> 선언이 1건 이상 있어야
+    합니다. C1(SROS2 활성+Enforce)이 인증·권한을 담당한다면, 본 check는 transport
+    레벨 암호화 정책이 실제로 어느 토픽에 적용되었는지 검증합니다. 선언이 0건이면
+    governance가 sign만 적용하고 payload는 평문 — 도청·MitM 가능.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    KEYSTORE="${ROS_SECURITY_KEYSTORE:-$HOME/.ros/keystore}";
+    if [ ! -d "$KEYSTORE/enclaves" ]; then
+      echo "** FAIL ** keystore enclaves dir not found: $KEYSTORE/enclaves";
+      exit 0;
+    fi;
+    CNT=$(grep -rh "<topic_security_kind>ENCRYPT</topic_security_kind>" "$KEYSTORE/enclaves" 2>/dev/null | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** ENCRYPT topic_security_kind count=$CNT";
+    else
+      echo "** FAIL ** ENCRYPT topic_security_kind count=0 (governance.xml may only sign — payload still plaintext)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    DDS Security Spec v1.1의 topic_security_kind에는 NONE / SIGN / ENCRYPT 등 5단계가
+    있습니다. ENCRYPT만 payload 암호화를 보장하며, SIGN/NONE은 무결성 또는 평문에 머뭅니다.
+    governance.xml이 ENCRYPT 토픽을 1건도 선언하지 않으면 SROS2가 활성이어도 transport는
+    여전히 도청 가능. 본 check는 ENCRYPT 토픽이 ≥ 1건 존재함을 검증해 platform-level
+    'governance baseline'을 강제합니다 (개별 토픽 화이트리스트는 후속 carryover).
+    Humble Hawksbill의 DDS Security Spec v1.1 인터페이스·governance.xml schema는 jazzy와 동일.
+  fixGuidance: |-
+    1. 키스토어 디렉터리 확인 — ROS_SECURITY_KEYSTORE 또는 ~/.ros/keystore.
+    2. enclaves/<context>/governance.xml 파일 열기.
+    3. 안전-critical 토픽(예 /cmd_vel, /joint_states)에 다음 추가:
+         <topic_rule>
+           <topic_expression>cmd_vel</topic_expression>
+           <topic_security_kind>ENCRYPT</topic_security_kind>
+           ...
+         </topic_rule>
+    4. ros2 daemon stop && start로 governance reload.
+    5. 검증: grep -r "topic_security_kind>ENCRYPT" ~/.ros/keystore/enclaves
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

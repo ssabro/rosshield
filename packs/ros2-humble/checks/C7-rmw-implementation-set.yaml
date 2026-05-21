@@ -1,0 +1,46 @@
+# C7 — RMW_IMPLEMENTATION 명시 + 지원 구현체 (default 의존 회피) — Humble Hawksbill
+#
+# design doc §2 C7 + §6 R1 권장 default — Cyclone DDS 또는 Fast DDS.
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+# Humble Hawksbill의 기본 RMW는 Fast DDS (jazzy와 동일).
+# RMW_IMPLEMENTATION 미지정 시 distro default(Humble = Fast DDS)에 묵시 의존 —
+# 운영자가 transport CVE 대응 시점에 어느 구현체가 활성인지 확신할 수 없음.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C7.rmw_implementation_set
+  title: RMW_IMPLEMENTATION 명시 + 지원 구현체 (Cyclone DDS 또는 Fast DDS) — Humble Hawksbill
+  description: |-
+    ROS2 Humble Hawksbill 전용. RMW_IMPLEMENTATION env가 명시되어 있고 두 표준
+    구현체(rmw_cyclonedds_cpp, rmw_fastrtps_cpp) 중 하나여야 합니다. distro
+    default에 묵시 의존하면 CVE 대응이나 transport encryption 설정(C8) 시점에
+    활성 구현체를 확신할 수 없습니다.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    RMW="${RMW_IMPLEMENTATION:-unset}";
+    case "$RMW" in
+      rmw_cyclonedds_cpp|rmw_fastrtps_cpp)
+        echo "** PASS ** RMW_IMPLEMENTATION=$RMW";;
+      *)
+        echo "** FAIL ** RMW_IMPLEMENTATION=$RMW (want rmw_cyclonedds_cpp or rmw_fastrtps_cpp)";;
+    esac'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    distro default(Humble=Fast DDS, jazzy도 동일)에 의존하면 다음 distro 업그레이드
+    시 default 변경 가능 + per-host 환경 차이가 silent breakage 유발. 명시 set으로
+    운영자가 활성 구현체를 추적 가능해 CVE 대응 + C8 transport encryption 설정
+    일관성 확보. Humble Hawksbill의 RMW 인터페이스·기본 구현체는 jazzy와 동일.
+  fixGuidance: |-
+    1. 활성 구현체 선택 — 보통 Cyclone DDS(낮은 latency) 또는 Fast DDS(공식 default).
+    2. /etc/profile.d/ros2.sh에 다음 라인 추가:
+         export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+       또는:
+         export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    3. 해당 패키지 설치 확인 — apt list --installed | grep ros-humble-rmw-
+    4. 모든 노드 재시작 후 ros2 doctor로 검증.
+    5. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.
