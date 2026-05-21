@@ -64,7 +64,33 @@ rosshield-audit-verify rotation chain \
 
 cosign flag가 모두 비어 있으면 verify는 skip되고 `cosignVerifyMatch=true(skipped)`로 표시됩니다.
 
+### Audit export bundle 검증 (Phase 10.D-5, rotation-aware)
+
+audit entries NDJSON+gzip 번들을 검증합니다. v1(legacy ~v0.9.0)·v2(v0.10.0+) 양쪽
+호환 — bundle 안 `_bundleVersion` 필드로 자동 판별합니다.
+
+```bash
+rosshield-audit-verify export \
+    --bundle /path/to/audit-export.ndjson.gz \
+    [--format table|json]
+```
+
+| bundle 형식 | 마커 | epoch 처리 |
+|---|---|---|
+| v1 (~v0.9.0) | `_bundleVersion` 부재 | 모든 entry 가 epoch=1 default. signature line 의 단일 `_publicKey` 로 검증. |
+| v2 (v0.10.0+) | `_bundleVersion="v2"` | `_chainKeyEpochs[]` 로 epoch 별 public key cross-reference. rotation entry transition 정합 검증. |
+
+검증 단계:
+1. `fetch` — bundle 파일 읽기 + sha256
+2. `gunzip` — gzip 풀어 NDJSON
+3. `parse` — entry line + signature line 분리 (`_bundleVersion`·`_chainKeyEpochs` 추출)
+4. `digestRecompute` — `sha256(entries stream) == _signedDigest`
+5. `signature` — `_keyId` 로 epoch lookup → 해당 epoch 의 public key 로 `ed25519.Verify`
+6. `chain` — 각 entry 의 `ComputeEntryHash` 재계산 + `prev_hash → hash` 링크
+7. `epochTransition` (v2 만) — `audit.chain.key_rotated` entry 의 `keyEpoch` 단조 증가 + 두 epoch 모두 `_chainKeyEpochs` 에 존재
+
 상세 가이드:
+- [`docs/operations/audit-verify-cli.md`](../../docs/operations/audit-verify-cli.md) — fg-verify 외부 감사인 가이드
 - [`docs/onboarding/audit-rotation-verify.md`](../../docs/onboarding/audit-rotation-verify.md) — segment 무결성
 - [`docs/onboarding/audit-rotation-cosign.md`](../../docs/onboarding/audit-rotation-cosign.md) — cosign keyless
 

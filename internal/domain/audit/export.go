@@ -17,11 +17,16 @@ import (
 // canonicalMetaJSON과 동일한 알파벳 순서를 따릅니다.
 //
 // hash·payloadDigest·prevHash는 hex 문자열로 직렬화 (BLOB → 텍스트 안전).
+//
+// KeyEpoch 는 Phase 10.D-5 v2 bundle 추가 필드 — Entry.KeyEpoch 가 nil 이면 미노출
+// (v1 호환). v2 bundle 에서는 entry 별 활성 chain key epoch 를 외부 검증 도구가
+// chainKeyEpochs map 으로 cross-reference 합니다.
 type ExportEntryLine struct {
 	Action        string       `json:"action"`
 	Actor         exportActor  `json:"actor"`
 	Error         *ErrorInfo   `json:"error,omitempty"`
 	Hash          string       `json:"hash"`
+	KeyEpoch      *int64       `json:"keyEpoch,omitempty"`
 	OccurredAt    string       `json:"occurredAt"`
 	Outcome       string       `json:"outcome"`
 	PayloadDigest string       `json:"payloadDigest"`
@@ -45,16 +50,40 @@ type exportTarget struct {
 
 // ExportSignatureLine은 NDJSON 마지막 라인입니다.
 // 키는 모두 underscore prefix로 entry 라인과 구분 (`_keyId`, `_publicKey` 등).
+//
+// BundleVersion · ChainKeyEpochs 는 Phase 10.D-5 v2 추가 필드. v1 호환:
+// BundleVersion 이 빈 문자열 또는 부재이면 v1 — fg-verify 가 모든 entry 를 epoch=1
+// 로 default 처리. v2 (`"v2"`) 이면 ChainKeyEpochs map 으로 epoch 별 public key
+// lookup 후 검증.
 type ExportSignatureLine struct {
-	From         int64  `json:"_from"`
-	KeyID        string `json:"_keyId"`
-	PublicKey    string `json:"_publicKey"`    // hex
-	SignedDigest string `json:"_signedDigest"` // sha256(모든 entry 라인 concatenated) hex
-	Signature    string `json:"_signature"`    // hex
-	To           int64  `json:"_to"`
+	BundleVersion  string                  `json:"_bundleVersion,omitempty"` // "v2" 면 ChainKeyEpochs 활성.
+	ChainKeyEpochs []ExportChainKeyEpoch   `json:"_chainKeyEpochs,omitempty"`
+	From           int64                   `json:"_from"`
+	KeyID          string                  `json:"_keyId"`
+	PublicKey      string                  `json:"_publicKey"`    // hex
+	SignedDigest   string                  `json:"_signedDigest"` // sha256(모든 entry 라인 concatenated) hex
+	Signature      string                  `json:"_signature"`    // hex
+	To             int64                   `json:"_to"`
+}
+
+// ExportChainKeyEpoch 는 v2 bundle 의 chainKeyEpochs[] 한 원소입니다.
+//
+// audit_chain_keys 테이블 snapshot 의 외부 와이어 직렬화 — 외부 감사인이 epoch 별
+// public key 를 신뢰할 수 있도록 모든 활성·폐기 epoch 를 포함합니다.
+//
+// RevokedAt 은 nullable — 활성 epoch 이면 omit, 폐기되었으면 RFC3339Nano UTC.
+type ExportChainKeyEpoch struct {
+	CreatedAt    string `json:"createdAt"`
+	Epoch        int64  `json:"epoch"`
+	KeyID        string `json:"keyId"`
+	PublicKeyHex string `json:"publicKeyHex"`
+	RevokedAt    string `json:"revokedAt,omitempty"`
 }
 
 // MarshalEntryLine은 Entry를 NDJSON 라인으로 직렬화합니다 (개행 미포함).
+//
+// Entry.KeyEpoch 가 nil 이면 ExportEntryLine.KeyEpoch 도 nil → omitempty 로 미노출
+// (v1 호환). 비-nil 이면 v2 bundle 의 entry-level epoch metadata.
 func MarshalEntryLine(e Entry) ([]byte, error) {
 	line := ExportEntryLine{
 		Action: e.Action,
@@ -66,6 +95,7 @@ func MarshalEntryLine(e Entry) ([]byte, error) {
 		},
 		Error:         e.Error,
 		Hash:          hex.EncodeToString(e.Hash[:]),
+		KeyEpoch:      e.KeyEpoch,
 		OccurredAt:    e.OccurredAt.UTC().Format(time.RFC3339Nano),
 		Outcome:       string(e.Outcome),
 		PayloadDigest: hex.EncodeToString(e.PayloadDigest[:]),
@@ -128,6 +158,7 @@ func UnmarshalEntryLine(line []byte) (Entry, error) {
 		PrevHash:      prevHash,
 		Hash:          hash,
 		Error:         raw.Error,
+		KeyEpoch:      raw.KeyEpoch,
 	}
 	return e, nil
 }
@@ -159,4 +190,33 @@ func MarshalSignatureLine(sig ExportSignatureLine) ([]byte, error) {
 		return nil, fmt.Errorf("audit: marshal signature line: %w", err)
 	}
 	return out, nil
+}
+
+// BundleVersionV2 는 Phase 10.D-5 export bundle 의 _bundleVersion 마커입니다.
+//
+// v1 bundle 은 _bundleVersion 부재 → fg-verify 가 모든 entry 를 epoch=1 default 로 처리.
+const BundleVersionV2 = "v2"
+
+// ToExportChainKeyEpochs 는 도메인 ChainKeyEpoch slice 를 와이어 type 으로 변환합니다.
+//
+// 외부 감사인이 epoch 별 public key 를 cross-reference 할 수 있도록 v2 bundle 의
+// signature line `_chainKeyEpochs` 필드에 직렬화됩니다.
+func ToExportChainKeyEpochs(epochs []ChainKeyEpoch) []ExportChainKeyEpoch {
+	if len(epochs) == 0 {
+		return nil
+	}
+	out := make([]ExportChainKeyEpoch, 0, len(epochs))
+	for _, e := range epochs {
+		row := ExportChainKeyEpoch{
+			CreatedAt:    e.CreatedAt.UTC().Format(time.RFC3339Nano),
+			Epoch:        e.Epoch,
+			KeyID:        e.KeyID,
+			PublicKeyHex: e.PublicKeyHex,
+		}
+		if e.RevokedAt != nil {
+			row.RevokedAt = e.RevokedAt.UTC().Format(time.RFC3339Nano)
+		}
+		out = append(out, row)
+	}
+	return out
 }

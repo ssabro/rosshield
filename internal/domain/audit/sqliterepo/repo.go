@@ -357,6 +357,110 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 	return io.NopCloser(&gzBuf), nil
 }
 
+// ExportV2 는 Phase 10.D-5 v2 bundle 을 내보냅니다 (chainKeyEpochs 포함).
+//
+// 동작은 Export 와 동일하나 추가로:
+//  - signature line 에 `_bundleVersion: "v2"` 설정.
+//  - keyRepo 로 audit_chain_keys 의 모든 epoch (활성+폐기) 를 fetch 하여
+//    signature line `_chainKeyEpochs[]` 에 직렬화 — 외부 감사인이 epoch 별
+//    public key 를 cross-reference 가능.
+//
+// entry 별 KeyEpoch 는 MarshalEntryLine 이 자동 노출 (Entry.KeyEpoch 가 비-nil 이면).
+//
+// keyRepo 가 nil 이면 v1 wire 와 byte-identical (Export 와 동일) — 호환성 escape hatch.
+func (r *Repo) ExportV2(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, fromSeq, toSeq int64, sgn signer.Signer, keyRepo audit.ChainKeyRepository) (io.ReadCloser, error) {
+	if sgn == nil {
+		return nil, fmt.Errorf("audit: ExportV2 requires non-nil signer")
+	}
+	if keyRepo == nil {
+		return r.Export(ctx, tx, tenantID, fromSeq, toSeq, sgn)
+	}
+	if fromSeq <= 0 {
+		fromSeq = 1
+	}
+	if toSeq <= 0 || toSeq < fromSeq {
+		head, err := readHead(ctx, tx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		toSeq = head.Seq
+	}
+
+	var entriesBuf bytes.Buffer
+	if toSeq >= fromSeq {
+		rows, err := tx.Query(ctx, `
+SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
+       action, target_type, target_id,
+       payload_digest, outcome, error_code, error_message,
+       prev_hash, hash, leader_epoch, key_epoch
+  FROM audit_entries
+ WHERE tenant_id = ? AND seq BETWEEN ? AND ?
+ ORDER BY seq ASC`,
+			string(tenantID), fromSeq, toSeq)
+		if err != nil {
+			return nil, fmt.Errorf("audit: exportV2 query: %w", err)
+		}
+		defer func() { _ = rows.Close() }()
+
+		for rows.Next() {
+			e, err := scanEntry(rows, tenantID)
+			if err != nil {
+				return nil, err
+			}
+			line, err := audit.MarshalEntryLine(e)
+			if err != nil {
+				return nil, fmt.Errorf("audit: marshal entry seq=%d: %w", e.Seq, err)
+			}
+			entriesBuf.Write(line)
+			entriesBuf.WriteByte('\n')
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("audit: exportV2 rows: %w", err)
+		}
+	}
+
+	epochs, err := keyRepo.ListChainKeyEpochs(ctx, tx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("audit: exportV2 list epochs: %w", err)
+	}
+
+	digest := audit.SignedDigest(entriesBuf.Bytes())
+	sig, keyID, err := sgn.Sign(digest[:])
+	if err != nil {
+		return nil, fmt.Errorf("audit: sign exportV2: %w", err)
+	}
+
+	sigLine, err := audit.MarshalSignatureLine(audit.ExportSignatureLine{
+		BundleVersion:  audit.BundleVersionV2,
+		ChainKeyEpochs: audit.ToExportChainKeyEpochs(epochs),
+		From:           fromSeq,
+		KeyID:          keyID,
+		PublicKey:      hex.EncodeToString(sgn.PublicKey()),
+		SignedDigest:   hex.EncodeToString(digest[:]),
+		Signature:      hex.EncodeToString(sig),
+		To:             toSeq,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var gzBuf bytes.Buffer
+	gz := gzip.NewWriter(&gzBuf)
+	if _, err := gz.Write(entriesBuf.Bytes()); err != nil {
+		return nil, fmt.Errorf("audit: gzip entries: %w", err)
+	}
+	if _, err := gz.Write(sigLine); err != nil {
+		return nil, fmt.Errorf("audit: gzip signature: %w", err)
+	}
+	if _, err := gz.Write([]byte{'\n'}); err != nil {
+		return nil, fmt.Errorf("audit: gzip newline: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return nil, fmt.Errorf("audit: gzip close: %w", err)
+	}
+	return io.NopCloser(&gzBuf), nil
+}
+
 // WriteCheckpoint는 audit.Service.WriteCheckpoint 구현입니다.
 func (r *Repo) WriteCheckpoint(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, sgn signer.Signer) (audit.Checkpoint, error) {
 	if sgn == nil {

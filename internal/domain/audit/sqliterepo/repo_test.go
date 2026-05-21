@@ -658,6 +658,117 @@ func TestExportRequiresSigner(t *testing.T) {
 	}
 }
 
+// Phase 10.D-5 — ExportV2 wire 회귀 가드.
+//
+// nil keyRepo → v1 wire 와 byte-identical (legacy fallback).
+// 비-nil keyRepo → _bundleVersion="v2" + _chainKeyEpochs[] 포함.
+func TestExportV2EmitsBundleVersionAndChainKeyEpochs(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+	keyRepo := sqliterepo.NewKeyEpochRepo()
+
+	// audit_chain_keys 는 'system' tenant 에만 bootstrap 됨 — system tenant 로 테스트.
+	const sysTenant storage.TenantID = "system"
+
+	sysReq := audit.AppendRequest{
+		TenantID: sysTenant,
+		Actor:    audit.Actor{Type: audit.ActorSystem, ID: "scheduler"},
+		Action:   "audit.chain.key_rotated",
+		Target:   audit.Target{Type: "chain", ID: "system"},
+		Outcome:  audit.OutcomeSuccess,
+	}
+	appendOne(t, store, repo, sysReq)
+
+	sgn, err := soft.New()
+	if err != nil {
+		t.Fatalf("soft.New: %v", err)
+	}
+
+	ctx := storage.WithTenantID(context.Background(), sysTenant)
+	var lines []string
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		rc, err := repo.ExportV2(ctx, tx, sysTenant, 1, 1, sgn, keyRepo)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rc.Close() }()
+		gz, err := gzip.NewReader(rc)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gz.Close() }()
+		scanner := bufio.NewScanner(gz)
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+		}
+		return scanner.Err()
+	}); err != nil {
+		t.Fatalf("ExportV2: %v", err)
+	}
+
+	if len(lines) < 2 {
+		t.Fatalf("got %d lines, want >= 2 (entry + signature)", len(lines))
+	}
+	var sig audit.ExportSignatureLine
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &sig); err != nil {
+		t.Fatalf("decode signature line: %v", err)
+	}
+	if sig.BundleVersion != audit.BundleVersionV2 {
+		t.Errorf("BundleVersion=%q want %q", sig.BundleVersion, audit.BundleVersionV2)
+	}
+	if len(sig.ChainKeyEpochs) < 1 {
+		t.Errorf("ChainKeyEpochs len=%d want >= 1 (bootstrap)", len(sig.ChainKeyEpochs))
+	}
+	// bootstrap row 가 첫 epoch 으로 노출되어야 함.
+	if sig.ChainKeyEpochs[0].Epoch != 1 {
+		t.Errorf("first epoch=%d want 1 (bootstrap)", sig.ChainKeyEpochs[0].Epoch)
+	}
+}
+
+// nil keyRepo 는 v1 fallback (Export 와 동일 wire).
+func TestExportV2NilKeyRepoFallsBackToV1(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	appendOne(t, store, repo, sampleReq("robot.create"))
+	sgn, err := soft.New()
+	if err != nil {
+		t.Fatalf("soft.New: %v", err)
+	}
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	var lines []string
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		rc, err := repo.ExportV2(ctx, tx, testTenant, 1, 1, sgn, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rc.Close() }()
+		gz, err := gzip.NewReader(rc)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gz.Close() }()
+		scanner := bufio.NewScanner(gz)
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+		}
+		return scanner.Err()
+	}); err != nil {
+		t.Fatalf("ExportV2 nil keyRepo: %v", err)
+	}
+	var sig audit.ExportSignatureLine
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &sig); err != nil {
+		t.Fatalf("decode sig: %v", err)
+	}
+	if sig.BundleVersion != "" {
+		t.Errorf("BundleVersion=%q want empty (v1 fallback)", sig.BundleVersion)
+	}
+	if len(sig.ChainKeyEpochs) != 0 {
+		t.Errorf("ChainKeyEpochs len=%d want 0 (v1 fallback)", len(sig.ChainKeyEpochs))
+	}
+}
+
 // E2.T8 — checkpoint 서명·저장.
 func TestWriteCheckpointStoresVerifiableSignature(t *testing.T) {
 	t.Parallel()
