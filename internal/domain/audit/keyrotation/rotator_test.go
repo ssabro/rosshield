@@ -526,8 +526,8 @@ func TestSetLeader_LazyInjection(t *testing.T) {
 	r, err := keyrotation.New(keyrotation.Deps{
 		Storage: store, Audit: auditSvc, ChainKeys: chainKeyRepo,
 		Signer: swap, Allocator: allocator, Clock: clk,
-		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Leader:  nil, // New 시점 nil — lazy 주입 시나리오.
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Leader:      nil, // New 시점 nil — lazy 주입 시나리오.
 		MinInterval: 0, TenantID: testTenant,
 	})
 	if err != nil {

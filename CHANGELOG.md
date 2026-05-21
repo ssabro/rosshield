@@ -11,6 +11,20 @@
 
 ---
 
+## [0.10.2] — 2026-05-21 (patch — v0.10.1 추가 gofmt 마감)
+
+> **요약**: v0.10.1 main CI Lint job에서 추가 gofmt 위반 2 파일(`cmd/rosshield-server/main.go:188`, `internal/domain/audit/keyrotation/rotator_test.go:529`) 발견. v0.10.1 hot fix가 3 파일만 cover했으나 일괄 `gofmt -l cmd/ internal/` 미실행이 원인. v0.10.2에서 `gofmt -w` 일괄 적용 + 검증 명령(`gofmt -l cmd/ internal/`) 활용 메모. 코드 동작 영향 0, 회귀 0, Breaking 0.
+>
+> **기준 commit**: (본 release commit, main)
+
+### Fixed
+- `fix(lint)` gofmt -w 추가 2 파일 (`cmd/rosshield-server/main.go`, `internal/domain/audit/keyrotation/rotator_test.go`) — v0.10.1 hot fix가 lint log 표시 3 파일만 fix하고 일괄 `gofmt -l ./...` 검증 누락이 원인. 본 release는 `gofmt -l cmd/ internal/` 일괄 검증 후 발견된 잔여 2 파일 마감.
+
+### Notes
+- v0.10.1에서 memory `feedback_go_commit_pipeline.md` 정책 일관 부족 인식 — local에서 `gofmt -l` 일괄 검증 + commit hook 도입 검토 carryover로 등록.
+
+---
+
 ## [0.10.1] — 2026-05-21 (patch — v0.10.0 lint hot fix)
 
 > **요약**: v0.10.0 main CI Lint job이 (1) `internal/platform/scheduler/keyrotationjob`이 `audit-domain-isolation` depguard 규칙 위반(동일 패턴 `rotationjob` 예외 등록되어 있었으나 신규 `keyrotationjob` 누락) (2) gofmt 위반 3 파일(주석 indentation)로 실패. `.golangci.yml`에 `keyrotationjob` 예외 추가 + gofmt -w 3 파일. v0.10.0의 코드 동작 영향 0(lint 차원 fix only), 회귀 0, Breaking 0.

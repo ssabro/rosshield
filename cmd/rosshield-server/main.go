@@ -185,8 +185,8 @@ func newMux(p *Platform) http.Handler {
 		Invitation:        p.Invitation,
 		Metrics:           p.Metrics,
 		ReportSigner:      p.ReportSigner,
-		Intake:            p.Intake, // Phase 6 후보 1 R1 Stage 3 — customer intake handler 결선 (운영자 admin gate).
-		HotGC:             p.HotGC,  // E32 Stage 4 — POST /api/v1/audit/gc/run (sqlite marker mode + PG GUC 자동 분기).
+		Intake:            p.Intake,     // Phase 6 후보 1 R1 Stage 3 — customer intake handler 결선 (운영자 admin gate).
+		HotGC:             p.HotGC,      // E32 Stage 4 — POST /api/v1/audit/gc/run (sqlite marker mode + PG GUC 자동 분기).
 		KeyRotator:        p.KeyRotator, // Phase 10.D-6 — POST /api/v1/audit/rotation/abort (emergency override).
 
 		// E-MR (Phase 8) Stage 1~2 — Multi-region HA 결선.
