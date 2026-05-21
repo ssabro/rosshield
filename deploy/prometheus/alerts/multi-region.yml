@@ -1,0 +1,128 @@
+---
+# Prometheus alert rules — Lodestar multi-region (Phase 10 Stage 10.A-5).
+#
+# 적용 절차:
+#   1) prometheus.yml의 rule_files에 본 디렉토리를 등록 ('alerts/*.yml')
+#   2) `promtool check rules deploy/prometheus/alerts/multi-region.yml`로 syntax 검증
+#   3) Prometheus reload (`curl -X POST http://prometheus:9090/-/reload`)
+#
+# alertmanager → webhook 연결은 deploy/prometheus/alertmanager-sample.yml 참조.
+# 각 rule 대응 절차는 docs/operations/multi-region-failover-runbook.md §13 참조.
+#
+# 메트릭 출처 (fact-check, head 5a55da5):
+#   - rosshield_replication_lag_seconds{application_name}
+#       internal/platform/replication/lagmetric/collector.go (Phase 8 MR.T8)
+#   - rosshield_ha_role / rosshield_ha_leader_epoch / rosshield_ha_failover_total
+#       internal/platform/metrics/metrics.go (Phase 9 E25)
+#   - rosshield_audit_chain_head_seq{tenant}
+#       internal/platform/metrics/metrics.go (E27 Phase 4)
+#       cross-region seq divergence를 head_sha mismatch proxy로 활용 (한계 §11 참조).
+
+groups:
+  - name: rosshield-multi-region
+    interval: 30s
+    rules:
+      # === 1. Replication lag (warning) ===
+      #
+      # PG logical replication subscriber의 replay_lag이 30초를 2분 이상 유지하면
+      # warning. 일시적 lag spike는 무시 (interval 2m).
+      - alert: RosshieldReplicationLagWarning
+        expr: rosshield_replication_lag_seconds > 30
+        for: 2m
+        labels:
+          severity: warning
+          service: rosshield
+          component: replication
+        annotations:
+          summary: "Replication lag > 30s on {{ $labels.application_name }}"
+          description: |
+            Subscriber {{ $labels.application_name }} replication lag is
+            {{ $value | humanizeDuration }} (threshold 30s). RPO 위협 — secondary
+            region이 primary write를 따라잡지 못하는 중. 첫 단계 진단은 runbook §13.1 참조.
+          runbook_url: docs/operations/multi-region-failover-runbook.md#131-rosshieldreplicationlagwarning
+
+      # === 2. Replication lag (critical) ===
+      #
+      # lag 60초 이상이 1분 유지 — RPO 1분 SLA 위협. 즉시 대응.
+      - alert: RosshieldReplicationLagCritical
+        expr: rosshield_replication_lag_seconds > 60
+        for: 1m
+        labels:
+          severity: critical
+          service: rosshield
+          component: replication
+        annotations:
+          summary: "Replication lag CRITICAL > 60s on {{ $labels.application_name }}"
+          description: |
+            Subscriber {{ $labels.application_name }} replication lag is
+            {{ $value | humanizeDuration }} (threshold 60s). RPO SLA 위협 — primary
+            장애 발생 시 손실 데이터 크게 증가. 즉시 runbook §13.2 진입.
+          runbook_url: docs/operations/multi-region-failover-runbook.md#132-rosshieldreplicationlagcritical
+
+      # === 3. Audit chain head seq divergence (critical) ===
+      #
+      # 같은 tenant의 audit chain head sequence가 region 간 다르면 cross-region
+      # 데이터 일관성 위반. `rosshield_audit_chain_head_seq{tenant}`를 instance 별로
+      # 비교 (max - min). 정상 동작에서는 replication lag로 일시적 차이 가능하므로
+      # 5분 sustained 차이만 critical로 분류.
+      #
+      # 한계: 본 metric은 head sha가 아닌 head seq만 노출. seq가 같아도 sha mismatch는
+      # 이론상 가능 (replication corruption). 정확한 sha 비교 metric은 Stage 10.A-6 또는
+      # 별 epic에서 background collector로 추가 권장 (runbook §11.3 한계 참조).
+      - alert: RosshieldAuditChainHeadSeqMismatch
+        expr: |
+          (
+            max by (tenant) (rosshield_audit_chain_head_seq)
+            - on (tenant)
+            min by (tenant) (rosshield_audit_chain_head_seq)
+          ) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: rosshield
+          component: audit-chain
+        annotations:
+          summary: "Audit chain head seq divergence on tenant={{ $labels.tenant }}"
+          description: |
+            Tenant {{ $labels.tenant }} audit chain head seq differs across regions by
+            {{ $value }} for 5+ minutes. Cross-region consistency 위반 — replication
+            중단 또는 audit corruption 의심. runbook §13.3 진입.
+          runbook_url: docs/operations/multi-region-failover-runbook.md#133-rosshieldauditchainheadseqmismatch
+
+      # === 4. HA role swap (info) ===
+      #
+      # 5분 안에 leader 승격이 1회라도 발생하면 informational alert. 정기 drill 또는
+      # rolling restart 시에도 발화 — pages 권장 X, audit trail 보존만.
+      - alert: RosshieldHARoleSwap
+        expr: rate(rosshield_ha_failover_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: info
+          service: rosshield
+          component: ha
+        annotations:
+          summary: "HA leader swap detected on {{ $labels.instance }}"
+          description: |
+            Instance {{ $labels.instance }} promoted to leader (failover counter increased).
+            정기 drill 또는 rolling restart라면 무시. 예상치 못한 swap이면 runbook §13.4
+            진입 — Patroni 자동 cutover 환경은 §11 참조.
+          runbook_url: docs/operations/multi-region-failover-runbook.md#134-rosshieldharoleswap
+
+      # === 5. HA failover storm (critical) ===
+      #
+      # 1시간 안에 failover 3회 이상이면 클러스터 불안정 — flapping. existing
+      # grafana README §6 권장 P1 alert를 정식화. PagerDuty 권장.
+      - alert: RosshieldHAFailoverStorm
+        expr: increase(rosshield_ha_failover_total[1h]) >= 3
+        for: 0m
+        labels:
+          severity: critical
+          service: rosshield
+          component: ha
+        annotations:
+          summary: "HA failover storm — {{ $value }} promotions in 1h on {{ $labels.instance }}"
+          description: |
+            Instance {{ $labels.instance }} promoted {{ $value }} times in the last hour.
+            cluster flapping 의심 (네트워크·디스크·etcd quorum 등). runbook §13.5 진입 +
+            Patroni pause 검토 (runbook §11.3).
+          runbook_url: docs/operations/multi-region-failover-runbook.md#135-rosshieldhafailoverstorm

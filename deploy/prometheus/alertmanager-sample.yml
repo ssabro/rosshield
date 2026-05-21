@@ -1,0 +1,100 @@
+---
+# Alertmanager sample config — Lodestar multi-region (Phase 10 Stage 10.A-5).
+#
+# 본 파일은 sample입니다 — customer 환경별로 webhook URL · email · slack token 등
+# 직접 교체하세요. Lodestar 코드는 alertmanager → webhook payload를 직접 수신하는
+# endpoint를 노출하지 않습니다 (over-scope · customer 환경 의존). 기존 webhook
+# delivery infra(internal/api/handlers/webhooks.go)는 outbound 발신용입니다.
+#
+# 권장 패턴:
+#   - critical → PagerDuty + Slack #incident-response
+#   - warning  → Slack #ops-alerts
+#   - info     → audit-only (Slack #audit-trail, page 없음)
+#
+# 적용 절차:
+#   1) 본 파일을 alertmanager.yml로 복사 + customer 값 교체
+#   2) Alertmanager 재시작 (`amtool check-config`로 syntax 검증)
+#   3) Prometheus의 alerting.alertmanagers에 본 Alertmanager endpoint 추가
+#   4) 첫 firing alert로 routing 확인 (Slack/PagerDuty 수신)
+
+global:
+  resolve_timeout: 5m
+  # SMTP 등 global 설정은 customer 환경별로 추가.
+
+route:
+  group_by: ['service', 'component', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: rosshield-default
+  routes:
+    # critical — PagerDuty + Slack 동시
+    - matchers:
+        - service = rosshield
+        - severity = critical
+      receiver: rosshield-critical
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true
+
+    # warning — Slack ops 채널
+    - matchers:
+        - service = rosshield
+        - severity = warning
+      receiver: rosshield-warning
+      repeat_interval: 2h
+
+    # info — audit-only, page 없음
+    - matchers:
+        - service = rosshield
+        - severity = info
+      receiver: rosshield-info
+      repeat_interval: 24h
+
+receivers:
+  - name: rosshield-default
+    webhook_configs:
+      - url: https://webhook.example.com/lodestar/alerts
+        send_resolved: true
+
+  - name: rosshield-critical
+    pagerduty_configs:
+      - service_key: REPLACE_WITH_PAGERDUTY_SERVICE_KEY
+        description: '{{ .CommonAnnotations.summary }}'
+        details:
+          runbook: '{{ .CommonAnnotations.runbook_url }}'
+          description: '{{ .CommonAnnotations.description }}'
+    slack_configs:
+      - api_url: https://hooks.slack.com/services/REPLACE/WITH/WEBHOOK
+        channel: '#incident-response'
+        title: '[CRITICAL] {{ .CommonAnnotations.summary }}'
+        text: |
+          {{ .CommonAnnotations.description }}
+          Runbook: {{ .CommonAnnotations.runbook_url }}
+        send_resolved: true
+
+  - name: rosshield-warning
+    slack_configs:
+      - api_url: https://hooks.slack.com/services/REPLACE/WITH/WEBHOOK
+        channel: '#ops-alerts'
+        title: '[WARN] {{ .CommonAnnotations.summary }}'
+        text: |
+          {{ .CommonAnnotations.description }}
+          Runbook: {{ .CommonAnnotations.runbook_url }}
+        send_resolved: true
+
+  - name: rosshield-info
+    slack_configs:
+      - api_url: https://hooks.slack.com/services/REPLACE/WITH/WEBHOOK
+        channel: '#audit-trail'
+        title: '[INFO] {{ .CommonAnnotations.summary }}'
+        text: '{{ .CommonAnnotations.description }}'
+        send_resolved: false
+
+inhibit_rules:
+  # critical lag alert 발생 시 warning lag alert는 silence (중복 noise 회피)
+  - source_matchers:
+      - alertname = RosshieldReplicationLagCritical
+    target_matchers:
+      - alertname = RosshieldReplicationLagWarning
+    equal: ['application_name']
