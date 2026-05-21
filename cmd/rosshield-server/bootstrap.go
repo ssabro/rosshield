@@ -413,6 +413,7 @@ type Platform struct {
 	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
 	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
 	HotGC             *rotation.HotGC          // E32 Stage 4 — audit hot GC (sqlite marker mode + PG GUC 양쪽)
+	KeyRotator        *keyrotation.KeyRotator  // Phase 10.D-3+4+6 — audit chain signer key rotation (auto + emergency override)
 	Replication       replication.Repository   // E-MR Stage 1 — replication metadata 어댑터 (sqlite/PG 양쪽)
 	ReplicationConfig replication.Config       // E-MR Stage 1~2 — 본 인스턴스의 region·role + standby middleware 활성 여부
 	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
@@ -1666,6 +1667,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Metrics:           metricsReg,
 		MetricsBridge:     metricsBridge,
 		HotGC:             hotGC,
+		KeyRotator:        keyRotator, // Phase 10.D-3+4+6 — auto-rotation orchestrator + emergency override.
 		Keystore:          ks,
 		BackupDir:         resolvedBackupDir,
 		FleetScanSched:    fleetScanSch,
@@ -1712,6 +1714,10 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 			if lagCollector != nil {
 				lagCollector.SetRoleProvider(patroniRP)
 			}
+			// Phase 10.D-6 — KeyRotator 내부 leader gate lazy 주입 (defense-in-depth 2 단계).
+			if keyRotator != nil {
+				keyRotator.SetLeader(patroniRP)
+			}
 			logger.Info("ha enabled — Patroni RoleProvider",
 				"patroniUrl", cfg.PatroniURL,
 				"localHostname", cfg.PatroniLocalHostname,
@@ -1733,6 +1739,11 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 			// Phase 8 MR.T8 후속 — lagmetric collector HA leader-only gate (v0.7.x carryover).
 			if lagCollector != nil {
 				lagCollector.SetRoleProvider(haMgr)
+			}
+			// Phase 10.D-6 — KeyRotator 내부 leader gate lazy 주입 (defense-in-depth 2 단계).
+			// cronsched.RoleProvider gate(E25 Stage 4a) 외 KeyRotator 자체 gate 도 leader-only.
+			if keyRotator != nil {
+				keyRotator.SetLeader(haMgr)
 			}
 			// E25 Stage 4 잔여 — HA metric bridge (Grafana dashboard placeholder 활성).
 			// promote/demote callback에서 rosshield_ha_role/leader_epoch/failover_total 갱신.

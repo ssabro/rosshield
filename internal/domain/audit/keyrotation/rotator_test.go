@@ -399,6 +399,161 @@ func TestRotateNow_AuditEntryHasPriorEpoch(t *testing.T) {
 	})
 }
 
+// TestAbort_IdempotentEmitWithoutInflight 는 진행 중 rotation 이 없을 때 Abort 가
+// 정상 audit emit + flag set 후 다음 RotateNow 1회 skip 동작을 검증합니다 (Phase 10.D-6).
+func TestAbort_IdempotentEmitWithoutInflight(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	priorEpoch := f.swap.CurrentEpoch()
+
+	result, err := f.rotator.Abort(context.Background(), "operator drill", "ops-1")
+	if err != nil {
+		t.Fatalf("Abort: %v", err)
+	}
+	if !result.SetAbortFlag {
+		t.Error("SetAbortFlag = false, want true")
+	}
+	if result.AuditEntryID <= 0 {
+		t.Errorf("AuditEntryID = %d, want > 0", result.AuditEntryID)
+	}
+	if result.PreviousEpoch != priorEpoch {
+		t.Errorf("PreviousEpoch = %d, want %d", result.PreviousEpoch, priorEpoch)
+	}
+
+	// 다음 RotateNow 한 번은 ErrAborted (flag consume).
+	err = f.rotator.RotateNow(context.Background(), keyrotation.TriggerScheduler)
+	if !errors.Is(err, keyrotation.ErrAborted) {
+		t.Errorf("first RotateNow after abort: %v, want ErrAborted", err)
+	}
+	if f.swap.CurrentEpoch() != priorEpoch {
+		t.Errorf("epoch advanced despite abort: %d", f.swap.CurrentEpoch())
+	}
+
+	// 그 다음 RotateNow 는 정상 동작 (flag 이미 consume).
+	if err := f.rotator.RotateNow(context.Background(), keyrotation.TriggerScheduler); err != nil {
+		t.Fatalf("second RotateNow after abort: %v", err)
+	}
+	if f.swap.CurrentEpoch() <= priorEpoch {
+		t.Errorf("epoch did not advance after second RotateNow: %d -> %d",
+			priorEpoch, f.swap.CurrentEpoch())
+	}
+
+	// audit_entries 에 audit.chain.rotation_aborted 가 적어도 1건 INSERT.
+	runReadTx(t, f.store, func(ctx context.Context, tx storage.Tx) {
+		rows, err := tx.Query(ctx,
+			`SELECT COUNT(*) FROM audit_entries WHERE tenant_id = ? AND action = ?`,
+			string(testTenant), "audit.chain.rotation_aborted")
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		defer func() { _ = rows.Close() }()
+		if !rows.Next() {
+			t.Fatal("no count row")
+		}
+		var n int64
+		if err := rows.Scan(&n); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if n != 1 {
+			t.Errorf("audit.chain.rotation_aborted count = %d, want 1", n)
+		}
+	})
+}
+
+// TestAbort_FollowerReturnsErrNotLeader 는 non-leader 에서의 Abort 호출이 ErrNotLeader
+// 반환 + audit emit 안 함을 검증합니다.
+func TestAbort_FollowerReturnsErrNotLeader(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.leader.set(false)
+
+	result, err := f.rotator.Abort(context.Background(), "drill", "ops-1")
+	if !errors.Is(err, keyrotation.ErrNotLeader) {
+		t.Fatalf("Abort: %v, want ErrNotLeader", err)
+	}
+	if result.SetAbortFlag {
+		t.Error("SetAbortFlag = true on follower, want false")
+	}
+	if result.AuditEntryID != 0 {
+		t.Errorf("AuditEntryID = %d, want 0", result.AuditEntryID)
+	}
+
+	// follower 에서는 audit_entries 에 abort row 가 없어야 함.
+	runReadTx(t, f.store, func(ctx context.Context, tx storage.Tx) {
+		rows, err := tx.Query(ctx,
+			`SELECT COUNT(*) FROM audit_entries WHERE tenant_id = ? AND action = ?`,
+			string(testTenant), "audit.chain.rotation_aborted")
+		if err != nil {
+			t.Fatalf("query: %v", err)
+		}
+		defer func() { _ = rows.Close() }()
+		if !rows.Next() {
+			t.Fatal("no count row")
+		}
+		var n int64
+		if err := rows.Scan(&n); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		if n != 0 {
+			t.Errorf("audit emit on follower: count = %d, want 0", n)
+		}
+	})
+}
+
+// TestSetLeader_LazyInjection 는 New 후 SetLeader 로 LeaderProvider 를 주입한 케이스에서
+// 정상 leader-gate 동작을 검증합니다 (bootstrap HA Manager lazy 결선).
+func TestSetLeader_LazyInjection(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "keyrotation_setleader.db")
+	store, err := sqlite.Open(storage.Config{Driver: "sqlite", DSN: dbPath})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	clk := clock.NewFake(time.Date(2026, 5, 21, 12, 0, 0, 0, time.UTC))
+	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clk})
+	chainKeyRepo := auditrepo.NewKeyEpochRepo()
+	initial, _ := soft.New()
+	swap := signer.NewSwappableSigner(initial, 1)
+	allocator := keyrotation.AllocatorFunc(func(newEpoch int64) (string, ed25519.PrivateKey, error) {
+		_, priv, _ := ed25519.GenerateKey(rand.Reader)
+		return "h", priv, nil
+	})
+	r, err := keyrotation.New(keyrotation.Deps{
+		Storage: store, Audit: auditSvc, ChainKeys: chainKeyRepo,
+		Signer: swap, Allocator: allocator, Clock: clk,
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Leader:  nil, // New 시점 nil — lazy 주입 시나리오.
+		MinInterval: 0, TenantID: testTenant,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// nil Leader 상태 — rotation 정상 동작 (단일 인스턴스 가정).
+	if err := r.RotateNow(context.Background(), keyrotation.TriggerScheduler); err != nil {
+		t.Fatalf("RotateNow without leader: %v", err)
+	}
+
+	// SetLeader 로 follower 주입 — 다음 호출 ErrNotLeader.
+	follower := &stubLeader{leader: false}
+	r.SetLeader(follower)
+	err = r.RotateNow(context.Background(), keyrotation.TriggerScheduler)
+	if !errors.Is(err, keyrotation.ErrNotLeader) {
+		t.Errorf("RotateNow after SetLeader(follower): %v, want ErrNotLeader", err)
+	}
+
+	// follower -> leader 전환 후 정상.
+	follower.set(true)
+	if err := r.RotateNow(context.Background(), keyrotation.TriggerScheduler); err != nil {
+		t.Errorf("RotateNow after follower -> leader: %v", err)
+	}
+}
+
 // runReadTx 는 system tenant 컨텍스트로 read-only Tx 를 실행합니다.
 func runReadTx(t *testing.T, store storage.Storage, fn func(ctx context.Context, tx storage.Tx)) {
 	t.Helper()

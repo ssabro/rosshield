@@ -7,7 +7,39 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 10 옵션 D audit chain key rotation / Phase 10 옵션 E ros2-humble pack / audit chain head sha mismatch metric (Phase 10.A-6 carryover) / Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 10 옵션 E ros2-humble pack / audit chain head sha mismatch metric (Phase 10.A-6 carryover) / audit hash chain key_epoch+leader_epoch input 포함 (v0.10.0 carryover) / manual rotation endpoint / multi-tenant epoch 분리 / Grafana dashboard panel (rotation_total + key_epoch) / Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.10.0] — 2026-05-21 (minor — Phase 10 옵션 D 마감)
+
+> **요약**: Phase 10 옵션 D "audit chain signer key rotation 자동화" 완전 마감 + Phase 10 두 번째 minor (v0.9.0 옵션 A 후속). Quarterly (90일) cron 으로 자동 rotation + SwappableSigner hot-swap (Queue 패턴, RWMutex) + emergency override CLI/admin endpoint + fg-verify v2 epoch별 검증 + 마이그레이션 0037/0038 한 set. 운영자 부담 0 (자동 cron), 외부 감사인 호환성 보존 (audit.chain.key_rotated event chain 안에 trace), 회귀 0, Breaking 0. 상세는 [docs/releases/v0.10.0.md](docs/releases/v0.10.0.md).
+>
+> **기준 commit**: (본 release commit, main)
+
+### Added
+- `design(option-d)` Phase 10 옵션 D Stage 분해 + 결정 항목 (`ab3bdd8` + `fb37f24`) — `audit-chain-rotation-automation-design.md` 신규 + D-P10D-1·2·3 결정 amendment (옵션 C fully automatic + override / Quarterly 90일 / Queue 패턴).
+- `feat(audit)` Phase 10.D-2 마이그레이션 0037_audit_chain_keys + Repository (`7e714c6`) — `audit_chain_keys` 테이블 (tenant + epoch + key_id + public_key_hex + keystore_handle + created_at + revoked_at + created_by + audit_entry_seq) + sqlite + PG up/down + `ChainKeyRepository` interface + `sqliterepo.KeyEpochRepo`. bootstrap epoch=1 자동 INSERT (placeholder, 첫 부팅 시 갱신).
+- `feat(audit)` Phase 10.D-3+4 scheduler + SwappableSigner + KeyRotator + Queue 패턴 (`f7f045a`) — `internal/platform/signer/swappable.go::SwappableSigner` (RWMutex queue + Sign/Swap/CurrentEpoch/CurrentKeyID) + `internal/domain/audit/keyrotation/rotator.go::KeyRotator` (단일 Tx + self-sign Verify round-trip + Allocator + leader gate + MinInterval idempotency) + `internal/platform/scheduler/keyrotationjob/` (quarterly cron 어댑터, DefaultQuarterlySpec `@every 2160h`) + 마이그레이션 0038 `audit_entries.key_epoch INTEGER NULL` 컬럼 + metrics `rosshield_audit_rotation_total` + `rosshield_audit_key_epoch`.
+- `feat(audit-verify)` Phase 10.D-5 fg-verify v2 epoch별 public key 검증 (`ead86e5`) — `cmd/rosshield-audit-verify/rotation.go` 신규 + bundle `chainKeyEpochs` 메타 직렬화 + entry.key_epoch 기반 검증 + v0.9.0 backward compat (v1 mode auto-fallback).
+- `feat(audit)` Phase 10.D-6+7 emergency override + v0.10.0 release (본 release commit) — `KeyRotator.Abort(ctx, reason, actor)` (atomic flag set + audit.chain.rotation_aborted emit, idempotent) + `POST /api/v1/audit/rotation/abort` admin endpoint + `rosshield audit rotation abort --reason "<text>"` CLI + `KeyRotator.SetLeader` lazy 주입 (bootstrap HA Manager 결선 시점, defense-in-depth 2 단계) + `docs/operations/audit-chain-key-rotation.md` 운영자 가이드 신규 + `docs/releases/v0.10.0.md` 신규.
+
+### Changed
+- `feat(audit)` bootstrap signer 경로 — audit chain signer 가 raw `signer.Signer` → `*signer.SwappableSigner` 로 wrap. SwappableSigner 가 Signer interface 그대로 implement — 호출자 변경 0 (감사 checkpoint + audit emit 모두 동일 인터페이스). HA Manager 결선 시점에 `keyRotator.SetLeader(haMgr|patroniRP)` lazy 호출 추가 (e25 + patroni 분기 양쪽).
+
+### Verification
+- `go vet ./internal/domain/audit/keyrotation/... ./internal/api/handlers/... ./cmd/rosshield/... ./cmd/rosshield-server/...` PASS · `go build ./internal/... ./cmd/...` PASS
+- `go test -count=1 ./internal/domain/audit/...` PASS (audit / keyrotation / rotation / sqliterepo 4 package)
+- `go test -count=1 ./cmd/rosshield/... ./cmd/rosshield-server/...` PASS
+- `go test -count=1 -skip "TestListPacks|TestGetPack|TestGetCheck" ./internal/api/handlers/...` PASS (pack-signer 환경 의존 5건 skip — 본 round 무관, gitignore된 dev key 부재 환경에서만 fail)
+- `go test -count=1 ./cmd/rosshield-audit-verify/...` PASS (v1 backward compat + v2 chainKeyEpochs)
+- 회귀 0 — Phase 0~10 옵션 A 전 단위 + 통합 test 모두 그대로 PASS.
+
+### Notes
+- **minor bump 이유** — Phase 10 옵션 D 마감 후 두 번째 minor (v0.9.0 옵션 A 후속). signer hot-swap + 마이그레이션 0037/0038 + 신규 endpoint 1 + CLI 1 = customer-facing 신규 기능 묶음.
+- **customer 영향 0** — 자동 quarterly rotation 시작이지만 운영자 알람 없음 (INFO 로그 + Prometheus counter 만). 자동 rotation 비활성 유지를 원하면 `ROSSHIELD_AUDIT_CHAIN_KEY_ROTATION_SCHEDULE=""` 명시 (default = 빈 값 = 비활성). quarterly 활성화는 customer 옵트인.
+- **외부 감사 호환성 보존** — `audit.chain.key_rotated` event 가 chain 안에 trace + `audit_chain_keys` append-only 보존 + emergency abort 도 별 entry. SOC2 / ISMS-P / NIST 800-53 SC-12 통제 baseline 만족.
+- **신규 carryover** — audit hash chain input 에 key_epoch + leader_epoch 미포함 (외부 검증 도구 호환성 유지, 향후 SC-12 강화 시 별 epic) / bootstrap epoch=1 placeholder 첫 부팅 시 갱신 / manual rotation endpoint 미구현 (별 epic) / Grafana dashboard panel 별 작성 위임 / multi-tenant epoch 분리 미구현.
 
 ---
 

@@ -29,6 +29,7 @@ import (
 	"github.com/ssabro/rosshield/internal/app/webhookrun"
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	"github.com/ssabro/rosshield/internal/domain/audit"
+	"github.com/ssabro/rosshield/internal/domain/audit/keyrotation"
 	"github.com/ssabro/rosshield/internal/domain/audit/rotation"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
 	"github.com/ssabro/rosshield/internal/domain/compliance"
@@ -88,6 +89,10 @@ type Deps struct {
 	// E32 Stage 4 — Audit rotation hot GC (admin manual + cron Stage 6).
 	// HotGC nil 이면 POST /api/v1/audit/gc/run 503. PG only — sqlite는 SET LOCAL 미지원.
 	HotGC *rotation.HotGC
+
+	// Phase 10.D-6 — audit chain signer key rotation emergency override.
+	// KeyRotator nil 이면 POST /api/v1/audit/rotation/abort 503.
+	KeyRotator *keyrotation.KeyRotator
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -442,6 +447,17 @@ func (h *Handlers) Mount(r chi.Router) {
 		//   HotGC 미주입 이면 503.
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
 			Post("/api/v1/audit/gc/run", h.RunAuditGC)
+
+		// === Phase 10.D-6 — audit chain key rotation emergency override ===
+		// design doc: docs/design/notes/audit-chain-rotation-automation-design.md §12.1.
+		//
+		// POST /api/v1/audit/rotation/abort
+		//   admin 전용 (destructive ops — rotation 일시 차단 + audit emit).
+		//   body: {"reason":"<string>"}.
+		//   응답: {"aborted":true, "auditEntryId":<seq>, "abortedAt":"<iso8601>", "previousEpoch":<n>}.
+		//   KeyRotator 미주입 이면 503.
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Post("/api/v1/audit/rotation/abort", h.AbortAuditRotation)
 	})
 }
 

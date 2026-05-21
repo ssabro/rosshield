@@ -51,6 +51,8 @@ func run(args []string) int {
 		return runHA(args[1:])
 	case "backup":
 		return runBackup(args[1:])
+	case "audit":
+		return runAudit(args[1:])
 	case "help", "--help", "-h":
 		usage()
 		return 0
@@ -88,6 +90,7 @@ Online 서브커맨드 (Stage C — config 토큰 사용):
   ha status [-o ...] [--server URL]            HA leader/follower 상태 (E25, /healthz fetch)
   backup list [-o ...]                         자동 백업 목록 (B7)
   backup download <filename> [--output P]      자동 백업 다운로드 (B7)
+  audit rotation abort --reason "<text>"       audit chain key rotation 차단 (Phase 10.D-6)
 
 Online 서브커맨드 (Stage D — 합류 예정):
   scan status <id> / audit verify
