@@ -462,6 +462,51 @@ export const ko = {
   'compliance.export.hint':
     '본 endpoint 호출은 audit.compliance.export event 로 기록되며 호출자(actor)·tenant·범위·format 이 audit chain 에 append-only 로 남습니다.',
 
+  // Phase 11.B-6 — SOC2 effectiveness dashboard /compliance/effectiveness.
+  'nav.compliance.effectiveness': 'SOC2 매트릭스',
+  'pages.compliance.effectiveness.title': 'SOC2 통제 effectiveness',
+  'pages.compliance.effectiveness.description':
+    'Lodestar 결선 자산이 SOC2 Trust Services Criteria(CC1~CC9 + A1·A2·A5) 통제를 어느 정도 cover 하는지의 정적 매트릭스 + 카테고리별 audit event 1일/7일/30일 집계. 외부 감사인 위임 표면 (admin · auditor).',
+  'compliance.dashboard.cover.label': '전체 cover',
+  'compliance.dashboard.cover.subControls': '{covered} / {total} sub-control cover',
+  'compliance.dashboard.cover.updatedAt': '갱신: {at}',
+  'compliance.dashboard.threshold.healthy': '양호',
+  'compliance.dashboard.threshold.warning': '주의',
+  'compliance.dashboard.threshold.critical': '미흡',
+  'compliance.dashboard.table.code': '코드',
+  'compliance.dashboard.table.name': '카테고리',
+  'compliance.dashboard.table.subControls': 'sub-control',
+  'compliance.dashboard.table.covered': 'cover',
+  'compliance.dashboard.table.coverPercent': 'cover%',
+  'compliance.dashboard.table.audit7d': '7일 event',
+  'compliance.dashboard.table.audit30d': '30일 event',
+  'compliance.dashboard.table.gaps': 'gaps',
+  'compliance.dashboard.gaps.title': '외부 트랙 ★ gaps',
+  'compliance.dashboard.gaps.description':
+    'Lodestar 결선 자산으로 cover 되지 않는 sub-control 목록. 외부 firm·HR·board 등 hands-on 트랙 의존.',
+  'compliance.dashboard.gaps.none': '미커버 sub-control 없음 (전체 cover).',
+  'compliance.dashboard.empty.title': '매트릭스 비활성',
+  'compliance.dashboard.empty.description':
+    'effectiveness aggregator 가 주입되지 않았거나 서버에서 SOC2 dashboard 가 비활성화되어 있습니다.',
+  'compliance.dashboard.error.title': '매트릭스를 불러올 수 없습니다',
+  'compliance.dashboard.error.unauthorized':
+    '권한이 부족합니다. auditor 또는 admin 역할이 필요합니다.',
+  'compliance.dashboard.error.unavailable':
+    '서버에서 effectiveness dashboard 가 비활성화되어 있습니다.',
+  'compliance.dashboard.error.fallback': '서버 응답을 처리할 수 없습니다.',
+  'compliance.dashboard.category.CC1': '통제 환경 (Control Environment)',
+  'compliance.dashboard.category.CC2': '커뮤니케이션과 정보 (Communication and Information)',
+  'compliance.dashboard.category.CC3': '리스크 평가 (Risk Assessment)',
+  'compliance.dashboard.category.CC4': '모니터링 활동 (Monitoring Activities)',
+  'compliance.dashboard.category.CC5': '통제 활동 (Control Activities)',
+  'compliance.dashboard.category.CC6': '논리·물리 접근 (Logical and Physical Access)',
+  'compliance.dashboard.category.CC7': '시스템 운영 (System Operations)',
+  'compliance.dashboard.category.CC8': '변경 관리 (Change Management)',
+  'compliance.dashboard.category.CC9': '리스크 완화 (Risk Mitigation)',
+  'compliance.dashboard.category.A1': '가용성 (Availability)',
+  'compliance.dashboard.category.A2': '기밀성 (Confidentiality)',
+  'compliance.dashboard.category.A5': '보안 (Security)',
+
   'pages.advisor.title': 'AI 어드바이저',
   'advisor.subtitle.intro':
     '자연어 질문 → LLM이 read-only tool로 컨텍스트 수집 → 설명 생성. 옵트인 기능이라 서버 시작 시 ',
@@ -1626,6 +1671,51 @@ export const en: Record<keyof typeof ko, string> = {
   'compliance.export.hint':
     'Each call is recorded as an audit.compliance.export event — actor, tenant, range, and format are appended to the audit chain.',
   'compliance.header.activeBadge': '{count} active',
+
+  // Phase 11.B-6 — SOC2 effectiveness dashboard.
+  'nav.compliance.effectiveness': 'SOC2 Matrix',
+  'pages.compliance.effectiveness.title': 'SOC2 Control Effectiveness',
+  'pages.compliance.effectiveness.description':
+    "Static matrix of how Lodestar's built-in capabilities cover SOC2 Trust Services Criteria (CC1~CC9 + A1·A2·A5) sub-controls, plus per-category audit event counts over the last 1 / 7 / 30 days. External-auditor delegation surface (admin · auditor).",
+  'compliance.dashboard.cover.label': 'Overall cover',
+  'compliance.dashboard.cover.subControls': '{covered} / {total} sub-controls covered',
+  'compliance.dashboard.cover.updatedAt': 'Updated: {at}',
+  'compliance.dashboard.threshold.healthy': 'Healthy',
+  'compliance.dashboard.threshold.warning': 'Warning',
+  'compliance.dashboard.threshold.critical': 'Critical',
+  'compliance.dashboard.table.code': 'Code',
+  'compliance.dashboard.table.name': 'Category',
+  'compliance.dashboard.table.subControls': 'Sub-controls',
+  'compliance.dashboard.table.covered': 'Covered',
+  'compliance.dashboard.table.coverPercent': 'Cover %',
+  'compliance.dashboard.table.audit7d': 'Events (7d)',
+  'compliance.dashboard.table.audit30d': 'Events (30d)',
+  'compliance.dashboard.table.gaps': 'Gaps',
+  'compliance.dashboard.gaps.title': 'External-track gaps',
+  'compliance.dashboard.gaps.description':
+    "Sub-controls not coverable by Lodestar's built-in capabilities. Depend on external firm, HR, or board-level tracks.",
+  'compliance.dashboard.gaps.none': 'No uncovered sub-controls (full cover).',
+  'compliance.dashboard.empty.title': 'Matrix disabled',
+  'compliance.dashboard.empty.description':
+    'Either the effectiveness aggregator is not configured or SOC2 dashboard is disabled on the server.',
+  'compliance.dashboard.error.title': 'Failed to load matrix',
+  'compliance.dashboard.error.unauthorized':
+    'Insufficient permission. The auditor or admin role is required.',
+  'compliance.dashboard.error.unavailable':
+    'The effectiveness dashboard is not enabled on this server.',
+  'compliance.dashboard.error.fallback': 'Failed to process the server response.',
+  'compliance.dashboard.category.CC1': 'Control Environment',
+  'compliance.dashboard.category.CC2': 'Communication and Information',
+  'compliance.dashboard.category.CC3': 'Risk Assessment',
+  'compliance.dashboard.category.CC4': 'Monitoring Activities',
+  'compliance.dashboard.category.CC5': 'Control Activities',
+  'compliance.dashboard.category.CC6': 'Logical and Physical Access',
+  'compliance.dashboard.category.CC7': 'System Operations',
+  'compliance.dashboard.category.CC8': 'Change Management',
+  'compliance.dashboard.category.CC9': 'Risk Mitigation',
+  'compliance.dashboard.category.A1': 'Availability',
+  'compliance.dashboard.category.A2': 'Confidentiality',
+  'compliance.dashboard.category.A5': 'Security',
 
   'pages.advisor.title': 'Advisor',
   'advisor.subtitle.intro':

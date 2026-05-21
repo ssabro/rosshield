@@ -97,9 +97,14 @@ type Deps struct {
 	// Phase 11.B-5 — audit log export wizard (auditor + admin).
 	// AuditExporter / AuditChainKeys / AuditSigner 중 하나라도 nil 이면
 	// POST /api/v1/compliance/export 503.
-	AuditExporter   audit.ChainExporter
-	AuditChainKeys  audit.ChainKeyRepository
-	AuditSigner     signer.Signer
+	AuditExporter  audit.ChainExporter
+	AuditChainKeys audit.ChainKeyRepository
+	AuditSigner    signer.Signer
+
+	// Phase 11.B-6 — SOC2 effectiveness dashboard (auditor + admin).
+	// AuditEffectiveness nil 이면 GET /api/v1/compliance/effectiveness 503.
+	// 구현: internal/domain/audit/sqliterepo.Repo (audit_entries 직접 집계).
+	AuditEffectiveness audit.EffectivenessAggregator
 }
 
 // Handlers는 gen.ServerInterface 구현체입니다.
@@ -415,6 +420,14 @@ func (h *Handlers) Mount(r chi.Router) {
 		// auditor 통과 (auditor read-only role 의 핵심 위임 표면).
 		r.With(h.RequirePermission(authz.ResourceAudit, authz.ActionExport)).
 			Post("/api/v1/compliance/export", h.ExportComplianceBundle)
+
+		// === Phase 11.B-6 — SOC2 effectiveness dashboard (auditor + admin) ===
+		// design doc `docs/design/notes/soc2-readiness-design.md` §7.6.
+		// 권한: ResourceAudit.ActionExport — Phase 11.B-5 와 동일 (admin + auditor).
+		// compliance.read 는 operator/fleet-admin/read-only 까지 통과하므로 effectiveness
+		// dashboard 의 외부 감사인 위임 표면으로는 broad. audit.export 게이트가 적절.
+		r.With(h.RequirePermission(authz.ResourceAudit, authz.ActionExport)).
+			Get("/api/v1/compliance/effectiveness", h.GetComplianceEffectiveness)
 
 		// === Customer Intake (5건) — Phase 6 후보 1 R1 Stage 3 ===
 		// design doc `docs/design/notes/customer-onboarding-design.md` §6.1 + §6.2 산출.

@@ -163,34 +163,35 @@ func newMux(p *Platform) http.Handler {
 	apiRouter.Use(replication.StandbyReadOnlyMiddleware(p.ReplicationConfig))
 
 	h := handlers.New(handlers.Deps{
-		Storage:           p.Storage,
-		Clock:             p.Clock,
-		Tenant:            p.Tenant,
-		Robot:             p.Robot,
-		FleetScanSched:    p.FleetScanSched,
-		Scan:              p.Scan,
-		ScanRun:           p.ScanRun,
-		Benchmark:         p.Benchmark,
-		Reporting:         p.Reporting,
-		Insight:           p.Insight,
-		Compliance:        p.Compliance,
-		Advisor:           p.Advisor,
-		Audit:             p.Audit,
-		EventBus:          p.EventBus,
-		License:           p.License,
-		Webhook:           p.Webhook,
-		WebhookDispatcher: p.WebhookDispatcher,
-		SSO:               p.SSO,
-		SSOGroupMapping:   p.SSOGroupMapping, // RBAC fleet 정밀화 Stage 5 — group → role 자동 sync.
-		Invitation:        p.Invitation,
-		Metrics:           p.Metrics,
-		ReportSigner:      p.ReportSigner,
-		Intake:            p.Intake,     // Phase 6 후보 1 R1 Stage 3 — customer intake handler 결선 (운영자 admin gate).
-		HotGC:             p.HotGC,      // E32 Stage 4 — POST /api/v1/audit/gc/run (sqlite marker mode + PG GUC 자동 분기).
-		KeyRotator:        p.KeyRotator, // Phase 10.D-6 — POST /api/v1/audit/rotation/abort (emergency override).
-		AuditExporter:     p.AuditExporter,
-		AuditChainKeys:    p.AuditChainKeys,
-		AuditSigner:       p.AuditSigner,
+		Storage:            p.Storage,
+		Clock:              p.Clock,
+		Tenant:             p.Tenant,
+		Robot:              p.Robot,
+		FleetScanSched:     p.FleetScanSched,
+		Scan:               p.Scan,
+		ScanRun:            p.ScanRun,
+		Benchmark:          p.Benchmark,
+		Reporting:          p.Reporting,
+		Insight:            p.Insight,
+		Compliance:         p.Compliance,
+		Advisor:            p.Advisor,
+		Audit:              p.Audit,
+		EventBus:           p.EventBus,
+		License:            p.License,
+		Webhook:            p.Webhook,
+		WebhookDispatcher:  p.WebhookDispatcher,
+		SSO:                p.SSO,
+		SSOGroupMapping:    p.SSOGroupMapping, // RBAC fleet 정밀화 Stage 5 — group → role 자동 sync.
+		Invitation:         p.Invitation,
+		Metrics:            p.Metrics,
+		ReportSigner:       p.ReportSigner,
+		Intake:             p.Intake,     // Phase 6 후보 1 R1 Stage 3 — customer intake handler 결선 (운영자 admin gate).
+		HotGC:              p.HotGC,      // E32 Stage 4 — POST /api/v1/audit/gc/run (sqlite marker mode + PG GUC 자동 분기).
+		KeyRotator:         p.KeyRotator, // Phase 10.D-6 — POST /api/v1/audit/rotation/abort (emergency override).
+		AuditExporter:      p.AuditExporter,
+		AuditChainKeys:     p.AuditChainKeys,
+		AuditSigner:        p.AuditSigner,
+		AuditEffectiveness: p.AuditEffectiveness, // Phase 11.B-6 — SOC2 effectiveness dashboard.
 
 		// E-MR (Phase 8) Stage 1~2 — Multi-region HA 결선.
 		// Replication repo: sqlite·PG 양쪽에서 동일한 `?` placeholder SQL.

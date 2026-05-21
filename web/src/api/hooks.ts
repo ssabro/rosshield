@@ -829,6 +829,91 @@ export const useFailoverHistory = (limit?: number) => {
   })
 }
 
+// useComplianceEffectiveness — Phase 11.B-6 SOC2 effectiveness dashboard hook.
+//   GET /api/v1/compliance/effectiveness (admin + auditor — audit.export 권한).
+//   5 분 polling — read-heavy aggregation, cache 적절.
+//
+// 응답 구조 (handlers/compliance_effectiveness.go effectivenessResponse):
+//   {
+//     totalSubControls, coveredSubControls, coverPercent, generatedAt,
+//     categories: [{ code, name, subControls, covered, coverPercent,
+//                     auditEvents: { lastDay, last7Days, last30Days },
+//                     gaps: ["CC1.4 …"], items: [{ id, title, covered, gapNote,
+//                       actions, auditEvents }, ...] }, ...]
+//   }
+//
+// 503: AuditEffectiveness 미주입 시 backend ServiceUnavailable.
+// 403: audit.export 권한 미달 (auditor + admin 만 통과) — UI 도 route-guard 로 차단.
+export interface ComplianceAuditEventCounts {
+  lastDay: number
+  last7Days: number
+  last30Days: number
+}
+
+export interface ComplianceSubControl {
+  id: string
+  title: string
+  actions: string[]
+  covered: boolean
+  gapNote?: string
+  auditEvents: ComplianceAuditEventCounts
+}
+
+export interface ComplianceCategory {
+  code: string
+  name: string
+  subControls: number
+  covered: number
+  coverPercent: number
+  auditEvents: ComplianceAuditEventCounts
+  gaps: string[]
+  items: ComplianceSubControl[]
+}
+
+export interface ComplianceEffectivenessResponse {
+  totalSubControls: number
+  coveredSubControls: number
+  coverPercent: number
+  generatedAt: string
+  categories: ComplianceCategory[]
+}
+
+export const useComplianceEffectiveness = () => {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery({
+    queryKey: ['compliance', 'effectiveness'],
+    queryFn: async (): Promise<ComplianceEffectivenessResponse> => {
+      const headers: Record<string, string> = {
+        'X-Cookie-Auth': 'true',
+      }
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`
+      }
+      const r = await fetch(`${API_BASE_PATH}/compliance/effectiveness`, {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+      })
+      if (!r.ok) {
+        const text = await r.text().catch(() => '')
+        throw new ApiError(r.status, text || r.statusText)
+      }
+      const body = (await r.json()) as ComplianceEffectivenessResponse
+      return {
+        totalSubControls: body.totalSubControls ?? 0,
+        coveredSubControls: body.coveredSubControls ?? 0,
+        coverPercent: body.coverPercent ?? 0,
+        generatedAt: body.generatedAt ?? '',
+        categories: body.categories ?? [],
+      }
+    },
+    enabled: !!accessToken,
+    // 5 분 polling — read-heavy aggregate query 라 잦은 refresh 불필요.
+    refetchInterval: 5 * 60_000,
+    staleTime: 60_000,
+  })
+}
+
 // useUsageStats — /system 페이지 UsageStatsCard용. 인증 사용자 read-only.
 //   GET /api/v1/usage/stats — Prometheus counter snapshot (process scope).
 //   30s polling — 카운터 변화 reflect (E38 onboarding/billing 즉시 가시성).

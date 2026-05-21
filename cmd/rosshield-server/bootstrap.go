@@ -380,49 +380,50 @@ type Config struct {
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
 // 도메인 서비스는 이 구조체에서 필요한 의존성만 주입받습니다 (§03.4 시작 시퀀스).
 type Platform struct {
-	Logger            *slog.Logger
-	Clock             clock.Clock
-	IDGen             idgen.IDGen
-	Storage           storage.Storage
-	EventBus          eventbus.Bus
-	Signer            signer.Signer
-	Scheduler         scheduler.Scheduler
-	Audit             audit.Service
-	Tenant            tenant.Service
-	Benchmark         benchmark.Service
-	Robot             robot.Service
-	Scan              scan.Service
-	ScanRun           *scanrun.Orchestrator
-	Evidence          evidence.Service
-	BlobStore         blobstore.Store
-	Reporting         reporting.Service
-	ReportSigner      signer.Signer // R10-7: report 키 ↔ audit checkpoint 키 분리
-	Insight           insight.Service
-	Compliance        compliance.Service
-	LLM               llm.Adapter
-	Advisor           advisor.Service          // E16
-	License           *license.Enforcer        // E24 — Open-core enterprise feature 게이트 + 쿼터
-	Intake            intake.Service           // Phase 6 후보 1 R1 Stage 3+4 — customer intake CRUD + auto-provisioning wrap
-	Webhook           webhook.Service          // E23 — webhook + SIEM 통합 도메인
-	WebhookDispatcher *webhookrun.Dispatcher   // E23-B — Process worker
-	WebhookBridge     *webhookrun.EventBridge  // E23-D — EventBus → webhook.Enqueue bridge
-	SSO               sso.Service              // E20-D — SSO Provider CRUD + IdP 호출
-	SSOGroupMapping   sso.GroupMappingService  // RBAC fleet 정밀화 Stage 5 — group → role 자동 매핑 CRUD + resolve
-	Invitation        tenant.InvitationService // E21 — 초대·역할 관리
-	Metrics           *metrics.Registry        // E27 — Prometheus exposition (옵트인)
-	MetricsBridge     *metrics.MetricsBridge   // E27 — EventBus → counter 결선
-	HA                *ha.Manager              // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
-	HotGC             *rotation.HotGC          // E32 Stage 4 — audit hot GC (sqlite marker mode + PG GUC 양쪽)
-	KeyRotator        *keyrotation.KeyRotator  // Phase 10.D-3+4+6 — audit chain signer key rotation (auto + emergency override)
-	AuditExporter     audit.ChainExporter      // Phase 11.B-5 — audit log bundle export (auditor + admin)
-	AuditChainKeys    audit.ChainKeyRepository // Phase 11.B-5 — v2 bundle chainKeyEpochs lookup
-	AuditSigner       signer.Signer            // Phase 11.B-5 — audit chain signer (SwappableSigner)
-	Replication       replication.Repository   // E-MR Stage 1 — replication metadata 어댑터 (sqlite/PG 양쪽)
-	ReplicationConfig replication.Config       // E-MR Stage 1~2 — 본 인스턴스의 region·role + standby middleware 활성 여부
-	Keystore          keystore.KeyStore        // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
-	BackupDir         string                   // B7 후속 — 자동 백업 디렉터리 (handlers/backup이 list 시 사용)
-	FleetScanSched    *FleetScanScheduler      // dynamic cron re-registration on fleet mutation
-	SSHPool           sshpool.Pool             // scanrun Stage 5b — idle 재사용 + keepalive (Shutdown 시 Close)
+	Logger             *slog.Logger
+	Clock              clock.Clock
+	IDGen              idgen.IDGen
+	Storage            storage.Storage
+	EventBus           eventbus.Bus
+	Signer             signer.Signer
+	Scheduler          scheduler.Scheduler
+	Audit              audit.Service
+	Tenant             tenant.Service
+	Benchmark          benchmark.Service
+	Robot              robot.Service
+	Scan               scan.Service
+	ScanRun            *scanrun.Orchestrator
+	Evidence           evidence.Service
+	BlobStore          blobstore.Store
+	Reporting          reporting.Service
+	ReportSigner       signer.Signer // R10-7: report 키 ↔ audit checkpoint 키 분리
+	Insight            insight.Service
+	Compliance         compliance.Service
+	LLM                llm.Adapter
+	Advisor            advisor.Service               // E16
+	License            *license.Enforcer             // E24 — Open-core enterprise feature 게이트 + 쿼터
+	Intake             intake.Service                // Phase 6 후보 1 R1 Stage 3+4 — customer intake CRUD + auto-provisioning wrap
+	Webhook            webhook.Service               // E23 — webhook + SIEM 통합 도메인
+	WebhookDispatcher  *webhookrun.Dispatcher        // E23-B — Process worker
+	WebhookBridge      *webhookrun.EventBridge       // E23-D — EventBus → webhook.Enqueue bridge
+	SSO                sso.Service                   // E20-D — SSO Provider CRUD + IdP 호출
+	SSOGroupMapping    sso.GroupMappingService       // RBAC fleet 정밀화 Stage 5 — group → role 자동 매핑 CRUD + resolve
+	Invitation         tenant.InvitationService      // E21 — 초대·역할 관리
+	Metrics            *metrics.Registry             // E27 — Prometheus exposition (옵트인)
+	MetricsBridge      *metrics.MetricsBridge        // E27 — EventBus → counter 결선
+	HA                 *ha.Manager                   // E25 — leader-election (HAEnabled 시 non-nil, 아니면 nil)
+	HotGC              *rotation.HotGC               // E32 Stage 4 — audit hot GC (sqlite marker mode + PG GUC 양쪽)
+	KeyRotator         *keyrotation.KeyRotator       // Phase 10.D-3+4+6 — audit chain signer key rotation (auto + emergency override)
+	AuditExporter      audit.ChainExporter           // Phase 11.B-5 — audit log bundle export (auditor + admin)
+	AuditChainKeys     audit.ChainKeyRepository      // Phase 11.B-5 — v2 bundle chainKeyEpochs lookup
+	AuditSigner        signer.Signer                 // Phase 11.B-5 — audit chain signer (SwappableSigner)
+	AuditEffectiveness audit.EffectivenessAggregator // Phase 11.B-6 — SOC2 effectiveness dashboard (audit_entries 집계, audit/sqliterepo.Repo)
+	Replication        replication.Repository        // E-MR Stage 1 — replication metadata 어댑터 (sqlite/PG 양쪽)
+	ReplicationConfig  replication.Config            // E-MR Stage 1~2 — 본 인스턴스의 region·role + standby middleware 활성 여부
+	Keystore           keystore.KeyStore             // E34 — KeyStore 어댑터 (file 기본, tpm은 Stage 2+)
+	BackupDir          string                        // B7 후속 — 자동 백업 디렉터리 (handlers/backup이 list 시 사용)
+	FleetScanSched     *FleetScanScheduler           // dynamic cron re-registration on fleet mutation
+	SSHPool            sshpool.Pool                  // scanrun Stage 5b — idle 재사용 + keepalive (Shutdown 시 Close)
 
 	systemTenant storage.TenantID
 
@@ -1638,50 +1639,51 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		"licenseEdition", licenseEdition)
 
 	platform := &Platform{
-		Logger:            logger,
-		Clock:             clk,
-		IDGen:             ids,
-		Storage:           store,
-		EventBus:          bus,
-		Signer:            sgn,
-		Scheduler:         sch,
-		Audit:             auditSvc,
-		Tenant:            tenantSvc,
-		Benchmark:         benchmarkSvc,
-		Robot:             robotSvc,
-		Scan:              scanSvc,
-		ScanRun:           scanRun,
-		Evidence:          evidenceSvc,
-		BlobStore:         bs,
-		Reporting:         reportingSvc,
-		ReportSigner:      reportSigner,
-		Insight:           insightSvc,
-		Compliance:        complianceSvc,
-		LLM:               llmAdapter,
-		Advisor:           advisorSvc,
-		License:           licenseEnforcer,
-		Intake:            intakeSvc,
-		Webhook:           webhookSvc,
-		WebhookDispatcher: webhookDispatcher,
-		WebhookBridge:     webhookBridge,
-		SSO:               ssoSvc,
-		SSOGroupMapping:   ssoSvc, // RBAC fleet 정밀화 Stage 5 — *ssorepo.Repo가 GroupMappingService도 구현.
-		Invitation:        invitationSvc,
-		Metrics:           metricsReg,
-		MetricsBridge:     metricsBridge,
-		HotGC:             hotGC,
-		KeyRotator:        keyRotator, // Phase 10.D-3+4+6 — auto-rotation orchestrator + emergency override.
-		AuditExporter:     auditSvc,
-		AuditChainKeys:    auditrepo.NewKeyEpochRepo(),
-		AuditSigner:       swappableSigner,
-		Keystore:          ks,
-		BackupDir:         resolvedBackupDir,
-		FleetScanSched:    fleetScanSch,
-		SSHPool:           sshPool,
-		systemTenant:      systemTenant,
-		insightAutorunSub: insightAutorunSub,
-		Replication:       replicationrepo.New(),
-		ReplicationConfig: cfg.ReplicationConfig,
+		Logger:             logger,
+		Clock:              clk,
+		IDGen:              ids,
+		Storage:            store,
+		EventBus:           bus,
+		Signer:             sgn,
+		Scheduler:          sch,
+		Audit:              auditSvc,
+		Tenant:             tenantSvc,
+		Benchmark:          benchmarkSvc,
+		Robot:              robotSvc,
+		Scan:               scanSvc,
+		ScanRun:            scanRun,
+		Evidence:           evidenceSvc,
+		BlobStore:          bs,
+		Reporting:          reportingSvc,
+		ReportSigner:       reportSigner,
+		Insight:            insightSvc,
+		Compliance:         complianceSvc,
+		LLM:                llmAdapter,
+		Advisor:            advisorSvc,
+		License:            licenseEnforcer,
+		Intake:             intakeSvc,
+		Webhook:            webhookSvc,
+		WebhookDispatcher:  webhookDispatcher,
+		WebhookBridge:      webhookBridge,
+		SSO:                ssoSvc,
+		SSOGroupMapping:    ssoSvc, // RBAC fleet 정밀화 Stage 5 — *ssorepo.Repo가 GroupMappingService도 구현.
+		Invitation:         invitationSvc,
+		Metrics:            metricsReg,
+		MetricsBridge:      metricsBridge,
+		HotGC:              hotGC,
+		KeyRotator:         keyRotator, // Phase 10.D-3+4+6 — auto-rotation orchestrator + emergency override.
+		AuditExporter:      auditSvc,
+		AuditChainKeys:     auditrepo.NewKeyEpochRepo(),
+		AuditSigner:        swappableSigner,
+		AuditEffectiveness: auditSvc, // Phase 11.B-6 — audit/sqliterepo.Repo 가 EffectivenessAggregator 도 구현.
+		Keystore:           ks,
+		BackupDir:          resolvedBackupDir,
+		FleetScanSched:     fleetScanSch,
+		SSHPool:            sshPool,
+		systemTenant:       systemTenant,
+		insightAutorunSub:  insightAutorunSub,
+		Replication:        replicationrepo.New(),
+		ReplicationConfig:  cfg.ReplicationConfig,
 	}
 
 	// E-MR Stage 3 — PG logical replication publication/subscription 자동 setup.

@@ -192,6 +192,41 @@ var (
 	ErrNotLeader = errors.New("audit: instance is not leader (HA single-writer)")
 )
 
+// ActionCountWindow 는 Phase 11.B-6 effectiveness dashboard 가 audit_entries 를
+// action × time-range 로 집계할 때 사용하는 결과 row 입니다.
+//
+// 각 윈도우(LastDay/Last7Days/Last30Days)는 occurred_at >= 윈도우 시작 시각의 카운트.
+// 매핑되지 않은 action 은 결과에 포함되지 않습니다 — caller (handler) 가 IN (...) 절로
+// 제한.
+type ActionCountWindow struct {
+	Action     string
+	LastDay    int64
+	Last7Days  int64
+	Last30Days int64
+}
+
+// EffectivenessAggregator 는 Phase 11.B-6 effectiveness dashboard 가 의존하는
+// minimal read-only 표면입니다 (P5 minimal DTO).
+//
+// 본 표면은 audit.Service 와 분리되어 있습니다 — Service 는 광범위하게 주입되고,
+// 본 표면은 effectiveness handler 만 사용하므로 작게 격리합니다.
+//
+// 구현: internal/domain/audit/sqliterepo.Repo (이미 audit_entries 접근 권한 보유).
+// bootstrap 이 audit/sqliterepo.Repo 인스턴스를 그대로 본 interface 로 주입.
+//
+// 권한 경계: caller (handler) 는 tenant 컨텍스트 + audit.export 권한 보유 후 호출
+// (permission_matrix.go §3.3 — admin + auditor).
+type EffectivenessAggregator interface {
+	// CountActionsByWindows 는 tenant 의 audit_entries 에서 (action, time-range) 별 카운트를
+	// 한 번의 query 로 회수합니다.
+	//
+	// actions 가 empty 면 빈 슬라이스 반환 (no-op). reference 시각 now 로부터 1/7/30 일 윈도우.
+	// 결과 슬라이스는 actions 와 동일 길이 + 동일 순서 — caller 가 zip 으로 매핑.
+	//
+	// 미발견 action 은 카운트 0 으로 채워 반환 (절대 누락 안 함).
+	CountActionsByWindows(ctx context.Context, tx storage.Tx, tenantID storage.TenantID, actions []string, now time.Time) ([]ActionCountWindow, error)
+}
+
 // RoleProvider는 audit가 HA 활성 시 leader 여부 + 현재 fence token(epoch)을
 // 질의할 수 있는 minimal interface입니다.
 //

@@ -44,6 +44,7 @@ export interface NavItem {
     | '/findings'
     | '/compliance'
     | '/compliance/export'
+    | '/compliance/effectiveness'
     | '/advisor'
     | '/reports'
     | '/audit'
@@ -102,6 +103,14 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
         to: '/compliance/export',
         labelKey: 'nav.compliance.export',
         icon: FileText,
+        requires: { resource: 'system', action: 'read' },
+      },
+      // Phase 11.B-6 — SOC2 effectiveness dashboard. 동일 audit.export 권한 게이트.
+      // system.read 도 admin + auditor 만 통과 — 게이트 효과는 audit.export 와 일관.
+      {
+        to: '/compliance/effectiveness',
+        labelKey: 'nav.compliance.effectiveness',
+        icon: ShieldCheck,
         requires: { resource: 'system', action: 'read' },
       },
       { to: '/reports', labelKey: 'nav.reports', icon: FileText },
