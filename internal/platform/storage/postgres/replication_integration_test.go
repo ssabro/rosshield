@@ -379,10 +379,11 @@ func TestReplicationFixtureSetsUpPublicationSubscription(t *testing.T) {
 	}
 
 	// Standby: pg_subscription에 rosshield_main_sub 존재.
-	// CI testcontainers 환경에서 CREATE SUBSCRIPTION 직후 catalog visibility race가 관찰되어
-	// (Stage 10.D-2 이후 5 commit에서 동일 fail) 5s polling으로 race 회피.
+	// CI testcontainers 환경에서 CREATE SUBSCRIPTION 직후 catalog visibility race 관찰
+	// (Stage 10.D-2 이후 누적 fail). 5s polling은 부족(8.76s 사례) — waitForReplication과
+	// 동일 30s window로 통일.
 	var subExists bool
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		err = fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
 			return tx.QueryRow(c,
@@ -400,7 +401,7 @@ func TestReplicationFixtureSetsUpPublicationSubscription(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Errorf("standby pg_subscription missing %q (after 5s polling)", repSubscriptionN)
+			t.Errorf("standby pg_subscription missing %q (after 30s polling)", repSubscriptionN)
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
