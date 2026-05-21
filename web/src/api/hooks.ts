@@ -657,6 +657,69 @@ export const useBackups = () => {
   })
 }
 
+// useReplicas — Phase 10.A-2 `/regions` 페이지 RegionHealthCard용.
+//   GET /api/v1/replication/replicas (admin) — multi-region 토폴로지 + lag.
+//   30s polling — Phase 8/9 PG cross-region replication + Patroni 자동 failover의
+//   운영 가시성 표면화. openapi spec 미정의 → raw fetch + Authorization 부착.
+//
+// 응답 구조 (handlers/replication.go listReplicasResponse):
+//   { selfRegion, selfRole, replicas: [{
+//       region, role, endpoint,
+//       lastReplayLsn?, lastReplayAt?, lastHeartbeatAt?,
+//       lagSeconds, enabled }] }
+//
+// 503: replication 미구성 시 backend가 ServiceUnavailable 반환 — UI는 error로 표시.
+// 403: admin 권한 미달 시 — UI 측은 useHasPermission으로 페이지 진입 차단.
+export interface RegionReplica {
+  region: string
+  role: string
+  endpoint: string
+  lastReplayLsn?: string
+  lastReplayAt?: string
+  lastHeartbeatAt?: string
+  lagSeconds: number
+  enabled: boolean
+}
+
+export interface ReplicasResponse {
+  selfRegion: string
+  selfRole: string
+  replicas: RegionReplica[]
+}
+
+export const useReplicas = () => {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery({
+    queryKey: ['replication', 'replicas'],
+    queryFn: async (): Promise<ReplicasResponse> => {
+      const headers: Record<string, string> = {
+        'X-Cookie-Auth': 'true',
+      }
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`
+      }
+      const r = await fetch(`${API_BASE_PATH}/replication/replicas`, {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+      })
+      if (!r.ok) {
+        // 503 (replication not configured) 포함 모든 비-200 — ApiError로 전달.
+        const text = await r.text().catch(() => '')
+        throw new ApiError(r.status, text || r.statusText)
+      }
+      const body = (await r.json()) as ReplicasResponse
+      return {
+        selfRegion: body.selfRegion ?? '',
+        selfRole: body.selfRole ?? '',
+        replicas: body.replicas ?? [],
+      }
+    },
+    enabled: !!accessToken,
+    refetchInterval: 30_000,
+  })
+}
+
 // useUsageStats — /system 페이지 UsageStatsCard용. 인증 사용자 read-only.
 //   GET /api/v1/usage/stats — Prometheus counter snapshot (process scope).
 //   30s polling — 카운터 변화 reflect (E38 onboarding/billing 즉시 가시성).

@@ -26,6 +26,7 @@ export const ko = {
   'nav.sso': 'SSO 인증',
   'nav.users': '사용자',
   'nav.license': '라이선스',
+  'nav.regions': '리전',
   'nav.system': '시스템',
   'nav.settings': '설정',
   // D-UI-1 Stage 3 — sidebar 4 그룹 헤더.
@@ -767,6 +768,30 @@ export const ko = {
   'system.backups.download.aria': '백업 다운로드: {filename}',
   'system.backups.refreshing': '갱신 중…',
 
+  // Phase 10.A-2 — /regions 페이지 (multi-region UI 표면화).
+  'regions.title': '리전',
+  'regions.description':
+    'PG cross-region replication + Patroni 자동 failover 토폴로지를 한곳에서 확인합니다.',
+  'regions.self.label': '현재 리전',
+  'regions.role.primary': 'primary',
+  'regions.role.standby': 'standby',
+  'regions.role.failed': 'failed',
+  'regions.role.unknown': '알 수 없음',
+  'regions.endpoint': '엔드포인트',
+  'regions.lag.label': '복제 지연',
+  'regions.lag.healthy': '정상',
+  'regions.lag.warning': '주의',
+  'regions.lag.delayed': '지연',
+  'regions.lag.unknown': '알 수 없음',
+  'regions.lastReplay': '최근 replay',
+  'regions.lastHeartbeat': '최근 heartbeat',
+  'regions.empty': '등록된 region 없음',
+  'regions.empty.description':
+    'replication 미구성 또는 standby 미등록 상태입니다. cross-region 운영자 runbook을 참고하세요.',
+  'regions.error': '리전 목록 조회 실패',
+  'regions.unauthorized':
+    '관리자 권한이 필요합니다. 권한 부여는 테넌트 admin에게 문의하세요.',
+
   'pages.settings.title': '설정',
   'pages.settings.description':
     '현재 사용자·테넌트 정보와 클라이언트 설정 위치를 확인합니다.',
@@ -1117,6 +1142,7 @@ export const en: Record<keyof typeof ko, string> = {
   'nav.sso': 'SSO',
   'nav.users': 'Users',
   'nav.license': 'License',
+  'nav.regions': 'Regions',
   'nav.system': 'System',
   'nav.settings': 'Settings',
   // D-UI-1 Stage 3 — sidebar 4 group headers.
@@ -1856,6 +1882,30 @@ export const en: Record<keyof typeof ko, string> = {
   'system.backups.download': 'Download',
   'system.backups.download.aria': 'Download backup: {filename}',
   'system.backups.refreshing': 'Refreshing…',
+
+  // Phase 10.A-2 — /regions page (multi-region UI surface).
+  'regions.title': 'Regions',
+  'regions.description':
+    'PG cross-region replication + Patroni automatic failover topology in one place.',
+  'regions.self.label': 'Current region',
+  'regions.role.primary': 'primary',
+  'regions.role.standby': 'standby',
+  'regions.role.failed': 'failed',
+  'regions.role.unknown': 'unknown',
+  'regions.endpoint': 'Endpoint',
+  'regions.lag.label': 'Replication lag',
+  'regions.lag.healthy': 'healthy',
+  'regions.lag.warning': 'warning',
+  'regions.lag.delayed': 'delayed',
+  'regions.lag.unknown': 'unknown',
+  'regions.lastReplay': 'Last replay',
+  'regions.lastHeartbeat': 'Last heartbeat',
+  'regions.empty': 'No replicas registered',
+  'regions.empty.description':
+    'Replication is not configured or no standby has been registered. See the cross-region operator runbook.',
+  'regions.error': 'Failed to load regions',
+  'regions.unauthorized':
+    'Administrator permission required. Contact your tenant admin to request access.',
 
   'pages.settings.title': 'Settings',
   'pages.settings.description':

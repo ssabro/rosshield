@@ -4,6 +4,7 @@ import {
   Award,
   ClipboardCheck,
   FileText,
+  Globe,
   KeyRound,
   LayoutDashboard,
   PlayCircle,
@@ -49,6 +50,7 @@ export interface NavItem {
     | '/sso'
     | '/users'
     | '/license'
+    | '/regions'
     | '/system'
     | '/settings'
   labelKey: DictKey
@@ -125,6 +127,14 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
         requires: { resource: 'tenant_admin', action: 'admin' },
       },
       { to: '/license', labelKey: 'nav.license', icon: Award },
+      // regions — Phase 10.A-2 multi-region UX 표면화. admin 전용
+      // (handlers.go ListReplicas는 tenant_admin.admin 게이트).
+      {
+        to: '/regions',
+        labelKey: 'nav.regions',
+        icon: Globe,
+        requires: { resource: 'tenant_admin', action: 'admin' },
+      },
       // system 운영 — admin/auditor (system.read).
       {
         to: '/system',

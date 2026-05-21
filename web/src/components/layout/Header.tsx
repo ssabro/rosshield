@@ -35,6 +35,7 @@ const PAGE_TITLE_KEYS: Record<string, DictKey> = {
   '/sso': 'nav.sso',
   '/users': 'nav.users',
   '/license': 'nav.license',
+  '/regions': 'nav.regions',
   '/system': 'nav.system',
   '/settings': 'nav.settings',
 }
