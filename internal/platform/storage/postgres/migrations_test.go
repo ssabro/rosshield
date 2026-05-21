@@ -59,6 +59,7 @@ var expectedSequences = []string{
 	"0034_audit_gc_guc",
 	"0035_audit_rotation_chain",
 	"0036_audit_gc_marker",
+	"0037_audit_chain_keys",
 }
 
 // noopSequences 는 E22-E 폐기 — TestPGConversionMarkersPresent 함께 폐기됐으므로 미사용.
