@@ -588,3 +588,22 @@ CLAUDE.md 일관 — local 커밋 OK, remote push 사용자 명시 요청 시에
 - `feedback_no_rest_recommendation.md` — 휴식 옵션 자동 포함 X.
 - `feedback_recommend_next_actions.md` — 다음 추천 작업 3~5건 명시.
 - `feedback_skip_handoff.md` — handoff edit/commit/push 생략, CHANGELOG + release notes + commit 메시지로 trace.
+
+---
+
+## 12. 결정 확정 (2026-05-21)
+
+사용자 D-P11-1 결정: **Top 3 순차 전체 진입** — B(SOC2) → C(audit key_epoch) → A(OpenTelemetry).
+
+### 12.1 진입 순서 + minor release
+
+- **Phase 11.B**: SOC2 Type II readiness (~6~9주) → v0.12.0 minor
+- **Phase 11.C**: audit hash chain key_epoch input 포함 + fg-verify v3 (~2~3주) → v0.13.0 minor
+- **Phase 11.A**: OpenTelemetry tracing 전면 (~5~7주) → v0.14.0 minor
+
+총 보수적 누적 ~13~19주. customer trigger 발생 시 재우선순위 가능 (예: 첫 paying customer가 OpenTelemetry 요구 시 A → B → C 순으로).
+
+### 12.2 Stage 11.B-1 진입 가능
+
+옵션 B (SOC2 Type II readiness)의 첫 stage = compliance baseline + Stage 분해 design doc 작성. design doc first 메모리 정책 일관 — Stage 11.B-2 코드 진입 전 docs/design/notes/soc2-readiness-design.md 작성 권장.
+
