@@ -1,0 +1,64 @@
+# C2 — /tf + /tf_static (Transform) permissions.xml ACL 명시
+#
+# design doc: docs/design/notes/ros2-humble-dds-sros2-design.md §6.5 Stage 10.E-5.
+# D-P10E-3 env override skip — site policy 의존, env 미설정 또는 keystore 부재 시 PASS skip.
+# tf 트리 위변조는 모든 좌표 변환을 오염 → robot 전체 인식·제어 stack 신뢰 0.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C2.tf_topic_acl_enforced
+  title: permissions.xml에 /tf + /tf_static (Transform) ACL 명시
+  description: |-
+    /tf와 /tf_static은 ROS2 좌표 프레임 변환 토픽입니다. base_link · map · odom 등
+    모든 frame 간 변환이 이 트리에 publish되며, 모든 sensor·navigation·motion 노드가
+    구독합니다. ACL 부재 시 임의 노드가 위변조된 transform을 publish해 좌표 시스템
+    전체를 오염시킬 수 있어 인식·제어 stack 신뢰성이 0이 됩니다.
+
+    본 check는 env `ROSSHIELD_SROS2_KEYSTORE`(default `~/sros2_keystore`)의 enclaves
+    하위 permissions.xml에 `/tf` 또는 `/tf_static` ACL entry 존재만 grep 검증합니다.
+
+    env 미설정 또는 keystore 부재 시 PASS skip (D-P10E-3 site policy 의존 패턴 일관).
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    KEYSTORE="${ROSSHIELD_SROS2_KEYSTORE:-$HOME/sros2_keystore}";
+    if [ ! -d "$KEYSTORE" ]; then
+      echo "** PASS ** keystore not found at $KEYSTORE (env override skip — site policy 미적용)";
+      exit 0;
+    fi;
+    if [ ! -d "$KEYSTORE/enclaves" ]; then
+      echo "** PASS ** keystore enclaves dir not found: $KEYSTORE/enclaves (env override skip)";
+      exit 0;
+    fi;
+    DYN=$(grep -rh -E "<(topic|publish|subscribe)>.*\\btf\\b" "$KEYSTORE/enclaves" 2>/dev/null | wc -l);
+    STA=$(grep -rh -E "<(topic|publish|subscribe)>.*tf_static" "$KEYSTORE/enclaves" 2>/dev/null | wc -l);
+    if [ "$DYN" -ge 1 ] && [ "$STA" -ge 1 ]; then
+      echo "** PASS ** /tf entries=$DYN /tf_static entries=$STA";
+    else
+      echo "** FAIL ** /tf entries=$DYN /tf_static entries=$STA (want both >= 1)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    tf 트리는 ROS2 robot stack의 중추 좌표 시스템 — base_link → odom → map 변환이
+    오염되면 navigation, perception, manipulation 모두 신뢰 불가. 특히 spoofed
+    map → base_link transform은 robot 위치를 실제 위치와 무관하게 표시 → 충돌·이탈.
+    /tf_static은 sensor mount offset 등 부팅 시 한 번 publish되는 정적 변환으로
+    별도 검증 필요(latched topic).
+
+    env 미설정 시 PASS skip으로 site policy 다양성 cover (D-P10E-3 일관).
+  fixGuidance: |-
+    1. env 정의 — `export ROSSHIELD_SROS2_KEYSTORE=/opt/ros/keystore`
+    2. enclaves/<context>/permissions.xml에 tf publisher 노드(예: robot_state_publisher,
+       joint_state_publisher) grant 섹션:
+         <publish>
+           <topics>
+             <topic>tf</topic>
+             <topic>tf_static</topic>
+           </topics>
+         </publish>
+    3. 모든 subscriber 노드 grant 섹션에 subscribe 권한 명시.
+    4. ros2 daemon restart 후 본 check 재실행.

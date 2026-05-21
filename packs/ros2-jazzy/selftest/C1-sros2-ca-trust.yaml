@@ -1,0 +1,38 @@
+# selftest — ros2.C1.sros2_ca_trust
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C1.sros2_ca_trust
+spec:
+  cases:
+    - name: PASS — fingerprint 일치
+      input:
+        stdout: '** PASS ** CA fingerprint matches expected sha256=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — env unset (override skip)
+      input:
+        stdout: '** PASS ** ROSSHIELD_SROS2_CA_FINGERPRINT_SHA256 unset (env override skip — site policy 미설정)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — keystore not found (env override skip)
+      input:
+        stdout: '** PASS ** keystore not found at /home/ros/sros2_keystore (env override skip — site policy 미적용)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — CA cert 부재 (keystore empty)
+      input:
+        stdout: '** PASS ** CA cert not found at /home/ros/sros2_keystore/ca.cert.pem (env override skip — keystore empty)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — fingerprint mismatch (CA 변조 의심)
+      input:
+        stdout: '** FAIL ** CA fingerprint mismatch expected=aaaa1111 actual=bbbb2222'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

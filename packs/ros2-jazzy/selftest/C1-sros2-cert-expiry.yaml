@@ -1,0 +1,38 @@
+# selftest — ros2.C1.sros2_cert_expiry
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C1.sros2_cert_expiry
+spec:
+  cases:
+    - name: PASS — 모든 cert 90일 이상 유효
+      input:
+        stdout: '** PASS ** all 5 cert(s) valid >= 90 days'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — keystore not found (env override skip)
+      input:
+        stdout: '** PASS ** keystore not found at /home/ros/sros2_keystore (env override skip — site policy 미적용)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — keystore empty (no cert.pem)
+      input:
+        stdout: '** PASS ** no cert.pem found under /home/ros/sros2_keystore (env override skip — keystore empty)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — 1개 cert 90일 이내 만료
+      input:
+        stdout: '** FAIL ** 3 cert(s), expiring within 90 days: /home/ros/sros2_keystore/enclaves/talker/cert.pem'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — openssl 미설치
+      input:
+        stdout: '** FAIL ** openssl CLI not found (required for cert expiry check)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

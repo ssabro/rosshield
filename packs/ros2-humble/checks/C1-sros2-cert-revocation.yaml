@@ -1,0 +1,84 @@
+# C1 — SROS2 cert revocation (CRL) 존재 + 만료 검증 — Humble Hawksbill
+#
+# design doc: docs/design/notes/ros2-humble-dds-sros2-design.md §6.6 Stage 10.E-6.
+# D-P10E-3 env override skip — CRL 부재 시 PASS skip (CRL 운영 안 하는 site cover).
+# D-P10E-4 ≥ 90일 — CRL 만료 시 갱신 안내.
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C1.sros2_cert_revocation
+  title: SROS2 CRL(Certificate Revocation List) 존재 + 만료까지 ≥ 90일 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. CRL은 만료 전 cert가 폐기되었을 때(직원 퇴사·키 노출
+    등) revoke 목록을 publish하는 표준 PKI 메커니즘입니다. CRL이 없으면 폐기된 cert가
+    여전히 유효 → 권한 박탈된 노드가 fleet에 계속 join 가능.
+
+    본 check는 env `ROSSHIELD_SROS2_KEYSTORE`(default `~/sros2_keystore`)의 `ca.crl.pem`
+    존재 + nextUpdate 만료까지 ≥ 90일(D-P10E-4) 검증합니다.
+
+      - CRL 부재 → PASS skip (CRL 운영 안 하는 site cover, D-P10E-3 패턴).
+      - CRL 존재 + nextUpdate 만료 90일 이상 남음 → PASS.
+      - CRL 존재 + nextUpdate 90일 이내 만료 → FAIL (CRL 갱신 필요).
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    KEYSTORE="${ROSSHIELD_SROS2_KEYSTORE:-$HOME/sros2_keystore}";
+    if [ ! -d "$KEYSTORE" ]; then
+      echo "** PASS ** keystore not found at $KEYSTORE (env override skip — site policy 미적용)";
+      exit 0;
+    fi;
+    CRL="$KEYSTORE/ca.crl.pem";
+    if [ ! -f "$CRL" ]; then
+      echo "** PASS ** CRL not found at $CRL (env override skip — site does not operate CRL)";
+      exit 0;
+    fi;
+    if ! command -v openssl >/dev/null 2>&1; then
+      echo "** FAIL ** openssl CLI not found (required for CRL nextUpdate check)";
+      exit 0;
+    fi;
+    NEXT_UPDATE=$(openssl crl -noout -nextupdate -in "$CRL" 2>/dev/null | sed -e "s/^nextUpdate=//");
+    if [ -z "$NEXT_UPDATE" ]; then
+      echo "** FAIL ** CRL has no nextUpdate field at $CRL (malformed)";
+      exit 0;
+    fi;
+    NEXT_EPOCH=$(date -d "$NEXT_UPDATE" +%s 2>/dev/null);
+    NOW_EPOCH=$(date +%s);
+    if [ -z "$NEXT_EPOCH" ]; then
+      echo "** FAIL ** unable to parse CRL nextUpdate=$NEXT_UPDATE";
+      exit 0;
+    fi;
+    DELTA=$((NEXT_EPOCH - NOW_EPOCH));
+    THRESHOLD_SEC=$((90 * 86400));
+    DAYS=$((DELTA / 86400));
+    if [ "$DELTA" -ge "$THRESHOLD_SEC" ]; then
+      echo "** PASS ** CRL nextUpdate=$NEXT_UPDATE (>=90 days, ${DAYS}d remaining)";
+    else
+      echo "** FAIL ** CRL nextUpdate=$NEXT_UPDATE (<90 days, ${DAYS}d remaining)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    CRL이 만료되면 PKI 클라이언트는 보통 두 가지 fail 모드 중 하나로 동작합니다 —
+    (a) fail-closed로 모든 cert 거부 → fleet 통신 중단, 또는 (b) fail-open으로 revoke
+    체크 비활성 → 폐기된 cert가 여전히 유효. 어느 경우든 운영 risk이므로 nextUpdate
+    90일 lead time(D-P10E-4) 권장.
+
+    Humble Hawksbill의 PKI/CRL 인터페이스는 jazzy와 동일(X.509 standard).
+    CRL 부재 시 PASS skip은 CRL 대신 short-lived cert 또는 OCSP를 사용하는 site 등
+    revocation 정책 다양성 cover (D-P10E-3 권장 default). enterprise customer 진입
+    시 CRL 운영 정책을 사전 합의해야 false negative 회피.
+  fixGuidance: |-
+    1. 만료 임박 CRL 확인:
+         openssl crl -noout -nextupdate -in $KEYSTORE/ca.crl.pem
+    2. CA 운영 시스템에서 새 CRL 발급:
+         openssl ca -gencrl -out $KEYSTORE/ca.crl.pem
+    3. 모든 노드에서 새 CRL을 인식하도록 ros2 daemon restart.
+    4. 검증 — 본 check 재실행.
+    5. 운영 절차에 CRL 갱신을 quarterly cadence(90일 미만 시)로 등록.
+    6. CRL 대신 short-lived cert(7일+) 또는 OCSP 응답기 운영 site는 본 check 부재가
+       정상 — 단, 별 audit 항목으로 revocation 정책 검증 필요.
+    7. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

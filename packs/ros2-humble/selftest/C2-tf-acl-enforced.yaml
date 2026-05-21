@@ -1,0 +1,38 @@
+# selftest — ros2.C2.tf_topic_acl_enforced (Humble Hawksbill)
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C2.tf_topic_acl_enforced
+spec:
+  cases:
+    - name: PASS — /tf + /tf_static 양쪽 entries 명시
+      input:
+        stdout: '** PASS ** /tf entries=4 /tf_static entries=2'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — keystore not found (env override skip)
+      input:
+        stdout: '** PASS ** keystore not found at /home/ros/sros2_keystore (env override skip — site policy 미적용)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — keystore enclaves dir 부재 (env override skip)
+      input:
+        stdout: '** PASS ** keystore enclaves dir not found: /home/ros/sros2_keystore/enclaves (env override skip)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — /tf 명시 + /tf_static 부재
+      input:
+        stdout: '** FAIL ** /tf entries=3 /tf_static entries=0 (want both >= 1)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — 양쪽 0건
+      input:
+        stdout: '** FAIL ** /tf entries=0 /tf_static entries=0 (want both >= 1)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

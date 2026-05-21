@@ -1,0 +1,79 @@
+# C1 — SROS2 CA cert fingerprint trust 검증 — Humble Hawksbill
+#
+# design doc: docs/design/notes/ros2-humble-dds-sros2-design.md §6.6 Stage 10.E-6.
+# D-P10E-3 env override skip — env `ROSSHIELD_SROS2_CA_FINGERPRINT_SHA256` 미설정 또는
+# keystore 부재 시 PASS skip (site policy 의존 패턴 일관).
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C1.sros2_ca_trust
+  title: SROS2 CA cert SHA-256 fingerprint trust 검증 (Humble Hawksbill)
+  description: |-
+    ROS2 Humble Hawksbill 전용. SROS2의 CA cert(`ca.cert.pem`)는 모든 노드 cert의 신뢰
+    anchor입니다. CA가 변조되면 공격자가 발급한 cert로 임의 노드가 fleet에 join 가능 →
+    SROS2 baseline 우회.
+
+    본 check는 env `ROSSHIELD_SROS2_CA_FINGERPRINT_SHA256`(사전 등록된 hex)와 실제
+    `$ROSSHIELD_SROS2_KEYSTORE/ca.cert.pem`의 SHA-256 fingerprint를 openssl로 비교합니다.
+
+      - PASS — fingerprint 일치.
+      - FAIL — mismatch (CA 변조 또는 잘못된 keystore 마운트).
+
+    env 미설정 또는 keystore 부재 시 PASS skip (D-P10E-3 site policy 의존 패턴 일관).
+    customer onboarding 시 CA fingerprint를 사전 등록해야 본 check가 enforce됩니다.
+  severity: critical
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    KEYSTORE="${ROSSHIELD_SROS2_KEYSTORE:-$HOME/sros2_keystore}";
+    EXPECTED="${ROSSHIELD_SROS2_CA_FINGERPRINT_SHA256:-unset}";
+    if [ "$EXPECTED" = "unset" ]; then
+      echo "** PASS ** ROSSHIELD_SROS2_CA_FINGERPRINT_SHA256 unset (env override skip — site policy 미설정)";
+      exit 0;
+    fi;
+    if [ ! -d "$KEYSTORE" ]; then
+      echo "** PASS ** keystore not found at $KEYSTORE (env override skip — site policy 미적용)";
+      exit 0;
+    fi;
+    CA_CERT="$KEYSTORE/ca.cert.pem";
+    if [ ! -f "$CA_CERT" ]; then
+      echo "** PASS ** CA cert not found at $CA_CERT (env override skip — keystore empty)";
+      exit 0;
+    fi;
+    if ! command -v openssl >/dev/null 2>&1; then
+      echo "** FAIL ** openssl CLI not found (required for fingerprint computation)";
+      exit 0;
+    fi;
+    ACTUAL=$(openssl x509 -noout -fingerprint -sha256 -in "$CA_CERT" 2>/dev/null \
+      | sed -e "s/^SHA256 Fingerprint=//" -e "s/://g" | tr "A-Z" "a-z");
+    EXP_LC=$(echo "$EXPECTED" | sed -e "s/://g" | tr "A-Z" "a-z");
+    if [ "$ACTUAL" = "$EXP_LC" ]; then
+      echo "** PASS ** CA fingerprint matches expected sha256=$ACTUAL";
+    else
+      echo "** FAIL ** CA fingerprint mismatch expected=$EXP_LC actual=$ACTUAL";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    CA cert는 SROS2 trust chain의 root — CA를 신뢰하면 그것이 발급한 모든 노드 cert를
+    신뢰합니다. CA가 변조되면 공격자가 발급한 임의 노드 cert로 fleet에 join 가능 →
+    SROS2 ACL/encryption baseline 전체 우회. CA fingerprint pre-registration은
+    customer onboarding 시점에 등록한 trusted CA만 신뢰하도록 강제하는 핵심 controls.
+
+    Humble Hawksbill의 PKI 인터페이스는 jazzy와 동일(X.509 standard).
+    env 미설정 시 PASS skip은 site별 CA 운영 정책 다양성 cover (D-P10E-3 일관).
+    customer는 onboarding 시점에 fingerprint를 sealed secret 등으로 등록해야 합니다.
+  fixGuidance: |-
+    1. 정상 CA의 fingerprint 계산:
+         openssl x509 -noout -fingerprint -sha256 -in $KEYSTORE/ca.cert.pem \
+           | sed -e "s/^SHA256 Fingerprint=//" -e "s/://g" | tr "A-Z" "a-z"
+    2. 결과 hex를 env로 등록 — `/etc/profile.d/rosshield-sros2.sh`:
+         export ROSSHIELD_SROS2_CA_FINGERPRINT_SHA256=<hex64>
+    3. 모든 노드 환경에서 env가 export되도록 반영 (systemd Environment=).
+    4. 검증 — 본 check 재실행 (PASS 기대).
+    5. mismatch 시 — keystore 마운트가 잘못되었거나 CA가 외부 공격으로 변조된 정황.
+       즉시 incident response 절차 진입.
+    6. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

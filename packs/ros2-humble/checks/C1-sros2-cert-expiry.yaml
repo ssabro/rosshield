@@ -1,0 +1,80 @@
+# C1 — SROS2 cert 만료까지 ≥ 90일 (D-P10E-4 threshold) — Humble Hawksbill
+#
+# design doc: docs/design/notes/ros2-humble-dds-sros2-design.md §6.6 Stage 10.E-6.
+# D-P10E-4 결정 — quarterly rotation cadence (D-P10D-2 일관) → 90일 권장 default.
+# D-P10E-3 env override skip — keystore 부재 시 PASS skip(site policy 의존 패턴 일관).
+# jazzy 변환 — workspace 경로 /opt/ros/jazzy/setup.bash → /opt/ros/humble/setup.bash.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C1.sros2_cert_expiry
+  title: SROS2 cert 만료까지 ≥ 90일 (Humble Hawksbill, quarterly rotation 일관)
+  description: |-
+    ROS2 Humble Hawksbill 전용. SROS2 cert는 노드 인증·메시지 서명에 사용되며 만료
+    시 DDS 통신이 차단됩니다. 사전 알람 없이 cert 만료 시 robot fleet 전체가 통신
+    중단 — 운영 risk.
+
+    본 check는 env `ROSSHIELD_SROS2_KEYSTORE`(default `~/sros2_keystore`)의 enclaves
+    하위 모든 cert.pem 파일을 `openssl x509 -checkend $((90*86400))`로 검증합니다.
+
+      - PASS — 모든 cert가 90일 이내 만료되지 않음(또는 cert 0개로 keystore 부재).
+      - FAIL — 1개 이상 cert가 90일 이내 만료 예정.
+
+    env 미설정 또는 keystore 부재 시 PASS skip (D-P10E-3 site policy 의존 패턴 일관).
+    threshold 90일은 ISMS-P SC-12 + enterprise compliance 일반 권장 (D-P10E-4).
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/humble/setup.bash ] && source /opt/ros/humble/setup.bash 2>/dev/null;
+    KEYSTORE="${ROSSHIELD_SROS2_KEYSTORE:-$HOME/sros2_keystore}";
+    if [ ! -d "$KEYSTORE" ]; then
+      echo "** PASS ** keystore not found at $KEYSTORE (env override skip — site policy 미적용)";
+      exit 0;
+    fi;
+    if ! command -v openssl >/dev/null 2>&1; then
+      echo "** FAIL ** openssl CLI not found (required for cert expiry check)";
+      exit 0;
+    fi;
+    THRESHOLD_SEC=$((90 * 86400));
+    FAILED_CERTS="";
+    TOTAL=0;
+    while IFS= read -r cert; do
+      TOTAL=$((TOTAL + 1));
+      if ! openssl x509 -checkend "$THRESHOLD_SEC" -noout -in "$cert" >/dev/null 2>&1; then
+        FAILED_CERTS="$FAILED_CERTS $cert";
+      fi;
+    done < <(find "$KEYSTORE" -type f -name "*.pem" 2>/dev/null);
+    if [ "$TOTAL" -eq 0 ]; then
+      echo "** PASS ** no cert.pem found under $KEYSTORE (env override skip — keystore empty)";
+      exit 0;
+    fi;
+    if [ -z "$FAILED_CERTS" ]; then
+      echo "** PASS ** all $TOTAL cert(s) valid >= 90 days";
+    else
+      echo "** FAIL ** $TOTAL cert(s), expiring within 90 days:$FAILED_CERTS";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    DDS Security Spec v1.1은 cert 만료 시 즉시 통신 차단 — robot fleet 전체 통신
+    중단 발생. 90일 lead time은 quarterly rotation cadence와 일관(D-P10D-2 패턴).
+    enterprise 환경의 long-lived cert(10년+ 만료)는 모두 PASS — checkend가 90일
+    이후 만료를 모두 valid로 판정. ISMS-P SC-12 baseline + 일반 enterprise
+    compliance 일반 권장 threshold.
+
+    Humble Hawksbill의 SROS2 cert 형식은 jazzy와 동일(X.509 PEM).
+    env 미설정 시 PASS skip은 site별 keystore 경로 + cert 운영 정책 다양성 cover
+    (D-P10E-3 권장 default — Round 3 패턴 일관).
+  fixGuidance: |-
+    1. env 정의 — `export ROSSHIELD_SROS2_KEYSTORE=/opt/ros/keystore` (필요 시).
+    2. 만료 임박 cert 확인:
+         find $ROSSHIELD_SROS2_KEYSTORE -name "*.pem" -exec \
+           openssl x509 -noout -enddate -in {} \;
+    3. ros2 security CLI로 cert 재발급:
+         ros2 security create_enclave $ROSSHIELD_SROS2_KEYSTORE /<node_name> --force
+    4. 모든 노드 재시작 (systemd 또는 launch).
+    5. 검증 — 본 check 재실행.
+    6. 운영 절차에 cert rotation을 quarterly cadence(90일 미만 시 갱신)로 등록.
+    7. Humble customer 진입 시 /opt/ros/humble/setup.bash가 사전 source되었는지 확인.

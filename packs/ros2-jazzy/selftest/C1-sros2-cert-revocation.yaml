@@ -1,0 +1,38 @@
+# selftest — ros2.C1.sros2_cert_revocation
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: ros2.C1.sros2_cert_revocation
+spec:
+  cases:
+    - name: PASS — CRL nextUpdate 180일 남음
+      input:
+        stdout: '** PASS ** CRL nextUpdate=Nov 21 12:00:00 2026 GMT (>=90 days, 180d remaining)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — CRL 부재 (site does not operate CRL, env override skip)
+      input:
+        stdout: '** PASS ** CRL not found at /home/ros/sros2_keystore/ca.crl.pem (env override skip — site does not operate CRL)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: PASS — keystore not found (env override skip)
+      input:
+        stdout: '** PASS ** keystore not found at /home/ros/sros2_keystore (env override skip — site policy 미적용)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — CRL nextUpdate 45일 (< 90일)
+      input:
+        stdout: '** FAIL ** CRL nextUpdate=Jul 05 12:00:00 2026 GMT (<90 days, 45d remaining)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: FAIL — CRL malformed (no nextUpdate)
+      input:
+        stdout: '** FAIL ** CRL has no nextUpdate field at /home/ros/sros2_keystore/ca.crl.pem (malformed)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL

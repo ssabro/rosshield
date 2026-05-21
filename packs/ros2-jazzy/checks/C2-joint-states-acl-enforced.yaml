@@ -1,0 +1,68 @@
+# C2 — /joint_states permissions.xml ACL 명시
+#
+# design doc: docs/design/notes/ros2-humble-dds-sros2-design.md §6.5 Stage 10.E-5
+#   (user prompt 추가 — joint_states cover로 ACL whitelist 4종 정밀화).
+# D-P10E-3 env override skip — site policy 의존, env 미설정 또는 keystore 부재 시 PASS skip.
+# joint_states 위변조는 manipulator·legged robot의 관절 위치 오인식 → 동작 오류.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: ros2.C2.joint_states_acl_enforced
+  title: permissions.xml에 /joint_states ACL 명시
+  description: |-
+    /joint_states는 표준 sensor_msgs/JointState 토픽으로 manipulator arm 또는 legged
+    robot의 관절 각도·속도·토크를 발행합니다. permissions.xml에 ACL이 명시되지 않으면
+    임의 노드가 spoofed joint_states를 publish해 robot_state_publisher가 잘못된 tf를
+    생성 → 좌표계 전체 오염, 또는 motion planning이 잘못된 현재 자세 기반으로 plan
+    수립 → 충돌·이탈 위험.
+
+    본 check는 env `ROSSHIELD_SROS2_KEYSTORE`(default `~/sros2_keystore`)의 enclaves
+    하위 permissions.xml에 `/joint_states` ACL entry 존재만 grep 검증합니다.
+
+    env 미설정 또는 keystore 부재 시 PASS skip (D-P10E-3 site policy 의존 패턴 일관).
+    AGV·AMR 같이 joint가 없는 robot은 본 check를 비활성화해야 false negative 회피.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    [ -f /opt/ros/jazzy/setup.bash ] && source /opt/ros/jazzy/setup.bash 2>/dev/null;
+    KEYSTORE="${ROSSHIELD_SROS2_KEYSTORE:-$HOME/sros2_keystore}";
+    if [ ! -d "$KEYSTORE" ]; then
+      echo "** PASS ** keystore not found at $KEYSTORE (env override skip — site policy 미적용)";
+      exit 0;
+    fi;
+    if [ ! -d "$KEYSTORE/enclaves" ]; then
+      echo "** PASS ** keystore enclaves dir not found: $KEYSTORE/enclaves (env override skip)";
+      exit 0;
+    fi;
+    CNT=$(grep -rh -E "<(topic|publish|subscribe)>.*joint_states" "$KEYSTORE/enclaves" 2>/dev/null | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** /joint_states ACL entries count=$CNT";
+    else
+      echo "** FAIL ** /joint_states ACL entries count=0 (no publish/subscribe rule for /joint_states)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    joint_states는 robot_state_publisher의 입력으로 사용되어 모든 link의 tf 트리를
+    생성합니다. spoofed joint_states 주입은 좌표 시스템 전체를 오염 — manipulator
+    end-effector 위치 오인식으로 잘못된 위치에서 grasp 시도 → 사람·자산 충돌.
+    legged robot의 경우 footprint 오인식으로 균형 제어 실패 → 전도.
+
+    AGV·AMR 같이 joint가 없는 wheeled robot은 본 check를 disable해야 합니다 (false
+    negative 회피 — joint_states 토픽 자체가 없는 site).
+
+    env 미설정 시 PASS skip은 site별 keystore 경로 다양성 흡수 (D-P10E-3 일관).
+  fixGuidance: |-
+    1. env 정의 — `export ROSSHIELD_SROS2_KEYSTORE=/opt/ros/keystore`
+    2. enclaves/<context>/permissions.xml에 joint state publisher 노드(예: ros2_control
+       controller_manager · joint_state_broadcaster) grant 섹션:
+         <publish>
+           <topics>
+             <topic>joint_states</topic>
+           </topics>
+         </publish>
+    3. robot_state_publisher · motion planning 노드 grant에 subscribe 권한.
+    4. ros2 daemon restart 후 본 check 재실행.
+    5. joint가 없는 robot(AGV·AMR)은 본 check를 disable.
