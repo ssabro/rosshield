@@ -467,4 +467,39 @@ Patroni leader 단일 trigger로 충분. multi-region active-active 자동 rotat
 
 ---
 
-**문서 끝**. 본 round 마감 — D-P10D-1·2·3 사용자 확정 후 Stage 10.D-2 진입.
+## 12. 결정 확정 (2026-05-21)
+
+사용자 D-P10D-1·2·3 결정:
+
+- **D-P10D-1 = 옵션 C** (fully automatic + override) — sub-agent 권장(B)에서 변경. 운영 부담 면제 우선. 운영자 emergency override CLI/admin endpoint로 abort 가능.
+- **D-P10D-2 = Quarterly** (90일) — ISMS-P/SOC2 baseline 일관, 권장 default 채택.
+- **D-P10D-3 = Queue** (in-flight buffer + flush) — `SwappableSigner` wrapper의 RWMutex 패턴 일관, latency 영향 ≤ 1ms.
+
+### 12.1 옵션 C 채택에 따른 Stage 분해 조정
+
+옵션 B의 Stage 분해(§6)에서 admin UI 승인 페이지 제거 + emergency override 추가:
+
+| Stage | 산출 | 추정 |
+|---|---|---|
+| 10.D-1 design doc (마감) | `ab3bdd8` | — |
+| 10.D-2 마이그레이션 0037_audit_chain_keys | up/down + epoch=1 자동 insert | 1주 |
+| 10.D-3 scheduler + 자동 rotation 로직 | quarterly cron + signer 생성 + audit emit | 1주 |
+| 10.D-4 SwappableSigner + Queue + audit.chain.key_rotated event | hot-swap RWMutex + event emit + 단위 test | 1주 |
+| 10.D-5 fg-verify rotation aware + epoch별 검증 | bundle `_epoch` 필드 + v0.9.0 backward compat | 0.5주 |
+| 10.D-6 emergency override CLI/admin endpoint | `rosshield audit rotation abort` + `POST /api/v1/audit/rotation/abort` | 0.25주 |
+| 10.D-7 testcontainers integration + ops docs + v0.10.0 minor | release notes + CHANGELOG | 0.5주 |
+
+**총 보수적 추정: ~3주** (옵션 B 3~4주에서 admin UI 승인 페이지 제거로 0.5주 단축).
+
+### 12.2 옵션 C 외부 감사 호환성 risk 대응
+
+§7.1에서 옵션 C의 risk로 언급된 "외부 감사 호환성"은:
+- audit.chain.key_rotated event가 명시적으로 emit되므로 외부 감사인이 rotation trace 검증 가능.
+- audit_chain_keys 테이블의 append-only 보존으로 epoch별 public key 영구 보존.
+- emergency override CLI 사용 시 별도 audit emit (`audit.chain.rotation_aborted`) — 운영자 개입 trace.
+
+따라서 옵션 C 채택에도 SOC2 / ISMS-P / NIST 800-53 SC-12 통제 baseline은 만족.
+
+---
+
+**문서 끝**. 본 round 마감 — D-P10D-1·2·3 사용자 확정 완료, Stage 10.D-2 진입 가능.
