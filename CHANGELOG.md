@@ -7,7 +7,35 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 10 옵션 D audit chain key rotation / Phase 10 옵션 E ros2-humble pack / audit chain head sha mismatch metric (Phase 10.A-6 carryover) / Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.9.0] — 2026-05-21 (minor — Phase 10 옵션 A 마감)
+
+> **요약**: Phase 10 옵션 A "multi-region UI 표면화" 마감 + 첫 minor release. Phase 8(PG cross-region replication) + Phase 9(Patroni 자동 failover)로 결선된 multi-region 인프라를 운영자가 한 화면에서 즉시 확인 가능한 `/regions` 페이지 신규. RegionHealthCard + AuditConsistencyCard + RegionTimelineCard 3 카드 + Prometheus alert rule 5 + ops runbook §13 + testcontainers + Playwright e2e 한 set. 회귀 0, Breaking 0, customer 영향 0 (신규 페이지 + 기존 기능 변경 0). 상세는 [docs/releases/v0.9.0.md](docs/releases/v0.9.0.md).
+>
+> **기준 commit**: (본 release commit, main)
+
+### Added
+- `design(phase10)` Phase 10 backlog 8 후보 매트릭스 (`8ec33f9`) — `phase10-backlog-design.md` 신규. Top 3 권장 (A multi-region UI / D audit key rotation / E ros2-humble pack) + Stage 분해 + 결정 항목 D-P10-1·2.
+- `feat(web)` Phase 10.A-2 `/regions` 페이지 + RegionHealthCard (`f5864c3` + dist `e82a3c4`) — admin 권한 게이트 + replicas grid + lag 상태(healthy/warning/delayed) + role badge(primary/standby/failed) + empty state. `useReplicas` hook + `regions.*` i18n namespace.
+- `feat(web)` Phase 10.A-3·4 AuditConsistencyCard + RegionTimelineCard + backend `GET /api/v1/replication/failovers` (`bafdf43` + dist `6aa1e27`) — audit chain head sha + seq + 갱신 시각 표시 (self-region only note) + 최근 10건 cutover timeline (status/actor/reason). `useAuditChainHeadSHA` + `useFailoverHistory` hook 추가. handler `ListFailovers` (admin 권한 + limit query + completed_at NULL → status 도출).
+- `feat(deploy)` Phase 10.A-5 Prometheus alert rule + ops runbook §13 (`f6aa8c4`) — `deploy/prometheus/alerts/multi-region.yml` 신규 (5 rule: ReplicationLagWarning/Critical + AuditChainHeadSeqMismatch + HARoleSwap + HAFailoverStorm) + `alertmanager-sample.yml` (critical → PagerDuty + Slack #incident-response · warning → Slack #ops-alerts · info → Slack #audit-trail) + `multi-region-failover-runbook.md` §13.0~§13.5 (alert 매트릭스 + 절차 + runbook_url annotation deep-link).
+- `test(e2e)` Phase 10.A-6 testcontainers + Playwright e2e (본 release commit) — `internal/platform/storage/postgres/regions_integration_test.go` 신규 (`TestMultiRegionFailoverEndToEnd`, 2-region PG container fixture 재사용, 4 assertion: initial role + heartbeat + role swap + ListFailovers 등장) + `web/playwright/tests/regions.spec.ts` 신규 (admin login → nav '리전' click → PageHeader + AuditConsistencyCard + RegionTimelineCard render 검증).
+- `docs(release)` Phase 10.A-7 v0.9.0 release notes + CHANGELOG entry (본 release commit) — Phase 10 진입 첫 minor 정착.
+
+### Verification
+- `pnpm exec tsc -b --noEmit` PASS · `pnpm test --run` 536/536 PASS · `pnpm build` PASS
+- `go vet ./internal/... ./internal/api/... ./internal/domain/...` PASS · `go build ./internal/... ./cmd/...` PASS
+- `go test -tags=integration -run TestMultiRegionFailoverEndToEnd ./internal/platform/storage/postgres/` PASS (~11s, Docker 환경)
+- `pnpm exec playwright test regions.spec.ts` PASS (1.7s test, 22s global-setup 포함)
+- 회귀 0 — Phase 0~9 unit + integration test 모두 그대로 PASS.
+
+### Notes
+- **minor bump 이유** — Phase 10 진입 첫 minor release (v0.8.x patch 시리즈 → v0.9.0 진척). Phase 8(PG replication) + Phase 9(Patroni) 결선 자산을 운영자 가시성으로 표면화 첫 묶음.
+- **customer 영향 0** — 신규 페이지(`/regions`)는 admin 권한 게이트 + 기존 페이지 변경 0 + DB schema 변경 0 + 환경 변수 변경 0.
+- **신규 carryover** — `RosshieldAuditChainHeadSeqMismatch` alert는 `audit_chain_head_seq` divergence proxy만 cover. seq 일치 + sha 불일치 케이스는 `rosshield_audit_chain_head_sha_match` 신규 gauge + cross-region collector 별 epic 위임. PG `LastInsertId` 미지원으로 `RecordFailover.ID`가 PG에서 0 반환 — e2e test는 ListFailovers로 id 우회, handler 정확 동작은 RETURNING 도입 별 round.
 
 ---
 
