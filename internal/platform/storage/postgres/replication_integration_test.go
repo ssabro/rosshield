@@ -374,23 +374,32 @@ func TestReplicationFixtureSetsUpPublicationSubscription(t *testing.T) {
 		t.Errorf("primary pg_publication missing %q", repPublicationName)
 	}
 
-	// Standby: pg_subscription에 rosshield_main_sub 존재
+	// Standby: pg_subscription에 rosshield_main_sub 존재.
+	// CI testcontainers 환경에서 CREATE SUBSCRIPTION 직후 catalog visibility race가 관찰되어
+	// (Stage 10.D-2 이후 5 commit에서 동일 fail) 5s polling으로 race 회피.
 	var subExists bool
-	err = fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
-		return tx.QueryRow(c,
-			"SELECT EXISTS (SELECT 1 FROM pg_subscription WHERE subname = $1)",
-			repSubscriptionN,
-		).Scan(&subExists)
-	})
-	if err != nil {
-		// 일부 PG 버전은 pg_subscription read에 superuser 필요 — graceful warning.
-		if strings.Contains(err.Error(), "permission denied") {
-			t.Skipf("pg_subscription read requires superuser: %v", err)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		err = fix.standbyStore.Bootstrap(ctx, func(c context.Context, tx storage.Tx) error {
+			return tx.QueryRow(c,
+				"SELECT EXISTS (SELECT 1 FROM pg_subscription WHERE subname = $1)",
+				repSubscriptionN,
+			).Scan(&subExists)
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "permission denied") {
+				t.Skipf("pg_subscription read requires superuser: %v", err)
+			}
+			t.Fatalf("query pg_subscription: %v", err)
 		}
-		t.Fatalf("query pg_subscription: %v", err)
-	}
-	if !subExists {
-		t.Errorf("standby pg_subscription missing %q", repSubscriptionN)
+		if subExists {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("standby pg_subscription missing %q (after 5s polling)", repSubscriptionN)
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
