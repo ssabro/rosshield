@@ -511,4 +511,27 @@ D-ROS2-8 결정 일관 — 본 doc 범위 외. Round 1·2·3 모두 SSH cmd path
 
 ---
 
-**문서 끝**. 본 round 마감 — D-P10E-1·2·3·4 사용자 확정 후 Stage 10.E-2 진입 가능.
+## 12. 결정 확정 (2026-05-21)
+
+사용자 D-P10E-1·2·3·4 결정 모두 권장 default 채택:
+
+- **D-P10E-1 = 옵션 C** — ros2-humble 신규 pack + DDS/SROS2 깊이 확장(cert chain + DDS topic ACL) jazzy + humble 양쪽 동기.
+- **D-P10E-2 = Stage 10.E-7 v0.11.0 minor** — 전체 Stage 마감 후 minor release.
+- **D-P10E-3 = env override skip** — site policy 의존 check는 env var 미설정 시 PASS skip (C4 colcon_install_hash 패턴 일관).
+- **D-P10E-4 = ≥ 90일** — quarterly rotation cadence (D-P10D-2와 일관).
+
+### 12.1 Stage 10.E-2 진입 가능
+
+design doc Stage 분해(§6) 그대로 진입:
+- Stage 10.E-2: ros2-humble pack scaffold + C1~C3 첫 진입 (1주)
+- Stage 10.E-3: C4 + C5 변환 (0.5주)
+- Stage 10.E-4: C6~C8 + selftest (0.5주)
+- Stage 10.E-5: DDS topic ACL 깊이 (jazzy + humble 동기, 0.5주)
+- Stage 10.E-6: SROS2 cert chain 깊이 (jazzy + humble 동기, 0.5주)
+- Stage 10.E-7: v0.11.0 minor release (0.5주)
+
+총 보수적 ~3~4주.
+
+---
+
+**문서 끝**. D-P10E-1·2·3·4 사용자 확정 완료, Stage 10.E-2 진입 가능.
