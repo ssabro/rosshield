@@ -7,7 +7,36 @@
 ## [Unreleased]
 
 ### Added
-- (placeholder) 차기 release 항목 — Phase 10 옵션 E ros2-humble pack / audit chain head sha mismatch metric (Phase 10.A-6 carryover) / audit hash chain key_epoch+leader_epoch input 포함 (v0.10.0 carryover) / manual rotation endpoint / multi-tenant epoch 분리 / Grafana dashboard panel (rotation_total + key_epoch) / Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+- (placeholder) 차기 release 항목 — Phase 11 backlog draft (Phase 10 Top 3 마감 후 다음 minor 후보 매트릭스) / audit chain head sha mismatch metric (Phase 10.A-6 carryover) / audit hash chain key_epoch+leader_epoch input 포함 (v0.10.0 carryover) / manual rotation endpoint / multi-tenant epoch 분리 / Grafana dashboard panel (rotation_total + key_epoch) / humble pack archive embed (PACKS_SOURCE Makefile humble 등록 + `_archives/` 자동 embed, v0.11.0 carryover) / SROS2 cert chain intermediate CA + OCSP responder (v0.11.0 carryover) / SROS2 keystore 자동 enrollment workflow / DDS topic whitelist expansion (`/diagnostics` · `/rosout` · custom payload, v0.11.0 carryover) / Phase 9.5 testcontainers e2e Patroni 3-node + etcd / C5b-10 a11y polish Tailwind palette contrast / MR.T4 application restart integration / Stage 4.5 BIND/PowerDNS Terraform sample (ops doc cover) / Stage 5b 잔여 carryover (C5b-6/C5b-7/C5b-8/C5b-9) / R-D8 청구권 명세서 (사용자 외부) / E36 레퍼런스 HW burn-in (사용자 hands-on)
+
+---
+
+## [0.11.0] — 2026-05-21 (minor — Phase 10 옵션 E 마감)
+
+> **요약**: Phase 10 옵션 E "ros2-humble pack 신규 + DDS/SROS2 깊이 확장" 완전 마감 + Phase 10 세 번째 minor (v0.9.0 옵션 A · v0.10.0 옵션 D · v0.11.0 옵션 E 한 Phase 안 minor 3 연속). ROS2 Humble Hawksbill LTS 분기 customer cover 신규 `packs/ros2-humble/` 22 check (C1~C8 8/8 카테고리 cover, jazzy 22 check humble distro 변환) + DDS topic ACL 4 check 깊이 확장 (`/scan` · `/odom` · `/tf+/tf_static` · `/joint_states`, jazzy + humble 양쪽 동기) + SROS2 cert chain 3 check 깊이 확장 (cert expiry ≥90일 baseline · CA SHA-256 trust anchor · CRL nextUpdate ≥90일, 양쪽 동기). 양쪽 pack 모두 **29 check** 도달. 코드 영향 0 (pack 변경만), 회귀 0, Breaking 0. customer 영향 0 (Jazzy customer는 22 → 29 check 자동 확장, Humble customer 진입 베이스 마련). 상세는 [docs/releases/v0.11.0.md](docs/releases/v0.11.0.md).
+>
+> **기준 commit**: (본 release commit, main)
+
+### Added
+- `design(option-e)` Phase 10 옵션 E Stage 분해 + 결정 항목 (`7b260ea` + `a070c36`) — `ros2-humble-dds-sros2-design.md` 신규 (12 섹션 + 4 옵션 비교) + D-P10E-1·2·3·4 결정 확정 (humble pack + 깊이 확장 양쪽 동기 / v0.11.0 minor / site policy 의존 PASS skip / cert expiry ≥90일).
+- `feat(packs)` Phase 10.E-2 ros2-humble pack scaffold + C1·C2·C3 5 check (`dc49206`) — `packs/ros2-humble/pack.yaml` 신규 (`metadata.name: ros2-humble`, `version: 0.1.0`, `compatibility.rosDistro: ["humble"]` 명시) + C1 SROS2 keystore/security 2 check + C2 cmd_vel ACL/publisher count 2 check + C3 domain_id 1 check + 5 selftest fixture (jazzy cargo cult + distro 4 영역 갱신: workspace 경로 · apt 패키지 prefix · LTS expected ROS_DISTRO · EOL 날짜 2027-05).
+- `feat(packs)` Phase 10.E-3+4 ros2-humble C4·C5·C6·C7·C8 17 check (`64f8d83`) — C4 6 check (`apt_key_valid` · `apt_source_official` · `colcon_install_hash` · `no_world_writable_libs` · `signed_packages_only` · `systemd_unit_perms`) + C5 6 check (`argv_no_remote_url` · `lifecycle_node_used` · `no_shell_exec` · `no_world_writable_yaml` · `parameter_no_secret_inline` · `param_files_owner`) + C6 3 check (`distro_is_lts` · `distro_not_eol` · `ros2_cli_available`) + C7 1 check (`rmw_implementation_set`) + C8 1 check (`governance_encrypt_topics`) + 17 selftest fixture. 22 check 8/8 카테고리 cover 완성.
+- `feat(packs)` Phase 10.E-5+6 DDS topic ACL + SROS2 cert chain 깊이 확장 (`02db4d0`) — C2 DDS topic ACL 4 신규 check (`scan_acl_enforced` · `odom_acl_enforced` · `tf_acl_enforced` (tf+tf_static 통합) · `joint_states_acl_enforced`) + C1 SROS2 cert chain 3 신규 check (`sros2_cert_expiry` ≥90일 baseline · `sros2_ca_trust` SHA-256 fingerprint env 등록 · `sros2_cert_revocation` CRL nextUpdate ≥90일). jazzy + humble 양쪽 동기 (총 신규 14 check yaml = 7 패턴 × 2 pack) + 14 selftest fixture. 양쪽 pack 모두 22 → 29 check 도달.
+- `docs(release)` Phase 10.E-7 v0.11.0 release notes + CHANGELOG entry + ops docs (본 release commit) — `docs/releases/v0.11.0.md` 신규 + `docs/operations/ros2-humble-deployment.md` 신규 (humble pack 활성 절차 + SROS2 keystore env 사전 등록 + CA fingerprint 등록 + DDS topic ACL whitelist + cert/CRL rotation 절차).
+
+### Changed
+- pack 변경만 — 코드 (internal/ · cmd/) 영향 0. Makefile `PACKS_SOURCE`는 humble pack source-only 노출 default 유지 (`_archives/` 자동 embed는 별 patch carryover). signer · audit · API · web 영향 0.
+
+### Verification
+- `go test -count=1 -run "TestROS2JazzyChecksRoundTrip|TestROS2HumbleChecksRoundTrip" ./internal/domain/benchmark/...` PASS — 양쪽 pack 29/29 check + 29/29 selftest fixture round-trip.
+- `go vet ./...` PASS · `go build ./internal/... ./cmd/...` PASS · `go test -count=1 ./internal/domain/benchmark/... ./internal/domain/packs/...` PASS (회귀 0).
+- 총 118 yaml 파일 (29 check + 29 selftest) × 2 pack 모두 `ValidatePackYAMLBytes` + `ParseCheckYAML` + `ParseSelfTestYAML` + `RunCheckSelfTest` 전 단계 PASS.
+
+### Notes
+- **minor bump 이유** — Phase 10 옵션 E 마감 (Phase 10 세 번째 minor, v0.9.0 옵션 A · v0.10.0 옵션 D 후속). 신규 pack 1개 (`ros2-humble`) + 양쪽 pack 22 → 29 check 확장 = customer-facing 신규 cover 묶음.
+- **customer 영향 0** — 신규 7 check (DDS 4 + SROS2 3)는 env 미설정 시 PASS skip default (site policy 의존, false positive 회피). 기존 jazzy customer 운영자 알람 없음. Humble customer는 별 pack 명시 후 활성.
+- **Phase 10 Top 3 모두 마감** — 옵션 A (multi-region UI) + 옵션 D (audit key rotation) + 옵션 E (ros2-humble + DDS/SROS2). Phase 11 backlog draft 진입 가능.
+- **신규 carryover** — Humble distro 실 환경 검증 부재 (첫 customer 진입 시 false positive feedback) / `PACKS_SOURCE` Makefile humble 등록 별 patch 위임 / DDS topic whitelist expansion (diagnostics · rosout · custom) / SROS2 intermediate CA + OCSP responder / SROS2 keystore 자동 enrollment / humble pack archive embed.
 
 ---
 
