@@ -34,6 +34,11 @@ type Deps struct {
 	// non-nil이면 매 Append 시작 시 IsLeader() 체크 → false면 ErrNotLeader.
 	// LeaderEpoch는 CurrentEpoch()에서 자동 채움.
 	Role audit.RoleProvider
+
+	// Phase 10.D-4 — KeyEpochProvider (옵션). nil이면 audit_entries.key_epoch 컬럼이 NULL.
+	// non-nil이면 매 Append 시 KeyEpoch() 반환값을 entry 와 함께 INSERT.
+	// bootstrap 에서 SwappableSigner 를 본 interface 로 주입 (duck typing).
+	KeyEpoch audit.KeyEpochProvider
 }
 
 // Repo는 audit.Service의 SQLite 구현입니다.
@@ -75,6 +80,15 @@ func (r *Repo) Append(ctx context.Context, tx storage.Tx, req audit.AppendReques
 		leaderEpoch = &ep
 	}
 
+	// Phase 10.D-4 — KeyEpochProvider 가 주입되었으면 현재 활성 epoch 기록.
+	var keyEpoch *int64
+	if r.deps.KeyEpoch != nil {
+		ke := r.deps.KeyEpoch.CurrentEpoch()
+		if ke > 0 {
+			keyEpoch = &ke
+		}
+	}
+
 	head, err := readHead(ctx, tx, req.TenantID)
 	if err != nil {
 		return audit.Entry{}, err
@@ -93,6 +107,7 @@ func (r *Repo) Append(ctx context.Context, tx storage.Tx, req audit.AppendReques
 		Error:         req.Error,
 		PrevHash:      head.Hash,
 		LeaderEpoch:   leaderEpoch,
+		KeyEpoch:      keyEpoch,
 	}
 
 	hash, err := audit.ComputeEntryHash(entry.PrevHash, entry.PayloadDigest, entry)
@@ -151,7 +166,7 @@ func (r *Repo) Verify(ctx context.Context, tx storage.Tx, tenantID storage.Tenan
 SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
        action, target_type, target_id,
        payload_digest, outcome, error_code, error_message,
-       prev_hash, hash, leader_epoch
+       prev_hash, hash, leader_epoch, key_epoch
   FROM audit_entries
  WHERE tenant_id = ? AND seq BETWEEN ? AND ?
  ORDER BY seq ASC`,
@@ -276,7 +291,7 @@ func (r *Repo) Export(ctx context.Context, tx storage.Tx, tenantID storage.Tenan
 SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
        action, target_type, target_id,
        payload_digest, outcome, error_code, error_message,
-       prev_hash, hash, leader_epoch
+       prev_hash, hash, leader_epoch, key_epoch
   FROM audit_entries
  WHERE tenant_id = ? AND seq BETWEEN ? AND ?
  ORDER BY seq ASC`,
@@ -463,12 +478,13 @@ func scanEntry(rows interface {
 		errCode, errMessage  sql.NullString
 		prevHash, hash       []byte
 		leaderEpoch          sql.NullInt64
+		keyEpoch             sql.NullInt64
 	)
 	if err := rows.Scan(&seq, &occurredStr,
 		&actorType, &actorID, &actorIP, &actorUA,
 		&action, &targetType, &targetID,
 		&payloadDigest, &outcome, &errCode, &errMessage,
-		&prevHash, &hash, &leaderEpoch); err != nil {
+		&prevHash, &hash, &leaderEpoch, &keyEpoch); err != nil {
 		return audit.Entry{}, fmt.Errorf("audit: scan entry: %w", err)
 	}
 
@@ -509,6 +525,10 @@ func scanEntry(rows interface {
 	if leaderEpoch.Valid {
 		ep := leaderEpoch.Int64
 		e.LeaderEpoch = &ep
+	}
+	if keyEpoch.Valid {
+		ke := keyEpoch.Int64
+		e.KeyEpoch = &ke
 	}
 	return e, nil
 }
@@ -572,19 +592,25 @@ func insertEntry(ctx context.Context, tx storage.Tx, e audit.Entry) error {
 		leaderEpochArg = *e.LeaderEpoch
 	}
 
+	// Phase 10.D-4 — key_epoch nullable column. SwappableSigner 미주입 시 NULL.
+	var keyEpochArg any
+	if e.KeyEpoch != nil {
+		keyEpochArg = *e.KeyEpoch
+	}
+
 	_, err := tx.Exec(ctx, `
 INSERT INTO audit_entries (
     tenant_id, seq, occurred_at,
     actor_type, actor_id, actor_ip, actor_ua,
     action, target_type, target_id,
     payload_digest, outcome, error_code, error_message,
-    prev_hash, hash, leader_epoch
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    prev_hash, hash, leader_epoch, key_epoch
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(e.TenantID), e.Seq, e.OccurredAt.UTC().Format(time.RFC3339Nano),
 		string(e.Actor.Type), e.Actor.ID, actorIP, actorUA,
 		e.Action, e.Target.Type, e.Target.ID,
 		e.PayloadDigest[:], string(e.Outcome), errCode, errMessage,
-		e.PrevHash[:], e.Hash[:], leaderEpochArg)
+		e.PrevHash[:], e.Hash[:], leaderEpochArg, keyEpochArg)
 	if err != nil {
 		return fmt.Errorf("audit: insert entry: %w", err)
 	}

@@ -85,7 +85,7 @@ func BuildSegmentWithPrev(ctx context.Context, tx storage.Tx, tenantID storage.T
 SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
        action, target_type, target_id,
        payload_digest, outcome, error_code, error_message,
-       prev_hash, hash, leader_epoch
+       prev_hash, hash, leader_epoch, key_epoch
   FROM audit_entries
  WHERE tenant_id = ? AND seq BETWEEN ? AND ?
  ORDER BY seq ASC`,
@@ -155,12 +155,13 @@ func scanRotationEntry(rows interface {
 		errCode, errMessage  sql.NullString
 		prevHash, hash       []byte
 		leaderEpoch          sql.NullInt64
+		keyEpoch             sql.NullInt64
 	)
 	if err := rows.Scan(&seq, &occurredStr,
 		&actorType, &actorID, &actorIP, &actorUA,
 		&action, &targetType, &targetID,
 		&payloadDigest, &outcome, &errCode, &errMessage,
-		&prevHash, &hash, &leaderEpoch); err != nil {
+		&prevHash, &hash, &leaderEpoch, &keyEpoch); err != nil {
 		return audit.Entry{}, fmt.Errorf("rotation: scan entry: %w", err)
 	}
 
@@ -204,6 +205,10 @@ func scanRotationEntry(rows interface {
 	if leaderEpoch.Valid {
 		ep := leaderEpoch.Int64
 		e.LeaderEpoch = &ep
+	}
+	if keyEpoch.Valid {
+		ke := keyEpoch.Int64
+		e.KeyEpoch = &ke
 	}
 	return e, nil
 }

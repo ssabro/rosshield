@@ -21,6 +21,7 @@ import (
 	"github.com/ssabro/rosshield/internal/domain/advisor"
 	advisorrepo "github.com/ssabro/rosshield/internal/domain/advisor/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/audit"
+	"github.com/ssabro/rosshield/internal/domain/audit/keyrotation"
 	"github.com/ssabro/rosshield/internal/domain/audit/rotation"
 	auditrepo "github.com/ssabro/rosshield/internal/domain/audit/sqliterepo"
 	"github.com/ssabro/rosshield/internal/domain/benchmark"
@@ -71,6 +72,7 @@ import (
 	replicationrepo "github.com/ssabro/rosshield/internal/platform/replication/sqliterepo"
 	"github.com/ssabro/rosshield/internal/platform/scheduler"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/cronsched"
+	"github.com/ssabro/rosshield/internal/platform/scheduler/keyrotationjob"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/replicationcleanupjob"
 	"github.com/ssabro/rosshield/internal/platform/scheduler/rotationjob"
 	"github.com/ssabro/rosshield/internal/platform/signer"
@@ -273,6 +275,20 @@ type Config struct {
 	// design doc default = 월 1회 (`@every 720h` 또는 `0 0 1 * *`). 빈 chain·신규 entry 없는
 	// tenant는 silent skip. HA 활성 시 leader 단일 인스턴스만 수행 (cronsched RoleProvider gate).
 	AuditRotationSchedule string
+
+	// Phase 10.D-3 — audit chain signer key rotation 자동 cron spec.
+	//
+	// 빈 값 = 자동 rotation 비활성 (manual API only — D-P10D-1 옵션 C 의 emergency override).
+	// 권장 default = quarterly (`@every 2160h` 또는 `0 0 1 */3 *`).
+	// HA 활성 시 leader 단일 인스턴스만 수행 (cronsched RoleProvider gate + KeyRotator
+	// 내부 leader gate — defense-in-depth).
+	AuditChainKeyRotationSchedule string
+
+	// AuditChainKeyRotationMinInterval 은 RotateNow 의 idempotency 가드입니다.
+	// 0 = disable (test/scheduler 결정성 — quarterly cron 만 trigger 가정).
+	// 음수 = default (keyrotation.DefaultMinInterval = 1h).
+	// 권장 default = 1h.
+	AuditChainKeyRotationMinInterval time.Duration
 
 	// E-MR Stage 3 후속 — 정기 PG replication slot cleanup cron (v0.6.9 carryover 해소).
 	//
@@ -1101,7 +1117,11 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: signer: %w", err)
 	}
-	sgn := soft.WrapPrivateKey(platformPriv)
+	// Phase 10.D-4 — SwappableSigner wrapper (hot-swap + epoch 보존).
+	// 기존 sgn 사용처는 변경 0 — SwappableSigner 가 signer.Signer interface 호환 (옵션 A).
+	// audit Service 는 추가로 SwappableSigner.CurrentEpoch() 를 통해 entry 당 key_epoch 기록.
+	swappableSigner := signer.NewSwappableSigner(soft.WrapPrivateKey(platformPriv), 1)
+	sgn := swappableSigner
 
 	// JWT 별도 키 — audit checkpoint 키와 분리(B4 결정).
 	// 키 회전 주기·키 손실 영향이 다르므로 결선 단계에서 두 개 별도 키.
@@ -1117,7 +1137,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 
 	sch := cronsched.New(cronsched.Deps{Logger: logger})
 
-	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clk})
+	auditSvc := auditrepo.New(auditrepo.Deps{Clock: clk, KeyEpoch: swappableSigner})
 
 	emitter := &auditEmitterAdapter{svc: auditSvc}
 
@@ -1343,6 +1363,35 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		_ = sch.Close(ctx)
 		_ = store.Close()
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
+	}
+
+	// Phase 10.D-3+4 — audit chain signer key rotation 자동 cron + KeyRotator.
+	//
+	// AuditChainKeyRotationSchedule="" → 자동 rotation 비활성 (manual API only).
+	// 본 결선은 audit/keyrotation L3 service + SwappableSigner hot-swap + scheduler 등록.
+	keyRotator, err := keyrotation.New(keyrotation.Deps{
+		Storage:     store,
+		Audit:       auditSvc,
+		ChainKeys:   auditrepo.NewKeyEpochRepo(),
+		Signer:      swappableSigner,
+		Allocator:   newChainKeyAllocator(ks, cfg),
+		Clock:       clk,
+		Logger:      logger,
+		Metrics:     &keyRotationMetricsAdapter{reg: metricsReg},
+		Leader:      nil, // bootstrap 후반 HA Manager 결선 시 lazy setter 도입 — 본 round 는 cronsched gate 만으로 운영.
+		MinInterval: cfg.AuditChainKeyRotationMinInterval,
+		TenantID:    systemTenant,
+	})
+	if err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: keyrotation: %w", err)
+	}
+	if err := keyrotationjob.Register(sch, keyRotator, logger,
+		keyrotationjob.DefaultJobID, cfg.AuditChainKeyRotationSchedule); err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: register key rotation job: %w", err)
 	}
 
 	// B7 후속 — 자동 백업 schedule (옵트인). BackupSchedule="" → no-op.

@@ -91,6 +91,11 @@ type Entry struct {
 	// 양수면 INSERT 시점의 leader_epoch.current=1 row epoch과 일치 — 향후 stale write
 	// 검증·split-brain 분석에 사용.
 	LeaderEpoch *int64
+
+	// KeyEpoch 는 Phase 10.D-4 chain key rotation epoch 입니다. nil 이면 SwappableSigner
+	// 미주입 또는 마이그레이션 이전 INSERT. 양수면 INSERT 시점의 SwappableSigner.CurrentEpoch()
+	// 와 일치 — audit_chain_keys.epoch 와 매칭.
+	KeyEpoch *int64
 }
 
 // AppendRequest는 호출자가 Append에 전달하는 입력입니다.
@@ -194,5 +199,15 @@ var (
 // platform/ha.Manager가 본 interface를 자동 만족 (duck typing — audit는 ha 패키지 미import).
 type RoleProvider interface {
 	IsLeader() bool
+	CurrentEpoch() int64
+}
+
+// KeyEpochProvider 는 Phase 10.D-4 audit chain key rotation 활성 epoch 를 질의할 수 있는
+// minimal interface 입니다.
+//
+// nil 가능 — 그 경우 audit_entries.key_epoch 컬럼은 NULL.
+// platform/signer.SwappableSigner 가 본 interface 를 자동 만족 (duck typing —
+// audit 는 signer 패키지 미import 가드 일관).
+type KeyEpochProvider interface {
 	CurrentEpoch() int64
 }

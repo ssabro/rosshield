@@ -44,6 +44,13 @@ type Registry struct {
 
 	AuditChainHeadSeq *prometheus.GaugeVec
 
+	// === audit chain key rotation (Phase 10.D-3+4) ===
+	//
+	// AuditRotationTotal: rotation 호출 결과 누적, label status=success|failed|skipped.
+	// AuditKeyEpoch: tenant 별 현재 활성 epoch (audit_chain_keys 의 활성 row epoch).
+	AuditRotationTotal *prometheus.CounterVec
+	AuditKeyEpoch      *prometheus.GaugeVec
+
 	// === histogram ===
 
 	EventPublishDuration *prometheus.HistogramVec // label: topic
@@ -137,6 +144,20 @@ func New() *Registry {
 		Help:      "Current head sequence of the audit hash chain, partitioned by tenant.",
 	}, []string{"tenant"})
 
+	r.AuditRotationTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "rosshield",
+		Subsystem: "audit",
+		Name:      "rotation_total",
+		Help:      "Cumulative audit chain signer key rotation invocations, partitioned by status (success|failed|skipped).",
+	}, []string{"status"})
+
+	r.AuditKeyEpoch = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "rosshield",
+		Subsystem: "audit",
+		Name:      "key_epoch",
+		Help:      "Current active audit chain signer key epoch, partitioned by tenant.",
+	}, []string{"tenant"})
+
 	r.EventPublishDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "rosshield",
 		Subsystem: "event",
@@ -210,6 +231,8 @@ func New() *Registry {
 		r.InvitationsSentTotal,
 		r.InvitationsAcceptedTotal,
 		r.AuditChainHeadSeq,
+		r.AuditRotationTotal,
+		r.AuditKeyEpoch,
 		r.EventPublishDuration,
 		r.HARole,
 		r.HALeaderEpoch,
