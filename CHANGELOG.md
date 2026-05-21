@@ -11,6 +11,21 @@
 
 ---
 
+## [0.10.1] — 2026-05-21 (patch — v0.10.0 lint hot fix)
+
+> **요약**: v0.10.0 main CI Lint job이 (1) `internal/platform/scheduler/keyrotationjob`이 `audit-domain-isolation` depguard 규칙 위반(동일 패턴 `rotationjob` 예외 등록되어 있었으나 신규 `keyrotationjob` 누락) (2) gofmt 위반 3 파일(주석 indentation)로 실패. `.golangci.yml`에 `keyrotationjob` 예외 추가 + gofmt -w 3 파일. v0.10.0의 코드 동작 영향 0(lint 차원 fix only), 회귀 0, Breaking 0.
+>
+> **기준 commit**: (본 release commit, main)
+
+### Fixed
+- `fix(lint)` depguard `audit-domain-isolation`에 `keyrotationjob` 예외 추가 — 동일 패턴 `rotationjob`은 이미 예외 등록, Phase 10.D-3+4(`f7f045a`) 신규 `keyrotationjob` 누락 보완.
+- `fix(lint)` gofmt -w 3 파일 (`cmd/rosshield-audit-verify/export_verify.go`, `internal/domain/audit/export.go`, `internal/domain/audit/sqliterepo/repo.go`) — Stage 10.D-3+4·5 sub-agent 환경에서 적용 누락.
+
+### Notes
+- v0.10.0 release artifact 자체는 정상 — snap-build · release-build job 정상 통과. lint job만 fail로 main CI overall fail. v0.10.1 patch로 main CI 전체 green 회복.
+
+---
+
 ## [0.10.0] — 2026-05-21 (minor — Phase 10 옵션 D 마감)
 
 > **요약**: Phase 10 옵션 D "audit chain signer key rotation 자동화" 완전 마감 + Phase 10 두 번째 minor (v0.9.0 옵션 A 후속). Quarterly (90일) cron 으로 자동 rotation + SwappableSigner hot-swap (Queue 패턴, RWMutex) + emergency override CLI/admin endpoint + fg-verify v2 epoch별 검증 + 마이그레이션 0037/0038 한 set. 운영자 부담 0 (자동 cron), 외부 감사인 호환성 보존 (audit.chain.key_rotated event chain 안에 trace), 회귀 0, Breaking 0. 상세는 [docs/releases/v0.10.0.md](docs/releases/v0.10.0.md).

@@ -360,10 +360,10 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 // ExportV2 는 Phase 10.D-5 v2 bundle 을 내보냅니다 (chainKeyEpochs 포함).
 //
 // 동작은 Export 와 동일하나 추가로:
-//  - signature line 에 `_bundleVersion: "v2"` 설정.
-//  - keyRepo 로 audit_chain_keys 의 모든 epoch (활성+폐기) 를 fetch 하여
-//    signature line `_chainKeyEpochs[]` 에 직렬화 — 외부 감사인이 epoch 별
-//    public key 를 cross-reference 가능.
+//   - signature line 에 `_bundleVersion: "v2"` 설정.
+//   - keyRepo 로 audit_chain_keys 의 모든 epoch (활성+폐기) 를 fetch 하여
+//     signature line `_chainKeyEpochs[]` 에 직렬화 — 외부 감사인이 epoch 별
+//     public key 를 cross-reference 가능.
 //
 // entry 별 KeyEpoch 는 MarshalEntryLine 이 자동 노출 (Entry.KeyEpoch 가 비-nil 이면).
 //

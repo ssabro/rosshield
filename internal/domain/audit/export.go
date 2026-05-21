@@ -56,14 +56,14 @@ type exportTarget struct {
 // 로 default 처리. v2 (`"v2"`) 이면 ChainKeyEpochs map 으로 epoch 별 public key
 // lookup 후 검증.
 type ExportSignatureLine struct {
-	BundleVersion  string                  `json:"_bundleVersion,omitempty"` // "v2" 면 ChainKeyEpochs 활성.
-	ChainKeyEpochs []ExportChainKeyEpoch   `json:"_chainKeyEpochs,omitempty"`
-	From           int64                   `json:"_from"`
-	KeyID          string                  `json:"_keyId"`
-	PublicKey      string                  `json:"_publicKey"`    // hex
-	SignedDigest   string                  `json:"_signedDigest"` // sha256(모든 entry 라인 concatenated) hex
-	Signature      string                  `json:"_signature"`    // hex
-	To             int64                   `json:"_to"`
+	BundleVersion  string                `json:"_bundleVersion,omitempty"` // "v2" 면 ChainKeyEpochs 활성.
+	ChainKeyEpochs []ExportChainKeyEpoch `json:"_chainKeyEpochs,omitempty"`
+	From           int64                 `json:"_from"`
+	KeyID          string                `json:"_keyId"`
+	PublicKey      string                `json:"_publicKey"`    // hex
+	SignedDigest   string                `json:"_signedDigest"` // sha256(모든 entry 라인 concatenated) hex
+	Signature      string                `json:"_signature"`    // hex
+	To             int64                 `json:"_to"`
 }
 
 // ExportChainKeyEpoch 는 v2 bundle 의 chainKeyEpochs[] 한 원소입니다.

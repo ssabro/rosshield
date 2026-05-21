@@ -287,7 +287,8 @@ func looksLikeSignatureLine(line []byte) bool {
 //
 // v2: _chainKeyEpochs[] 모든 epoch 가 map 에 들어감.
 // v1: signature line 의 단일 _publicKey 를 epoch=1 로 default 처리 — 모든 entry 가
-//     epoch=1 으로 가정 (v0.9.0 이하 호환).
+//
+//	epoch=1 으로 가정 (v0.9.0 이하 호환).
 func buildEpochMap(sig audit.ExportSignatureLine) (map[int64]ed25519.PublicKey, error) {
 	out := map[int64]ed25519.PublicKey{}
 	if sig.BundleVersion != audit.BundleVersionV2 {
