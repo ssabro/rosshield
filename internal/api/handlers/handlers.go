@@ -423,11 +423,14 @@ func (h *Handlers) Mount(r chi.Router) {
 		// GET  /replication/replicas       — 현 replicas 목록 + lag. read는 admin 권한
 		//                                    (인프라 토폴로지 정보 — 운영자 외 노출 금지).
 		// POST /replication/failover       — manual failover (region swap). admin 전용 mutation.
+		// GET  /replication/failovers      — Phase 10.A-4 region cutover 이력. admin 전용 read.
 		// GET  /audit/head-sha             — cross-region head SHA 비교. 인증 사용자 read.
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
 			Get("/api/v1/replication/replicas", h.ListReplicas)
 		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
 			Post("/api/v1/replication/failover", h.TriggerFailover)
+		r.With(h.RequirePermission(authz.ResourceTenantAdmin, authz.ActionAdmin)).
+			Get("/api/v1/replication/failovers", h.ListFailovers)
 		r.Get("/api/v1/audit/head-sha", h.GetAuditHeadSHA)
 
 		// === E32 Stage 4 — Audit hot GC (admin manual trigger) ===

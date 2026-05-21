@@ -94,6 +94,11 @@ type Repository interface {
 	// LinkFailoverAudit는 RecordFailover로 만든 row에 audit_entry_id를 채웁니다.
 	// 같은 Tx에서 audit.Service.Append → 반환된 Entry.Seq(또는 row id)를 link.
 	LinkFailoverAudit(ctx context.Context, tx storage.Tx, failoverID int64, auditEntryID int64, completedAt time.Time) error
+
+	// ListFailovers는 가장 최근 failover 이력을 initiated_at DESC로 N개 반환합니다.
+	// Phase 10.A-4 `/regions` 페이지 RegionTimelineCard용 — read-only 이력 표시.
+	// limit ≤ 0이면 default(50) 사용. 최대 200으로 cap.
+	ListFailovers(ctx context.Context, tx storage.Tx, limit int) ([]Failover, error)
 }
 
 // 공통 에러.

@@ -327,6 +327,109 @@ func TestSetRoleAndRecordFailover(t *testing.T) {
 	}
 }
 
+func TestListFailoversOrderAndLimit(t *testing.T) {
+	t.Parallel()
+	store := newTestStorage(t)
+	repo := replicationrepo.New()
+
+	base := time.Date(2026, 5, 21, 10, 0, 0, 0, time.UTC)
+
+	// 3건 INSERT (시간차 + 가운데 1건 link로 completed 표기, 나머지 2건은 in-progress).
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.RecordFailover(ctx, tx, replication.FailoverRequest{
+			FromRegion: "ap-northeast-2", ToRegion: "us-east-1",
+			InitiatedByUser: "us_a", Reason: "first event", Now: base,
+		})
+		if e != nil {
+			return e
+		}
+		mid, e := repo.RecordFailover(ctx, tx, replication.FailoverRequest{
+			FromRegion: "us-east-1", ToRegion: "eu-west-1",
+			InitiatedByUser: "us_b", Reason: "second event", Now: base.Add(time.Hour),
+		})
+		if e != nil {
+			return e
+		}
+		if e := repo.LinkFailoverAudit(ctx, tx, mid.ID, 42, base.Add(time.Hour).Add(2*time.Second)); e != nil {
+			return e
+		}
+		_, e = repo.RecordFailover(ctx, tx, replication.FailoverRequest{
+			FromRegion: "eu-west-1", ToRegion: "ap-northeast-2",
+			InitiatedByUser: "us_c", Reason: "third event", Now: base.Add(2 * time.Hour),
+		})
+		return e
+	}); err != nil {
+		t.Fatalf("seed failovers: %v", err)
+	}
+
+	// ListFailovers default limit — DESC 순서 (가장 최근 먼저).
+	var rows []replication.Failover
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		rs, e := repo.ListFailovers(ctx, tx, 0)
+		if e != nil {
+			return e
+		}
+		rows = rs
+		return nil
+	}); err != nil {
+		t.Fatalf("ListFailovers: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("len(rows) = %d, want 3", len(rows))
+	}
+	// DESC: third → second → first.
+	if rows[0].Reason != "third event" {
+		t.Errorf("rows[0].Reason = %q, want \"third event\"", rows[0].Reason)
+	}
+	if rows[2].Reason != "first event" {
+		t.Errorf("rows[2].Reason = %q, want \"first event\"", rows[2].Reason)
+	}
+	// 가운데 row가 LinkFailoverAudit 적용된 두번째 — CompletedAt non-zero + audit id 42.
+	if rows[1].CompletedAt.IsZero() {
+		t.Errorf("rows[1].CompletedAt = zero, want non-zero (linked)")
+	}
+	if rows[1].AuditEntryID != 42 {
+		t.Errorf("rows[1].AuditEntryID = %d, want 42", rows[1].AuditEntryID)
+	}
+	// 첫번째·세번째는 아직 in-progress (Link 미적용).
+	if !rows[0].CompletedAt.IsZero() {
+		t.Errorf("rows[0].CompletedAt = %v, want zero (in-progress)", rows[0].CompletedAt)
+	}
+
+	// limit=1 → 가장 최근 1건만.
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		rs, e := repo.ListFailovers(ctx, tx, 1)
+		if e != nil {
+			return e
+		}
+		if len(rs) != 1 {
+			t.Errorf("len(rs) = %d, want 1", len(rs))
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ListFailovers(limit=1): %v", err)
+	}
+}
+
+func TestListFailoversEmpty(t *testing.T) {
+	t.Parallel()
+	store := newTestStorage(t)
+	repo := replicationrepo.New()
+
+	if err := store.Bootstrap(context.Background(), func(ctx context.Context, tx storage.Tx) error {
+		rs, e := repo.ListFailovers(ctx, tx, 10)
+		if e != nil {
+			return e
+		}
+		if len(rs) != 0 {
+			t.Errorf("len(rs) = %d, want 0 (no failovers)", len(rs))
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ListFailovers empty: %v", err)
+	}
+}
+
 func TestRecordFailoverSameRegionRejected(t *testing.T) {
 	t.Parallel()
 	store := newTestStorage(t)

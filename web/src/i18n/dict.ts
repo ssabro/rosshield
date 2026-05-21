@@ -792,6 +792,32 @@ export const ko = {
   'regions.unauthorized':
     '관리자 권한이 필요합니다. 권한 부여는 테넌트 admin에게 문의하세요.',
 
+  // Phase 10.A-3 — AuditConsistencyCard (cross-region audit chain 정합).
+  'regions.audit.title': 'Audit Chain 정합',
+  'regions.audit.consistent': '정합',
+  'regions.audit.mismatch': '불일치',
+  'regions.audit.seq': 'Seq',
+  'regions.audit.sha': 'Hash',
+  'regions.audit.updatedAt': '갱신 시각',
+  'regions.audit.runbook': '운영 문서 확인',
+  'regions.audit.runbook.path':
+    'docs/operations/multi-region-failover-runbook.md',
+  'regions.audit.error': '정합 정보 조회 실패',
+  'regions.audit.selfNote':
+    '현 region의 audit chain head 만 표시합니다. 다중 region 비교는 Prometheus 외부 수집기로 가능합니다.',
+  'regions.audit.empty': 'audit 엔트리 없음 (genesis)',
+
+  // Phase 10.A-4 — RegionTimelineCard (region cutover 이력 timeline).
+  'regions.timeline.title': 'Region cutover 이력',
+  'regions.timeline.empty': 'cutover 이력 없음',
+  'regions.timeline.status.inProgress': '진행중',
+  'regions.timeline.status.completed': '완료',
+  'regions.timeline.status.failed': '실패',
+  'regions.timeline.actor': 'Actor',
+  'regions.timeline.reason': '사유',
+  'regions.timeline.error': '이력 조회 실패',
+  'regions.timeline.updatedAt': '갱신 시각',
+
   'pages.settings.title': '설정',
   'pages.settings.description':
     '현재 사용자·테넌트 정보와 클라이언트 설정 위치를 확인합니다.',
@@ -1906,6 +1932,32 @@ export const en: Record<keyof typeof ko, string> = {
   'regions.error': 'Failed to load regions',
   'regions.unauthorized':
     'Administrator permission required. Contact your tenant admin to request access.',
+
+  // Phase 10.A-3 — AuditConsistencyCard (cross-region audit chain consistency).
+  'regions.audit.title': 'Audit chain consistency',
+  'regions.audit.consistent': 'Consistent',
+  'regions.audit.mismatch': 'Mismatch',
+  'regions.audit.seq': 'Seq',
+  'regions.audit.sha': 'Hash',
+  'regions.audit.updatedAt': 'Updated at',
+  'regions.audit.runbook': 'Check runbook',
+  'regions.audit.runbook.path':
+    'docs/operations/multi-region-failover-runbook.md',
+  'regions.audit.error': 'Failed to load consistency',
+  'regions.audit.selfNote':
+    'Only the current region audit chain head is shown. Cross-region comparison is available via an external collector (Prometheus).',
+  'regions.audit.empty': 'No audit entries yet (genesis)',
+
+  // Phase 10.A-4 — RegionTimelineCard (region cutover timeline).
+  'regions.timeline.title': 'Region cutover timeline',
+  'regions.timeline.empty': 'No cutover events',
+  'regions.timeline.status.inProgress': 'In progress',
+  'regions.timeline.status.completed': 'Completed',
+  'regions.timeline.status.failed': 'Failed',
+  'regions.timeline.actor': 'Actor',
+  'regions.timeline.reason': 'Reason',
+  'regions.timeline.error': 'Failed to load timeline',
+  'regions.timeline.updatedAt': 'Updated at',
 
   'pages.settings.title': 'Settings',
   'pages.settings.description':

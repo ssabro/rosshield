@@ -720,6 +720,115 @@ export const useReplicas = () => {
   })
 }
 
+// useAuditChainHeadSHA — Phase 10.A-3 AuditConsistencyCard용.
+//   GET /api/v1/audit/head-sha — cross-region audit chain head 비교용 endpoint.
+//   30s polling — RegionHealthCard와 동일.
+//
+// 응답 구조 (handlers/replication.go auditHeadSHAResponse):
+//   { tenantId, seq, hashHex (64자 hex), updatedAt? }
+//
+// 현 endpoint는 본 region(self)의 head SHA만 반환합니다. cross-region 일관성 비교는
+// 운영자가 각 region에 별도 polling 시 외부 metric 수집기(Prometheus)에서 비교 —
+// 단일 PG cluster cross-region replication 환경에서는 모든 region head SHA가 동일.
+// multi-PG 분기 환경은 추후 Stage(별 epic)에서 신규 endpoint로 확장.
+export interface AuditChainHeadSHA {
+  tenantId: string
+  seq: number
+  hashHex: string
+  updatedAt?: string
+}
+
+export const useAuditChainHeadSHA = () => {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery({
+    queryKey: ['audit', 'head-sha'],
+    queryFn: async (): Promise<AuditChainHeadSHA> => {
+      const headers: Record<string, string> = {
+        'X-Cookie-Auth': 'true',
+      }
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`
+      }
+      const r = await fetch(`${API_BASE_PATH}/audit/head-sha`, {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+      })
+      if (!r.ok) {
+        const text = await r.text().catch(() => '')
+        throw new ApiError(r.status, text || r.statusText)
+      }
+      const body = (await r.json()) as AuditChainHeadSHA
+      return {
+        tenantId: body.tenantId ?? '',
+        seq: body.seq ?? 0,
+        hashHex: body.hashHex ?? '',
+        updatedAt: body.updatedAt,
+      }
+    },
+    enabled: !!accessToken,
+    refetchInterval: 30_000,
+  })
+}
+
+// useFailoverHistory — Phase 10.A-4 RegionTimelineCard용.
+//   GET /api/v1/replication/failovers (admin) — 최근 N개 region cutover 이력.
+//   60s polling — cutover는 자주 일어나지 않음.
+//
+// 응답 구조 (handlers/replication.go listFailoversResponse):
+//   { failovers: [{
+//       id, fromRegion, toRegion, initiatedByUser?,
+//       initiatedAt, completedAt?, reason?, auditEntryId?,
+//       status: "in-progress" | "completed" }] }
+//
+// status는 backend에서 completed_at NULL 여부로 도출 — UI는 in-progress/completed/
+// failed 3종 badge로 분기(failed는 향후 별 path — design doc §6.4).
+export interface FailoverEvent {
+  id: number
+  fromRegion: string
+  toRegion: string
+  initiatedByUser?: string
+  initiatedAt: string
+  completedAt?: string
+  reason?: string
+  auditEntryId?: number
+  status: 'in-progress' | 'completed' | 'failed'
+}
+
+export interface FailoverHistoryResponse {
+  failovers: FailoverEvent[]
+}
+
+export const useFailoverHistory = (limit?: number) => {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery({
+    queryKey: ['replication', 'failovers', limit ?? null],
+    queryFn: async (): Promise<FailoverHistoryResponse> => {
+      const headers: Record<string, string> = {
+        'X-Cookie-Auth': 'true',
+      }
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`
+      }
+      const qs =
+        limit && limit > 0 ? `?limit=${encodeURIComponent(String(limit))}` : ''
+      const r = await fetch(`${API_BASE_PATH}/replication/failovers${qs}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+      })
+      if (!r.ok) {
+        const text = await r.text().catch(() => '')
+        throw new ApiError(r.status, text || r.statusText)
+      }
+      const body = (await r.json()) as FailoverHistoryResponse
+      return { failovers: body.failovers ?? [] }
+    },
+    enabled: !!accessToken,
+    refetchInterval: 60_000,
+  })
+}
+
 // useUsageStats — /system 페이지 UsageStatsCard용. 인증 사용자 read-only.
 //   GET /api/v1/usage/stats — Prometheus counter snapshot (process scope).
 //   30s polling — 카운터 변화 reflect (E38 onboarding/billing 즉시 가시성).

@@ -8,6 +8,7 @@ package handlers
 //	GET  /api/v1/replication/replicas            — 현 replicas 목록 + lag (last_replay_at vs now)
 //	POST /api/v1/replication/heartbeat           — standby가 primary에 LSN + timestamp ping
 //	POST /api/v1/replication/failover            — admin 권한 manual failover (region swap)
+//	GET  /api/v1/replication/failovers           — Phase 10.A-4 region cutover 이력 timeline
 //	GET  /api/v1/audit/head-sha                  — cross-region audit chain head 비교용
 //
 // design: docs/design/notes/multi-region-ha-design.md §4.3 failover 절차 + §4.4
@@ -32,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,6 +85,22 @@ type auditHeadSHAResponse struct {
 	Seq       int64  `json:"seq"`
 	HashHex   string `json:"hashHex"`
 	UpdatedAt string `json:"updatedAt,omitempty"`
+}
+
+type failoverHistoryItem struct {
+	ID              int64  `json:"id"`
+	FromRegion      string `json:"fromRegion"`
+	ToRegion        string `json:"toRegion"`
+	InitiatedByUser string `json:"initiatedByUser,omitempty"`
+	InitiatedAt     string `json:"initiatedAt"`
+	CompletedAt     string `json:"completedAt,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+	AuditEntryID    int64  `json:"auditEntryId,omitempty"`
+	Status          string `json:"status"` // "in-progress" | "completed"
+}
+
+type listFailoversResponse struct {
+	Failovers []failoverHistoryItem `json:"failovers"`
 }
 
 // --- handlers ---
@@ -323,6 +341,61 @@ func (h *Handlers) GetAuditHeadSHA(w http.ResponseWriter, r *http.Request) {
 		resp.UpdatedAt = head.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ListFailovers는 Phase 10.A-4 — region cutover history endpoint입니다.
+//
+// admin 권한 필수(인프라 토폴로지 정보 — 운영자 외 노출 금지).
+// query param `limit`(default 50, max 200) — initiated_at DESC 정렬.
+// status는 completed_at NULL 여부로 도출: NULL → "in-progress", 그 외 → "completed".
+func (h *Handlers) ListFailovers(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Replication == nil {
+		writeError(w, http.StatusServiceUnavailable, "replication not configured")
+		return
+	}
+	limit := 50
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	var rows []replication.Failover
+	err := h.deps.Storage.Bootstrap(r.Context(), func(ctx context.Context, tx storage.Tx) error {
+		rs, e := h.deps.Replication.ListFailovers(ctx, tx, limit)
+		if e != nil {
+			return e
+		}
+		rows = rs
+		return nil
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list failovers failed")
+		return
+	}
+
+	items := make([]failoverHistoryItem, 0, len(rows))
+	for _, f := range rows {
+		status := "in-progress"
+		if !f.CompletedAt.IsZero() {
+			status = "completed"
+		}
+		item := failoverHistoryItem{
+			ID:              f.ID,
+			FromRegion:      f.FromRegion,
+			ToRegion:        f.ToRegion,
+			InitiatedByUser: f.InitiatedByUser,
+			InitiatedAt:     f.InitiatedAt.UTC().Format(time.RFC3339Nano),
+			Reason:          f.Reason,
+			AuditEntryID:    f.AuditEntryID,
+			Status:          status,
+		}
+		if !f.CompletedAt.IsZero() {
+			item.CompletedAt = f.CompletedAt.UTC().Format(time.RFC3339Nano)
+		}
+		items = append(items, item)
+	}
+	writeJSON(w, http.StatusOK, listFailoversResponse{Failovers: items})
 }
 
 // hexEncode32는 audit.Hash([32]byte)를 64자 hex로 직렬화합니다.

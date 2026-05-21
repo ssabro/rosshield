@@ -208,6 +208,63 @@ func (r *Repo) LinkFailoverAudit(ctx context.Context, tx storage.Tx, failoverID 
 	return nil
 }
 
+// ListFailovers는 가장 최근 failover 이력을 initiated_at DESC로 N개 반환합니다.
+//
+// Phase 10.A-4 — `/regions` 페이지 RegionTimelineCard read-only 이력 표시.
+// limit ≤ 0이면 default 50, 최대 200으로 cap.
+func (r *Repo) ListFailovers(ctx context.Context, tx storage.Tx, limit int) ([]replication.Failover, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	rows, err := tx.Query(ctx, failoverColumns+` FROM replication_failovers
+        ORDER BY initiated_at DESC, id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("replication: list failovers: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []replication.Failover
+	for rows.Next() {
+		f, scanErr := scanFailoverRows(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		out = append(out, f)
+	}
+	if rerr := rows.Err(); rerr != nil {
+		return nil, fmt.Errorf("replication: list failovers rows: %w", rerr)
+	}
+	return out, nil
+}
+
+const failoverColumns = `SELECT id, from_region, to_region,
+    COALESCE(initiated_by_user, ''), initiated_at, completed_at,
+    COALESCE(reason, ''), COALESCE(audit_entry_id, 0)`
+
+// scanFailoverRows는 *sql.Rows에서 Failover 1행을 추출합니다.
+func scanFailoverRows(rows *sql.Rows) (replication.Failover, error) {
+	var (
+		f                        replication.Failover
+		initiatedBy, reason      string
+		initiatedAt, completedAt sql.NullString
+		auditEntryID             int64
+	)
+	err := rows.Scan(&f.ID, &f.FromRegion, &f.ToRegion,
+		&initiatedBy, &initiatedAt, &completedAt, &reason, &auditEntryID)
+	if err != nil {
+		return replication.Failover{}, err
+	}
+	f.InitiatedByUser = initiatedBy
+	f.Reason = reason
+	f.AuditEntryID = auditEntryID
+	f.InitiatedAt = parseTimeOrZero(initiatedAt)
+	f.CompletedAt = parseTimeOrZero(completedAt)
+	return f, nil
+}
+
 const replicaColumns = `SELECT id, region, role, endpoint,
     COALESCE(last_replay_lsn, ''), last_replay_at, last_heartbeat_at,
     enabled, created_at`
