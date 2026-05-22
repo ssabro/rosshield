@@ -240,6 +240,30 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 	return p.shutdownFn(ctx)
 }
 
+// NewProviderFromComponents 는 외부에서 만든 TracerProvider 와 Propagator 로
+// Provider 를 합성합니다 (Stage 11.A-3 단위 테스트 + custom injection 패턴).
+//
+// 본 helper 의 주된 용도는 in-memory SpanRecorder 가 부착된 sdktrace.TracerProvider
+// 를 미들웨어/단위 테스트에 주입해 span 출력 검증입니다. production 에서는 NewProvider
+// 를 사용하세요 (OTLP exporter 결선).
+//
+// tp 또는 propagator 가 nil 이면 noop 으로 fallback. enabled=false 면 noop wrap
+// (middleware 가 short-circuit).
+func NewProviderFromComponents(tp trace.TracerProvider, propagator propagation.TextMapPropagator, enabled bool) *Provider {
+	if tp == nil {
+		tp = tracenoop.NewTracerProvider()
+	}
+	if propagator == nil {
+		propagator = propagation.NewCompositeTextMapPropagator()
+	}
+	return &Provider{
+		tp:         tp,
+		propagator: propagator,
+		shutdownFn: func(context.Context) error { return nil },
+		enabled:    enabled,
+	}
+}
+
 // newNoopProvider 는 Enabled=false 시 반환되는 short-circuit provider 입니다.
 //
 // global TracerProvider 가 NoopTracerProvider 가 되며 모든 trace.Span 호출은

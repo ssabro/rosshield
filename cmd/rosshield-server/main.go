@@ -152,6 +152,10 @@ func newMux(p *Platform) http.Handler {
 
 	// E9 Stage B — chi 라우터로 API mount.
 	apiRouter := chi.NewRouter()
+	// Phase 11.A-3 — OpenTelemetry HTTP server middleware (request trace + W3C
+	// traceparent propagation). 가장 앞에 등록하여 leader/standby 차단 응답도
+	// span 에 잡히게 함. p.Otel.Enabled()=false 면 middleware 자체가 no-op (overhead 0).
+	apiRouter.Use(handlers.OtelTrace(p.Otel))
 	// E25 Stage 3 — HA 활성 시 write request leader gate (method 기반).
 	// rp == nil이면 미들웨어가 모든 request 통과 — single-instance 호환.
 	if p.HA != nil {
