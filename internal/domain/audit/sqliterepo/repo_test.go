@@ -769,6 +769,236 @@ func TestExportV2NilKeyRepoFallsBackToV1(t *testing.T) {
 	}
 }
 
+// Phase 11.C-4 — ExportV3 wire 회귀 가드.
+//
+// transition entry + v3 entries 가 모두 포함된 bundle:
+//   - signature line `_bundleVersion="v3"`.
+//   - `_hashVersionTransitionAt` = transition entry seq.
+//   - chainKeyEpochs 노출 (v2 super-set).
+//   - entry-level leaderEpoch — HA 비활성이므로 nil → omit (정상 동작).
+func TestExportV3EmitsBundleVersionAndTransitionAt(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+	keyRepo := sqliterepo.NewKeyEpochRepo()
+
+	// audit_chain_keys 는 'system' tenant bootstrap row 에만 존재.
+	const sysTenant storage.TenantID = "system"
+
+	ctx := storage.WithTenantID(context.Background(), sysTenant)
+
+	// 1 개 v1 entry (system.bootstrap).
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, err := repo.Append(ctx, tx, audit.AppendRequest{
+			TenantID: sysTenant,
+			Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+			Action:   "system.bootstrap",
+			Target:   audit.Target{Type: "system", ID: "boot"},
+			Outcome:  audit.OutcomeSuccess,
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("Append v1: %v", err)
+	}
+
+	// transition emit (seq=2).
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, _, err := audit.EnsureHashVersionTransition(ctx, tx, repo, repo, repo, sysTenant)
+		return err
+	}); err != nil {
+		t.Fatalf("transition: %v", err)
+	}
+
+	// 2 개 v3 entry (seq=3,4).
+	for i := 0; i < 2; i++ {
+		if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+			_, err := repo.Append(ctx, tx, audit.AppendRequest{
+				TenantID: sysTenant,
+				Actor:    audit.Actor{Type: audit.ActorSystem, ID: "system"},
+				Action:   "audit.chain.key_rotated",
+				Target:   audit.Target{Type: "chain", ID: "system"},
+				Outcome:  audit.OutcomeSuccess,
+			})
+			return err
+		}); err != nil {
+			t.Fatalf("Append v3: %v", err)
+		}
+	}
+
+	sgn, err := soft.New()
+	if err != nil {
+		t.Fatalf("soft.New: %v", err)
+	}
+
+	var lines []string
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		rc, err := repo.ExportV3(ctx, tx, sysTenant, 1, 4, sgn, keyRepo)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rc.Close() }()
+		gz, err := gzip.NewReader(rc)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gz.Close() }()
+		scanner := bufio.NewScanner(gz)
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+		}
+		return scanner.Err()
+	}); err != nil {
+		t.Fatalf("ExportV3: %v", err)
+	}
+
+	// 4 entries + 1 signature = 5 lines.
+	if len(lines) != 5 {
+		t.Fatalf("got %d lines, want 5 (4 entries + 1 signature)", len(lines))
+	}
+	var sig audit.ExportSignatureLine
+	if err := json.Unmarshal([]byte(lines[4]), &sig); err != nil {
+		t.Fatalf("decode signature line: %v", err)
+	}
+	if sig.BundleVersion != audit.BundleVersionV3 {
+		t.Errorf("BundleVersion=%q want %q", sig.BundleVersion, audit.BundleVersionV3)
+	}
+	if sig.HashVersionTransitionAt != 2 {
+		t.Errorf("HashVersionTransitionAt=%d want 2", sig.HashVersionTransitionAt)
+	}
+	if len(sig.ChainKeyEpochs) < 1 {
+		t.Errorf("ChainKeyEpochs len=%d want >= 1 (bootstrap)", len(sig.ChainKeyEpochs))
+	}
+
+	// entry-level keyEpoch — system tenant + key_epoch provider 미주입 → 모든 entry nil.
+	// 단순 wire format 검증: entry line unmarshal 가능 + transition entry 자체의 seq=2.
+	var transitionLine audit.ExportEntryLine
+	if err := json.Unmarshal([]byte(lines[1]), &transitionLine); err != nil {
+		t.Fatalf("decode transition entry: %v", err)
+	}
+	if transitionLine.Seq != 2 {
+		t.Errorf("transition entry seq=%d, want 2", transitionLine.Seq)
+	}
+	if transitionLine.Action != audit.ActionHashVersionChanged {
+		t.Errorf("transition entry action=%q, want %q", transitionLine.Action, audit.ActionHashVersionChanged)
+	}
+}
+
+// transition 미발생 bundle — _hashVersionTransitionAt 0 (omit) + _bundleVersion="v3".
+func TestExportV3WithoutTransitionOmitsTransitionAt(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	appendOne(t, store, repo, sampleReq("robot.create"))
+
+	sgn, err := soft.New()
+	if err != nil {
+		t.Fatalf("soft.New: %v", err)
+	}
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	var lines []string
+	if err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		rc, err := repo.ExportV3(ctx, tx, testTenant, 1, 1, sgn, nil)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rc.Close() }()
+		gz, err := gzip.NewReader(rc)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = gz.Close() }()
+		scanner := bufio.NewScanner(gz)
+		for scanner.Scan() {
+			lines = append(lines, scanner.Text())
+		}
+		return scanner.Err()
+	}); err != nil {
+		t.Fatalf("ExportV3: %v", err)
+	}
+
+	var sig audit.ExportSignatureLine
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &sig); err != nil {
+		t.Fatalf("decode signature: %v", err)
+	}
+	if sig.BundleVersion != audit.BundleVersionV3 {
+		t.Errorf("BundleVersion=%q want %q", sig.BundleVersion, audit.BundleVersionV3)
+	}
+	if sig.HashVersionTransitionAt != 0 {
+		t.Errorf("HashVersionTransitionAt=%d want 0 (no transition)", sig.HashVersionTransitionAt)
+	}
+}
+
+// ExportV3 backward compat — ExportV2 + Export 변경 0 (다른 test 가 cover).
+// 본 test 는 ExportV3 signer nil → 에러.
+func TestExportV3RequiresSigner(t *testing.T) {
+	t.Parallel()
+	repo, store := newTestRepo(t)
+
+	ctx := storage.WithTenantID(context.Background(), testTenant)
+	err := store.Tx(ctx, func(ctx context.Context, tx storage.Tx) error {
+		_, e := repo.ExportV3(ctx, tx, testTenant, 1, 0, nil, nil)
+		return e
+	})
+	if err == nil {
+		t.Error("expected error for nil signer")
+	}
+}
+
+// MarshalEntryLineV3 — LeaderEpoch + KeyEpoch 모두 노출.
+func TestMarshalEntryLineV3IncludesLeaderEpoch(t *testing.T) {
+	t.Parallel()
+
+	ke := int64(2)
+	le := int64(7)
+	digest := audit.ComputePayloadDigest([]byte(`{"x":1}`))
+	entry := audit.Entry{
+		TenantID:      "tn_v3",
+		Seq:           10,
+		Actor:         audit.Actor{Type: audit.ActorUser, ID: "us_v3"},
+		Action:        "robot.update",
+		Target:        audit.Target{Type: "robot", ID: "ro_v3"},
+		PayloadDigest: digest,
+		Outcome:       audit.OutcomeSuccess,
+		KeyEpoch:      &ke,
+		LeaderEpoch:   &le,
+	}
+	b, err := audit.MarshalEntryLineV3(entry)
+	if err != nil {
+		t.Fatalf("MarshalEntryLineV3: %v", err)
+	}
+	if !strings.Contains(string(b), `"leaderEpoch":7`) {
+		t.Errorf("v3 line missing leaderEpoch: %s", string(b))
+	}
+	if !strings.Contains(string(b), `"keyEpoch":2`) {
+		t.Errorf("v3 line missing keyEpoch: %s", string(b))
+	}
+}
+
+// MarshalEntryLine (v1/v2 wire) — LeaderEpoch 노출 0 (wire 호환 엄격).
+func TestMarshalEntryLineV1V2OmitsLeaderEpoch(t *testing.T) {
+	t.Parallel()
+
+	le := int64(99)
+	digest := audit.ComputePayloadDigest([]byte(`{}`))
+	entry := audit.Entry{
+		TenantID:      "tn_v2",
+		Seq:           1,
+		Actor:         audit.Actor{Type: audit.ActorUser, ID: "us_v2"},
+		Action:        "x",
+		Target:        audit.Target{Type: "t", ID: "x"},
+		PayloadDigest: digest,
+		Outcome:       audit.OutcomeSuccess,
+		LeaderEpoch:   &le, // HA 활성 entry 시뮬레이션.
+	}
+	b, err := audit.MarshalEntryLine(entry)
+	if err != nil {
+		t.Fatalf("MarshalEntryLine: %v", err)
+	}
+	if strings.Contains(string(b), `leaderEpoch`) {
+		t.Errorf("v1/v2 wire must not expose leaderEpoch: %s", string(b))
+	}
+}
+
 // E2.T8 — checkpoint 서명·저장.
 func TestWriteCheckpointStoresVerifiableSignature(t *testing.T) {
 	t.Parallel()

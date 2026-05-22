@@ -1370,6 +1370,25 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: register checkpoint job: %w", err)
 	}
 
+	// Phase 11.C-3 — audit chain hash version transition marker idempotent emit.
+	//
+	// audit.chain.hash_version_changed entry 가 systemTenant 의 audit chain 에 1회 emit 됨.
+	// 이미 존재하면 추가 emit 0 (idempotent). emit 결과 transition seq 를 Repo 가 캐시하여
+	// 이후 Append 가 v3 hash 분기 활성화. v1 chain 영향 0 (transition entry 자체 + 이전 entry 는 v1).
+	//
+	// 마이그레이션 0 — audit_entries.action 컬럼 + audit chain 자체가 source of truth.
+	if err := ensureHashVersionTransition(ctx, store, auditSvc, auditSvc, systemTenant, logger); err != nil {
+		_ = sch.Close(ctx)
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: hash version transition: %w", err)
+	}
+
+	// Phase 11.C-3 metric — audit_chain_hash_version{tenant=...} Gauge.
+	// transition emit 또는 cache 후 활성 version 을 1 → 3 으로 노출 (외부 모니터링).
+	if metricsReg != nil {
+		recordAuditChainHashVersion(metricsReg, systemTenant)
+	}
+
 	// Phase 10.D-3+4 — audit chain signer key rotation 자동 cron + KeyRotator.
 	//
 	// AuditChainKeyRotationSchedule="" → 자동 rotation 비활성 (manual API only).

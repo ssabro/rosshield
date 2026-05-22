@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ssabro/rosshield/internal/domain/audit"
@@ -44,6 +45,15 @@ type Deps struct {
 // Repo는 audit.Service의 SQLite 구현입니다.
 type Repo struct {
 	deps Deps
+
+	// Phase 11.C-3 — hash version transition marker seq cache.
+	//
+	// 0 (unset) → 모든 Append 가 v1 hash (backward compat default).
+	// >0 (set)  → seq > transition 인 entry 는 v3 hash, 그 외(transition 자체 + 이전 entry)는 v1.
+	//
+	// bootstrap.ensureHashVersionTransition 이 단일 thread 에서 1회 SetHashVersionTransitionSeq
+	// 호출 — 이후 Append goroutine 들이 atomic.Load 로 race-free 읽음.
+	transitionSeq atomic.Int64
 }
 
 // New는 새 Repo를 반환합니다.
@@ -110,7 +120,21 @@ func (r *Repo) Append(ctx context.Context, tx storage.Tx, req audit.AppendReques
 		KeyEpoch:      keyEpoch,
 	}
 
-	hash, err := audit.ComputeEntryHash(entry.PrevHash, entry.PayloadDigest, entry)
+	// Phase 11.C-3 — hash version 분기.
+	//
+	// transitionSeq == 0 (unset / no transition emitted yet) → v1 hash (backward compat).
+	// transitionSeq > 0 + entry.Seq > transitionSeq                → v3 hash (post-transition entries).
+	// transitionSeq > 0 + entry.Seq <= transitionSeq               → v1 hash (transition entry 자체 + 이전 entries).
+	//
+	// transition entry 자체는 v1 hash (chain 의 마지막 v1 entry). 이는 bootstrap 의
+	// ensureHashVersionTransition 이 SetHashVersionTransitionSeq 를 emit 직후에 호출하므로
+	// emit 시점의 Append 는 transitionSeq == 0 → v1 hash 적용.
+	transition := r.transitionSeq.Load()
+	hashFn := audit.ComputeEntryHash
+	if transition > 0 && entry.Seq > transition {
+		hashFn = audit.ComputeEntryHashV3
+	}
+	hash, err := hashFn(entry.PrevHash, entry.PayloadDigest, entry)
 	if err != nil {
 		return audit.Entry{}, err
 	}
@@ -222,7 +246,10 @@ SELECT seq, occurred_at, actor_type, actor_id, actor_ip, actor_ua,
 		}
 
 		// hash 재계산 검증.
-		expected, err := audit.ComputeEntryHash(e.PrevHash, e.PayloadDigest, e)
+		//
+		// Phase 11.C-3 — transition seq 이후 entry 는 v3 hash 로 재계산.
+		// transitionSeq 가 0 (unset) 이거나 e.Seq <= transitionSeq 면 v1 hash.
+		expected, err := r.recomputeHashForSeq(e)
 		if err != nil {
 			return audit.VerifyResult{}, fmt.Errorf("audit: recompute hash at seq %d: %w", e.Seq, err)
 		}

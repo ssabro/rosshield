@@ -51,6 +51,15 @@ type Registry struct {
 	AuditRotationTotal *prometheus.CounterVec
 	AuditKeyEpoch      *prometheus.GaugeVec
 
+	// === audit chain hash version (Phase 11.C-3) ===
+	//
+	// AuditChainHashVersion: tenant 별 현재 활성 chain hash version (1 = v1, 3 = v3).
+	// transition marker entry emit 후 3 으로 set, emit 전 또는 transition 미발생 시 1.
+	// AuditChainHashVersionTransitionTotal: process scope transition 발생 횟수
+	// (정상 운영에서 1 — bootstrap 이 idempotent 으로 1회 emit).
+	AuditChainHashVersion                *prometheus.GaugeVec
+	AuditChainHashVersionTransitionTotal *prometheus.CounterVec
+
 	// === histogram ===
 
 	EventPublishDuration *prometheus.HistogramVec // label: topic
@@ -158,6 +167,20 @@ func New() *Registry {
 		Help:      "Current active audit chain signer key epoch, partitioned by tenant.",
 	}, []string{"tenant"})
 
+	r.AuditChainHashVersion = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "rosshield",
+		Subsystem: "audit",
+		Name:      "chain_hash_version",
+		Help:      "Current active audit chain hash version (1=v1, 3=v3), partitioned by tenant.",
+	}, []string{"tenant"})
+
+	r.AuditChainHashVersionTransitionTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "rosshield",
+		Subsystem: "audit",
+		Name:      "chain_hash_version_transition_total",
+		Help:      "Cumulative audit chain hash version transition events (process scope; normally 1 per tenant after Phase 11.C-3).",
+	}, []string{"tenant"})
+
 	r.EventPublishDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "rosshield",
 		Subsystem: "event",
@@ -233,6 +256,8 @@ func New() *Registry {
 		r.AuditChainHeadSeq,
 		r.AuditRotationTotal,
 		r.AuditKeyEpoch,
+		r.AuditChainHashVersion,
+		r.AuditChainHashVersionTransitionTotal,
 		r.EventPublishDuration,
 		r.HARole,
 		r.HALeaderEpoch,

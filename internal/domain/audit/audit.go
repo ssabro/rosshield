@@ -22,6 +22,20 @@ import (
 // HashSize는 sha256 출력 크기입니다 (32바이트).
 const HashSize = 32
 
+// ActionHashVersionChanged 는 Phase 11.C-3 transition marker entry 의 action 입니다.
+//
+// 본 entry 는 audit chain 의 hash version 이 v1 → v3 으로 전환되는 시점을 marker 합니다:
+//   - entry 자체는 마지막 v1 hash 로 INSERT (chain link 연속성 보장).
+//   - 본 entry 이후 모든 신규 entry 는 v3 hash 사용.
+//   - meta payload: `{"fromVersion": 1, "toVersion": 3}`.
+//
+// bootstrap 이 idempotent 하게 emit — 동일 tenant 에서 이미 transition entry 가 존재하면
+// 추가 emit 0 (audit_entries.action = ? 단일 SELECT 로 결정).
+//
+// 외부 검증 도구 (fg-verify v3) 는 본 entry 의 seq 를 `_chainTransitionSeq` (Stage 11.C-4) 로
+// 인식 + transition 이전 entry 는 v1 hash function, 이후 entry 는 v3 hash function 으로 재계산.
+const ActionHashVersionChanged = "audit.chain.hash_version_changed"
+
 // Hash는 32바이트 sha256 출력입니다.
 type Hash [HashSize]byte
 
@@ -245,4 +259,20 @@ type RoleProvider interface {
 // audit 는 signer 패키지 미import 가드 일관).
 type KeyEpochProvider interface {
 	CurrentEpoch() int64
+}
+
+// HashVersionLocator 는 Phase 11.C-3 transition marker entry 의 seq 를 조회할 수 있는
+// minimal interface 입니다.
+//
+// audit chain 의 hash version 분기 (v1 vs v3) 는 transition entry 의 seq 를 기준으로
+// 결정됩니다 — bootstrap 이 idempotent 하게 transition emit 시점에 본 interface 로 결정.
+//
+// FindHashVersionTransitionSeq 결과:
+//   - seq > 0: transition entry 가 이미 존재 (idempotent — 추가 emit 0).
+//   - seq == 0 + ok == false: transition entry 미존재 — bootstrap 이 emit 해야 함.
+//   - err != nil: storage 에러 (호출자가 bootstrap fatal 처리).
+//
+// 구현: audit/sqliterepo.Repo 가 자동 만족.
+type HashVersionLocator interface {
+	FindHashVersionTransitionSeq(ctx context.Context, tx storage.Tx, tenantID storage.TenantID) (seq int64, ok bool, err error)
 }
