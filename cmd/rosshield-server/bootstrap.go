@@ -1331,6 +1331,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Evidence:  evidenceSvc,
 		// WorkerLimit은 default(R4-4 — 10).
 		CheckTimeoutDefaultSec: cfg.CheckTimeoutDefaultSec,
+		// Phase 11.A-4 — scan flow 5 span instrument. Enabled=false 시 provider 가 noop tracer 반환 — overhead 0.
+		Tracer: otelProvider.Tracer("rosshield/scanrun"),
 	})
 
 	// (LLM·Compliance는 위에서 결선됨 — E17 Suggester 주입 흐름)

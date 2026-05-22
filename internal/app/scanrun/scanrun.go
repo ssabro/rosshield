@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/ssabro/rosshield/internal/domain/evidence"
@@ -69,6 +71,12 @@ type Deps struct {
 	// (scanrun SSH 통합 Stage 5). 0이면 DefaultHealthFailureThreshold(3).
 	// 한 robot의 SSH exec가 연속 N회 실패하면 잔여 check OutcomeSkipped(robot_offline).
 	HealthFailureThreshold int
+
+	// Tracer는 OpenTelemetry tracer 입니다 (Phase 11.A-4). nil이면 noop tracer 사용 — overhead 0.
+	//
+	// bootstrap은 platformotel.Provider.Tracer("rosshield/scanrun") 으로 주입.
+	// Enabled=false 시 platformotel.Provider가 noop tracer 를 반환하므로 별도 분기 불필요.
+	Tracer trace.Tracer
 }
 
 // Orchestrator는 scan session의 fan-out 실행 + 결과 기록 + 이벤트 publish를 관장합니다.
@@ -139,13 +147,20 @@ func New(deps Deps) *Orchestrator {
 //
 // 빈 입력(robots 또는 checks 길이 0)은 즉시 completed로 전이.
 func (o *Orchestrator) Run(ctx context.Context, tenantID storage.TenantID, sessionID string, robots []scan.RobotTarget, checks []scan.CheckDef) error {
+	// Phase 11.A-4 — parent scan.run span. 모든 worker 의 5 child span 이 본 span 의 ctx 를 상속.
+	// noop tracer 시 Start 비용 ≈ 0 (no allocation).
+	ctx, runSpan := o.startScanRunSpan(ctx, sessionID, string(tenantID), len(robots), len(checks))
+	defer runSpan.End()
+
 	if len(robots) == 0 || len(checks) == 0 {
 		// 빈 입력 — 빈 transitions: pending → running → completed (audit 2건 + scan.completed 1건).
+		runSpan.SetAttributes(attribute.String(attrScanStatus, "completed_empty"))
 		return o.runEmpty(ctx, tenantID, sessionID)
 	}
 
 	// 1. running 전이.
 	if _, err := o.transitionTo(ctx, tenantID, sessionID, scan.StatusRunning, ""); err != nil {
+		recordSpanErr(runSpan, err)
 		return fmt.Errorf("scanrun: transition to running: %w", err)
 	}
 
@@ -192,7 +207,26 @@ outer:
 	wg.Wait()
 
 	// 4. terminal 전이.
-	return o.finalize(ctx, tenantID, sessionID, runCtx.Err())
+	err := o.finalize(ctx, tenantID, sessionID, runCtx.Err())
+	// Phase 11.A-4 — parent scan.run span 의 status attribute 갱신.
+	o.annotateRunSpan(runSpan, runCtx.Err(), err)
+	return err
+}
+
+// annotateRunSpan 은 finalize 종료 후 parent scan.run span 의 attribute + status 를 보정합니다.
+//
+// runCtxErr 가 non-nil 이면 cancelled(또는 deadline) — span 은 OK 유지(정상 종료 시나리오).
+// finalizeErr 가 non-nil 이면 transition 실패 — span.RecordError + status=Error.
+func (o *Orchestrator) annotateRunSpan(span trace.Span, runCtxErr, finalizeErr error) {
+	switch {
+	case finalizeErr != nil:
+		recordSpanErr(span, finalizeErr)
+		span.SetAttributes(attribute.String(attrScanStatus, "failed"))
+	case runCtxErr != nil:
+		span.SetAttributes(attribute.String(attrScanStatus, "cancelled"))
+	default:
+		span.SetAttributes(attribute.String(attrScanStatus, "completed"))
+	}
 }
 
 // Cancel은 in-flight session의 ctx를 취소하고 DB를 cancelled로 전이합니다.
@@ -242,116 +276,245 @@ func (o *Orchestrator) runEmpty(ctx context.Context, tenantID storage.TenantID, 
 }
 
 func (o *Orchestrator) executeOne(ctx context.Context, tenantID storage.TenantID, sessionID string, robot scan.RobotTarget, check scan.CheckDef, healthMap *sync.Map) {
-	timeout := time.Duration(check.TimeoutSec) * time.Second
-	if timeout <= 0 {
-		// CheckDef.TimeoutSec 미설정 — Deps.CheckTimeoutDefaultSec 또는 const fallback.
-		// 운영자가 bootstrap config로 customer 환경별 조정 가능 (긴 multi-line cmd 또는 빠른 fail-fast).
-		defaultSec := o.deps.CheckTimeoutDefaultSec
-		if defaultSec <= 0 {
-			defaultSec = scan.DefaultCheckTimeoutSec
-		}
-		timeout = time.Duration(defaultSec) * time.Second
-	}
+	timeout := o.resolveTimeout(check)
 
 	// Stage 5 — per-robot health window 체크.
 	// robot이 이미 N회 연속 실패면 SSH dial 회피 + 즉시 OutcomeSkipped record.
 	hsRaw, _ := healthMap.LoadOrStore(robot.RobotID, &healthState{})
 	health := hsRaw.(*healthState)
 
-	var (
-		outcome  scan.Outcome
-		reason   string
-		duration time.Duration
-		exec     scan.ExecResult
-	)
-
-	if health.shouldSkip(o.deps.HealthFailureThreshold) {
-		outcome = scan.OutcomeSkipped
-		reason = "robot_offline"
-	} else {
-		var err error
-		exec, err = o.deps.Executor.Exec(ctx, robot, check.AuditCommand, timeout, scan.ExecOpts{RequiresSudo: check.RequiresSudo})
-		duration = exec.Duration
-		if err != nil {
-			outcome = scan.OutcomeError
-			reason = fmt.Sprintf("ssh: %v", err)
-			health.recordFailure()
-		} else {
-			eval, evalErr := o.deps.Evaluator.Evaluate(check.EvalRuleJSON, exec)
-			if evalErr != nil {
-				outcome = scan.OutcomeError
-				reason = fmt.Sprintf("eval: %v", evalErr)
-				// evaluator 실패는 robot 헬스 무관 — 카운터 변경 X.
-			} else {
-				outcome = eval.Outcome
-				reason = eval.Reason
-				// SSH 자체는 success — robot alive로 간주, 카운터 reset.
-				health.recordSuccess()
-			}
-		}
-	}
+	// Phase 11.A-4 — SSH connect + check exec + evaluate 5 span 중 3 개. parent 는 scan.run.
+	outcome, reason, duration, exec := o.runRemoteCheck(ctx, robot, check, timeout, health)
 
 	// RecordResult + Evidence 기록 — 같은 Tx에 atomic.
 	// 별도 Tx + background ctx (R4-5: ctx cancel 영향 받지 않게).
 	bgCtx := storage.WithTenantID(context.Background(), tenantID)
 	recordCtx, recordCancel := context.WithTimeout(bgCtx, 5*time.Second)
 	defer recordCancel()
+	// span ctx 는 worker ctx(=parent scan.run) 기준으로 child 가 nest 되도록 분리 보관.
+	spanCtx := ctx
+
+	session, err := o.recordAndPublish(recordCtx, spanCtx, recordOneInput{
+		tenantID:  tenantID,
+		sessionID: sessionID,
+		robot:     robot,
+		check:     check,
+		exec:      exec,
+		outcome:   outcome,
+		reason:    reason,
+		duration:  duration,
+	})
+	if err != nil {
+		// 기록 실패는 silently swallow — 진행률 publish 안 함.
+		// (errno 로그는 호출자 책임 — Phase 1은 단순화.)
+		return
+	}
+	o.publishProgressSpan(spanCtx, bgCtx, session, robot.RobotID, check.PackCheckID)
+}
+
+// resolveTimeout 은 CheckDef.TimeoutSec 우선 + bootstrap config fallback + const fallback.
+func (o *Orchestrator) resolveTimeout(check scan.CheckDef) time.Duration {
+	timeout := time.Duration(check.TimeoutSec) * time.Second
+	if timeout > 0 {
+		return timeout
+	}
+	defaultSec := o.deps.CheckTimeoutDefaultSec
+	if defaultSec <= 0 {
+		defaultSec = scan.DefaultCheckTimeoutSec
+	}
+	return time.Duration(defaultSec) * time.Second
+}
+
+// runRemoteCheck 는 SSH connect + exec + evaluate 3 단계 child span 을 emit 하며 outcome/reason/duration 을 결정합니다.
+//
+// span hierarchy (parent scan.run 아래):
+//   - ssh.connect   (marker) — health window skip 이 아닐 때만 emit.
+//   - check.exec    — Executor.Exec 호출 전체.
+//   - check.evaluate — Evaluator.Evaluate (SSH 성공 시에만).
+func (o *Orchestrator) runRemoteCheck(ctx context.Context, robot scan.RobotTarget, check scan.CheckDef, timeout time.Duration, health *healthState) (scan.Outcome, string, time.Duration, scan.ExecResult) {
+	tr := o.tracer()
+	checkMeta := checkInfo{PackCheckID: check.PackCheckID, Code: check.Code}
+
+	if health.shouldSkip(o.deps.HealthFailureThreshold) {
+		return scan.OutcomeSkipped, "robot_offline", 0, scan.ExecResult{}
+	}
+
+	// 1) ssh.connect marker — scan flow 가 ssh hop 을 시도한다는 표지.
+	connCtx, connSpan := startSSHConnectSpan(ctx, tr, ssherTarget{RobotID: robot.RobotID, Host: robot.Host, Port: robot.Port})
+	connSpan.End()
+
+	// 2) check.exec — Executor.Exec 호출 전체. parent 는 ssh hop ctx 가 아닌 worker ctx (sibling).
+	_ = connCtx // marker span 의 ctx 는 worker scope 에서 사용하지 않음 — End 후 sibling 으로 진행.
+	execCtx, execSpan := startCheckExecSpan(ctx, tr, robot.RobotID, checkMeta)
+	exec, err := o.deps.Executor.Exec(execCtx, robot, check.AuditCommand, timeout, scan.ExecOpts{RequiresSudo: check.RequiresSudo})
+	annotateExecSpan(execSpan, exec, err)
+	execSpan.End()
+	if err != nil {
+		health.recordFailure()
+		return scan.OutcomeError, fmt.Sprintf("ssh: %v", err), exec.Duration, exec
+	}
+
+	// 3) check.evaluate — Evaluator.Evaluate. evaluator error 는 robot 헬스 무관 — 카운터 변경 X.
+	outcome, reason := o.evaluateWithSpan(ctx, tr, robot.RobotID, checkMeta, check.EvalRuleJSON, exec)
+	if outcome != scan.OutcomeError {
+		// SSH 자체는 success — robot alive로 간주, 카운터 reset.
+		health.recordSuccess()
+	}
+	return outcome, reason, exec.Duration, exec
+}
+
+// evaluateWithSpan 은 CheckEvaluator.Evaluate 호출을 check.evaluate span 으로 감쌉니다.
+func (o *Orchestrator) evaluateWithSpan(ctx context.Context, tr trace.Tracer, robotID string, check checkInfo, ruleJSON []byte, exec scan.ExecResult) (scan.Outcome, string) {
+	_, evalSpan := startCheckEvaluateSpan(ctx, tr, robotID, check)
+	defer evalSpan.End()
+	eval, evalErr := o.deps.Evaluator.Evaluate(ruleJSON, exec)
+	if evalErr != nil {
+		recordSpanErr(evalSpan, evalErr)
+		evalSpan.SetAttributes(attribute.String(attrCheckOutcome, string(scan.OutcomeError)))
+		return scan.OutcomeError, fmt.Sprintf("eval: %v", evalErr)
+	}
+	evalSpan.SetAttributes(attribute.String(attrCheckOutcome, string(eval.Outcome)))
+	if eval.Reason != "" {
+		evalSpan.SetAttributes(attribute.String(attrCheckReason, eval.Reason))
+	}
+	return eval.Outcome, eval.Reason
+}
+
+// annotateExecSpan 은 check.exec span 에 exit_code · duration_ms · error 를 부착합니다.
+func annotateExecSpan(span trace.Span, exec scan.ExecResult, err error) {
+	span.SetAttributes(
+		attribute.Int(attrExecExitCode, exec.ExitCode),
+		attribute.Int64(attrExecDurationMs, exec.Duration.Milliseconds()),
+	)
+	recordSpanErr(span, err)
+}
+
+// recordOneInput 은 recordAndPublish 의 입력 파라미터 묶음입니다 (함수 시그니처 단순화).
+type recordOneInput struct {
+	tenantID  storage.TenantID
+	sessionID string
+	robot     scan.RobotTarget
+	check     scan.CheckDef
+	exec      scan.ExecResult
+	outcome   scan.Outcome
+	reason    string
+	duration  time.Duration
+}
+
+// recordAndPublish 는 evidence.write + scan.publish 2 child span 을 emit 하며 결과를 DB 에 영속합니다.
+//
+// recordCtx 는 background timeout 5s — R4-5 일관(ctx cancel 영향 받지 않음).
+// spanCtx 는 worker scope (parent scan.run) — child span 의 nest 보장.
+func (o *Orchestrator) recordAndPublish(recordCtx, spanCtx context.Context, in recordOneInput) (scan.ScanSession, error) {
+	tr := o.tracer()
+
+	// 1) evidence.write child span — Storage.Tx 안의 evidence Store + LinkToResult 합산.
+	_, evidenceSpan := startEvidenceWriteSpan(spanCtx, tr, in.robot.RobotID, in.check.PackCheckID)
+	// 2) scan.publish child span — RecordResult + Bus.Publish progress.
+	_, publishSpan := startScanPublishSpan(spanCtx, tr, in.sessionID, in.robot.RobotID, in.check.PackCheckID)
+	publishSpan.SetAttributes(attribute.String(attrCheckOutcome, string(in.outcome)))
 
 	var session scan.ScanSession
-	if err := o.deps.Storage.Tx(recordCtx, func(c context.Context, tx storage.Tx) error {
-		// 1. Evidence Store — stdout 항상, stderr는 비어있지 않으면. error outcome도 stderr 보존.
-		var evidenceIDs []string
-		if o.deps.Evidence != nil {
-			if exec.Stdout != nil || outcome != scan.OutcomeError {
-				res, err := o.deps.Evidence.Store(c, tx, evidence.StoreInput{
-					TenantID: tenantID, ContentType: evidence.ContentStdout, Raw: exec.Stdout,
-				})
-				if err != nil {
-					return fmt.Errorf("evidence stdout: %w", err)
-				}
-				evidenceIDs = append(evidenceIDs, res.EvidenceID)
-			}
-			if len(exec.Stderr) > 0 {
-				res, err := o.deps.Evidence.Store(c, tx, evidence.StoreInput{
-					TenantID: tenantID, ContentType: evidence.ContentStderr, Raw: exec.Stderr,
-				})
-				if err != nil {
-					return fmt.Errorf("evidence stderr: %w", err)
-				}
-				evidenceIDs = append(evidenceIDs, res.EvidenceID)
-			}
+	var evidenceBytes int64
+	var evidenceCount int
+	err := o.deps.Storage.Tx(recordCtx, func(c context.Context, tx storage.Tx) error {
+		ev, err := o.storeEvidence(c, tx, in)
+		if err != nil {
+			return err
 		}
+		evidenceBytes = ev.bytes
+		evidenceCount = ev.count
 
-		// 2. RecordResult — scan_results INSERT + 진행률 갱신.
 		result, err := o.deps.Scan.RecordResult(c, tx, scan.RecordResultRequest{
-			SessionID:   sessionID,
-			RobotID:     robot.RobotID,
-			CheckID:     check.Code,
-			PackCheckID: check.PackCheckID,
-			Outcome:     outcome,
-			EvalReason:  reason,
-			DurationMs:  duration.Milliseconds(),
+			SessionID:   in.sessionID,
+			RobotID:     in.robot.RobotID,
+			CheckID:     in.check.Code,
+			PackCheckID: in.check.PackCheckID,
+			Outcome:     in.outcome,
+			EvalReason:  in.reason,
+			DurationMs:  in.duration.Milliseconds(),
 			ExecutedAt:  o.deps.Clock.Now(),
 		})
 		if err != nil {
 			return err
 		}
-
-		// 3. Evidence ↔ ScanResult N:M ref.
-		if o.deps.Evidence != nil && len(evidenceIDs) > 0 {
-			if _, err := o.deps.Evidence.LinkToResult(c, tx, result.ID, evidenceIDs); err != nil {
+		if o.deps.Evidence != nil && len(ev.ids) > 0 {
+			if _, err := o.deps.Evidence.LinkToResult(c, tx, result.ID, ev.ids); err != nil {
 				return fmt.Errorf("evidence link: %w", err)
 			}
 		}
-
-		s, err := o.deps.Scan.GetSession(c, tx, sessionID)
+		s, err := o.deps.Scan.GetSession(c, tx, in.sessionID)
 		session = s
 		return err
-	}); err != nil {
-		// 기록 실패는 silently swallow — 진행률 publish 안 함.
-		// (errno 로그는 호출자 책임 — Phase 1은 단순화.)
-		return
+	})
+	evidenceSpan.SetAttributes(
+		attribute.Int64(attrEvidenceBytes, evidenceBytes),
+		attribute.Int(attrEvidenceCount, evidenceCount),
+	)
+	recordSpanErr(evidenceSpan, err)
+	evidenceSpan.End()
+	recordSpanErr(publishSpan, err)
+	publishSpan.End()
+	return session, err
+}
+
+// evidenceWriteResult 는 storeEvidence 의 출력입니다.
+type evidenceWriteResult struct {
+	ids   []string
+	bytes int64
+	count int
+}
+
+// storeEvidence 는 stdout/stderr blob 을 evidence.Service.Store 호출로 영속합니다.
+//
+// error outcome 시에도 stderr 가 비어있지 않으면 보존(forensic 가치).
+// stdout 은 nil 일 수 있으나 OutcomeError 가 아닌 경우엔 empty blob 으로 record.
+func (o *Orchestrator) storeEvidence(ctx context.Context, tx storage.Tx, in recordOneInput) (evidenceWriteResult, error) {
+	var res evidenceWriteResult
+	if o.deps.Evidence == nil {
+		return res, nil
 	}
+	if in.exec.Stdout != nil || in.outcome != scan.OutcomeError {
+		store, err := o.deps.Evidence.Store(ctx, tx, evidence.StoreInput{
+			TenantID: in.tenantID, ContentType: evidence.ContentStdout, Raw: in.exec.Stdout,
+		})
+		if err != nil {
+			return res, fmt.Errorf("evidence stdout: %w", err)
+		}
+		res.ids = append(res.ids, store.EvidenceID)
+		res.bytes += int64(len(in.exec.Stdout))
+		res.count++
+	}
+	if len(in.exec.Stderr) > 0 {
+		store, err := o.deps.Evidence.Store(ctx, tx, evidence.StoreInput{
+			TenantID: in.tenantID, ContentType: evidence.ContentStderr, Raw: in.exec.Stderr,
+		})
+		if err != nil {
+			return res, fmt.Errorf("evidence stderr: %w", err)
+		}
+		res.ids = append(res.ids, store.EvidenceID)
+		res.bytes += int64(len(in.exec.Stderr))
+		res.count++
+	}
+	return res, nil
+}
+
+// publishProgressSpan 은 publishProgress 호출을 parent scan.run 의 직접 child 로 emit 합니다.
+//
+// recordAndPublish 의 scan.publish span 은 DB write 까지 — bus.Publish 는 별 marker.
+// 본 helper 는 단순 wrapper, publishProgress 그대로 호출.
+func (o *Orchestrator) publishProgressSpan(spanCtx, bgCtx context.Context, session scan.ScanSession, robotID, checkID string) {
+	tr := o.tracer()
+	_, span := tr.Start(spanCtx, spanScanRunPublish,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String(attrScanID, session.ID),
+			attribute.String(attrRobotID, robotID),
+			attribute.String(attrCheckID, checkID),
+			attribute.Int(attrScanTotal, session.Progress.Total),
+		),
+	)
+	defer span.End()
 	o.publishProgress(bgCtx, session)
 }
 
