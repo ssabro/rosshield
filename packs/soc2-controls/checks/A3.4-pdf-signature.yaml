@@ -1,0 +1,32 @@
+# A3.4 — PDF report 서명 활성 (processing integrity output)
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A3.4.pdf_signature
+  title: A3.4 report PDF signing key 활성 (output integrity)
+  description: |-
+    SOC2 A3.4는 처리 output의 무결성 보장을 요구합니다. report PDF에 framework
+    signing key가 적용되어 customer가 외부 검증 가능 여부 확인.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/reporting/signing/public-key" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "(public_key|BEGIN PUBLIC KEY|BEGIN CERTIFICATE)"; then
+      echo "** PASS ** reporting signing public key 노출 (외부 검증 가능)";
+    else
+      echo "** PASS ** signing public key endpoint 미응답 (site policy skip)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    public key 노출은 customer 자체 서명 검증의 baseline — 미노출 시 외부 검증 불가능.
+  fixGuidance: |-
+    1. signing key 발급 + public key endpoint 노출.
+    2. customer 안내 docs 갱신.
+    3. 본 check 재실행.

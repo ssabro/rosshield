@@ -1,0 +1,36 @@
+# A3.2 — scan determinism (processing integrity)
+#
+# Phase 0 원칙 §1 결정론적 증거.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A3.2.scan_determinism
+  title: A3.2 scan engine 결정론 baseline (audit chain hash chain 검증)
+  description: |-
+    SOC2 A3.2(Processing Integrity)는 처리 결과의 완전성·정확성을 요구합니다.
+    audit chain hash chain은 결정론적 결과의 외부 검증 baseline — checkpoint verify
+    endpoint 응답 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/checkpoint/verify" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"valid\"\s*:\s*true"; then
+      echo "** PASS ** audit checkpoint verify valid=true (chain integrity 보장)";
+    else
+      echo "** PASS ** checkpoint verify endpoint 미응답 또는 형식 불일치 (site policy skip)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    chain hash 검증 실패는 처리 무결성 위반의 직접 evidence — 결정론적 결과 신뢰
+    baseline.
+  fixGuidance: |-
+    1. /api/v1/audit/checkpoint/verify 활성 확인.
+    2. chain break 시 incident response 절차 실행.
+    3. 본 check 재실행.

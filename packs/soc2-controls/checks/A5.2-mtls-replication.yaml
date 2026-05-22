@@ -1,0 +1,35 @@
+# A5.2 — mTLS replication 채널 (boundary protection)
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A5.2.mtls_replication
+  title: A5.2 replication 채널 mTLS 설정 (boundary protection)
+  description: |-
+    SOC2 A5.2의 boundary — Patroni streaming replication은 mTLS 양방향 인증 권장.
+    config 또는 internal/platform/replication/ source 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-.}";
+    DIR="$ROOT/internal/platform/replication";
+    if [ ! -d "$DIR" ]; then
+      echo "** PASS ** replication 소스 트리 부재 (site policy skip — binary 배포)";
+      exit 0;
+    fi;
+    CNT=$(grep -rilE "(mtls|client_cert|sslmode)" "$DIR" 2>/dev/null | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** replication 소스에 mTLS 관련 키워드 포함 ($CNT files)";
+    else
+      echo "** FAIL ** replication 소스 mTLS 키워드 부재";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    replication 채널 평문 운영은 inter-node leak risk — mTLS는 양방향 인증으로
+    중간자 차단.
+  fixGuidance: |-
+    1. Patroni postgres TLS 설정 — pg_hba.conf hostssl + cert.
+    2. replication user에 client cert 발급.
+    3. 본 check 재실행.

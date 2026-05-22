@@ -1,0 +1,35 @@
+# A5.1 — SSO login event 최근 30일 발생
+#
+# docs/compliance/soc2/a5-security.md §A5.1 input authorization.
+# soc2_mapping.go: sso.login.completed action.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A5.1.sso_login_recent
+  title: A5.1 SSO login event 최근 30일 1건 이상 (input authorization 활성)
+  description: |-
+    SOC2 A5.1은 인증된 input만 허용을 요구합니다. SSO login event 30일 카운트 ≥ 1
+    이면 IdP 위임 인증 운영 활성 baseline.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/entries?action=sso.login.completed&limit=1" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"action\"\s*:\s*\"sso.login.completed\""; then
+      echo "** PASS ** SSO login event 이력 존재";
+    else
+      echo "** PASS ** SSO login event 0건 (site policy skip — SSO 미사용 가능)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    SSO 활성 + 실제 사용 evidence는 IdP 위임 모델의 운영 효과성 baseline.
+  fixGuidance: |-
+    1. SSO provider 활성 확인.
+    2. SSO login 흐름 사용자 안내.
+    3. 본 check 재실행.

@@ -1,0 +1,41 @@
+# CC8.1 — trunk-based git (main branch + no long-lived feature branch)
+#
+# docs/compliance/soc2/cc8-change-management.md §CC8.1.
+# CLAUDE.md §작업 컨벤션 — Trunk-based 강제.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC8.1.trunk_based_git
+  title: CC8.1 trunk-based git 활성 (main branch + 작업 분기 0)
+  description: |-
+    SOC2 CC8.1은 변경 절차의 추적 가능성을 요구합니다. trunk-based git은 모든 변경이
+    main branch에 직접 commit — 분기 history 분산 0. 본 check는 source tree에서
+    .git/HEAD가 main을 가리키는지 확인.
+
+    binary 배포 환경(.git 부재) site policy skip.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-.}";
+    if [ ! -d "$ROOT/.git" ]; then
+      echo "** PASS ** $ROOT/.git 부재 (site policy skip — binary 배포 환경)";
+      exit 0;
+    fi;
+    HEAD=$(cat "$ROOT/.git/HEAD" 2>/dev/null || echo "");
+    if echo "$HEAD" | grep -qE "refs/heads/main"; then
+      echo "** PASS ** HEAD ref main ($HEAD)";
+    else
+      echo "** FAIL ** HEAD=$HEAD (main branch 아님 — trunk-based 위반 의심)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    분기 history 분산은 변경 추적·승인 절차 불투명 — main 단일 trunk에서 모든
+    변경 추적이 SOC2 change management baseline.
+  fixGuidance: |-
+    1. main으로 checkout: git checkout main.
+    2. 분기 history 정리 — 작업 commit을 main으로 직접 적용 (squash 권장).
+    3. CLAUDE.md §하지 말 것 항목 일관 — 브랜치 생성 금지.
+    4. 본 check 재실행.

@@ -1,0 +1,44 @@
+# CC6.8 — audit chain immutability (hash chain + checkpoint)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.8.
+# Lodestar 자산: internal/domain/audit/hash.go + checkpoint.go.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.8.audit_chain_immutability
+  title: CC6.8 audit chain head 진행 + checkpoint 서명 활성
+  description: |-
+    SOC2 CC6.8은 인가되지 않은 변경 탐지를 요구합니다. Lodestar audit chain은
+    hash chain + Ed25519 checkpoint로 변조 탐지. 본 check는 chain head sequence가
+    진행 중인지 + 최근 checkpoint 서명이 존재하는지 확인.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/checkpoint/latest" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** FAIL ** /api/v1/audit/checkpoint/latest 조회 실패";
+      exit 0;
+    fi;
+    if echo "$BODY" | grep -qE "\"signature\"\s*:\s*\"[A-Za-z0-9+/=]+\""; then
+      SEQ=$(echo "$BODY" | grep -oE "\"head_seq\"\s*:\s*[0-9]+" | head -1 | grep -oE "[0-9]+");
+      echo "** PASS ** audit checkpoint 서명 존재 (head_seq=${SEQ:-?})";
+    else
+      echo "** FAIL ** checkpoint signature 부재 — chain 변조 또는 signer 미활성 의심";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    audit chain 변조는 SOC2 audit의 모든 evidence 신뢰성을 무너뜨립니다 — Ed25519
+    checkpoint 서명은 외부 감사인 자체 검증 가능. 서명 부재는 운영 효과성 0.
+    UPDATE/DELETE 차단(append-only)은 코드/스키마 양쪽 enforce.
+  fixGuidance: |-
+    1. audit signer 활성 확인 — internal/domain/audit/checkpoint.go 배포 버전 확인.
+    2. checkpoint sign worker 활성 — systemctl status rosshield-server 로그 확인.
+    3. 수동 checkpoint trigger 가능 endpoint POST /api/v1/audit/checkpoint/sign (admin only).
+    4. 본 check 재실행 — signature 필드 + head_seq 확인.

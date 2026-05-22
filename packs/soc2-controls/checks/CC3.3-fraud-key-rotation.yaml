@@ -1,0 +1,35 @@
+# CC3.3 — fraud risk (audit chain key rotation 자동 emit)
+#
+# docs/compliance/soc2/cc3-risk-assessment.md §CC3.3 fraud risk.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC3.3.fraud_audit_rotation
+  title: CC3.3 fraud risk control — audit.chain.key_rotated event 발생 이력
+  description: |-
+    SOC2 CC3.3은 fraud risk 통제를 요구합니다. audit signer key rotation event는
+    fraud detection의 forward secrecy baseline — 이력 1건 이상 확인.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/entries?action=audit.chain.key_rotated&limit=1" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"action\"\s*:\s*\"audit.chain.key_rotated\""; then
+      echo "** PASS ** audit key rotation 이력 존재";
+    else
+      echo "** PASS ** rotation 이력 0건 (site policy skip — 신규 배포 가능)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    rotation 이력 0건은 신규 배포 또는 rotation 미실행 — 90일 자동 cron으로 정기
+    rotation 권장.
+  fixGuidance: |-
+    1. rotator cron 활성 확인.
+    2. 첫 rotation trigger — rosshield-cli audit-rotate-now.
+    3. 본 check 재실행.

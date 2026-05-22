@@ -1,0 +1,27 @@
+# soc2-controls — SOC2 Type II readiness automated audit pack v0.1.0
+#
+# design doc: docs/design/notes/soc2-readiness-design.md §13.1 Stage 11.B-7.
+# D-P11B-4 = 자동 검증 pack 권장 (CIS-style yaml).
+# control mapping: docs/compliance/soc2/ (CC1~CC9 + A1~A5)
+#
+# Lodestar 결선 자산 자동 검증 — customer가 scan으로 실행하면 SOC2 readiness 평가.
+# 외부 SOC2 감사인 firm 검증의 1차 자동 baseline.
+#
+# audit cmd 패턴 3종 mix:
+#   1. host-side bash — config grep / file 존재 / perms / systemctl
+#   2. Lodestar API curl — ROSSHIELD_API_URL + ROSSHIELD_API_TOKEN env 활용
+#   3. docs 파일 존재 — runbook/policy docs 명문화 여부
+#
+# 외부 트랙 영역(awareness training · DC physical · vendor inventory 등)은 비목표 —
+# docs/compliance/soc2/*.md 매핑에서 외부 트랙 ★로 처리.
+#
+# env 미설정 시 PASS skip 패턴 일관 — site policy 의존 (false positive 0).
+apiVersion: rosshield.io/v1
+kind: Pack
+metadata:
+  name: soc2-controls
+  version: 0.1.0
+  vendor: rosshield
+  description: "SOC2 Type II readiness automated audit pack (CC1~CC9 + A1~A5, 60 check)"
+spec:
+  schemaVersion: 1

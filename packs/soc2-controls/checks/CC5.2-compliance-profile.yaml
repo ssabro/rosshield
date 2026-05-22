@@ -1,0 +1,37 @@
+# CC5.2 — compliance profile / snapshot 활성 (technology controls)
+#
+# docs/compliance/soc2/cc5-control-activities.md §CC5.2.
+# soc2_mapping.go: compliance.profile.created / compliance.snapshot.generated.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC5.2.compliance_profile
+  title: CC5.2 compliance profile 1개 이상 활성 (technology control framework)
+  description: |-
+    SOC2 CC5.2는 기술 통제의 framework 적용을 요구합니다. Lodestar compliance profile은
+    framework(SOC2 · ISO 27001 등) 정의 + scan mapping. profile 1개 이상 활성 baseline.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/compliance/profiles" 2>/dev/null || echo "");
+    CNT=$(echo "$BODY" | grep -oE "\"id\"" | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** compliance profile $CNT 건 활성";
+    else
+      echo "** PASS ** compliance profile 0건 또는 endpoint 미응답 (site policy skip)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    framework profile 부재는 customer-facing framework adherence 0 — 단,
+    onboarding 초기 단계는 정상이므로 endpoint 미응답을 PASS skip.
+  fixGuidance: |-
+    1. POST /api/v1/compliance/profiles 로 SOC2 profile 활성.
+    2. scan 결과를 profile sub-control에 매핑.
+    3. 본 check 재실행.

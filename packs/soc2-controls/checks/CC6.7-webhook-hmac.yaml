@@ -1,0 +1,49 @@
+# CC6.7 — webhook HMAC signature 강제 (transmission integrity)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.7.
+# Lodestar 자산: internal/api/handlers/webhook.go.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.7.webhook_hmac_enforced
+  title: CC6.7 webhook HMAC signature 강제 (외부 통합 무결성)
+  description: |-
+    SOC2 CC6.7은 외부 시스템 간 데이터 이동의 무결성을 요구합니다. Lodestar webhook은
+    HMAC signature로 페이로드 변조 탐지. 본 check는 webhook 설정에 secret 존재 여부
+    확인.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/webhooks" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** PASS ** webhook endpoint 응답 없음 (site policy skip — webhook 미사용 환경)";
+      exit 0;
+    fi;
+    CNT=$(echo "$BODY" | grep -oE "\"id\"" | wc -l);
+    UNSIGNED=$(echo "$BODY" | grep -oE "\"hmac_enabled\"\s*:\s*false" | wc -l);
+    if [ "$CNT" = "0" ]; then
+      echo "** PASS ** webhook 0건 (site policy — 외부 통합 미사용)";
+      exit 0;
+    fi;
+    if [ "$UNSIGNED" = "0" ]; then
+      echo "** PASS ** 모든 webhook HMAC 활성 ($CNT 건)";
+    else
+      echo "** FAIL ** HMAC 비활성 webhook 존재: $UNSIGNED / $CNT";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    HMAC 없는 webhook은 페이로드 변조·spoofing 탐지 불가능 — 외부 시스템이 잘못된
+    데이터로 동작할 위험. 모든 webhook은 HMAC secret 강제 권장.
+  fixGuidance: |-
+    1. 기존 webhook 목록 회수: GET /api/v1/webhooks
+    2. HMAC 비활성 webhook 식별 — hmac_enabled=false.
+    3. PATCH /api/v1/webhooks/{id} hmac_secret=<rand-32-bytes>.
+    4. 외부 receiver에 secret 전달 + signature 검증 구현.
+    5. 본 check 재실행 — UNSIGNED=0 확인.

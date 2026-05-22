@@ -1,0 +1,41 @@
+# A2.2 — audit GC marker 활성 (data disposal)
+#
+# docs/compliance/soc2/a2-confidentiality.md §A2.2.
+# soc2_mapping.go: audit.gc.complete action.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A2.2.audit_gc_active
+  title: A2.2 audit GC marker 활성 (retention 후 data disposal)
+  description: |-
+    SOC2 A2.2는 기밀 정보 폐기 절차를 요구합니다. Lodestar audit GC marker
+    (마이그레이션 0036)는 retention 만료 audit data의 disposal 자동화. 최근 GC
+    cycle event 존재 확인.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/gc/status" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** PASS ** /api/v1/audit/gc/status 미응답 (site policy skip — GC endpoint 미배포 가능)";
+      exit 0;
+    fi;
+    if echo "$BODY" | grep -qE "\"last_run_at\""; then
+      echo "** PASS ** audit GC 활성 (last_run_at 필드 존재)";
+    else
+      echo "** FAIL ** audit GC status 응답 형식 불일치";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    retention 만료 audit data가 disposal되지 않으면 GDPR/CCPA 호환 risk + storage
+    무한 증가.
+  fixGuidance: |-
+    1. audit GC worker 활성 확인.
+    2. retention 정책 config 설정.
+    3. 본 check 재실행.

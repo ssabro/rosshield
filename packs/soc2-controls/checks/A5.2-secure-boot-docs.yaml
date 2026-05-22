@@ -1,0 +1,32 @@
+# A5.2 — Secure Boot enrollment docs (boundary protection)
+#
+# docs/compliance/soc2/a5-security.md §A5.2.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A5.2.secure_boot_docs
+  title: A5.2 Secure Boot enrollment docs 존재 (boundary protection)
+  description: |-
+    SOC2 A5.2의 critical security infrastructure — Secure Boot enrollment 절차 docs
+    존재 확인. TPM PCR-sealed keystore와 함께 boundary protection 활성.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    F="$BASE/docs/operations/secure-boot-enrollment.md";
+    if [ -f "$F" ]; then
+      echo "** PASS ** Secure Boot enrollment docs 존재 ($F)";
+    else
+      echo "** FAIL ** Secure Boot enrollment docs 부재 ($F)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    measured boot 절차 명문화는 TPM 운영의 baseline — 절차 부재 시 customer 셋업
+    오류 risk.
+  fixGuidance: |-
+    1. docs/operations/secure-boot-enrollment.md 작성 — PCR seal 절차.
+    2. TPM 보유 환경 기준 단계별 가이드.
+    3. 본 check 재실행.

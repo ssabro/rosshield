@@ -1,0 +1,39 @@
+# A4.4 — data residency / privacy docs (cross-reference A2.2)
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A4.4.privacy_docs
+  title: A4.4 privacy / data residency docs 존재 (cross-reference)
+  description: |-
+    SOC2 A4(Privacy)의 baseline — privacy policy 또는 data residency docs 존재 확인.
+    GDPR/CCPA 호환은 별 epic ★, 본 check는 docs 명문화만 baseline.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    CANDIDATES=(
+      "$BASE/docs/operations/data-retention.md"
+      "$BASE/docs/operations/privacy-policy.md"
+      "$BASE/docs/operations/data-residency.md"
+      "$BASE/PRIVACY.md"
+    );
+    FOUND=0;
+    for f in "${CANDIDATES[@]}"; do
+      [ -f "$f" ] && FOUND=$((FOUND+1));
+    done;
+    if [ "$FOUND" -ge 1 ]; then
+      echo "** PASS ** privacy/residency docs $FOUND 건 존재";
+    else
+      echo "** FAIL ** privacy docs 0건";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    privacy docs 부재는 GDPR/CCPA 적용 region에서 영업 closing 지연 — 정식 호환은
+    별 epic ★, baseline docs는 자체 cover.
+  fixGuidance: |-
+    1. PRIVACY.md 또는 docs/operations/privacy-policy.md 작성.
+    2. data subject rights 절차 명시.
+    3. 본 check 재실행.

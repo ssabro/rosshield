@@ -1,0 +1,43 @@
+# CC8.1 — DB migration append-only (CLAUDE.md §하지 말 것)
+#
+# docs/compliance/soc2/cc8-change-management.md §CC8.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC8.1.migration_append_only
+  title: CC8.1 DB migration append-only (rollback 미허용)
+  description: |-
+    SOC2 CC8.1 변경 절차의 일부 — DB migration이 append-only 패턴(번호 단조 증가
+    + 기존 마이그레이션 mutation 0)인지 검증. internal/storage/migrations/ 트리에
+    0001 ~ NNNN 순차 파일만 존재.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-.}";
+    DIR="$ROOT/internal/storage/migrations";
+    if [ ! -d "$DIR" ]; then
+      ALT="$ROOT/migrations";
+      [ -d "$ALT" ] && DIR="$ALT";
+    fi;
+    if [ ! -d "$DIR" ]; then
+      echo "** PASS ** migrations 디렉터리 부재 (site policy skip — embedded DB 또는 binary 배포)";
+      exit 0;
+    fi;
+    CNT=$(ls "$DIR" 2>/dev/null | grep -cE "^[0-9]{3,4}_.+\.(sql|go)$" || echo "0");
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** migrations $CNT 건 (NNNN_ prefix 패턴)";
+    else
+      echo "** FAIL ** migrations 0건 또는 NNNN_ 패턴 위반";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    rollback 가능 마이그레이션은 데이터 손상 risk — append-only로 forward-only 변경만
+    허용은 SOC2 change management의 immutability 원칙과 일관.
+  fixGuidance: |-
+    1. 마이그레이션 디렉터리 점검 — NNNN_<name>.sql 패턴.
+    2. 기존 마이그레이션 mutation 0건 확인 (git log per file).
+    3. CI에서 round-trip 검증 (migration up + down).
+    4. 본 check 재실행.

@@ -1,0 +1,38 @@
+# A1.2 — backup retention policy 명문화
+#
+# docs/compliance/soc2/a1-availability.md §A1.2.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A1.2.backup_retention
+  title: A1.2 backup retention policy 명문화 (config 또는 docs)
+  description: |-
+    SOC2 A1.2는 backup retention SLA를 요구합니다. config backup_retention_days
+    또는 docs/operations/backup-retention.md 존재 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    CFG="${ROSSHIELD_CONFIG:-/etc/rosshield/config.yaml}";
+    if [ -f "$CFG" ] && grep -qE "(backup_retention|retention_days)" "$CFG" 2>/dev/null; then
+      echo "** PASS ** config $CFG 에 backup retention 설정";
+      exit 0;
+    fi;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    for f in "$BASE/docs/operations/backup-retention.md" "$BASE/docs/operations/backup.md" "$BASE/docs/operations/data-retention.md"; do
+      if [ -f "$f" ]; then
+        echo "** PASS ** retention policy docs 존재: $f";
+        exit 0;
+      fi;
+    done;
+    echo "** FAIL ** backup retention 미설정 (config 또는 docs/operations/ retention.md 권장)";'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    무기한 backup은 storage 비용 + 무용 data 노출 — retention SLA 명문화는 audit
+    단골 evidence.
+  fixGuidance: |-
+    1. config: backup_retention_days: 90 (또는 customer 요구치).
+    2. 또는 docs/operations/backup-retention.md 작성.
+    3. 본 check 재실행.

@@ -1,0 +1,44 @@
+# CC7.2 — Snap check-health hook 설치
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.2 + post-refresh hook.
+# Lodestar 자산: snap/hooks/check-health (commit 9c6bf04, timeout 120s).
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.2.snap_check_health_hook
+  title: CC7.2 Snap check-health hook 설치 (post-refresh evaluation)
+  description: |-
+    SOC2 CC7.2의 anomaly monitoring — Snap refresh 후 자동 health evaluation으로
+    악성 update 차단. snap info에 check-health hook 등재 여부 확인.
+
+    Snap 배포 환경이 아니면 site policy skip.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if ! command -v snap >/dev/null 2>&1; then
+      echo "** PASS ** snap CLI 미설치 (site policy skip — non-Snap 배포)";
+      exit 0;
+    fi;
+    PKG="${ROSSHIELD_SNAP_NAME:-rosshield-server}";
+    if ! snap list "$PKG" >/dev/null 2>&1; then
+      echo "** PASS ** snap $PKG 미설치 (site policy skip)";
+      exit 0;
+    fi;
+    INFO=$(snap info "$PKG" 2>/dev/null || echo "");
+    if echo "$INFO" | grep -qE "check-health"; then
+      echo "** PASS ** snap $PKG check-health hook 등재";
+    else
+      echo "** FAIL ** snap $PKG check-health hook 미등재";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    refresh 후 health evaluation 부재는 회귀 update가 부지중 배포될 risk —
+    check-health hook은 hook fail 시 자동 rollback trigger.
+  fixGuidance: |-
+    1. 최신 snap revision 으로 refresh — snap refresh rosshield-server.
+    2. check-health hook 포함 release 확인 — release notes.
+    3. snap info rosshield-server 로 hook 목록 확인.
+    4. 본 check 재실행.

@@ -1,0 +1,52 @@
+# CC6.6 — audit signer key 90일 이내 rotation
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.6.
+# Lodestar 자산: internal/domain/audit/keyrotation/rotator.go (Phase 10.D 자동화).
+# API: /api/v1/audit/rotation/status — 마지막 rotation 시각 회수.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.6.audit_key_rotation_recent
+  title: CC6.6 audit signer key 마지막 rotation 90일 이내
+  description: |-
+    SOC2 CC6.6은 키 관리 정책의 정기 rotation을 요구합니다. Lodestar audit chain
+    signer key는 Phase 10.D에서 90일 quarterly 자동 rotation. 본 check는 API
+    /api/v1/audit/rotation/status 로 마지막 rotation 시각을 회수하여 90일 이내 검증.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/rotation/status" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** FAIL ** /api/v1/audit/rotation/status 조회 실패 — rotation 활성 여부 불명";
+      exit 0;
+    fi;
+    LAST=$(echo "$BODY" | grep -oE "\"last_rotation_at\"\s*:\s*\"[^\"]+\"" | head -1 | grep -oE "[0-9TZ:.-]{10,}");
+    if [ -z "$LAST" ]; then
+      echo "** FAIL ** last_rotation_at 필드 없음 (rotation 미실행 의심)";
+      exit 0;
+    fi;
+    NOW=$(date -u +%s);
+    LAST_S=$(date -u -d "$LAST" +%s 2>/dev/null || echo "0");
+    AGE=$(( (NOW - LAST_S) / 86400 ));
+    if [ "$AGE" -le 90 ]; then
+      echo "** PASS ** audit key rotation $AGE days ago (≤90)";
+    else
+      echo "** FAIL ** audit key rotation $AGE days ago exceeds 90 day baseline";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    audit signer key가 90일 이상 동일하면 stolen key window가 길어집니다 — Phase 10.D
+    자동 rotation 정책의 운영 효과성 검증. epoch별 public key 보존(0037 마이그레이션)으로
+    이전 epoch 검증은 보장되므로 rotation은 forward-secrecy만 cover.
+  fixGuidance: |-
+    1. 자동 rotator 활성 확인 — systemctl status rosshield-key-rotator (또는 in-process cron).
+    2. emergency rotation: rosshield-cli audit-rotate-now --reason "<incident>".
+    3. docs/operations/audit-chain-key-rotation.md 절차 따라 수동 trigger.
+    4. 본 check 재실행 — last_rotation_at 90일 이내 확인.

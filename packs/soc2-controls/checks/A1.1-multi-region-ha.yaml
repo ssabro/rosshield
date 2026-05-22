@@ -1,0 +1,42 @@
+# A1.1 — multi-region HA (Patroni cluster)
+#
+# docs/compliance/soc2/a1-availability.md §A1.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A1.1.multi_region_ha
+  title: A1.1 multi-region HA 활성 (Patroni leader + standby)
+  description: |-
+    SOC2 A1.1은 capacity planning + horizontal scaling을 요구합니다. Patroni 다중
+    region cluster 활성 여부를 /api/v1/ha/status로 확인 (Phase 9 E25 산출).
+
+    single-region 배포 환경은 site policy skip.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/ha/status" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** PASS ** /api/v1/ha/status 미응답 (site policy skip — single-region 배포 가능)";
+      exit 0;
+    fi;
+    if echo "$BODY" | grep -qE "\"role\"\s*:\s*\"(leader|primary)\""; then
+      STAND=$(echo "$BODY" | grep -oE "\"standby_count\"\s*:\s*[0-9]+" | grep -oE "[0-9]+");
+      echo "** PASS ** HA leader 활성 (standby_count=${STAND:-?})";
+    else
+      echo "** FAIL ** HA role unhealthy 또는 응답 형식 불일치";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    single-region 배포는 region 단위 outage에 노출 — enterprise SLA 위협. multi-region
+    HA는 A1.1·A1.3 자연 cover.
+  fixGuidance: |-
+    1. Patroni cluster 구성 — docs/operations/patroni-deployment.md.
+    2. 추가 region에 standby 추가.
+    3. 본 check 재실행.

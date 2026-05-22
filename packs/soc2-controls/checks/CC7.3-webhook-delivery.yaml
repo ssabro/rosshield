@@ -1,0 +1,48 @@
+# CC7.3 — webhook delivery success rate ≥ 95%
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.3 security event evaluation.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.3.webhook_delivery_rate
+  title: CC7.3 webhook delivery success rate ≥ 95%
+  description: |-
+    SOC2 CC7.3은 security event 평가 routing의 신뢰성을 요구합니다. webhook delivery
+    실패율이 높으면 incident notification 누락 risk — 95% baseline 검증.
+
+    API에서 통계 조회. webhook 미사용 환경은 PASS skip.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/webhooks/stats" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** PASS ** webhook stats endpoint 미응답 (site policy skip — webhook 미사용 가능)";
+      exit 0;
+    fi;
+    RATE=$(echo "$BODY" | grep -oE "\"success_rate\"\s*:\s*[0-9.]+" | head -1 | grep -oE "[0-9.]+");
+    if [ -z "$RATE" ]; then
+      echo "** PASS ** success_rate 필드 없음 (webhook 미사용 의심)";
+      exit 0;
+    fi;
+    INT=$(echo "$RATE" | awk "{print int(\$1)}");
+    if [ "$INT" -ge 95 ] 2>/dev/null; then
+      echo "** PASS ** webhook delivery rate=${RATE} (≥0.95)";
+    else
+      echo "** FAIL ** webhook delivery rate=${RATE} below 0.95 baseline";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    incident webhook 실패는 boundary protection 통제 우회 — alertmanager 트래픽
+    유실은 SOC2 audit에서 detective control 부실 evidence.
+  fixGuidance: |-
+    1. webhook receiver health 확인.
+    2. 재시도 정책 + dead letter queue 구성.
+    3. failing webhook은 disable 또는 secret 갱신.
+    4. 본 check 재실행.

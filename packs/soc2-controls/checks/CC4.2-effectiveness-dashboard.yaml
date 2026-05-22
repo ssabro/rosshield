@@ -1,0 +1,36 @@
+# CC4.2 — effectiveness dashboard endpoint 활성
+#
+# docs/compliance/soc2/cc4-monitoring-activities.md §CC4.2.
+# Stage 11.B-6 산출 — /api/v1/compliance/effectiveness.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC4.2.effectiveness_dashboard
+  title: CC4.2 compliance effectiveness dashboard endpoint 활성
+  description: |-
+    SOC2 CC4.2는 deficiency communication을 요구합니다. Stage 11.B-6 산출
+    effectiveness dashboard는 통제별 status + gap을 surface — endpoint 응답 검증.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/compliance/effectiveness" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "(\"categories\"|\"total_sub_controls\"|\"cover_percent\")"; then
+      echo "** PASS ** /api/v1/compliance/effectiveness 응답 (Stage 11.B-6 활성)";
+    else
+      echo "** FAIL ** /api/v1/compliance/effectiveness 응답 없음 또는 형식 불일치";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    effectiveness dashboard 부재는 deficiency surface 부재 — 운영자가 통제별 gap을
+    인지하지 못하면 후속 조치 trigger 0.
+  fixGuidance: |-
+    1. Stage 11.B-6 산출 배포 확인 — internal/api/handlers/compliance.go.
+    2. auditor 또는 admin role token으로 endpoint 조회.
+    3. 본 check 재실행.

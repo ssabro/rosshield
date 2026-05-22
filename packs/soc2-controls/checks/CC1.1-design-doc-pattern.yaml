@@ -1,0 +1,38 @@
+# CC1.1 — integrity / design doc 패턴 활성
+#
+# docs/compliance/soc2/cc1-control-environment.md §CC1.1.
+# CLAUDE.md memory feedback_design_doc_first.md.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC1.1.design_doc_pattern
+  title: CC1.1 design doc 디렉터리 존재 (integrity / ethics evidence)
+  description: |-
+    SOC2 CC1.1의 integrity baseline — design doc 패턴은 모든 결정을 명문화하는
+    조직 commitment. docs/design/ 디렉터리 + notes/ 하위 트리 존재 검증.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    DIR="$BASE/docs/design";
+    if [ ! -d "$DIR" ]; then
+      echo "** FAIL ** docs/design 디렉터리 부재";
+      exit 0;
+    fi;
+    CNT=$(ls "$DIR" 2>/dev/null | grep -cE "\.(md|MD)$" || echo "0");
+    if [ "$CNT" -ge 5 ]; then
+      echo "** PASS ** docs/design $CNT 건 design doc 존재";
+    else
+      echo "** FAIL ** design doc $CNT 건 (5건 baseline 미달)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    design doc 패턴은 변경 추적·승인의 transparent baseline — 조직 integrity의
+    문화적 evidence.
+  fixGuidance: |-
+    1. 1일+ 작업 진입 전 design doc 작성 (memory feedback_design_doc_first.md).
+    2. 옵션 비교 + 결정 항목 + Stage 분해.
+    3. 본 check 재실행.

@@ -1,0 +1,42 @@
+# CC6.2 — tenant_id 격리 (multi-tenant)
+#
+# CLAUDE.md §하지 말 것 — "tenant_id 없는 테이블 추가 금지" 일관.
+# 본 check는 Lodestar API ping 응답에 tenant_id binding 존재 여부로 격리 활성 확인.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.2.tenant_isolation
+  title: CC6.2 tenant 격리 활성 (multi-tenant boundary)
+  description: |-
+    SOC2 CC6.2의 격리 메커니즘은 다른 tenant 데이터 접근 차단을 요구합니다.
+    Lodestar는 모든 테이블 tenant_id 컬럼 필수 + SQL row-level tenant filter 강제.
+
+    본 check는 API token의 tenant binding을 me endpoint로 확인 — tenant_id 응답
+    필드가 비어 있으면 multi-tenant boundary 의심.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/me" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"tenant_id\"\s*:\s*\"[^\"]+\""; then
+      echo "** PASS ** tenant_id binding 존재 (multi-tenant boundary 활성)";
+    else
+      echo "** FAIL ** tenant_id 누락 — single-tenant 모드 의심 또는 boundary bypass";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    multi-tenant boundary 누락은 cross-tenant 데이터 leak risk — SOC2 audit에서 SaaS
+    제품의 가장 critical 통제. tenant_id 필수 컬럼 + filter 강제는 코드/스키마 양쪽
+    enforce 필요.
+  fixGuidance: |-
+    1. internal/domain/*/sqliterepo/ — 모든 query에 tenant_id WHERE 절 확인.
+    2. 마이그레이션 점검 — 모든 테이블 tenant_id NOT NULL.
+    3. repository 단위 테스트로 cross-tenant fetch 0건 검증.
+    4. API token 발급 시 tenant binding 강제 — POST /api/v1/apikeys with tenant_id.
+    5. 본 check 재실행 — /api/v1/me response에 tenant_id 확인.

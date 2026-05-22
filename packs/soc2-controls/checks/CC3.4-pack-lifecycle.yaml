@@ -1,0 +1,36 @@
+# CC3.4 — pack lifecycle 관리 (significant change)
+#
+# docs/compliance/soc2/cc3-risk-assessment.md §CC3.4.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC3.4.pack_lifecycle
+  title: CC3.4 pack 1개 이상 설치 (significant change 모니터링)
+  description: |-
+    SOC2 CC3.4는 중요 변경 risk 평가를 요구합니다. Lodestar pack 1개 이상 설치
+    상태가 baseline — 0건이면 scan capability 0.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/packs" 2>/dev/null || echo "");
+    CNT=$(echo "$BODY" | grep -oE "\"name\"\s*:\s*\"[^\"]+\"" | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** pack $CNT 건 설치";
+    else
+      echo "** FAIL ** pack 0건 — scan capability 부재";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    pack 부재는 scan engine 활성 baseline 미충족 — cis-ubuntu-2404 · ros2-jazzy ·
+    soc2-controls 등 운영 환경에 맞는 pack 설치 필요.
+  fixGuidance: |-
+    1. 적합 pack 다운로드 — release attachments.
+    2. POST /api/v1/packs/install 또는 rosshield-cli pack install.
+    3. 본 check 재실행.

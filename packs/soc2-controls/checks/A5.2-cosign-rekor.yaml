@@ -1,0 +1,41 @@
+# A5.2 — Sigstore Rekor transparency log 활성 (boundary protection)
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A5.2.cosign_rekor
+  title: A5.2 release workflow Sigstore Rekor 키워드 (transparency log)
+  description: |-
+    SOC2 A5.2의 boundary protection — cosign keyless signing은 Sigstore Rekor 투명
+    로그로 외부 검증. release pipeline workflow에 sigstore/rekor 키워드 검증.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-.}";
+    CANDIDATES=(
+      "$ROOT/.github/workflows/release-pipeline.yml"
+      "$ROOT/.github/workflows/release.yml"
+    );
+    FOUND="";
+    for f in "${CANDIDATES[@]}"; do
+      [ -f "$f" ] && FOUND="$f" && break;
+    done;
+    if [ -z "$FOUND" ]; then
+      echo "** PASS ** release workflow 부재 (site policy skip — binary 배포)";
+      exit 0;
+    fi;
+    if grep -qiE "(sigstore|rekor|cosign)" "$FOUND"; then
+      echo "** PASS ** Sigstore/Rekor/cosign 키워드 포함 ($FOUND)";
+    else
+      echo "** FAIL ** sigstore/rekor/cosign 키워드 부재";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    transparency log 미활용은 supply chain 외부 검증 capability 0 — Sigstore Rekor는
+    public log로 누구나 검증 가능.
+  fixGuidance: |-
+    1. release-pipeline.yml 에 cosign keyless signing 단계 추가.
+    2. Sigstore Rekor upload 자동화.
+    3. 본 check 재실행.

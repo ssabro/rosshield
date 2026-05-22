@@ -1,0 +1,51 @@
+# CC7.1 — Prometheus alert rule yaml 배포 (multi-region 5건)
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.1.
+# Lodestar 자산: deploy/prometheus/alerts/multi-region.yml.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.1.alert_rules
+  title: CC7.1 Prometheus alert rule 5건 활성 (multi-region threshold)
+  description: |-
+    SOC2 CC7.1·CC7.2는 anomaly 자동 탐지를 요구합니다. Lodestar는
+    deploy/prometheus/alerts/multi-region.yml에 5 alert rule(replication lag warn/crit
+    포함) 배포. 본 check는 yaml 파일 존재 + rule 카운트 확인.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DEPLOY_ROOT:-/opt/rosshield/deploy}";
+    CANDIDATES=(
+      "$BASE/prometheus/alerts/multi-region.yml"
+      "./deploy/prometheus/alerts/multi-region.yml"
+      "/etc/prometheus/alerts/rosshield-multi-region.yml"
+    );
+    FOUND="";
+    for f in "${CANDIDATES[@]}"; do
+      if [ -f "$f" ]; then
+        FOUND="$f";
+        break;
+      fi;
+    done;
+    if [ -z "$FOUND" ]; then
+      echo "** FAIL ** multi-region alert yaml 부재 (deploy/prometheus/alerts/multi-region.yml 권장)";
+      exit 0;
+    fi;
+    CNT=$(grep -cE "^\s*-\s*alert:" "$FOUND" 2>/dev/null || echo "0");
+    if [ "$CNT" -ge 3 ]; then
+      echo "** PASS ** alert rule $CNT 건 정의 ($FOUND)";
+    else
+      echo "** FAIL ** alert rule $CNT 건 (5건 baseline 미달)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    metric 수집만 cover하고 alert rule 0건이면 운영자 알림 0 — anomaly 발생 시
+    수동 dashboard 확인 의존. SLA 위협 사전 탐지 부재.
+  fixGuidance: |-
+    1. deploy/prometheus/alerts/multi-region.yml 을 Prometheus rule_files 에 추가.
+    2. Prometheus reload — kill -HUP <prometheus-pid> 또는 API /-/reload.
+    3. Grafana Alerting 또는 Alertmanager로 routing 설정.
+    4. 본 check 재실행.

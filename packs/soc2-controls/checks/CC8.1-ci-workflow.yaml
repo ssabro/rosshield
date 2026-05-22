@@ -1,0 +1,36 @@
+# CC8.1 — CI workflow 활성 (.github/workflows/ci.yml)
+#
+# docs/compliance/soc2/cc8-change-management.md §CC8.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC8.1.ci_workflow
+  title: CC8.1 CI workflow 파일 존재 (자동 lint+test+build)
+  description: |-
+    SOC2 CC8.1은 변경 테스트 자동화를 요구합니다. .github/workflows/ci.yml 존재 +
+    핵심 job(vet/test/build) 키워드 포함 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-.}";
+    F="$ROOT/.github/workflows/ci.yml";
+    if [ ! -f "$F" ]; then
+      echo "** FAIL ** $F 부재 (CI workflow 미설정)";
+      exit 0;
+    fi;
+    if grep -qE "(go test|make test|go vet|make ci|make build)" "$F"; then
+      echo "** PASS ** CI workflow 존재 + test/build 키워드 포함 ($F)";
+    else
+      echo "** FAIL ** CI workflow 존재하나 test/build 키워드 부재";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    CI 통과 없이 main commit이 가능하면 회귀가 부지중 도입 risk — make ci 통과
+    강제는 SOC2 change management 자동화 evidence.
+  fixGuidance: |-
+    1. .github/workflows/ci.yml 작성 — go vet · go test · go build job.
+    2. branch protection rule — main require status check ci/cd.
+    3. 본 check 재실행.

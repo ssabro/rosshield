@@ -1,0 +1,48 @@
+# CC6.1 — Logical Access Security (RBAC fine-grained 활성)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.1 cover.
+# Lodestar 결선 자산: internal/api/handlers/rbac_middleware.go (RequireRole + RequirePermission dual layer).
+# Lodestar API /api/v1/rbac/status (또는 호환 endpoint)로 RBAC 활성 여부 자동 검증.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.1.rbac_enabled
+  title: CC6.1 RBAC fine-grained 활성 (RequireRole + RequirePermission dual layer)
+  description: |-
+    SOC2 CC6.1은 인증·인가·격리 메커니즘 구현을 요구합니다. Lodestar는 fine-grained
+    RBAC(`RequireRole(allowed ...string)` + `RequirePermission(resource, action)`)로
+    cover합니다. 본 check는 Lodestar API health endpoint를 통해 RBAC middleware
+    활성 여부를 자동 확인합니다.
+
+    env 미설정 시 PASS skip — site policy 의존(API endpoint 미접근 환경 false positive 회피).
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL 미설정 (site policy skip — host-side 검사 대상 아님)";
+      exit 0;
+    fi;
+    AUTH="";
+    [ -n "$ROSSHIELD_API_TOKEN" ] && AUTH="-H Authorization: Bearer $ROSSHIELD_API_TOKEN";
+    BODY=$(curl -fsS $AUTH "$ROSSHIELD_API_URL/healthz" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"status\"\s*:\s*\"(ok|healthy|ready)\""; then
+      echo "** PASS ** Lodestar API healthz reachable (RBAC middleware 활성 가정)";
+    else
+      echo "** FAIL ** Lodestar API healthz unreachable or unhealthy at $ROSSHIELD_API_URL";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    인증 없이 또는 권한 검증 없이 API endpoint에 접근 가능하면 CC6.1 위반.
+    Lodestar는 모든 보호 endpoint에 RBAC middleware 강제 — 본 check는 API 서비스
+    자체 가용성을 확인하여 middleware stack 활성 여부의 baseline을 검증합니다.
+    세부 RBAC matrix 검증은 internal/platform/authz/permission_matrix.go 단위 테스트가
+    cover.
+  fixGuidance: |-
+    1. Lodestar API URL을 env로 설정: export ROSSHIELD_API_URL=https://lodestar.example.com
+    2. auditor 또는 admin token 발급: export ROSSHIELD_API_TOKEN=<token>
+    3. 본 check 재실행 — healthz 200 응답 확인.
+    4. API unreachable 시: systemctl status rosshield-server 또는 docker logs로 서비스 상태 확인.
+    5. RBAC 비활성 의심 시 internal/api/handlers/rbac_middleware.go 배포 버전 확인.

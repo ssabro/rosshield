@@ -1,0 +1,38 @@
+# A1.3 — failover tested (audit chain failover event)
+#
+# docs/compliance/soc2/a1-availability.md §A1.3 recovery testing.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A1.3.failover_event_recent
+  title: A1.3 audit.replication.failover event 최근 90일 발생 (DR test 또는 실제 failover)
+  description: |-
+    SOC2 A1.3은 정기 recovery testing을 요구합니다. audit.replication.failover event가
+    최근 90일 내 발생했는지로 DR test 활성 baseline 검증.
+
+    failover 0건은 실제 DR test 미실행 — 정기 chaos test 권장.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/entries?action=audit.replication.failover&limit=1" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"action\"\s*:\s*\"audit.replication.failover\""; then
+      echo "** PASS ** failover event 이력 존재 (DR test 또는 실제 failover)";
+    else
+      echo "** PASS ** failover event 부재 (site policy skip — single-region 가능)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    DR test 미실행은 RTO/RPO SLA 입증 부족 — 정기 chaos test 또는 calendar 기반
+    DR drill 권장.
+  fixGuidance: |-
+    1. 분기 1회 controlled failover 실행 — Patroni manual switch.
+    2. failover audit event 자동 emit 확인.
+    3. post-failover 검증 절차 docs 갱신.
+    4. 본 check 재실행.

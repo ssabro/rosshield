@@ -1,0 +1,47 @@
+# CC7.1 — Grafana dashboard json 존재
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.1.
+# Lodestar 자산: deploy/grafana/rosshield-dashboard.json (Phase 10.A).
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.1.grafana_dashboard
+  title: CC7.1 Grafana dashboard json 배포 (multi-region 시각화)
+  description: |-
+    SOC2 CC7.1은 실시간 모니터링 capability를 요구합니다. Lodestar는 Grafana
+    dashboard json(rosshield-dashboard.json)을 release artifact로 배포 — multi-region
+    status + audit chain + replication lag 시각화. 본 check는 배포된 dashboard json
+    존재 확인.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DEPLOY_ROOT:-/opt/rosshield/deploy}";
+    CANDIDATES=(
+      "$BASE/grafana/rosshield-dashboard.json"
+      "./deploy/grafana/rosshield-dashboard.json"
+      "/usr/share/rosshield/grafana/rosshield-dashboard.json"
+    );
+    FOUND="";
+    for f in "${CANDIDATES[@]}"; do
+      if [ -f "$f" ]; then
+        FOUND="$f";
+        break;
+      fi;
+    done;
+    if [ -n "$FOUND" ]; then
+      echo "** PASS ** Grafana dashboard json 존재: $FOUND";
+    else
+      echo "** FAIL ** Grafana dashboard json 부재 (deploy/grafana/rosshield-dashboard.json 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    metric만 emit되고 dashboard import 0건이면 운영자 visibility 0 — Grafana
+    dashboard 배포는 monitoring 통제의 운영 효과성 baseline.
+  fixGuidance: |-
+    1. deploy/grafana/rosshield-dashboard.json 을 Grafana UI에서 import.
+    2. Prometheus datasource 연결 확인.
+    3. dashboard panel 정상 렌더링 확인.
+    4. 본 check 재실행.

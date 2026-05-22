@@ -1,0 +1,43 @@
+# CC8.1 — release pipeline workflow 존재
+#
+# docs/compliance/soc2/cc8-change-management.md §CC8.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC8.1.release_pipeline
+  title: CC8.1 release pipeline workflow 파일 존재 (cosign signed)
+  description: |-
+    SOC2 CC8.1·CC6.6은 변경 배포의 서명 + 추적을 요구합니다.
+    .github/workflows/release-pipeline.yml 존재 + cosign 키워드 포함 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-.}";
+    CANDIDATES=(
+      "$ROOT/.github/workflows/release-pipeline.yml"
+      "$ROOT/.github/workflows/release.yml"
+    );
+    FOUND="";
+    for f in "${CANDIDATES[@]}"; do
+      [ -f "$f" ] && FOUND="$f" && break;
+    done;
+    if [ -z "$FOUND" ]; then
+      echo "** FAIL ** release pipeline workflow 부재 (.github/workflows/release*.yml)";
+      exit 0;
+    fi;
+    if grep -qE "cosign" "$FOUND"; then
+      echo "** PASS ** release pipeline 존재 + cosign 키워드 포함 ($FOUND)";
+    else
+      echo "** FAIL ** release pipeline 존재하나 cosign 키워드 부재 (서명 활성 의심)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    release 자동화 + 서명은 supply chain 무결성 + 변경 추적의 baseline.
+  fixGuidance: |-
+    1. .github/workflows/release-pipeline.yml 에 cosign sign 단계 추가.
+    2. Sigstore keyless signing 활성 (OIDC token).
+    3. release artifact .sig + .pem 동봉.
+    4. 본 check 재실행.

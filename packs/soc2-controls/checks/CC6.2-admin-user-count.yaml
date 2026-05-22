@@ -1,0 +1,48 @@
+# CC6.2 — admin role 사용자 수 임계 (least privilege)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.2 — least-privilege 자동 검증.
+# threshold: ROSSHIELD_ADMIN_MAX (default 5).
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.2.admin_user_count
+  title: CC6.2 admin role 사용자 수 임계 (least privilege)
+  description: |-
+    SOC2 CC6.2는 최소 권한 원칙(least privilege) + 직무 분리(SoD)를 요구합니다.
+    admin 권한 사용자는 운영 필요 최소로 제한 — default 임계 5명, env
+    ROSSHIELD_ADMIN_MAX 로 site별 조정 가능.
+
+    Lodestar API /api/v1/users 또는 audit:read endpoint로 admin 카운트 회수.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip — API 조회 skip)";
+      exit 0;
+    fi;
+    MAX="${ROSSHIELD_ADMIN_MAX:-5}";
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/users?role=admin" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** FAIL ** Lodestar API /api/v1/users 조회 실패";
+      exit 0;
+    fi;
+    CNT=$(echo "$BODY" | grep -oE "\"role\"\s*:\s*\"admin\"" | wc -l);
+    if [ "$CNT" -le "$MAX" ]; then
+      echo "** PASS ** admin role count=$CNT (threshold $MAX)";
+    else
+      echo "** FAIL ** admin role count=$CNT exceeds threshold $MAX (least-privilege 검토 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    admin role 사용자 수가 많을수록 통제 위반·자격 증명 유출 영향 범위가 커집니다.
+    SOC2 audit에서 admin 수 정당화가 단골 질의 — 최소 운영 필요 인원으로 제한 + 정기
+    access review 권장. operator/auditor/custom role로 권한 분산이 SoD에 부합.
+  fixGuidance: |-
+    1. /api/v1/users?role=admin 로 admin 사용자 목록 회수.
+    2. 각 admin의 운영 정당성 검토 — 실제 admin 권한 필요한 작업이 있는지 확인.
+    3. operator 또는 custom role로 권한 축소 가능한 사용자 식별.
+    4. 권한 축소: PATCH /api/v1/users/{id} role=operator.
+    5. 본 check 재실행 — count ≤ ROSSHIELD_ADMIN_MAX 확인.

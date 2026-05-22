@@ -1,0 +1,45 @@
+# CC7.4 — incident response runbook 존재
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.4 — gap 항목 명시.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.4.incident_runbook
+  title: CC7.4 incident response runbook docs 존재
+  description: |-
+    SOC2 CC7.4는 incident response 절차 명문화를 요구합니다. SECURITY.md +
+    multi-region-failover-runbook + audit-chain-key-rotation 등 docs 존재 검증.
+
+    하나라도 존재하면 PASS — 본 check는 baseline. 정식 incident response plan은
+    외부 트랙 ★.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    CANDIDATES=(
+      "$BASE/SECURITY.md"
+      "$BASE/docs/operations/incident-response.md"
+      "$BASE/docs/operations/multi-region-failover-runbook.md"
+      "$BASE/docs/operations/audit-chain-key-rotation.md"
+    );
+    FOUND=0;
+    for f in "${CANDIDATES[@]}"; do
+      [ -f "$f" ] && FOUND=$((FOUND+1));
+    done;
+    if [ "$FOUND" -ge 1 ]; then
+      echo "** PASS ** incident-related runbook $FOUND 건 존재";
+    else
+      echo "** FAIL ** incident response 관련 docs 0건 (SECURITY.md 또는 docs/operations/ runbook 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    incident 발생 시 절차 docs 부재는 SLA 초과 + 통제 효과성 0. SECURITY.md는
+    triage SLA의 baseline — 정식 incident response plan은 별 epic ★ 권장.
+  fixGuidance: |-
+    1. SECURITY.md 작성 — triage SLA + reporting channel.
+    2. docs/operations/incident-response.md 작성 — escalation matrix + post-mortem 템플릿.
+    3. multi-region-failover-runbook + audit-chain-key-rotation 등 기존 runbook cross-link.
+    4. 본 check 재실행.

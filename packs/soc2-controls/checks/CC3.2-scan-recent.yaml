@@ -1,0 +1,35 @@
+# CC3.2 — 최근 30일 scan 실행 이력 (risk identification)
+#
+# docs/compliance/soc2/cc3-risk-assessment.md §CC3.2.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC3.2.scan_recent
+  title: CC3.2 최근 30일 scan 1건 이상 실행 (ongoing risk identification)
+  description: |-
+    SOC2 CC3.2는 정기 risk 식별을 요구합니다. 최근 30일 scan 이력 0건이면 risk
+    assessment 운영 효과성 0.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/scans?limit=1" 2>/dev/null || echo "");
+    CNT=$(echo "$BODY" | grep -oE "\"id\"" | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** scan 1건 이상 실행";
+    else
+      echo "** FAIL ** scan 0건 (CC3.2 ongoing monitoring 미가동)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    scan 실행 0건은 risk identification 통제의 운영 효과성 0 — 정기 schedule 필수.
+  fixGuidance: |-
+    1. scan schedule 활성 — config 또는 systemd timer.
+    2. 첫 수동 scan 실행 — rosshield-cli scan run.
+    3. 본 check 재실행.

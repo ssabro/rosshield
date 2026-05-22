@@ -1,0 +1,42 @@
+# CC1.5 — audit event accountability (모든 audit entry actor 필드)
+#
+# docs/compliance/soc2/cc1-control-environment.md §CC1.5 accountability.
+# soc2_mapping.go: audit.compliance.export action.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC1.5.audit_event_actor
+  title: CC1.5 최근 audit event accountability (actor 필드 필수)
+  description: |-
+    SOC2 CC1.5는 모든 변경에 책임자(accountability)를 요구합니다. Lodestar audit
+    event는 actor_id + actor_role 필수 필드. 최근 10건 sample에서 actor 누락 0건
+    검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/audit/entries?limit=10" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** FAIL ** /api/v1/audit/entries 조회 실패";
+      exit 0;
+    fi;
+    NO_ACTOR=$(echo "$BODY" | grep -oE "\"actor_id\"\s*:\s*\"\"" | wc -l);
+    if [ "$NO_ACTOR" = "0" ]; then
+      echo "** PASS ** 최근 audit entries actor_id 누락 0건";
+    else
+      echo "** FAIL ** actor_id 빈 값 $NO_ACTOR 건 (accountability 위반)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    actor 없는 audit entry는 책임자 추적 불가능 — system event는 system actor로
+    명시 권장.
+  fixGuidance: |-
+    1. emit 사이트(cmd/rosshield-server/bootstrap.go) 검사 — actor 누락 site 식별.
+    2. system event는 actor="system" + role="system" 명시.
+    3. 본 check 재실행.

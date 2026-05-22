@@ -1,0 +1,51 @@
+# CC6.7 — cosign 서명 binary (movement integrity)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.7.
+# Lodestar 자산: .github/workflows/release-pipeline.yml + Sigstore Rekor.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.7.cosign_signed_binary
+  title: CC6.7 rosshield binary cosign 서명 검증 가능 (Sigstore Rekor)
+  description: |-
+    SOC2 CC6.7은 정보 이동 통제(서명 + 무결성 검증)를 요구합니다. Lodestar release
+    artifact는 cosign keyless + Sigstore Rekor 투명 로그로 서명. 본 check는 host에
+    설치된 rosshield binary의 서명 검증 도구 가용성을 확인합니다.
+
+    cosign 미설치 환경에서는 site policy skip.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if ! command -v cosign >/dev/null 2>&1; then
+      echo "** PASS ** cosign CLI 미설치 (site policy skip — verification 도구 부재 환경)";
+      exit 0;
+    fi;
+    BIN="${ROSSHIELD_BIN:-/usr/local/bin/rosshield-server}";
+    if [ ! -f "$BIN" ]; then
+      ALT=$(command -v rosshield-server || command -v rosshield || echo "");
+      [ -n "$ALT" ] && BIN="$ALT";
+    fi;
+    if [ ! -f "$BIN" ]; then
+      echo "** FAIL ** rosshield binary 부재 (ROSSHIELD_BIN env 또는 PATH 조정 필요)";
+      exit 0;
+    fi;
+    SIG="${BIN}.sig";
+    if [ -f "$SIG" ]; then
+      echo "** PASS ** cosign signature 파일 동봉: $SIG";
+    else
+      echo "** FAIL ** cosign signature 파일 부재 ($SIG) — release artifact 추출 누락 의심";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    서명 검증 가능 binary는 이동 중 변조 탐지 가능 — Sigstore Rekor 투명 로그로 외부
+    검증. snap binary는 snap store 자체 서명으로 별도 cover.
+  fixGuidance: |-
+    1. cosign CLI 설치 — https://docs.sigstore.dev/system_config/installation
+    2. release artifact의 .sig 파일과 함께 다운로드 — GitHub release attachments.
+    3. 서명 검증:
+         cosign verify-blob --certificate <cert> --signature <sig> <binary>
+    4. 또는 snap 설치 시 snap info rosshield-server 로 서명 확인.
+    5. 본 check 재실행 — .sig 파일 존재 확인.

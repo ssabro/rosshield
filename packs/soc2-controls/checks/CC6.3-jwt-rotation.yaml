@@ -1,0 +1,46 @@
+# CC6.3 — JWT signing key rotation (90일 이내)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.3 + §CC6.6.
+# JWT signing key는 정기 rotation으로 stolen key window 축소.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.3.jwt_rotation
+  title: CC6.3 JWT signing key rotation 정책 활성 (90일 이내)
+  description: |-
+    SOC2 CC6.3·CC6.6은 키 관리 + rotation 정책을 요구합니다. JWT signing key는
+    정기 rotation(권장 90일 이내)으로 stolen key 영향 범위를 축소합니다.
+
+    본 check는 ROSSHIELD_JWT_ROTATION_DAYS env (default 90) 또는 config 확인.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    DAYS="${ROSSHIELD_JWT_ROTATION_DAYS:-}";
+    CFG="${ROSSHIELD_CONFIG:-/etc/rosshield/config.yaml}";
+    if [ -n "$DAYS" ]; then
+      if [ "$DAYS" -le 90 ] 2>/dev/null; then
+        echo "** PASS ** JWT rotation $DAYS days (≤90)";
+      else
+        echo "** FAIL ** JWT rotation $DAYS days exceeds 90 day baseline";
+      fi;
+      exit 0;
+    fi;
+    if [ -f "$CFG" ] && grep -qE "jwt_rotation_days\s*:" "$CFG" 2>/dev/null; then
+      echo "** PASS ** config $CFG 에 jwt_rotation_days 설정";
+      exit 0;
+    fi;
+    echo "** FAIL ** JWT rotation 정책 미설정 (env ROSSHIELD_JWT_ROTATION_DAYS 또는 config jwt_rotation_days 권장)";'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    static long-lived JWT signing key는 누출 시 모든 발급 토큰 위변조 가능 — 정기
+    rotation으로 영향 시간을 90일 이내로 제한 권장. audit chain key rotation 정책과
+    별도 — JWT는 application layer 인증, audit은 evidence layer 무결성.
+  fixGuidance: |-
+    1. 환경변수: export ROSSHIELD_JWT_ROTATION_DAYS=90
+    2. 또는 config: jwt_rotation_days: 90
+    3. rotation 절차 docs/operations/ 에 명문화.
+    4. 자동 rotation cron 또는 수동 트리거 endpoint 운영.
+    5. 본 check 재실행.

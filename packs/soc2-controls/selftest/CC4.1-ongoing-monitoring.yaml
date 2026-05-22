@@ -1,0 +1,26 @@
+# selftest — soc2.CC4.1.insights_pipeline
+# evaluationRule: contains "** PASS **"
+apiVersion: rosshield.io/v1
+kind: SelfTest
+metadata:
+  checkId: soc2.CC4.1.insights_pipeline
+spec:
+  cases:
+    - name: PASS — baseline contains marker
+      input:
+        stdout: '** PASS ** baseline'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS
+    - name: FAIL — failure marker present
+      input:
+        stdout: '** FAIL ** baseline missing'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: FAIL
+    - name: PASS — site policy skip (env unset)
+      input:
+        stdout: '** PASS ** env 미설정 (site policy skip)'
+        stderr: ''
+        exitCode: 0
+      expectedOutcome: PASS

@@ -1,0 +1,39 @@
+# CC7.5 — multi-region failover runbook 존재
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.5.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.5.failover_runbook
+  title: CC7.5 multi-region failover runbook docs 존재
+  description: |-
+    SOC2 CC7.5는 recovery 절차 명문화를 요구합니다. multi-region failover runbook
+    파일 존재 + 핵심 키워드(RTO/RPO/Patroni/failover) 포함 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    F="$BASE/docs/operations/multi-region-failover-runbook.md";
+    if [ ! -f "$F" ]; then
+      echo "** FAIL ** multi-region failover runbook 부재 ($F)";
+      exit 0;
+    fi;
+    if grep -qE "(RTO|RPO|Patroni|failover)" "$F"; then
+      echo "** PASS ** multi-region failover runbook 존재 + 핵심 키워드 포함 ($F)";
+    else
+      echo "** FAIL ** runbook 존재하나 RTO/RPO/Patroni/failover 키워드 부재";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    RTO/RPO SLA 명문화는 SOC2 audit recovery 통제의 단골 evidence — runbook 없으면
+    incident 대응이 ad-hoc.
+  fixGuidance: |-
+    1. docs/operations/multi-region-failover-runbook.md 작성:
+       - RTO target(예: 60s) + RPO target(예: 1min).
+       - Patroni leader election 동작 설명.
+       - 수동 failover 절차 (emergency override).
+       - post-failover 검증 절차.
+    2. 본 check 재실행.

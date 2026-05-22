@@ -1,0 +1,46 @@
+# CC7.1 — Prometheus scrape 활성 (detect/monitor)
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.1.
+# Lodestar 자산: internal/platform/metrics/metrics.go.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.1.prometheus_scrape
+  title: CC7.1 Prometheus /metrics endpoint 활성 (scrape target)
+  description: |-
+    SOC2 CC7.1은 탐지·모니터링 절차를 요구합니다. Lodestar /metrics endpoint는
+    Prometheus scrape target — 실시간 metric 수집 baseline. 본 check는 endpoint
+    접근 + Prometheus 표준 metric 포맷 확인.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS "$ROSSHIELD_API_URL/metrics" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** FAIL ** /metrics endpoint 응답 없음 또는 인증 필요 (Prometheus scrape 활성 확인 필요)";
+      exit 0;
+    fi;
+    if echo "$BODY" | grep -qE "^(# HELP|# TYPE|rosshield_)"; then
+      echo "** PASS ** /metrics 응답 + rosshield_* metric 노출";
+    else
+      echo "** FAIL ** /metrics 응답하나 rosshield_* metric 부재";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    metric 미수집은 detect/monitor 통제 운영 0 — Prometheus scrape는 capacity ·
+    replication lag · audit chain head 등 핵심 health indicator의 baseline.
+  fixGuidance: |-
+    1. Prometheus server 설정 — scrape config에 rosshield job 추가:
+         - job_name: rosshield
+           static_configs:
+             - targets: ['lodestar.example.com:8080']
+           metrics_path: /metrics
+    2. /metrics endpoint 보호 정책 결정 — public 또는 basic auth.
+    3. scrape interval 15s/30s 권장.
+    4. 본 check 재실행.

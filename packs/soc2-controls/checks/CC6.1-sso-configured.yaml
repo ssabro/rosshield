@@ -1,0 +1,44 @@
+# CC6.1 — SSO/SAML/OIDC provider 설정 (IdP 위임 인증)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.1 + §CC6.3.
+# Lodestar 결선 자산: internal/api/handlers/sso.go + internal/domain/tenant/sso/.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.1.sso_configured
+  title: CC6.1 SSO/SAML/OIDC provider 1개 이상 설정
+  description: |-
+    SOC2 CC6.1·CC6.3은 신뢰성 있는 인증 메커니즘(IdP 위임)을 요구합니다. Lodestar의
+    SSO/SAML/OIDC provider가 1개 이상 활성 상태인지 자동 검증합니다.
+
+    site policy 의존 — ROSSHIELD_API_URL 미설정 시 PASS skip.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    AUTH="";
+    [ -n "$ROSSHIELD_API_TOKEN" ] && AUTH="-H Authorization: Bearer $ROSSHIELD_API_TOKEN";
+    BODY=$(curl -fsS $AUTH "$ROSSHIELD_API_URL/api/v1/sso/providers" 2>/dev/null || echo "");
+    CNT=$(echo "$BODY" | grep -oE "\"id\"" | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** SSO providers count=$CNT (IdP 위임 인증 활성)";
+    else
+      echo "** FAIL ** SSO providers count=0 (IdP 미설정 — MFA·group sync 의존도 평가 필요)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    password-only 인증은 CC6.3(authentication) audit에서 약점으로 평가 — IdP 위임으로
+    MFA·group sync·session timeout 정책을 외부 trusted provider에 위임 권장.
+    SSO 0건은 password-only 운영 의심 — onboarding 가속 단계 외에는 권장하지 않습니다.
+  fixGuidance: |-
+    1. 외부 IdP(Okta · Auth0 · Azure AD · Google Workspace) 선택.
+    2. Lodestar admin 콘솔에서 SSO Provider 등록 — Web UI /admin/sso 또는 API POST /api/v1/sso/providers.
+    3. SAML metadata XML 또는 OIDC discovery URL 입력.
+    4. IdP group → Lodestar role 매핑 정의 (auditor / operator / admin).
+    5. 본 check 재실행 — providers count ≥ 1 확인.

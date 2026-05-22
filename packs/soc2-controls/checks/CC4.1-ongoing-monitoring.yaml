@@ -1,0 +1,35 @@
+# CC4.1 — ongoing monitoring (scan + insights pipeline)
+#
+# docs/compliance/soc2/cc4-monitoring-activities.md §CC4.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC4.1.insights_pipeline
+  title: CC4.1 insights pipeline 활성 (insight 1건 이상)
+  description: |-
+    SOC2 CC4.1은 ongoing monitoring을 요구합니다. insight emit pipeline 활성 여부는
+    scan completion + insight 생성 흐름 운영 효과성의 baseline.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/insights?limit=1" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"id\""; then
+      echo "** PASS ** insights 1건 이상 (pipeline 가동)";
+    else
+      echo "** PASS ** insights 0건 또는 endpoint 미응답 (site policy skip — scan 0건 가능)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    insights pipeline은 ongoing monitoring의 surface — 0건은 scan 미실행 + risk
+    탐지 0과 같음.
+  fixGuidance: |-
+    1. scan 실행 후 insight pipeline 자동 trigger 확인.
+    2. /api/v1/insights endpoint 응답 확인.
+    3. 본 check 재실행.

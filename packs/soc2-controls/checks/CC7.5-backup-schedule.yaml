@@ -1,0 +1,46 @@
+# CC7.5 — backup schedule 활성
+#
+# docs/compliance/soc2/cc7-system-operations.md §CC7.5 + a1-availability.md §A1.2.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC7.5.backup_schedule
+  title: CC7.5 backup schedule 활성 (config 또는 cron)
+  description: |-
+    SOC2 CC7.5·A1.2는 정기 백업을 요구합니다. config에 backup_schedule 또는
+    systemd timer/cron 존재 확인.
+
+    backup 외부 매체(S3/GCS)에 의존 시 외부 트랙 ★ — 본 check는 host-side
+    schedule 활성 baseline.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    CFG="${ROSSHIELD_CONFIG:-/etc/rosshield/config.yaml}";
+    if [ -f "$CFG" ] && grep -qE "^\s*backup_schedule\s*:" "$CFG" 2>/dev/null; then
+      echo "** PASS ** config $CFG backup_schedule 설정";
+      exit 0;
+    fi;
+    if command -v systemctl >/dev/null 2>&1; then
+      if systemctl list-timers --all 2>/dev/null | grep -qE "rosshield.*backup"; then
+        echo "** PASS ** systemd timer rosshield-backup 활성";
+        exit 0;
+      fi;
+    fi;
+    if [ -f /etc/cron.d/rosshield-backup ] || [ -f /etc/cron.daily/rosshield-backup ]; then
+      echo "** PASS ** cron 항목 존재";
+      exit 0;
+    fi;
+    echo "** FAIL ** backup schedule 미설정 (config/systemd timer/cron 0건)";'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    정기 백업 부재는 RPO SLA 위협 — Patroni streaming replication만으로는 운영자
+    실수·corruption 대비 불충분.
+  fixGuidance: |-
+    1. config 추가: backup_schedule: "0 2 * * *" (매일 02:00).
+    2. 또는 systemd timer 생성 — /etc/systemd/system/rosshield-backup.timer.
+    3. backup target(S3/GCS) 자격 증명 설정.
+    4. 첫 백업 수동 실행 + verify.
+    5. 본 check 재실행.

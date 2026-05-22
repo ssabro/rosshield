@@ -1,0 +1,42 @@
+# CC9.1 — business disruption mitigation (multi-region runbook)
+#
+# docs/compliance/soc2/cc9-risk-mitigation.md §CC9.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC9.1.business_continuity_docs
+  title: CC9.1 business continuity / failover runbook 존재
+  description: |-
+    SOC2 CC9.1은 business disruption mitigation 절차 명문화를 요구합니다.
+    multi-region failover runbook 또는 BCP/DR docs 존재 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    CANDIDATES=(
+      "$BASE/docs/operations/multi-region-failover-runbook.md"
+      "$BASE/docs/operations/business-continuity-plan.md"
+      "$BASE/docs/operations/disaster-recovery.md"
+      "$BASE/docs/operations/ha-deployment.md"
+    );
+    FOUND=0;
+    for f in "${CANDIDATES[@]}"; do
+      [ -f "$f" ] && FOUND=$((FOUND+1));
+    done;
+    if [ "$FOUND" -ge 1 ]; then
+      echo "** PASS ** BCP/DR runbook $FOUND 건 존재";
+    else
+      echo "** FAIL ** BCP/DR runbook 0건 (docs/operations/ 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    BCP/DR docs 없으면 disruption 발생 시 ad-hoc 대응 — 정기 DR test는 외부 트랙 ★,
+    docs는 자체 cover.
+  fixGuidance: |-
+    1. docs/operations/multi-region-failover-runbook.md 작성.
+    2. RTO/RPO target 명시.
+    3. 정기 DR test 일정 (외부 firm 위탁 ★).
+    4. 본 check 재실행.

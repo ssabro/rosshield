@@ -1,0 +1,31 @@
+# CC9.1 — replication failover runbook 핵심 키워드
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC9.1.replication_runbook_keywords
+  title: CC9.1 multi-region runbook RTO 60s 명시
+  description: |-
+    SOC2 CC9.1의 customer-facing SLA — runbook에 RTO 명시 검증.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    F="$BASE/docs/operations/multi-region-failover-runbook.md";
+    if [ ! -f "$F" ]; then
+      echo "** FAIL ** runbook 부재 ($F)";
+      exit 0;
+    fi;
+    if grep -qE "RTO\s*(target|≤|<=|<|=|:).*?[0-9]+" "$F"; then
+      echo "** PASS ** runbook RTO target 명시";
+    else
+      echo "** FAIL ** runbook RTO 숫자 target 명시 누락";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    RTO 숫자 명시는 customer SLA closing 단골 evidence.
+  fixGuidance: |-
+    1. runbook 본문에 "RTO target 60s" 등 명시.
+    2. 본 check 재실행.

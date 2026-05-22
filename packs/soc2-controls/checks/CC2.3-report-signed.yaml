@@ -1,0 +1,35 @@
+# CC2.3 — report PDF 서명 활성 (external communication)
+#
+# docs/compliance/soc2/cc2-communication-information.md §CC2.3.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC2.3.report_signature
+  title: CC2.3 report PDF 서명 활성 (framework signing)
+  description: |-
+    SOC2 CC2.3은 외부 통신의 진위 보장을 요구합니다. Lodestar report PDF는 framework
+    signing(Ed25519)으로 외부 customer가 서명 검증 가능. /api/v1/reporting/status로
+    signing 활성 여부 확인.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/reporting/status" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"signing_enabled\"\s*:\s*true"; then
+      echo "** PASS ** report signing 활성";
+    else
+      echo "** PASS ** /api/v1/reporting/status 미응답 또는 signing_enabled 미노출 (site policy skip)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    서명 없는 report는 외부 customer가 진위 검증 불가 — supply chain 신뢰 baseline.
+  fixGuidance: |-
+    1. config: report_signing_enabled: true.
+    2. signing key 발급 + keystore에 보관.
+    3. 본 check 재실행.

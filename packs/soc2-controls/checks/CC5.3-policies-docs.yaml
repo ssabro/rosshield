@@ -1,0 +1,36 @@
+# CC5.3 — policies and procedures docs (CLAUDE.md + SESSION_HANDOFF)
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC5.3.policies_docs
+  title: CC5.3 organizational policy docs 존재 (CLAUDE.md 또는 SESSION_HANDOFF)
+  description: |-
+    SOC2 CC5.3은 policies/procedures 명문화를 요구합니다. CLAUDE.md(작업 컨벤션) +
+    SESSION_HANDOFF.md(결정 로그)는 internal policy baseline.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    CANDIDATES=(
+      "$BASE/CLAUDE.md"
+      "$BASE/SESSION_HANDOFF.md"
+      "$BASE/CONTRIBUTING.md"
+    );
+    FOUND=0;
+    for f in "${CANDIDATES[@]}"; do
+      [ -f "$f" ] && FOUND=$((FOUND+1));
+    done;
+    if [ "$FOUND" -ge 1 ]; then
+      echo "** PASS ** policy docs $FOUND 건 존재";
+    else
+      echo "** FAIL ** organizational policy docs 0건";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    organizational policy docs 부재는 onboarding + 변경 절차 합의 baseline 미달.
+  fixGuidance: |-
+    1. CLAUDE.md 또는 CONTRIBUTING.md 작성.
+    2. 본 check 재실행.

@@ -1,0 +1,50 @@
+# CC6.5 — deprovisioning SLA runbook 존재
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.5.
+# Lodestar 결선 자산: SSO group 동기 + API key revoke + JWT 무효화 + audit chain immutability.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.5.deprovisioning_runbook
+  title: CC6.5 deprovisioning 절차 docs 존재 (offboarding SLA)
+  description: |-
+    SOC2 CC6.5는 사용자 폐기 절차의 timeline SLA 명문화를 요구합니다. SSO group 동기
+    → Lodestar 반영까지 SLA(예: 24h) docs 또는 운영 runbook 존재 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-/opt/rosshield/docs}";
+    CANDIDATES=(
+      "$BASE/operations/deprovisioning.md"
+      "$BASE/operations/offboarding.md"
+      "$BASE/operations/access-lifecycle.md"
+      "./docs/operations/deprovisioning.md"
+      "./docs/operations/offboarding.md"
+    );
+    FOUND="";
+    for f in "${CANDIDATES[@]}"; do
+      if [ -f "$f" ]; then
+        FOUND="$f";
+        break;
+      fi;
+    done;
+    if [ -n "$FOUND" ]; then
+      echo "** PASS ** deprovisioning runbook 존재: $FOUND";
+    else
+      echo "** FAIL ** deprovisioning runbook 부재 (docs/operations/deprovisioning.md 또는 offboarding.md 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    자동 deprovisioning SLA(IdP group 변경 → 반영) 미명문화는 stale credential risk —
+    audit chain은 폐기 사후 추적만 cover. 외부 firm offboarding audit에서 단골 evidence.
+  fixGuidance: |-
+    1. docs/operations/deprovisioning.md 신규 작성:
+       - SSO group 비활성 → Lodestar 다음 로그인 차단 SLA
+       - API key revoke 즉시 무효화 절차
+       - JWT refresh token blacklist 절차
+       - audit chain entry로 폐기 자체 immutable 기록
+    2. SLA: 24h 또는 customer 요구에 맞춰 명시.
+    3. 본 check 재실행.

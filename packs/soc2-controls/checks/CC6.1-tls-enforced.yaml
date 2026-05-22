@@ -1,0 +1,42 @@
+# CC6.1 — TLS 1.2+ 강제 (transit encryption)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.1 + §CC6.7.
+# Lodestar 자산: 모든 HTTP/WS endpoint TLS 강제 + mTLS replication 채널.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.1.tls_enforced
+  title: CC6.1 TLS 1.2+ 강제 (transit encryption)
+  description: |-
+    SOC2 CC6.1·CC6.7은 전송 중 데이터 보호를 요구합니다. Lodestar API는 TLS 1.2+ 강제.
+    본 check는 ROSSHIELD_API_URL이 https scheme인지 + 인증서 valid 여부 검증.
+  severity: high
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    SCHEME=$(echo "$ROSSHIELD_API_URL" | grep -oE "^https?" || echo "none");
+    if [ "$SCHEME" = "https" ]; then
+      if curl -fsS "$ROSSHIELD_API_URL/healthz" >/dev/null 2>&1; then
+        echo "** PASS ** TLS 강제 + 인증서 valid ($ROSSHIELD_API_URL)";
+      else
+        echo "** FAIL ** TLS 인증서 검증 실패 — self-signed/expired/CN mismatch 의심";
+      fi;
+    else
+      echo "** FAIL ** ROSSHIELD_API_URL scheme=$SCHEME (TLS 미강제 — http 운영 거부)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    HTTP 운영은 transit eavesdropping에 노출 — CC6.7(transmission/movement) 위반.
+    self-signed/expired 인증서도 in-the-middle 공격 가능 — CA 신뢰성 검증 필수.
+  fixGuidance: |-
+    1. reverse proxy(Caddy · nginx · Traefik) 또는 cloud LB TLS termination 설정.
+    2. Let's Encrypt 또는 internal CA 인증서 발급.
+    3. ROSSHIELD_API_URL을 https:// 로 갱신.
+    4. cipher suite: TLS 1.2+ 강제, deprecated cipher(RC4/3DES) 거부.
+    5. 본 check 재실행 — https + 인증서 valid 확인.

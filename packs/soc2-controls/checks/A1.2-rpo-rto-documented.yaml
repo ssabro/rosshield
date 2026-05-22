@@ -1,0 +1,39 @@
+# A1.2 — RPO/RTO 명문화
+#
+# docs/compliance/soc2/a1-availability.md §A1.2.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A1.2.rpo_rto_documented
+  title: A1.2 RPO/RTO target docs 명문화
+  description: |-
+    SOC2 A1.2의 customer-facing SLA — RPO/RTO target이 docs에 명문화되어야 외부 firm
+    검증 가능. docs/operations/ 또는 SECURITY.md 또는 release notes에서 RPO/RTO
+    키워드 검색.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    SEARCH_DIRS=("$BASE/docs/operations" "$BASE/docs/releases" "$BASE");
+    FOUND=0;
+    for d in "${SEARCH_DIRS[@]}"; do
+      [ -d "$d" ] || continue;
+      CNT=$(grep -rlE "(RPO|RTO)" "$d" 2>/dev/null | wc -l);
+      FOUND=$((FOUND+CNT));
+    done;
+    if [ "$FOUND" -ge 1 ]; then
+      echo "** PASS ** RPO/RTO 명문화 docs $FOUND 건";
+    else
+      echo "** FAIL ** RPO/RTO docs 0건";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    customer-facing SLA 명문화 부재는 enterprise 영업 closing 지연 — 외부 firm audit
+    의 단골 질의.
+  fixGuidance: |-
+    1. docs/operations/multi-region-failover-runbook.md 에 RPO/RTO 명시.
+    2. customer 계약서에 SLA target 명시.
+    3. 본 check 재실행.

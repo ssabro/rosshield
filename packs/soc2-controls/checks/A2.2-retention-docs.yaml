@@ -1,0 +1,39 @@
+# A2.2 — retention policy docs 명문화
+#
+# docs/compliance/soc2/a2-confidentiality.md §A2.2.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.A2.2.retention_docs
+  title: A2.2 retention policy docs 명문화 (audit-chain-key-rotation 또는 별 docs)
+  description: |-
+    SOC2 A2.2는 retention SLA 명문화를 요구합니다. audit-chain-key-rotation.md
+    또는 별 retention docs 존재 검증.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    BASE="${ROSSHIELD_DOCS_ROOT:-.}";
+    CANDIDATES=(
+      "$BASE/docs/operations/audit-chain-key-rotation.md"
+      "$BASE/docs/operations/data-retention.md"
+      "$BASE/docs/operations/retention-policy.md"
+    );
+    FOUND=0;
+    for f in "${CANDIDATES[@]}"; do
+      [ -f "$f" ] && FOUND=$((FOUND+1));
+    done;
+    if [ "$FOUND" -ge 1 ]; then
+      echo "** PASS ** retention 관련 docs $FOUND 건 존재";
+    else
+      echo "** FAIL ** retention docs 0건 (docs/operations/ 권장)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    retention SLA 명문화 부재는 customer-facing data lifecycle 신뢰 baseline 미달.
+  fixGuidance: |-
+    1. docs/operations/data-retention.md 작성.
+    2. audit event · evidence · report 각 retention 명시.
+    3. 본 check 재실행.

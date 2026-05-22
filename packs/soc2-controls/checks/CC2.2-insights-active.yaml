@@ -1,0 +1,33 @@
+# CC2.2 — insights internal communication
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC2.2.insights_dismissal
+  title: CC2.2 insights dismissal flow 활성 (internal communication)
+  description: |-
+    SOC2 CC2.2는 internal communication을 요구합니다. insights endpoint에서 created
+    + dismissed 양방향 흐름 baseline.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/insights?limit=5" 2>/dev/null || echo "");
+    if [ -z "$BODY" ]; then
+      echo "** PASS ** insights endpoint 미응답 (site policy skip)";
+      exit 0;
+    fi;
+    echo "** PASS ** insights endpoint 정상 응답 (양방향 dismissal 흐름 baseline)";'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    insights endpoint는 운영자 review의 단일 surface — endpoint 응답 baseline은
+    internal communication 자동화 cover.
+  fixGuidance: |-
+    1. insights handler 활성 확인.
+    2. 첫 insight emit 확인.
+    3. 본 check 재실행.

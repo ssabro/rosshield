@@ -1,0 +1,35 @@
+# CC2.1 — evidence storage 활성 (information quality)
+#
+# docs/compliance/soc2/cc2-communication-information.md §CC2.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC2.1.evidence_stored
+  title: CC2.1 evidence storage 활성 (최근 30일 evidence 1건 이상)
+  description: |-
+    SOC2 CC2.1은 정보 품질을 위한 증거 저장을 요구합니다. 최근 30일 evidence 카운트
+    ≥ 1 검증 — 0건이면 scan 실행 0 또는 evidence pipeline 장애 의심.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/evidence?limit=1" 2>/dev/null || echo "");
+    CNT=$(echo "$BODY" | grep -oE "\"id\"" | wc -l);
+    if [ "$CNT" -ge 1 ]; then
+      echo "** PASS ** evidence 1건 이상 저장";
+    else
+      echo "** FAIL ** evidence 0건 (scan 실행 누락 또는 pipeline 장애)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    evidence 저장 0건은 scan/audit pipeline 미가동 의심 — SOC2 운영 효과성 0.
+  fixGuidance: |-
+    1. scan 실행 — rosshield-cli scan run --pack <pack-name>.
+    2. evidence emit 사이트(internal/domain/evidence/) 정상 작동 확인.
+    3. 본 check 재실행.

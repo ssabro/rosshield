@@ -1,0 +1,38 @@
+# CC8.1 — CHANGELOG.md 갱신 (Keep a Changelog 패턴)
+#
+# docs/compliance/soc2/cc8-change-management.md §CC8.1 변경 문서화.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC8.1.changelog_maintained
+  title: CC8.1 CHANGELOG.md 존재 + 최근 release entry
+  description: |-
+    SOC2 CC8.1의 변경 문서화 — CHANGELOG.md 파일 존재 + ## 또는 ### 헤더 5건 이상
+    (Keep a Changelog 패턴) 검증.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-.}";
+    F="$ROOT/CHANGELOG.md";
+    if [ ! -f "$F" ]; then
+      echo "** FAIL ** CHANGELOG.md 부재 ($F)";
+      exit 0;
+    fi;
+    CNT=$(grep -cE "^##+\s" "$F" 2>/dev/null || echo "0");
+    if [ "$CNT" -ge 5 ]; then
+      echo "** PASS ** CHANGELOG.md heading $CNT 건 (release entry 활성)";
+    else
+      echo "** FAIL ** CHANGELOG.md heading $CNT 건 (5건 baseline 미달 — 갱신 누락 의심)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    release 변경 사항 미문서화는 customer 영향 추적 불가능 — SOC2 audit에서 customer
+    notification evidence가 모자람.
+  fixGuidance: |-
+    1. CHANGELOG.md 작성 — Keep a Changelog 패턴.
+    2. release마다 ## [version] - date + Added/Changed/Fixed/Removed 섹션.
+    3. CI에서 release tag와 CHANGELOG sync 검증.
+    4. 본 check 재실행.

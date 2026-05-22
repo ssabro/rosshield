@@ -1,0 +1,37 @@
+# CC1.3 — RBAC role matrix 정의 (structure/authority/responsibility)
+#
+# docs/compliance/soc2/cc1-control-environment.md §CC1.3.
+# soc2_mapping.go: user_role.synced + invitation.sent/accepted action.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC1.3.rbac_role_matrix
+  title: CC1.3 RBAC role 정의 ≥ 3 (admin/operator/auditor 등 SoD baseline)
+  description: |-
+    SOC2 CC1.3은 권한·책임 구조 명문화를 요구합니다. RBAC role 카운트가 3건 이상이면
+    SoD 분리 baseline 충족 — admin / operator / auditor 권장.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/rbac/roles" 2>/dev/null || echo "");
+    CNT=$(echo "$BODY" | grep -oE "\"name\"\s*:\s*\"[^\"]+\"" | wc -l);
+    if [ "$CNT" -ge 3 ]; then
+      echo "** PASS ** RBAC role count=$CNT (SoD baseline ≥3)";
+    else
+      echo "** FAIL ** RBAC role count=$CNT (3 baseline 미달)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    role 1~2건만 정의된 시스템은 SoD 분리 불가능 — admin과 read-only auditor 분리는
+    SOC2 audit 단골 evidence.
+  fixGuidance: |-
+    1. internal/platform/authz/permission_matrix.go 에 admin/operator/auditor 정의.
+    2. 추가 custom role 필요 시 POST /api/v1/rbac/roles.
+    3. 본 check 재실행.

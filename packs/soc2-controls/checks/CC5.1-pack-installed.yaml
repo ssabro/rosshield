@@ -1,0 +1,37 @@
+# CC5.1 — control activities (pack installed → 통제 검증 capability)
+#
+# docs/compliance/soc2/cc5-control-activities.md §CC5.1.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC5.1.soc2_controls_pack_installed
+  title: CC5.1 soc2-controls pack 설치 (자기 참조 baseline)
+  description: |-
+    SOC2 CC5.1은 통제 선택·개발을 요구합니다. soc2-controls pack 자체가 통제 단위
+    자동 검증 — 본 pack이 설치되어 있어야 자기 참조 검증이 가능합니다.
+
+    self-referential check — 본 pack이 적재된 상태에서 본 check가 실행되면 PASS.
+  severity: low
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/packs" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"name\"\s*:\s*\"soc2-controls\""; then
+      echo "** PASS ** soc2-controls pack 설치 확인";
+    else
+      echo "** FAIL ** soc2-controls pack 미설치 (자기 참조 baseline)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    pack 자동 검증 capability는 CC5.1 통제 활성의 baseline — 본 pack 자체가 설치되어
+    있어야 본 자동 검증이 운영 가능.
+  fixGuidance: |-
+    1. soc2-controls pack 다운로드 — release attachments.
+    2. POST /api/v1/packs/install 또는 rosshield-cli pack install soc2-controls.
+    3. 본 check 재실행.

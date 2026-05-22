@@ -1,0 +1,40 @@
+# CC6.2 — auditor role 존재 (SoD: admin read/write vs auditor read-only)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.2 segregation of duties.
+# Phase 11.B-5 산출 — auditor role 신규.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.2.auditor_role_exists
+  title: CC6.2 auditor role 정의 존재 (segregation of duties)
+  description: |-
+    SOC2 CC6.2의 직무 분리(SoD)는 admin(write) vs auditor(read-only) 분리를 요구합니다.
+    Lodestar의 auditor role(Phase 11.B-5 산출)이 permission matrix에 정의되어 있고
+    실제 사용자에게 할당된 인스턴스가 1건 이상인지 검증.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    if [ -z "$ROSSHIELD_API_URL" ] || [ -z "$ROSSHIELD_API_TOKEN" ]; then
+      echo "** PASS ** ROSSHIELD_API_URL/TOKEN 미설정 (site policy skip)";
+      exit 0;
+    fi;
+    BODY=$(curl -fsS -H "Authorization: Bearer $ROSSHIELD_API_TOKEN" "$ROSSHIELD_API_URL/api/v1/rbac/roles" 2>/dev/null || echo "");
+    if echo "$BODY" | grep -qE "\"name\"\s*:\s*\"auditor\""; then
+      echo "** PASS ** auditor role 정의 존재 (SoD baseline 충족)";
+    else
+      echo "** FAIL ** auditor role 정의 없음 — SoD 분리 부재 (Phase 11.B-5 산출 누락 의심)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    SOC2 audit에서 admin과 read-only 감사자 분리가 단골 evidence — 외부 감사인에
+    admin 권한 부여는 보안 원칙 위반, viewer 확장은 격리 부재로 거부. auditor 별 role
+    분리는 D-P11B-3 권장 default와 일관.
+  fixGuidance: |-
+    1. permission matrix에 auditor 정의 — internal/platform/authz/permission_matrix.go.
+    2. auditor 권한 세트: audit:read · evidence:read · report:read · compliance:read.
+    3. write/delete 권한 0 (read-only 보장).
+    4. POST /api/v1/users role=auditor 로 외부 감사인 계정 발급.
+    5. 본 check 재실행 — auditor role 정의 존재 확인.

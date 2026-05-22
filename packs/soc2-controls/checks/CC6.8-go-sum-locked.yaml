@@ -1,0 +1,51 @@
+# CC6.8 — 의존성 lockfile 활성 (go.sum + package-lock.json)
+#
+# docs/compliance/soc2/cc6-logical-physical-access.md §CC6.8.
+# 무단 의존성 변경 차단의 baseline.
+apiVersion: rosshield.io/v1
+kind: Check
+metadata:
+  id: soc2.CC6.8.dependency_lockfile
+  title: CC6.8 의존성 lockfile 존재 (go.sum) — supply chain 무결성
+  description: |-
+    SOC2 CC6.8은 무단 소프트웨어 도입 차단을 요구합니다. go.sum lockfile은 의존성
+    hash 고정 — 무단 의존성 변경 시 빌드 fail. 본 check는 source tree에서 go.sum
+    존재 + non-empty 확인.
+
+    바이너리 배포 환경에서는 source tree 부재 — env ROSSHIELD_SOURCE_ROOT 미설정 시 PASS skip.
+  severity: medium
+spec:
+  auditCommand: |-
+    bash -c 'set -o pipefail;
+    ROOT="${ROSSHIELD_SOURCE_ROOT:-}";
+    if [ -z "$ROOT" ]; then
+      if [ -f ./go.sum ]; then
+        ROOT=".";
+      else
+        echo "** PASS ** ROSSHIELD_SOURCE_ROOT 미설정 + ./go.sum 부재 (site policy skip — binary 배포 환경)";
+        exit 0;
+      fi;
+    fi;
+    SUM="$ROOT/go.sum";
+    if [ ! -f "$SUM" ]; then
+      echo "** FAIL ** go.sum 부재 ($SUM) — 의존성 lockfile 없음";
+      exit 0;
+    fi;
+    LINES=$(wc -l < "$SUM");
+    if [ "$LINES" -ge 10 ]; then
+      echo "** PASS ** go.sum 존재 + $LINES lines (의존성 hash 고정)";
+    else
+      echo "** FAIL ** go.sum 존재하나 lines=$LINES (불완전 — go mod tidy 필요)";
+    fi'
+  evaluationRule:
+    op: contains
+    value: '** PASS **'
+  rationale: |-
+    lockfile 없는 빌드는 매번 다른 의존성 버전을 가져올 수 있어 supply chain 공격
+    벡터 — go.sum hash 검증으로 즉시 차단. 정기 go mod tidy + CI 검증 권장.
+  fixGuidance: |-
+    1. source tree에서: go mod tidy
+    2. git diff go.sum 확인 — 의도하지 않은 변경 0건.
+    3. CI에서 go.sum drift 검증 — make ci.
+    4. binary 배포 환경에서는 본 check site policy skip(env 미설정).
+    5. 본 check 재실행.
