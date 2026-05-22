@@ -345,6 +345,12 @@ func main() {
 	auditS3LifecycleDeepArchiveDays := flag.Int("audit-s3-lifecycle-transition-deep-archive-days", 0, "STANDARD → DEEP_ARCHIVE 전환 일수. 0 = 단계 비활성. Env: ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_DEEP_ARCHIVE_DAYS.")
 	auditS3LifecycleExpireDays := flag.Int("audit-s3-lifecycle-expire-days", 0, "Object 만료 일수 (S3 lifecycle Expiration). 0 = 영구 보존. Env: ROSSHIELD_AUDIT_S3_LIFECYCLE_EXPIRE_DAYS.")
 	checkTimeoutDefaultSec := flag.Int("check-timeout-default-sec", 0, "Default SSH exec timeout for checks with TimeoutSec=0. 0 uses scan.DefaultCheckTimeoutSec (10s). Per-check TimeoutSec always wins.")
+	// Phase 11.A-2 — OpenTelemetry tracing 옵션 (D-P11A-1·2·3). 모두 opt-in (default disabled).
+	otelEnabled := flag.Bool("otel-enabled", false, "Enable OpenTelemetry tracing (Phase 11.A-2, D-P11A-1). Default: disabled (noop tracer). Env: ROSSHIELD_OTEL_ENABLED=true|1.")
+	otelEndpoint := flag.String("otel-endpoint", "", "OTLP collector endpoint host:port (e.g. otel-collector:4317 for gRPC, otel-collector:4318 for HTTP). Required when --otel-enabled=true. Env: ROSSHIELD_OTEL_ENDPOINT.")
+	otelExporter := flag.String("otel-exporter", "grpc", "OTLP exporter transport (D-P11A-2): grpc (default) | http. Env: ROSSHIELD_OTEL_EXPORTER.")
+	otelSampling := flag.Float64("otel-sampling", 0.05, "Root span sampling ratio (D-P11A-3): 0 = never, 1.0 = always, else parent_based(traceidratiobased(r)). Default 0.05 (5%). Env: ROSSHIELD_OTEL_SAMPLING.")
+	otelInsecure := flag.Bool("otel-insecure", false, "Disable TLS when connecting to OTLP collector (dev / air-gap only). Env: ROSSHIELD_OTEL_INSECURE=true|1.")
 	flag.Parse()
 
 	// API key fallback to env to avoid leaking on shell history.
@@ -418,6 +424,25 @@ func main() {
 	// D-AR-4 cosign keyless env fallback.
 	// 우선순위: flag → ROSSHIELD_COSIGN_*. flag default(false / "") 일 때만 env 적용.
 	cosignCfg := resolveCosignConfig(*cosignEnabled, *cosignBinary, *cosignIdentity, *cosignFulcioURL, *cosignRekorURL)
+
+	// Phase 11.A-2 — OTel env fallback (flag default 시에만 env 적용).
+	otelEnabledVal := resolveBoolEnvFallback(*otelEnabled, "ROSSHIELD_OTEL_ENABLED")
+	otelEndpointVal := resolveEnvFallback(*otelEndpoint, "ROSSHIELD_OTEL_ENDPOINT")
+	otelExporterVal := *otelExporter
+	if envExporter := strings.TrimSpace(os.Getenv("ROSSHIELD_OTEL_EXPORTER")); envExporter != "" {
+		// flag 가 default "grpc" 일 때 env 가 있으면 env 우선 — 운영자가 env 만으로 변경 가능.
+		if *otelExporter == "grpc" {
+			otelExporterVal = envExporter
+		}
+	}
+	otelSamplingVal := *otelSampling
+	if s := strings.TrimSpace(os.Getenv("ROSSHIELD_OTEL_SAMPLING")); s != "" && *otelSampling == 0.05 {
+		// flag 가 default 0.05 일 때 env 가 있으면 env 우선.
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			otelSamplingVal = f
+		}
+	}
+	otelInsecureVal := resolveBoolEnvFallback(*otelInsecure, "ROSSHIELD_OTEL_INSECURE")
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
@@ -541,6 +566,11 @@ func main() {
 		AuditS3LifecycleTransitionDeepArchiveDays: int32(resolveIntEnvFallback(*auditS3LifecycleDeepArchiveDays, "ROSSHIELD_AUDIT_S3_LIFECYCLE_TRANSITION_DEEP_ARCHIVE_DAYS")),
 		AuditS3LifecycleExpireDays:                int32(resolveIntEnvFallback(*auditS3LifecycleExpireDays, "ROSSHIELD_AUDIT_S3_LIFECYCLE_EXPIRE_DAYS")),
 		CheckTimeoutDefaultSec:                    *checkTimeoutDefaultSec,
+		OtelEnabled:                               otelEnabledVal,
+		OtelEndpoint:                              otelEndpointVal,
+		OtelExporterType:                          otelExporterVal,
+		OtelSamplingRatio:                         otelSamplingVal,
+		OtelInsecure:                              otelInsecureVal,
 	})
 	if err != nil {
 		logger.Error("bootstrap failed", "err", err.Error())

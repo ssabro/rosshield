@@ -66,6 +66,7 @@ import (
 	llmollama "github.com/ssabro/rosshield/internal/platform/llm/ollama"
 	llmvllm "github.com/ssabro/rosshield/internal/platform/llm/vllm"
 	"github.com/ssabro/rosshield/internal/platform/metrics"
+	platformotel "github.com/ssabro/rosshield/internal/platform/otel"
 	"github.com/ssabro/rosshield/internal/platform/replication"
 	"github.com/ssabro/rosshield/internal/platform/replication/lagmetric"
 	replicationsetup "github.com/ssabro/rosshield/internal/platform/replication/setup"
@@ -375,6 +376,26 @@ type Config struct {
 	// 운영자 시나리오: 합성 multi-line bash 또는 base64 sub-shell wrap이 customer 환경에서
 	// 더 긴 시간이 필요하면 ↑, fail-fast 정책이면 ↓.
 	CheckTimeoutDefaultSec int
+
+	// Phase 11.A-2 — OpenTelemetry tracing 옵션 (D-P11A-1·2·3).
+	//
+	// 모두 default = production-safe (Enabled=false → noop tracer). customer 가
+	// 명시적으로 활성화한 경우에만 실 OTLP collector 로 export 시작.
+	//
+	//   OtelEnabled       — false (default) → noop. true 시 OtelEndpoint 필수.
+	//   OtelEndpoint      — OTLP collector host:port (gRPC "...:4317" / HTTP "...:4318").
+	//   OtelExporterType  — "" 또는 "grpc" (default) | "http" (D-P11A-2 both).
+	//   OtelSamplingRatio — 0 → never, 1.0 → always, 그 외 → parent_based(ratio).
+	//                       권장 default = 0.05 (5% root sampling, D-P11A-3).
+	//   OtelInsecure      — TLS 미사용 (air-gap collector 또는 dev 환경만 true).
+	//
+	// env override (main.go 에서 결선):
+	//   ROSSHIELD_OTEL_ENABLED / _ENDPOINT / _EXPORTER / _SAMPLING / _INSECURE.
+	OtelEnabled       bool
+	OtelEndpoint      string
+	OtelExporterType  string
+	OtelSamplingRatio float64
+	OtelInsecure      bool
 }
 
 // Platform은 초기화된 모든 platform 서비스의 묶음입니다.
@@ -424,6 +445,7 @@ type Platform struct {
 	BackupDir          string                        // B7 후속 — 자동 백업 디렉터리 (handlers/backup이 list 시 사용)
 	FleetScanSched     *FleetScanScheduler           // dynamic cron re-registration on fleet mutation
 	SSHPool            sshpool.Pool                  // scanrun Stage 5b — idle 재사용 + keepalive (Shutdown 시 Close)
+	Otel               *platformotel.Provider        // Phase 11.A-2 — OpenTelemetry tracer provider (Enabled=false 시 noop)
 
 	systemTenant storage.TenantID
 
@@ -1102,6 +1124,15 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		return nil, fmt.Errorf("bootstrap: migrate: %w", err)
 	}
 
+	// Phase 11.A-2 — OpenTelemetry tracer provider 결선. Enabled=false (default) 면
+	// noop tracer 반환 — span emit 없음, 다른 platform 호출에는 영향 0. Enabled=true
+	// 인 경우에만 OTLP collector 로 실 export 시작.
+	otelProvider, err := buildOtelProvider(ctx, cfg)
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("bootstrap: otel: %w", err)
+	}
+
 	bus := inproc.New(inproc.Deps{Logger: logger, Clock: clk, IDGen: ids})
 
 	// E34 — KeyStore 추상 (file = 현재 동작, tpm = Stage 2+ 본격). 동작 차이 0 (file 시).
@@ -1699,6 +1730,7 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		BackupDir:          resolvedBackupDir,
 		FleetScanSched:     fleetScanSch,
 		SSHPool:            sshPool,
+		Otel:               otelProvider, // Phase 11.A-2 — Enabled=false 시 noop, true 시 OTLP exporter.
 		systemTenant:       systemTenant,
 		insightAutorunSub:  insightAutorunSub,
 		Replication:        replicationrepo.New(),
@@ -1812,6 +1844,32 @@ func keyHandle(cfg Config, name string) string {
 		return name
 	}
 	return filepath.Join(cfg.DataDir, "keys", name+".ed25519")
+}
+
+// buildOtelProvider 는 cfg.Otel* 필드로 platformotel.Provider 를 생성합니다 (Phase 11.A-2).
+//
+// Enabled=false (default) 면 noop provider 반환 — span emit 없음, exporter dial 없음.
+// Enabled=true 면 OTLP exporter + parent_based sampler + resource attribute 결선.
+// validation 실패(빈 endpoint 등) 시 부트스트랩 에러 → 호출자 fail-fast.
+//
+// resource attribute 의 service.version 은 빈 값 — 향후 BuildVersion 변수가
+// 도입되면 platformotel.Config.ServiceVersion 에 주입 (Stage 11.A-7 후속).
+// region 은 ReplicationConfig.Region 를 사용해 multi-region 일관성 확보.
+func buildOtelProvider(ctx context.Context, cfg Config) (*platformotel.Provider, error) {
+	exporter := strings.ToLower(strings.TrimSpace(cfg.OtelExporterType))
+	region := ""
+	if cfg.ReplicationConfig.Enabled {
+		region = string(cfg.ReplicationConfig.Region)
+	}
+	return platformotel.NewProvider(ctx, platformotel.Config{
+		Enabled:       cfg.OtelEnabled,
+		ServiceName:   platformotel.DefaultServiceName,
+		Endpoint:      strings.TrimSpace(cfg.OtelEndpoint),
+		ExporterType:  platformotel.ExporterType(exporter),
+		Insecure:      cfg.OtelInsecure,
+		SamplingRatio: cfg.OtelSamplingRatio,
+		Region:        region,
+	})
 }
 
 // buildKeystore는 cfg.KeystoreType 기반으로 KeyStore 어댑터를 생성합니다 (E34).
@@ -2047,6 +2105,15 @@ func (p *Platform) Shutdown(ctx context.Context) error {
 		}
 		if err := p.EventBus.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("eventbus close: %w", err))
+		}
+		// Phase 11.A-2 — OTel pending span flush + exporter close. EventBus 종료 후
+		// Storage 종료 직전에 위치 — 마지막 audit/metric emit span 까지 cover.
+		if p.Otel != nil {
+			otelCtx, cancel := context.WithTimeout(ctx, platformotel.DefaultShutdownTimeout)
+			if err := p.Otel.Shutdown(otelCtx); err != nil {
+				errs = append(errs, fmt.Errorf("otel shutdown: %w", err))
+			}
+			cancel()
 		}
 		if err := p.Storage.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("storage close: %w", err))
