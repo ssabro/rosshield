@@ -30,6 +30,32 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
+)
+
+// patroniTracerScope 는 본 패키지가 emit 하는 span 의 instrumentation scope 입니다.
+//
+// Phase 11.A-5 — bootstrap 이 deps.Tracer 를 명시 주입하지 않으면 fallback 으로
+// noop tracer 가 사용되어 overhead 0 유지 (R14-1 일관).
+const patroniTracerScope = "rosshield/platform/ha/patroni"
+
+// span name 상수 — design doc §6.5 일관.
+const (
+	spanPatroniCluster = "patroni.cluster"
+)
+
+// attribute key 상수 — rosshield 커스텀 + OpenTelemetry semantic conventions.
+const (
+	attrPatroniEndpoint   = "rosshield.patroni.endpoint"
+	attrPatroniLocalHost  = "rosshield.patroni.local_hostname"
+	attrPatroniLeader     = "rosshield.patroni.leader"
+	attrPatroniIsLeader   = "rosshield.patroni.is_leader"
+	attrPatroniTimeline   = "rosshield.patroni.timeline"
+	attrPatroniHTTPStatus = "http.status_code"
 )
 
 // DefaultPollInterval은 Patroni /cluster polling 기본 간격입니다.
@@ -55,9 +81,18 @@ type Deps struct {
 	// RequestTimeout은 단일 HTTP 호출 timeout. 0이면 DefaultRequestTimeout (3s).
 	RequestTimeout time.Duration
 	// HTTPClient는 customer 환경별 transport 주입 — nil이면 http.DefaultClient 사용.
+	//
+	// Phase 11.A-5: bootstrap 이 httpclient.WrapClient 로 otel transport wrap 된
+	// http.Client 를 주입하면 outgoing `traceparent` W3C header 가 자동 inject —
+	// cross-region trace context propagation.
 	HTTPClient *http.Client
 	// Logger는 polling 실패 logging. nil이면 slog.Default().
 	Logger *slog.Logger
+	// Tracer 는 patroni.cluster span emit 용 OpenTelemetry tracer 입니다 (Phase 11.A-5).
+	//
+	// nil 이면 noop tracer fallback — overhead 0. 호출 site (bootstrap) 가 명시 주입
+	// 시 otelProvider.Tracer("rosshield/platform/ha/patroni") 패턴.
+	Tracer trace.Tracer
 }
 
 // RoleProvider는 Patroni REST polling 기반 HA RoleProvider 구현입니다.
@@ -66,6 +101,7 @@ type Deps struct {
 type RoleProvider struct {
 	deps   Deps
 	url    string // 정규화된 base URL
+	tracer trace.Tracer
 	leader atomic.Bool
 	epoch  atomic.Int64
 	closed chan struct{}
@@ -93,11 +129,16 @@ func New(deps Deps) (*RoleProvider, error) {
 	if deps.Logger == nil {
 		deps.Logger = slog.Default()
 	}
+	tr := deps.Tracer
+	if tr == nil {
+		tr = tracenoop.NewTracerProvider().Tracer(patroniTracerScope)
+	}
 
 	url := strings.TrimRight(deps.PatroniURL, "/")
 	return &RoleProvider{
 		deps:   deps,
 		url:    url,
+		tracer: tr,
 		closed: make(chan struct{}),
 	}, nil
 }
@@ -181,13 +222,28 @@ type memberInfo struct {
 //  5. Timeline → epoch (atomic.Store)
 //
 // 호출 실패는 logger.Warn — atomic 값은 변경 안 함 (직전 상태 유지).
+//
+// Phase 11.A-5: 매 polling 마다 `patroni.cluster` span 을 emit — cross-region trace
+// 통합. HTTPClient 에 httpclient.WrapClient 로 wrap 된 transport 가 결선되어 있으면
+// outgoing `traceparent` header 가 자동 inject (downstream Patroni REST 서버가
+// 호환 시 cross-service trace tree 완성).
 func (rp *RoleProvider) pollOnce(ctx context.Context) {
+	ctx, span := rp.tracer.Start(ctx, spanPatroniCluster,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String(attrPatroniEndpoint, rp.url+"/cluster"),
+			attribute.String(attrPatroniLocalHost, rp.deps.LocalHostname),
+		),
+	)
+	defer span.End()
+
 	reqCtx, cancel := context.WithTimeout(ctx, rp.deps.RequestTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rp.url+"/cluster", nil)
 	if err != nil {
 		rp.deps.Logger.Warn("patroni: NewRequest failed", "err", err.Error())
+		recordSpanErr(span, err)
 		return
 	}
 	req.Header.Set("Accept", "application/json")
@@ -195,20 +251,25 @@ func (rp *RoleProvider) pollOnce(ctx context.Context) {
 	resp, err := rp.deps.HTTPClient.Do(req)
 	if err != nil {
 		rp.deps.Logger.Warn("patroni: HTTP Do failed", "err", err.Error(), "url", rp.url)
+		recordSpanErr(span, err)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	span.SetAttributes(attribute.Int(attrPatroniHTTPStatus, resp.StatusCode))
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		rp.deps.Logger.Warn("patroni: non-200 status",
 			"status", resp.StatusCode, "body", string(body))
+		span.SetStatus(codes.Error, http.StatusText(resp.StatusCode))
 		return
 	}
 
 	var cluster clusterResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cluster); err != nil {
 		rp.deps.Logger.Warn("patroni: JSON decode failed", "err", err.Error())
+		recordSpanErr(span, err)
 		return
 	}
 
@@ -217,6 +278,21 @@ func (rp *RoleProvider) pollOnce(ctx context.Context) {
 
 	rp.leader.Store(isLeader)
 	rp.epoch.Store(cluster.Timeline)
+
+	span.SetAttributes(
+		attribute.String(attrPatroniLeader, leaderName),
+		attribute.Bool(attrPatroniIsLeader, isLeader),
+		attribute.Int64(attrPatroniTimeline, cluster.Timeline),
+	)
+}
+
+// recordSpanErr 은 err 이 non-nil 일 때 span 에 error 를 기록합니다.
+func recordSpanErr(span trace.Span, err error) {
+	if err == nil {
+		return
+	}
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }
 
 // resolveLeader는 cluster 응답에서 leader pod name을 결정합니다.

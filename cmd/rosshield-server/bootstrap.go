@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,7 @@ import (
 	"github.com/ssabro/rosshield/internal/platform/eventbus/inproc"
 	"github.com/ssabro/rosshield/internal/platform/ha"
 	"github.com/ssabro/rosshield/internal/platform/ha/patroni"
+	"github.com/ssabro/rosshield/internal/platform/httpclient"
 	"github.com/ssabro/rosshield/internal/platform/idgen"
 	"github.com/ssabro/rosshield/internal/platform/keystore"
 	keystorefile "github.com/ssabro/rosshield/internal/platform/keystore/file"
@@ -1627,11 +1629,21 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	})
 
 	// E23-B — Webhook dispatcher (Process worker) 결선 + 백그라운드 시작.
+	//
+	// Phase 11.A-5: HTTPClient 에 httpclient.WrapClient 로 otel transport wrap —
+	// outgoing webhook POST 마다 W3C `traceparent` header 자동 inject. Enabled=false
+	// 시 wrap 자체가 no-op (overhead 0).
+	webhookHTTPClient := httpclient.WrapClient(
+		&http.Client{Timeout: webhookrun.DefaultHTTPTimeout},
+		otelProvider,
+		"webhook",
+	)
 	webhookDispatcher := webhookrun.New(webhookrun.Deps{
 		Logger:       logger,
 		Storage:      store,
 		Clock:        clk,
 		Webhook:      webhookSvc,
+		HTTPClient:   webhookHTTPClient,
 		TickInterval: cfg.WebhookTickInterval,
 	})
 	go webhookDispatcher.Run(context.Background())
@@ -1757,11 +1769,25 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	if cfg.HAEnabled {
 		switch strings.ToLower(strings.TrimSpace(cfg.HARP)) {
 		case "patroni":
+			// Phase 11.A-5: Patroni REST client 의 outgoing HTTP 호출에 W3C trace
+			// context 자동 inject — cross-region distributed trace 통합. otel
+			// provider Enabled=false 시 wrap no-op (overhead 0).
+			patroniTimeout := cfg.PatroniRequestTimeout
+			if patroniTimeout <= 0 {
+				patroniTimeout = patroni.DefaultRequestTimeout
+			}
+			patroniHTTPClient := httpclient.WrapClient(
+				&http.Client{Timeout: patroniTimeout},
+				otelProvider,
+				"patroni",
+			)
 			patroniRP, err := patroni.New(patroni.Deps{
 				PatroniURL:     cfg.PatroniURL,
 				LocalHostname:  cfg.PatroniLocalHostname,
 				PollInterval:   cfg.PatroniPollInterval,
 				RequestTimeout: cfg.PatroniRequestTimeout,
+				HTTPClient:     patroniHTTPClient,
+				Tracer:         otelProvider.Tracer("rosshield/platform/ha/patroni"),
 				Logger:         logger,
 			})
 			if err != nil {
