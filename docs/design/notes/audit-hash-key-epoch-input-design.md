@@ -533,3 +533,19 @@ CLAUDE.md 일관 — local 커밋 OK, remote push 사용자 명시 요청 시에
 - `feedback_user_tracks.md` — D1·E36·SOC2 감사·customer trigger·fg-verify v3 분배 등 외부 트랙 ★ 표기.
 - `feedback_recommend_next_actions.md` — 다음 추천 작업 3~5건 명시.
 - `feedback_skip_handoff.md` — handoff edit/commit/push 생략, CHANGELOG + release notes + commit 메시지로 trace.
+
+---
+
+## 12. 결정 확정 (2026-05-22)
+
+사용자 D-P11C-1·2·3·4 결정 모두 권장 default 채택:
+
+- **D-P11C-1 = 옵션 A** — canonicalMetaJSON에 keyEpoch + leaderEpoch input + fg-verify v3 + v1/v2/v3 3-tier backward compat.
+- **D-P11C-2 = 기존 v1 hash 유지** — 기존 entries 변경 0 (append-only 일관) + chain transition marker entry로 경계 명시. 신규 entries만 v3 hash.
+- **D-P11C-3 = 둘 다 포함** — keyEpoch + leaderEpoch 양쪽. multi-region HA failover 이후 chain integrity 완전 cover.
+- **D-P11C-4 = Stage 11.C-6 release 후** — v0.13.0 minor 완료 후 fg-verify v3 binary 외부 감사인 분배. customer 안정 검증 우선.
+
+### 12.1 Stage 11.C-2 진입 가능
+
+Stage 11.C-2: canonicalMetaJSON에 keyEpoch + leaderEpoch fields 추가 + 단위 test (~0.5주). DB 마이그레이션 0건 (entries.key_epoch + leader_epoch 컬럼 이미 Stage 10.D-3+4 결선).
+
