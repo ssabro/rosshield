@@ -1250,7 +1250,8 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 	})
 
 	// E16 — LLM 어댑터 결선 (R14-1 옵트인, 기본값 noop). compliance Suggester 주입 전 단계로 위로 이동.
-	llmAdapter, err := buildLLMAdapter(cfg)
+	// Phase 11.A-6 — outbound HTTP client 에 otel transport wrap 주입 (otelProvider Enabled=false 시 no-op).
+	llmAdapter, err := buildLLMAdapter(cfg, otelProvider)
 	if err != nil {
 		_ = sch.Close(ctx)
 		_ = store.Close()
@@ -1356,7 +1357,9 @@ func Bootstrap(ctx context.Context, cfg Config) (*Platform, error) {
 		Audit: emitter,
 	})
 	advisorDispatcher := advisorrun.NewDispatcher(scanSvc, evidenceSvc, clk)
-	advisorLLMClient := advisorrun.NewLLMClient(llmAdapter)
+	// Phase 11.A-6 — LLMClientAdapter 에 tracer 주입 → `llm.complete` span emit.
+	// otelProvider Enabled=false 면 noop tracer fallback, overhead 0.
+	advisorLLMClient := advisorrun.NewLLMClientWithTracer(llmAdapter, otelProvider.Tracer(platformotel.LLMTracerScope))
 	advisorSvc := advisorrun.NewOrchestrator(advisorrun.OrchestratorDeps{
 		Repo:         advisorRepoSvc,
 		LLM:          advisorLLMClient,
@@ -2046,7 +2049,11 @@ func (s *slogHALogger) Error(msg string, args ...any) { s.l.Error(msg, args...) 
 //	"vllm"        → vllm.New(BaseURL, APIKey, DefaultModel, Timeout, MaxTokens) — D-LLM-1.
 //	"anthropic"   → anthropic.New(BaseURL, APIKey, DefaultModel, Timeout). APIKey 누락은 에러.
 //	그 외          → 에러 (오타 방지).
-func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
+//
+// Phase 11.A-6: anthropic/ollama/vllm 의 outbound HTTP client 를 httpclient.WrapClient
+// 로 wrap → outbound traceparent header 자동 inject. noop 은 HTTP 호출 0 이라 wrap 무관.
+// otelProvider.Enabled()=false 시 wrap 자체가 short-circuit — overhead 0.
+func buildLLMAdapter(cfg Config, otelProvider *platformotel.Provider) (llm.Adapter, error) {
 	switch cfg.LLMProvider {
 	case "", "noop":
 		return llmnoop.New(), nil
@@ -2057,6 +2064,7 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 			HTTPTimeout:  cfg.LLMTimeout,
 			KeepAlive:    cfg.LLMKeepAlive,
 			AutoPull:     cfg.LLMAutoPull,
+			HTTPClient:   httpclient.WrapClient(&http.Client{Timeout: cfg.LLMTimeout}, otelProvider, "llm-ollama"),
 		}), nil
 	case "vllm":
 		// D-LLM-1 — OpenAI-compatible self-hosted inference (vLLM, TGI 등).
@@ -2067,6 +2075,7 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 			DefaultModel: cfg.LLMModel,
 			HTTPTimeout:  cfg.LLMTimeout,
 			MaxTokens:    cfg.LLMMaxTokens,
+			HTTPClient:   httpclient.WrapClient(&http.Client{Timeout: cfg.LLMTimeout}, otelProvider, "llm-vllm"),
 		}), nil
 	case "anthropic":
 		if cfg.LLMAPIKey == "" {
@@ -2077,6 +2086,7 @@ func buildLLMAdapter(cfg Config) (llm.Adapter, error) {
 			BaseURL:      cfg.LLMBaseURL,
 			DefaultModel: cfg.LLMModel,
 			HTTPTimeout:  cfg.LLMTimeout,
+			HTTPClient:   httpclient.WrapClient(&http.Client{Timeout: cfg.LLMTimeout}, otelProvider, "llm-anthropic"),
 		}), nil
 	default:
 		return nil, fmt.Errorf("unknown LLMProvider %q (allowed: noop|ollama|vllm|anthropic)", cfg.LLMProvider)

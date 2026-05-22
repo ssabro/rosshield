@@ -42,6 +42,9 @@ type Options struct {
 	BaseURL      string        // 기본 https://api.anthropic.com
 	DefaultModel string        // request에 model이 비어있을 때 fallback
 	HTTPTimeout  time.Duration // 0이면 defaultHTTPTimeout
+	// HTTPClient 는 caller 주입 http.Client (Phase 11.A-6 — outbound otel transport
+	// wrap 결선용). nil 이면 Timeout 으로 새 client 생성. 주입 시 Timeout 은 caller 책임.
+	HTTPClient *http.Client
 }
 
 // Adapter는 Anthropic Messages API 어댑터입니다.
@@ -62,11 +65,15 @@ func New(opts Options) *Adapter {
 	if timeout <= 0 {
 		timeout = defaultHTTPTimeout
 	}
+	hc := opts.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: timeout}
+	}
 	return &Adapter{
 		apiKey:       opts.APIKey,
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		defaultModel: opts.DefaultModel,
-		httpClient:   &http.Client{Timeout: timeout},
+		httpClient:   hc,
 	}
 }
 

@@ -47,6 +47,9 @@ type Options struct {
 	HTTPTimeout  time.Duration // 0이면 defaultHTTPTimeout
 	KeepAlive    time.Duration // 모델 메모리 유지 시간. 0이면 defaultKeepAlive(5분). 음수면 즉시 unload.
 	AutoPull     bool          // true면 PullModel(ctx)을 caller가 부팅 시 호출 가능 (에어갭 안전을 위해 기본 false).
+	// HTTPClient 는 caller 주입 http.Client (Phase 11.A-6 — outbound otel transport
+	// wrap 결선용). nil 이면 HTTPTimeout 으로 새 client 생성. 주입 시 Timeout 은 caller 책임.
+	HTTPClient *http.Client
 }
 
 // Adapter는 ollama HTTP API 호출 어댑터입니다.
@@ -72,12 +75,16 @@ func New(opts Options) *Adapter {
 	if keepAlive == 0 {
 		keepAlive = defaultKeepAlive
 	}
+	hc := opts.HTTPClient
+	if hc == nil {
+		hc = &http.Client{Timeout: timeout}
+	}
 	return &Adapter{
 		endpoint:     strings.TrimRight(endpoint, "/"),
 		defaultModel: opts.DefaultModel,
 		keepAlive:    keepAlive,
 		autoPull:     opts.AutoPull,
-		httpClient:   &http.Client{Timeout: timeout},
+		httpClient:   hc,
 	}
 }
 
