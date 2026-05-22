@@ -558,3 +558,20 @@ CLAUDE.md 일관 — local 커밋 OK, remote push 사용자 명시 요청 시에
 - `feedback_recommend_next_actions.md` — 다음 추천 작업 3~5건 명시.
 - `feedback_skip_handoff.md` — handoff edit/commit/push 생략, CHANGELOG + release notes + commit 메시지로 trace.
 - `feedback_go_commit_pipeline.md` — gofmt + go mod tidy + goimports + errcheck 4종 commit 전 검증.
+
+---
+
+## 12. 결정 확정 (2026-05-22)
+
+사용자 D-P11A-1 결정 = **옵션 A** (otel SDK 전면 + Jaeger/Tempo backend 권장). D-P11A-2·3·4·5는 권장 default 채택:
+
+- **D-P11A-1 = 옵션 A** — otel SDK 전면 + vendor-neutral CNCF graduated 표준.
+- **D-P11A-2 = otlp-grpc + otlp-http both** — customer 환경 다양성 cover (collector 따라 선택).
+- **D-P11A-3 = parent_based sampling** — root span ratio 5% default + child span은 parent 결정 일관. production performance 안전.
+- **D-P11A-4 = customer 선택, Loki 권장** — docs에 Loki + Grafana stack 권장 default 명시. Splunk/ELK customer는 자유 선택.
+- **D-P11A-5 = otel exporter + Prometheus federation 양쪽** — 기존 Prometheus 자산 보존 + otel metric은 추가 노출.
+
+### 12.1 Stage 11.A-2 진입 가능
+
+Stage 11.A-2: OpenTelemetry SDK 도입 + `internal/platform/otel/` provider scaffold + bootstrap 결선 (~1주). 첫 코드 stage.
+
