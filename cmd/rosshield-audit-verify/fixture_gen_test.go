@@ -66,7 +66,7 @@ func detKeyID(pub ed25519.PublicKey) string {
 	return "key_e" + hex.EncodeToString(sum[:4])
 }
 
-// TestGenerateFixtures 는 v1 + v2 fixture 를 testdata 에 작성합니다.
+// TestGenerateFixtures 는 v1 + v2 + v3 fixture 를 testdata 에 작성합니다.
 //
 // run: `go test -tags=fixturegen -run TestGenerateFixtures ./cmd/rosshield-audit-verify/...`
 func TestGenerateFixtures(t *testing.T) {
@@ -90,6 +90,56 @@ func TestGenerateFixtures(t *testing.T) {
 		t.Fatalf("write v1: %v", err)
 	}
 	t.Logf("wrote %s (%d bytes)", v1Path, len(v1Bundle))
+
+	// === v3 fixture: v1 entries + transition marker + v3 entries (hash 분기 일관) ===
+	// design: §6.5 — transition entry 직전까지 v1 hash, 그 이후 v3 hash.
+	// 외부 fg-verify v3 가 _hashVersionTransitionAt seq 를 활용해 자동 분기.
+	v3K1Pub, _ := detKey(t, 0xC0001A1A1A1, 0xD0001B1B1B1)
+	v3K2Pub, v3K2Priv := detKey(t, 0xC0002A2A2A2, 0xD0002B2B2B2)
+	v3K1ID := detKeyID(v3K1Pub)
+	v3K2ID := detKeyID(v3K2Pub)
+
+	v3T0 := time.Date(2026, 5, 22, 0, 0, 0, 0, time.UTC)
+	v3Rev1 := v3T0.AddDate(0, 0, 30)
+
+	ke1, ke2 := int64(1), int64(2)
+	le1, le2 := int64(7), int64(8)
+	transitionSeq := int64(3)
+	v3Entries := buildDetV3Entries(t, "system", []detV3EntryInput{
+		// seq=1 : v1 hash, epoch=1, leaderEpoch=nil (pre-HA).
+		{action: "robot.create", keyEpoch: &ke1, leaderEpoch: nil},
+		// seq=2 : v1 hash, epoch=1, leaderEpoch=nil.
+		{action: "scan.execute", keyEpoch: &ke1, leaderEpoch: nil},
+		// seq=3 : transition marker entry — v1 hash (Append 분기는 seq > transitionSeq 만 v3).
+		{action: "audit.chain.hash_version_changed", keyEpoch: &ke1, leaderEpoch: nil},
+		// seq=4 : 첫 v3 entry, key rotation 도 동반 (epoch 1→2). leaderEpoch 주입.
+		{action: "audit.chain.key_rotated", keyEpoch: &ke2, leaderEpoch: &le1},
+		// seq=5 : v3 hash, leaderEpoch 변경 (HA failover 시뮬).
+		{action: "report.export", keyEpoch: &ke2, leaderEpoch: &le2},
+	}, v3T0, transitionSeq)
+
+	v3ChainKeys := []audit.ExportChainKeyEpoch{
+		{
+			CreatedAt:    v3T0.UTC().Format(time.RFC3339Nano),
+			Epoch:        1,
+			KeyID:        v3K1ID,
+			PublicKeyHex: hex.EncodeToString(v3K1Pub),
+			RevokedAt:    v3Rev1.UTC().Format(time.RFC3339Nano),
+		},
+		{
+			CreatedAt:    v3Rev1.UTC().Format(time.RFC3339Nano),
+			Epoch:        2,
+			KeyID:        v3K2ID,
+			PublicKeyHex: hex.EncodeToString(v3K2Pub),
+		},
+	}
+	v3Bundle := assembleV3Bundle(t, v3Entries, v3K2ID, v3K2Pub, v3K2Priv, v3ChainKeys,
+		1, 5, transitionSeq)
+	v3Path := filepath.Join(dir, "v3_bundle.ndjson.gz")
+	if err := os.WriteFile(v3Path, v3Bundle, 0o644); err != nil {
+		t.Fatalf("write v3: %v", err)
+	}
+	t.Logf("wrote %s (%d bytes)", v3Path, len(v3Bundle))
 
 	// === v2 fixture: epoch 1→2→3 transition ===
 	k1Pub, _ := detKey(t, 0xA1A1A100001, 0xB1B1B100001)
@@ -144,6 +194,110 @@ func TestGenerateFixtures(t *testing.T) {
 type detEntryInput struct {
 	action   string
 	keyEpoch *int64
+}
+
+// detV3EntryInput 은 v3 fixture entry 의 input — leaderEpoch 추가.
+type detV3EntryInput struct {
+	action      string
+	keyEpoch    *int64
+	leaderEpoch *int64
+}
+
+// buildDetV3Entries 는 v3 fixture 의 hash 분기 (v1 ↔ v3) 를 일관 적용해 entries 를 만듭니다.
+//
+// transitionSeq 분기: e.Seq <= transitionSeq → v1 hash (canonicalMetaJSONv1, 7 키),
+// 그 외 → v3 hash (canonicalMetaJSONv3, 9 키 = keyEpoch + leaderEpoch 알파벳순 추가).
+// sqliterepo.Repo.recomputeHashForSeq 와 byte-identical.
+func buildDetV3Entries(t *testing.T, tenant string, inputs []detV3EntryInput, base time.Time, transitionSeq int64) []audit.Entry {
+	t.Helper()
+	out := make([]audit.Entry, 0, len(inputs))
+	var prev audit.Hash
+	for i, in := range inputs {
+		seq := int64(i + 1)
+		e := audit.Entry{
+			TenantID:   storage.TenantID(tenant),
+			Seq:        seq,
+			OccurredAt: base.Add(time.Duration(seq) * time.Second),
+			Actor: audit.Actor{
+				Type: audit.ActorSystem,
+				ID:   "scheduler",
+			},
+			Action:        in.action,
+			Target:        audit.Target{Type: "chain", ID: "system"},
+			Outcome:       audit.OutcomeSuccess,
+			PayloadDigest: audit.ComputePayloadDigest([]byte(in.action)),
+			PrevHash:      prev,
+			KeyEpoch:      in.keyEpoch,
+			LeaderEpoch:   in.leaderEpoch,
+		}
+		var (
+			h   audit.Hash
+			err error
+		)
+		if transitionSeq > 0 && seq > transitionSeq {
+			h, err = audit.ComputeEntryHashV3(e.PrevHash, e.PayloadDigest, e)
+		} else {
+			h, err = audit.ComputeEntryHash(e.PrevHash, e.PayloadDigest, e)
+		}
+		if err != nil {
+			t.Fatalf("compute hash seq=%d: %v", seq, err)
+		}
+		e.Hash = h
+		prev = h
+		out = append(out, e)
+	}
+	return out
+}
+
+// assembleV3Bundle 은 v3 entries 를 MarshalEntryLineV3 로 직렬화 + signature line 에
+// HashVersionTransitionAt 명시 + gzip wrap 합니다.
+func assembleV3Bundle(t *testing.T, entries []audit.Entry, keyID string,
+	pub ed25519.PublicKey, priv ed25519.PrivateKey, chainKeys []audit.ExportChainKeyEpoch,
+	fromSeq, toSeq, transitionSeq int64) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	for _, e := range entries {
+		line, err := audit.MarshalEntryLineV3(e)
+		if err != nil {
+			t.Fatalf("MarshalEntryLineV3 seq=%d: %v", e.Seq, err)
+		}
+		buf.Write(line)
+		buf.WriteByte('\n')
+	}
+	digest := sha256.Sum256(buf.Bytes())
+	sig := ed25519.Sign(priv, digest[:])
+
+	sl := audit.ExportSignatureLine{
+		BundleVersion:           audit.BundleVersionV3,
+		ChainKeyEpochs:          chainKeys,
+		From:                    fromSeq,
+		HashVersionTransitionAt: transitionSeq,
+		KeyID:                   keyID,
+		PublicKey:               hex.EncodeToString(pub),
+		SignedDigest:            hex.EncodeToString(digest[:]),
+		Signature:               hex.EncodeToString(sig),
+		To:                      toSeq,
+	}
+	sigBytes, err := audit.MarshalSignatureLine(sl)
+	if err != nil {
+		t.Fatalf("MarshalSignatureLine: %v", err)
+	}
+
+	var gzBuf bytes.Buffer
+	gz := gzip.NewWriter(&gzBuf)
+	if _, err := gz.Write(buf.Bytes()); err != nil {
+		t.Fatalf("gz entries: %v", err)
+	}
+	if _, err := gz.Write(sigBytes); err != nil {
+		t.Fatalf("gz sig: %v", err)
+	}
+	if _, err := gz.Write([]byte{'\n'}); err != nil {
+		t.Fatalf("gz newline: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gz close: %v", err)
+	}
+	return gzBuf.Bytes()
 }
 
 func buildDetEntries(t *testing.T, tenant string, inputs []detEntryInput, base time.Time) []audit.Entry {

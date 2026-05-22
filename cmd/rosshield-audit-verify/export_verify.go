@@ -1,18 +1,26 @@
-// export_verify.go — Phase 10.D-5: audit entries export bundle 외부 검증 서브커맨드.
+// export_verify.go — Phase 10.D-5 + 11.C-5: audit entries export bundle 외부 검증 서브커맨드.
 //
 // 본 파일은 `rosshield-audit-verify export` 서브커맨드를 구현합니다. 외부 감사인이
-// rosshield-server 의 `Repo.Export` (또는 `ExportV2`) 가 만든 NDJSON+gzip 번들의
+// rosshield-server 의 `Repo.Export` / `ExportV2` / `ExportV3` 가 만든 NDJSON+gzip 번들의
 // 무결성을 단독 검증할 수 있게 합니다.
 //
-// 두 가지 bundle wire 형식:
+// 세 가지 bundle wire 형식 (자동 판별 — `_bundleVersion` 필드 유무·값으로 분기):
 //
 //	v1 (legacy, ~v0.9.0): _bundleVersion 부재 → 모든 entry 를 epoch=1 default 로 처리.
 //	    fg-verify 는 signature line 의 단일 _publicKey 로 _signedDigest 를 검증.
+//	    hash chain 은 모두 v1 (canonicalMetaJSONv1, 7 키).
 //
 //	v2 (Phase 10.D-5, v0.10.0+): _bundleVersion = "v2" + _chainKeyEpochs[] 포함.
 //	    각 entry 의 keyEpoch 필드 + signature line 의 _keyId 가 _chainKeyEpochs 와
 //	    cross-reference 됩니다. epoch transition 정합 (audit.chain.key_rotated entry)
-//	    도 검증.
+//	    도 검증. hash chain 은 모두 v1 (wire format 만 v2, hash 함수는 v1).
+//
+//	v3 (Phase 11.C-4, v0.13.0+): _bundleVersion = "v3" + _chainKeyEpochs[] + 추가 보장:
+//	    - signature line `_hashVersionTransitionAt` 가 transition entry seq 노출 (포함된 경우).
+//	    - 각 entry line 이 LeaderEpoch (nil 이면 omit) 노출.
+//	    - hash chain 은 seq <= transitionSeq → v1 hash, 그 외 → v3 hash (9 키, keyEpoch +
+//	      leaderEpoch 알파벳순 추가).
+//	    - transition entry 자체는 v1 hash 로 계산됨 (sqliterepo.Repo.Append 분기 일관).
 //
 // 사용법:
 //
@@ -28,8 +36,11 @@
 //     public key 로 _signedDigest 를 Ed25519.Verify.
 //  5. digestRecompute — entries 본문 stream 의 sha256 == _signedDigest.
 //  6. chain — entry n 의 prev_hash == entry n-1 의 hash + ComputeEntryHash 재계산.
+//     v3 bundle 은 hashVersionTransitionAt 기준 v1/v3 hash 함수 분기.
 //  7. epochTransition — audit.chain.key_rotated entry 의 keyEpoch 증가 + 두 epoch
-//     모두 _chainKeyEpochs 에 존재 (v2 만).
+//     모두 _chainKeyEpochs 에 존재 (v2/v3).
+//  8. hashVersionTransition — _hashVersionTransitionAt 가 bundle 범위 안의 transition
+//     entry seq 와 일치 (v3 만, transition entry 가 bundle 안에 포함된 경우).
 
 package main
 
@@ -53,19 +64,20 @@ import (
 
 // exportOutput 은 export 서브커맨드 결과 와이어 형식 (table·JSON 모두 동일).
 type exportOutput struct {
-	OK              bool         `json:"ok"`
-	Result          string       `json:"result"` // "PASS" | "FAIL"
-	Reason          string       `json:"reason,omitempty"`
-	BundlePath      string       `json:"bundlePath"`
-	BundleSHA256    string       `json:"bundleSha256"`
-	BundleVersion   string       `json:"bundleVersion"` // "v1" | "v2"
-	EntryCount      int          `json:"entryCount"`
-	EpochCount      int          `json:"epochCount"`
-	SigningKeyID    string       `json:"signingKeyId"`
-	FromSeq         int64        `json:"fromSeq"`
-	ToSeq           int64        `json:"toSeq"`
-	RotationEntries int          `json:"rotationEntries"`
-	Steps           []stepResult `json:"steps"`
+	OK                      bool         `json:"ok"`
+	Result                  string       `json:"result"` // "PASS" | "FAIL"
+	Reason                  string       `json:"reason,omitempty"`
+	BundlePath              string       `json:"bundlePath"`
+	BundleSHA256            string       `json:"bundleSha256"`
+	BundleVersion           string       `json:"bundleVersion"` // "v1" | "v2" | "v3"
+	EntryCount              int          `json:"entryCount"`
+	EpochCount              int          `json:"epochCount"`
+	SigningKeyID            string       `json:"signingKeyId"`
+	FromSeq                 int64        `json:"fromSeq"`
+	ToSeq                   int64        `json:"toSeq"`
+	RotationEntries         int          `json:"rotationEntries"`
+	HashVersionTransitionAt int64        `json:"hashVersionTransitionAt,omitempty"` // v3 transition entry seq (0 = 부재/미포함)
+	Steps                   []stepResult `json:"steps"`
 }
 
 // runExport 는 `export` 서브커맨드 진입.
@@ -133,9 +145,11 @@ func verifyExportBundle(bundlePath string) exportOutput {
 	out.FromSeq = sig.From
 	out.ToSeq = sig.To
 	out.EpochCount = len(sig.ChainKeyEpochs)
+	out.HashVersionTransitionAt = sig.HashVersionTransitionAt
 	out.Steps = append(out.Steps, stepResult{Name: "parse", OK: true,
-		Detail: fmt.Sprintf("bundleVersion=%s keyId=%s from=%d to=%d epochs=%d",
-			out.BundleVersion, sig.KeyID, sig.From, sig.To, len(sig.ChainKeyEpochs))})
+		Detail: fmt.Sprintf("bundleVersion=%s keyId=%s from=%d to=%d epochs=%d transitionAt=%d",
+			out.BundleVersion, sig.KeyID, sig.From, sig.To, len(sig.ChainKeyEpochs),
+			sig.HashVersionTransitionAt)})
 
 	// chainKeyEpochs map 구성. v1 (또는 _bundleVersion 부재) 는 signature line 의
 	// 단일 publicKey 를 epoch=1 default 로 처리 — 모든 entry 가 epoch=1 가정.
@@ -173,20 +187,23 @@ func verifyExportBundle(bundlePath string) exportOutput {
 	out.Steps = append(out.Steps, stepResult{Name: "signature", OK: true,
 		Detail: fmt.Sprintf("ed25519.Verify OK (key=%s)", sig.KeyID)})
 
-	// chain — entries 파싱 + ComputeEntryHash 재계산.
+	// chain — entries 파싱 + hash 재계산. v3 bundle 은 hashVersionTransitionAt 기준 v1/v3 분기.
 	entries, err := parseExportEntries(entriesBytes)
 	if err != nil {
 		return exportFail(out, "chain", err.Error())
 	}
 	out.EntryCount = len(entries)
-	if err := verifyHashChain(entries); err != nil {
+	if err := verifyHashChainForBundle(entries, sig); err != nil {
 		return exportFail(out, "chain", err.Error())
 	}
-	out.Steps = append(out.Steps, stepResult{Name: "chain", OK: true,
-		Detail: fmt.Sprintf("%d entries hash-linked", len(entries))})
+	chainDetail := fmt.Sprintf("%d entries hash-linked", len(entries))
+	if sig.BundleVersion == audit.BundleVersionV3 && sig.HashVersionTransitionAt > 0 {
+		chainDetail += fmt.Sprintf(" (v1/v3 split at seq=%d)", sig.HashVersionTransitionAt)
+	}
+	out.Steps = append(out.Steps, stepResult{Name: "chain", OK: true, Detail: chainDetail})
 
-	// epoch transition — v2 만. audit.chain.key_rotated entry 의 keyEpoch 검증.
-	if sig.BundleVersion == audit.BundleVersionV2 {
+	// epoch transition — v2 + v3. audit.chain.key_rotated entry 의 keyEpoch 검증.
+	if sig.BundleVersion == audit.BundleVersionV2 || sig.BundleVersion == audit.BundleVersionV3 {
 		rotations, err := verifyEpochTransitions(entries, epochMap)
 		if err != nil {
 			return exportFail(out, "epochTransition", err.Error())
@@ -197,6 +214,23 @@ func verifyExportBundle(bundlePath string) exportOutput {
 	} else {
 		out.Steps = append(out.Steps, stepResult{Name: "epochTransition", OK: true,
 			Detail: "skipped (v1 bundle — single epoch default)"})
+	}
+
+	// hashVersionTransition — v3 만. _hashVersionTransitionAt 가 bundle 안의 transition
+	// entry seq 와 일치하는지 검증 (transition entry 가 bundle 범위 안에 있는 경우).
+	if sig.BundleVersion == audit.BundleVersionV3 {
+		if err := verifyHashVersionTransitionMarker(entries, sig); err != nil {
+			return exportFail(out, "hashVersionTransition", err.Error())
+		}
+		detail := fmt.Sprintf("transitionAt=%d", sig.HashVersionTransitionAt)
+		if sig.HashVersionTransitionAt == 0 {
+			detail = "no transition entry in bundle range"
+		}
+		out.Steps = append(out.Steps, stepResult{Name: "hashVersionTransition", OK: true,
+			Detail: detail})
+	} else {
+		out.Steps = append(out.Steps, stepResult{Name: "hashVersionTransition", OK: true,
+			Detail: "skipped (v1/v2 bundle — v1 hash function only)"})
 	}
 
 	out.OK = true
@@ -285,13 +319,13 @@ func looksLikeSignatureLine(line []byte) bool {
 
 // buildEpochMap 은 signature line 으로부터 epoch → public key map 을 구성합니다.
 //
-// v2: _chainKeyEpochs[] 모든 epoch 가 map 에 들어감.
+// v2/v3: _chainKeyEpochs[] 모든 epoch 가 map 에 들어감.
 // v1: signature line 의 단일 _publicKey 를 epoch=1 로 default 처리 — 모든 entry 가
 //
 //	epoch=1 으로 가정 (v0.9.0 이하 호환).
 func buildEpochMap(sig audit.ExportSignatureLine) (map[int64]ed25519.PublicKey, error) {
 	out := map[int64]ed25519.PublicKey{}
-	if sig.BundleVersion != audit.BundleVersionV2 {
+	if sig.BundleVersion != audit.BundleVersionV2 && sig.BundleVersion != audit.BundleVersionV3 {
 		// v1 — single epoch default.
 		pub, err := decodeEd25519PublicHex(sig.PublicKey)
 		if err != nil {
@@ -301,18 +335,18 @@ func buildEpochMap(sig audit.ExportSignatureLine) (map[int64]ed25519.PublicKey, 
 		return out, nil
 	}
 	if len(sig.ChainKeyEpochs) == 0 {
-		return nil, errors.New("v2 bundle has empty _chainKeyEpochs")
+		return nil, fmt.Errorf("%s bundle has empty _chainKeyEpochs", sig.BundleVersion)
 	}
 	for _, ce := range sig.ChainKeyEpochs {
 		if ce.Epoch <= 0 {
-			return nil, fmt.Errorf("v2 chainKeyEpochs: invalid epoch %d", ce.Epoch)
+			return nil, fmt.Errorf("%s chainKeyEpochs: invalid epoch %d", sig.BundleVersion, ce.Epoch)
 		}
 		if _, dup := out[ce.Epoch]; dup {
-			return nil, fmt.Errorf("v2 chainKeyEpochs: duplicate epoch %d", ce.Epoch)
+			return nil, fmt.Errorf("%s chainKeyEpochs: duplicate epoch %d", sig.BundleVersion, ce.Epoch)
 		}
 		pub, err := decodeEd25519PublicHex(ce.PublicKeyHex)
 		if err != nil {
-			return nil, fmt.Errorf("v2 epoch=%d publicKey: %w", ce.Epoch, err)
+			return nil, fmt.Errorf("%s epoch=%d publicKey: %w", sig.BundleVersion, ce.Epoch, err)
 		}
 		out[ce.Epoch] = pub
 	}
@@ -335,10 +369,10 @@ func decodeEd25519PublicHex(s string) (ed25519.PublicKey, error) {
 
 // lookupSigningPublicKey 는 signature line 의 _keyId 와 매칭되는 epoch 의 public key 를 반환.
 //
-// v2: _chainKeyEpochs 안에 keyId 가 같은 row 가 정확히 1개 있어야 함. 없으면 error.
+// v2/v3: _chainKeyEpochs 안에 keyId 가 같은 row 가 정확히 1개 있어야 함. 없으면 error.
 // v1: signature line 의 _publicKey 를 직접 사용 (epoch=1 default).
 func lookupSigningPublicKey(sig audit.ExportSignatureLine, epochMap map[int64]ed25519.PublicKey) (ed25519.PublicKey, error) {
-	if sig.BundleVersion != audit.BundleVersionV2 {
+	if sig.BundleVersion != audit.BundleVersionV2 && sig.BundleVersion != audit.BundleVersionV3 {
 		if pub, ok := epochMap[1]; ok {
 			return pub, nil
 		}
@@ -349,11 +383,12 @@ func lookupSigningPublicKey(sig audit.ExportSignatureLine, epochMap map[int64]ed
 			if pub, ok := epochMap[ce.Epoch]; ok {
 				return pub, nil
 			}
-			return nil, fmt.Errorf("v2: keyId=%s epoch=%d in chainKeyEpochs but missing in map",
-				sig.KeyID, ce.Epoch)
+			return nil, fmt.Errorf("%s: keyId=%s epoch=%d in chainKeyEpochs but missing in map",
+				sig.BundleVersion, sig.KeyID, ce.Epoch)
 		}
 	}
-	return nil, fmt.Errorf("v2: signing keyId=%s not found in _chainKeyEpochs", sig.KeyID)
+	return nil, fmt.Errorf("%s: signing keyId=%s not found in _chainKeyEpochs",
+		sig.BundleVersion, sig.KeyID)
 }
 
 // parseExportEntries 는 entries stream (NDJSON bytes) 를 audit.Entry slice 로 파싱.
@@ -375,17 +410,24 @@ func parseExportEntries(entriesBytes []byte) ([]audit.Entry, error) {
 	return out, nil
 }
 
-// verifyHashChain 은 entry slice 의 hash chain self-consistency 를 검증합니다.
+// verifyHashChainForBundle 은 bundle version 에 따라 적절한 hash 함수로 chain 을 검증합니다.
 //
-// 각 entry n 에 대해:
-//   - ComputeEntryHash(entry.PrevHash, entry.PayloadDigest, entry) == entry.Hash
-//   - entry n+1 의 PrevHash == entry n 의 Hash
+// v1/v2 bundle: 모든 entry 가 v1 hash (canonicalMetaJSONv1, 7 키).
+// v3 bundle: seq <= _hashVersionTransitionAt 인 entry 는 v1 hash, 그 외 entry 는 v3 hash
 //
-// payload 자체는 export bundle 에 없음 — PayloadDigest 만 사용 (도메인 ComputeEntryHash
-// signature 그대로). hash recompute 가 entry.Hash 와 일치하면 chain link 정합.
-func verifyHashChain(entries []audit.Entry) error {
+//	(canonicalMetaJSONv3, 9 키 — keyEpoch + leaderEpoch 알파벳순 추가).
+//
+// transition entry (seq == transitionSeq) 자체는 v1 hash 로 계산됨 — sqliterepo.Repo.Append
+// 가 entry.Seq > transitionSeq 조건으로 분기하므로 transition entry 는 분기 직전. v3 bundle
+// 인데 _hashVersionTransitionAt == 0 인 경우 (bundle 범위 밖) — 모든 entry seq 와 비교 시
+// 모두 transitionSeq 보다 큼 → 모두 v3 hash 로 검증. 단, v3 hash 함수는 KeyEpoch/LeaderEpoch
+// 가 nil 이면 omit 하므로 v1 entry 에 대해서도 v1 hash 와 byte-identical (backward compat 안전망).
+func verifyHashChainForBundle(entries []audit.Entry, sig audit.ExportSignatureLine) error {
+	useV3 := sig.BundleVersion == audit.BundleVersionV3
+	transitionSeq := sig.HashVersionTransitionAt
 	for i, e := range entries {
-		recomputed, err := audit.ComputeEntryHash(e.PrevHash, e.PayloadDigest, e)
+		hashFn := selectHashFunc(useV3, transitionSeq, e.Seq)
+		recomputed, err := hashFn(e.PrevHash, e.PayloadDigest, e)
 		if err != nil {
 			return fmt.Errorf("entry seq=%d compute hash: %w", e.Seq, err)
 		}
@@ -400,6 +442,64 @@ func verifyHashChain(entries []audit.Entry) error {
 			return fmt.Errorf("entry seq=%d prevHash mismatch with seq=%d hash",
 				e.Seq, entries[i-1].Seq)
 		}
+	}
+	return nil
+}
+
+// hashFunc 는 audit.ComputeEntryHash / ComputeEntryHashV3 공통 signature.
+type hashFunc func(prevHash, payloadDigest audit.Hash, e audit.Entry) (audit.Hash, error)
+
+// selectHashFunc 는 v3 bundle 일 때 transitionSeq 와 entry.Seq 를 비교해 v1/v3 hash 함수를
+// 선택합니다. v1/v2 bundle 은 항상 v1.
+//
+// 분기 기준 (sqliterepo.Repo recomputeHashForSeq 와 일관):
+//
+//	useV3 == false                                    → v1.
+//	transitionSeq == 0                                → v1 (transition 미발생 또는 bundle 밖).
+//	useV3 && transitionSeq > 0 && entry.Seq > transitionSeq → v3.
+//	그 외                                              → v1.
+func selectHashFunc(useV3 bool, transitionSeq, entrySeq int64) hashFunc {
+	if useV3 && transitionSeq > 0 && entrySeq > transitionSeq {
+		return audit.ComputeEntryHashV3
+	}
+	return audit.ComputeEntryHash
+}
+
+// verifyHashVersionTransitionMarker 는 v3 bundle 의 _hashVersionTransitionAt 이 bundle 안
+// transition entry seq 와 일치하는지 검증합니다.
+//
+// 검증 규칙:
+//   - _hashVersionTransitionAt == 0: bundle 범위 안에 transition entry 가 없어야 함. 있으면 FAIL.
+//   - _hashVersionTransitionAt > 0: bundle 범위 안에 action=audit.chain.hash_version_changed
+//     entry 가 정확히 1개 + 그 seq == _hashVersionTransitionAt + 활성 분기 경계와 일관.
+//
+// 추가로 transitionSeq 이후 모든 entry 가 v3 hash domain 임을 확인하기 위해 keyEpoch nil
+// 검증은 하지 않음 (HA 미활성 환경에서도 v3 hash 함수는 nil omit 으로 backward compat 보장).
+func verifyHashVersionTransitionMarker(entries []audit.Entry, sig audit.ExportSignatureLine) error {
+	const transitionAction = audit.ActionHashVersionChanged
+	var (
+		found    []int64
+		foundSeq int64
+	)
+	for _, e := range entries {
+		if e.Action == transitionAction {
+			found = append(found, e.Seq)
+			foundSeq = e.Seq
+		}
+	}
+	switch {
+	case sig.HashVersionTransitionAt == 0 && len(found) > 0:
+		return fmt.Errorf("hashVersionTransitionAt=0 but bundle contains transition entry at seq=%d",
+			found[0])
+	case sig.HashVersionTransitionAt > 0 && len(found) == 0:
+		return fmt.Errorf("hashVersionTransitionAt=%d but no transition entry in bundle",
+			sig.HashVersionTransitionAt)
+	case sig.HashVersionTransitionAt > 0 && len(found) > 1:
+		return fmt.Errorf("hashVersionTransitionAt=%d but bundle contains %d transition entries",
+			sig.HashVersionTransitionAt, len(found))
+	case sig.HashVersionTransitionAt > 0 && foundSeq != sig.HashVersionTransitionAt:
+		return fmt.Errorf("hashVersionTransitionAt=%d does not match transition entry seq=%d",
+			sig.HashVersionTransitionAt, foundSeq)
 	}
 	return nil
 }
@@ -459,18 +559,19 @@ func emitExportOutput(format string, out exportOutput) {
 		_ = enc.Encode(out)
 		return
 	}
-	fmt.Printf("RESULT           %s\n", out.Result)
-	fmt.Printf("bundle           %s\n", out.BundlePath)
-	fmt.Printf("bundleSha256     %s\n", out.BundleSHA256)
-	fmt.Printf("bundleVersion    %s\n", out.BundleVersion)
-	fmt.Printf("entryCount       %d\n", out.EntryCount)
-	fmt.Printf("epochCount       %d\n", out.EpochCount)
-	fmt.Printf("signingKeyId     %s\n", out.SigningKeyID)
-	fmt.Printf("fromSeq          %d\n", out.FromSeq)
-	fmt.Printf("toSeq            %d\n", out.ToSeq)
-	fmt.Printf("rotationEntries  %d\n", out.RotationEntries)
+	fmt.Printf("RESULT                  %s\n", out.Result)
+	fmt.Printf("bundle                  %s\n", out.BundlePath)
+	fmt.Printf("bundleSha256            %s\n", out.BundleSHA256)
+	fmt.Printf("bundleVersion           %s\n", out.BundleVersion)
+	fmt.Printf("entryCount              %d\n", out.EntryCount)
+	fmt.Printf("epochCount              %d\n", out.EpochCount)
+	fmt.Printf("signingKeyId            %s\n", out.SigningKeyID)
+	fmt.Printf("fromSeq                 %d\n", out.FromSeq)
+	fmt.Printf("toSeq                   %d\n", out.ToSeq)
+	fmt.Printf("rotationEntries         %d\n", out.RotationEntries)
+	fmt.Printf("hashVersionTransitionAt %d\n", out.HashVersionTransitionAt)
 	if out.Reason != "" {
-		fmt.Printf("reason           %s\n", out.Reason)
+		fmt.Printf("reason                  %s\n", out.Reason)
 	}
 	fmt.Println()
 	fmt.Println("STEPS:")
@@ -505,9 +606,13 @@ func exportUsage() {
   --format  출력 포맷 (table | json, 기본 table)
 
 bundle 호환:
-  v1 (~v0.9.0)   — _bundleVersion 부재. 모든 entry 가 epoch=1 default.
+  v1 (~v0.9.0)   — _bundleVersion 부재. 모든 entry 가 epoch=1 default + v1 hash.
   v2 (v0.10.0+)  — _bundleVersion="v2" + _chainKeyEpochs[] 포함. epoch 별 public key
-                    cross-reference + rotation entry transition 정합 검증.
+                    cross-reference + rotation entry transition 정합 검증. hash 함수는
+                    여전히 v1.
+  v3 (v0.13.0+)  — _bundleVersion="v3" + _chainKeyEpochs[] + _hashVersionTransitionAt.
+                    transition entry 이전 = v1 hash, 이후 = v3 hash (9 키 — keyEpoch +
+                    leaderEpoch 알파벳순 추가). entry-level LeaderEpoch 노출.
 
 exit code:
   0  PASS — 모든 단계 통과

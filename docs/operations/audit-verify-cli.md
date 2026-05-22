@@ -3,8 +3,9 @@
 `rosshield-audit-verify`(통칭 fg-verify)는 외부 감사인이 rosshield-server 의존 없이
 단독으로 audit chain · report bundle · audit export bundle 의 무결성·진위를 검증할 수
 있는 standalone binary 입니다. Phase 10.D-5 (v0.10.0+) 부터 **audit chain key rotation
-aware** 검증을 지원합니다 — epoch 별 public key 를 자동 사용해 과거·현재 entry 모두
-검증.
+aware** 검증을 지원하며, Phase 11.C-4 (v0.13.0+) 부터 **hash version transition aware**
+검증 (v3 bundle — keyEpoch + leaderEpoch 가 hash input) 도 지원합니다 — epoch 별 public
+key + transition entry seq 를 자동 사용해 과거·현재 entry 모두 검증.
 
 ## 검증 가능한 번들 종류
 
@@ -17,10 +18,21 @@ aware** 검증을 지원합니다 — epoch 별 public key 를 자동 사용해 
 본 문서는 **`export` 서브커맨드** 와 **rotation aware 검증** 절차를 다룹니다. 다른
 서브커맨드는 README 참조.
 
-## v1 vs v2 bundle
+## v1 vs v2 vs v3 bundle
 
-audit export bundle 의 wire 형식은 v1·v2 두 가지가 공존합니다. fg-verify 는 양쪽 모두를
-자동 판별·검증합니다 — backward compatibility 는 v0.10.0+ 에서도 엄격 유지됩니다.
+audit export bundle 의 wire 형식은 v1·v2·v3 세 가지가 공존합니다. fg-verify 는 세 가지 모두를
+자동 판별·검증합니다 — backward compatibility 는 v0.13.0+ 에서도 엄격 유지됩니다.
+
+| 항목 | v1 (~v0.9.0) | v2 (v0.10.0+) | v3 (v0.13.0+) |
+|---|---|---|---|
+| `_bundleVersion` | 부재 | `"v2"` | `"v3"` |
+| `_chainKeyEpochs[]` | 부재 | 포함 (epoch 별 public key) | 포함 (동일) |
+| entry `keyEpoch` | 부재 | 포함 (epoch 메타) | 포함 (hash input) |
+| entry `leaderEpoch` | 부재 | 부재 | 포함 (HA fence token, nil omit) |
+| `_hashVersionTransitionAt` | 부재 | 부재 | 포함 (transition entry seq, 0=omit) |
+| hash 함수 | v1 (7 키 canonicalMetaJSON) | v1 (동일) | v1 (seq ≤ transitionSeq) + v3 (그 외, 9 키) |
+| chain rotation 검증 | skip | rotation entry 의 epoch 단조 증가 | 동일 |
+| hash transition 검증 | skip | skip | transition entry seq == `_hashVersionTransitionAt` |
 
 ### v1 (~v0.9.0)
 
@@ -40,11 +52,29 @@ audit export bundle 의 wire 형식은 v1·v2 두 가지가 공존합니다. fg-
 - 각 entry line 에 `keyEpoch` 필드 — INSERT 시점의 활성 epoch.
 - signature line 의 `_keyId` 가 `_chainKeyEpochs` 안 한 row 의 `keyId` 와 매칭 — 해당
   epoch 의 `publicKeyHex` 로 검증.
+- hash 함수는 여전히 v1 (canonicalMetaJSONv1, 7 키) — wire format 만 v2.
+
+### v3 (v0.13.0+, Phase 11.C-4)
+
+v2 의 super-set 으로 다음을 추가합니다:
+
+- signature line 에 `_bundleVersion: "v3"` **명시**.
+- signature line 에 `_hashVersionTransitionAt` **포함** — bundle 범위 안에 transition entry
+  (action = `audit.chain.hash_version_changed`) 가 있으면 그 seq, 없으면 0 (omit).
+- 각 entry line 에 `leaderEpoch` 필드 (nil 이면 omit) — HA failover fence token.
+- chain hash 함수 분기:
+  - `entry.Seq <= _hashVersionTransitionAt` → **v1 hash** (canonicalMetaJSONv1, 7 키).
+  - 그 외 → **v3 hash** (canonicalMetaJSONv3, 9 키 = v1 7 키 + `keyEpoch` + `leaderEpoch`
+    알파벳순 추가).
+  - transition entry 자체는 v1 hash — chain link 연속성 보장 (sqliterepo.Repo.Append 가
+    `seq > transitionSeq` 만 v3 분기).
+- transition entry 가 bundle 안에 포함된 경우 `_hashVersionTransitionAt` 가 그 entry 의
+  seq 와 일치해야 함 — `hashVersionTransition` step 이 검증.
 
 ### 자동 판별
 
-fg-verify 는 signature line 의 `_bundleVersion` 필드 유무로 자동 분기합니다 — 호출자가
-`--bundle-version` 같은 옵션을 지정할 필요 없음. v1 bundle 도 변경 없이 PASS.
+fg-verify 는 signature line 의 `_bundleVersion` 필드 값으로 자동 분기합니다 — 호출자가
+`--bundle-version` 같은 옵션을 지정할 필요 없음. v1·v2 bundle 도 변경 없이 PASS.
 
 ## 사용법
 
@@ -55,28 +85,30 @@ rosshield-audit-verify export \
     --bundle /path/to/audit-export.ndjson.gz
 ```
 
-출력 예 (v2 bundle, 모두 PASS):
+출력 예 (v3 bundle, 모두 PASS):
 
 ```
-RESULT           PASS
-bundle           /path/to/audit-export.ndjson.gz
-bundleSha256     <hex64>
-bundleVersion    v2
-entryCount       5
-epochCount       3
-signingKeyId     key_e<8hex>
-fromSeq          1
-toSeq            5
-rotationEntries  2
+RESULT                  PASS
+bundle                  /path/to/audit-export.ndjson.gz
+bundleSha256            <hex64>
+bundleVersion           v3
+entryCount              5
+epochCount              2
+signingKeyId            key_e<8hex>
+fromSeq                 1
+toSeq                   5
+rotationEntries         1
+hashVersionTransitionAt 3
 
 STEPS:
-  fetch              PASS  1057 bytes
-  gunzip             PASS  1893 ndjson bytes
-  parse              PASS  bundleVersion=v2 keyId=key_e... from=1 to=5 epochs=3
-  digestRecompute    PASS  sha256(entries) == _signedDigest
-  signature          PASS  ed25519.Verify OK (key=key_e...)
-  chain              PASS  5 entries hash-linked
-  epochTransition    PASS  2 rotation entries verified
+  fetch                    PASS  1079 bytes
+  gunzip                   PASS  ... ndjson bytes
+  parse                    PASS  bundleVersion=v3 keyId=key_e... from=1 to=5 epochs=2 transitionAt=3
+  digestRecompute          PASS  sha256(entries) == _signedDigest
+  signature                PASS  ed25519.Verify OK (key=key_e...)
+  chain                    PASS  5 entries hash-linked (v1/v3 split at seq=3)
+  epochTransition          PASS  1 rotation entries verified
+  hashVersionTransition    PASS  transitionAt=3
 
 PASS — audit export bundle verification successful.
 ```
@@ -132,7 +164,7 @@ bundle 안 `_chainKeyEpochs` 와 byte-equal 비교를 fg-verify 자체가 강제
 
 ## rotation entry transition 검증
 
-v2 bundle 의 `audit.chain.key_rotated` entry 는 rotation event 의 audit trail 자체입니다.
+v2/v3 bundle 의 `audit.chain.key_rotated` entry 는 rotation event 의 audit trail 자체입니다.
 fg-verify 는 다음을 검증합니다:
 
 - entry 의 `keyEpoch` 가 `_chainKeyEpochs` 에 존재.
@@ -142,13 +174,28 @@ fg-verify 는 다음을 검증합니다:
 위반 시 `epochTransition` step 이 FAIL — 운영자 또는 감사인이 chain 변조 또는 epoch
 재사용을 즉시 식별합니다.
 
+## hash version transition 검증 (v3 전용)
+
+v3 bundle 의 `audit.chain.hash_version_changed` entry 는 chain 의 hash 함수가 v1 → v3 으로
+전환된 시점을 표시합니다. fg-verify v3 는 다음을 검증합니다:
+
+- `_hashVersionTransitionAt == 0` 이면 bundle 범위 안에 transition entry 가 **없어야 함**.
+- `_hashVersionTransitionAt > 0` 이면 bundle 안에 transition entry 가 **정확히 1개** 존재 +
+  그 seq 가 `_hashVersionTransitionAt` 와 일치.
+- chain step 에서 `entry.Seq <= _hashVersionTransitionAt` 까지는 v1 hash, 그 이후는 v3 hash
+  로 재계산 → 모두 stored `hash` 와 매칭.
+
+위반 시 `hashVersionTransition` step 또는 `chain` step 이 FAIL — 운영자 또는 감사인이
+transition marker 변조 또는 hash 분기 boundary 변조를 즉시 식별합니다.
+
 ## 일반 FAIL 패턴
 
 | 단계 | 원인 | 진단 |
 |---|---|---|
-| `signature` | `_signature` 또는 `_publicKey` 변조; signing key 가 `_chainKeyEpochs` 에 부재 (v2) | bundle 송신 채널 신뢰 확인. 별 채널로 sha256 비교. |
-| `chain` | entry 의 `payloadDigest` 또는 `hash` 변조 | DB 손상·의도적 변조 의심. 직전 backup·archive 비교. |
-| `epochTransition` | rotation entry 의 `keyEpoch` 가 chainKeyEpochs 에 부재 | rosshield-server 가 v2 bundle 생성 시 `_chainKeyEpochs` 누락 — server 버그. |
+| `signature` | `_signature` 또는 `_publicKey` 변조; signing key 가 `_chainKeyEpochs` 에 부재 (v2/v3) | bundle 송신 채널 신뢰 확인. 별 채널로 sha256 비교. |
+| `chain` | entry 의 `payloadDigest` 또는 `hash` 변조; v3 hash 분기 boundary 변조 (`_hashVersionTransitionAt` 와 실제 entry seq 불일치) | DB 손상·의도적 변조 의심. 직전 backup·archive 비교. |
+| `epochTransition` | rotation entry 의 `keyEpoch` 가 chainKeyEpochs 에 부재 | rosshield-server 가 v2/v3 bundle 생성 시 `_chainKeyEpochs` 누락 — server 버그. |
+| `hashVersionTransition` | `_hashVersionTransitionAt` 와 bundle 안 transition entry seq 불일치 | server 버그 또는 의도적 변조. v3 bundle 의 transition marker 직렬화 경로 점검. |
 | `digestRecompute` | entry stream 손상 (gzip 부분 손상 등) | bundle 재다운로드. |
 
 ## v0.9.0 customer 호환성
@@ -159,8 +206,27 @@ fg-verify 는 다음을 검증합니다:
 - 단일 `_publicKey` 로 검증 — 기존과 byte-identical 결과.
 - `_chainKeyEpochs` 부재 → fg-verify 가 epoch=1 default 로 처리.
 
-업그레이드 절차: customer 는 fg-verify binary 만 v0.10.0+ 로 교체 → 기존 v1 bundle ·
-신규 v2 bundle 양쪽 모두 변경 없이 검증.
+업그레이드 절차: customer 는 fg-verify binary 만 v0.13.0+ 로 교체 → 기존 v1 bundle ·
+v2 bundle · 신규 v3 bundle 세 가지 모두 변경 없이 검증.
+
+## v3 binary 분배 시점 (D-P11C-4)
+
+Phase 11.C 의 fg-verify v3 binary 는 Stage 11.C-6 release 이후 외부 감사인에게 분배될
+예정입니다 (design `docs/design/notes/audit-hash-key-epoch-input-design.md` §12).
+
+분배 절차:
+
+1. rosshield Stage 11.C-6 release tag (v0.13.0) 가 GitHub Releases 에 publish.
+2. release page 의 attachment 로 OS 별 fg-verify binary (linux-amd64 · linux-arm64 ·
+   darwin-arm64 · windows-amd64) + sha256 sums 가 함께 게시.
+3. 외부 감사인 또는 customer 가 다음 중 하나로 신뢰:
+   - sha256 sums file 의 Ed25519 signature 검증 (release-pack signer).
+   - 또는 source 에서 단독 빌드 (`go build ./cmd/rosshield-audit-verify`).
+4. fg-verify v3 binary 는 v1 + v2 + v3 bundle 모두를 단일 binary 로 검증 — 기존 사용자
+   교체 시 추가 옵션·migration 0.
+
+source 단독 빌드 보장: fg-verify 는 도메인 audit 패키지(`internal/domain/audit`) 만 import
+하며 그 외 platform·storage layer 와 무관 — vendor 없이도 `go mod tidy` 후 빌드 가능.
 
 ## 보안 고려사항
 
@@ -175,7 +241,11 @@ fg-verify 는 다음을 검증합니다:
 ## 참조
 
 - `cmd/rosshield-audit-verify/` — 본 CLI 소스.
-- `internal/domain/audit/export.go` — v1·v2 wire 정의.
+- `internal/domain/audit/export.go` — v1·v2·v3 wire 정의.
+- `internal/domain/audit/hash.go` — `ComputeEntryHash` (v1) + `ComputeEntryHashV3` (v3) 정의.
+- `internal/domain/audit/transition.go` — `EnsureHashVersionTransition` (Phase 11.C-3 marker).
 - `internal/domain/audit/key_epoch.go` — ChainKeyEpoch 도메인 + Repository.
-- `docs/design/notes/audit-chain-rotation-automation-design.md` §6.5·§8.2 — design.
+- `internal/domain/audit/sqliterepo/repo_hash_version.go` — v3 hash 분기 + `ExportV3`.
+- `docs/design/notes/audit-chain-rotation-automation-design.md` §6.5·§8.2 — v2 design.
+- `docs/design/notes/audit-hash-key-epoch-input-design.md` §6.5·§12 — v3 design + 분배 plan.
 - `internal/platform/storage/postgres/migrations/0037_audit_chain_keys.up.sql` — 마이그레이션.
